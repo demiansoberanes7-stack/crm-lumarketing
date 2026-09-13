@@ -19,6 +19,9 @@ export function NewExpenseDialog({ onClose, onSaved }: NewExpenseDialogProps) {
   const [proveedor, setProveedor] = useState("");
   const [notas, setNotas] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [referencia, setReferencia] = useState("");
 
   async function handleSave() {
     if (!descripcion.trim() || !monto || Number(monto) <= 0) return;
@@ -27,6 +30,8 @@ export function NewExpenseDialog({ onClose, onSaved }: NewExpenseDialogProps) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        fecha: new Date(`${fecha}T12:00:00Z`).toISOString(),
+        referencia,
         descripcion: descripcion.trim(),
         categoria,
         monto: Math.round(Number(monto) * 100),
@@ -37,6 +42,7 @@ export function NewExpenseDialog({ onClose, onSaved }: NewExpenseDialogProps) {
     }).catch(() => null);
     setSaving(false);
     if (res?.ok) onSaved();
+    else setError((await res?.json())?.error?.message ?? "No se pudo registrar el gasto");
   }
 
   return (
@@ -50,6 +56,9 @@ export function NewExpenseDialog({ onClose, onSaved }: NewExpenseDialogProps) {
       >
         <h3 className="mb-4 font-semibold">Registrar Gasto</h3>
         <div className="space-y-3">
+          {error && <p role="alert" className="text-destructive">{error}</p>}
+          <label className="block">Fecha<Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
+          <label className="block">Referencia<Input value={referencia} onChange={(e) => setReferencia(e.target.value)} /></label>
           <div className="space-y-1.5">
             <Label htmlFor="expense-descripcion">Descripción</Label>
             <Input

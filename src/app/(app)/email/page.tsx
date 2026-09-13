@@ -1,7 +1,2 @@
-import { EmailClient } from "@/components/email/email-client";
-
-export const dynamic = "force-dynamic";
-
-export default function EmailPage() {
-  return <EmailClient />;
-}
+import { redirect } from "next/navigation";
+export default function EmailPage() { redirect("/inbox?channel=email"); }

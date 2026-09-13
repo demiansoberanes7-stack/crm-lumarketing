@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Sparkles, UserRound, X } from "lucide-react";
+import { Search, Sparkles, UserRound, X, Mail } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { ConversationDto } from "@/lib/types";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
@@ -76,7 +78,8 @@ export function ConversationList({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [stage, setStage] = useState<string>("all");
-  const [inbox, setInbox] = useState<Channel | "all">("all");
+  const channelParam = useSearchParams().get("channel");
+  const [inbox, setInbox] = useState<Channel | "all">(channels.includes(channelParam as Channel) ? channelParam as Channel : "all");
   const inputRef = useRef<HTMLInputElement>(null);
 
   /**
@@ -115,7 +118,7 @@ export function ConversationList({
     filter === "unread" ? inInbox.filter((c) => c.unreadCount > 0) : inInbox;
   // Con un solo canal encendido no hay bandejas que distinguir: ni marca en
   // los renglones ni filtro. La pantalla queda exactamente como antes de 014.
-  const multiChannel = channels.length > 1;
+  const multiChannel = true;
 
   // Etapas presentes en la bandeja, en el orden en que llegan del pipeline.
   const stages: string[] = [];
@@ -137,6 +140,7 @@ export function ConversationList({
           <span className="font-mono text-[12px] text-text-3">{conversations.length}</span>
           {multiChannel && (
             <div className="ml-auto flex items-center gap-1">
+              <Link href="/inbox?channel=email" title="Ver buzón de correo" aria-label="Ver buzón de correo" className="rounded-full border p-1.5 text-text-3 hover:bg-accent"><Mail size={14} /></Link>
               {channels.map((ch) => {
                 const on = inbox === ch;
                 return (

@@ -30,6 +30,7 @@ const patchSchema = z.object({
   taxRate: z.number().int().min(0).max(100).optional(),
   validDays: z.number().int().min(1).max(365).optional(),
   paymentMethod: z.record(z.unknown()).nullable().optional(),
+  notes: z.string().max(10000).optional(),
 });
 
 /** PATCH — actualizar cotización (solo draft) */
@@ -54,6 +55,7 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
     if (body.data.taxRate !== undefined) input.taxRate = body.data.taxRate;
     if (body.data.validDays !== undefined) input.validDays = body.data.validDays;
     if (body.data.paymentMethod !== undefined) input.paymentMethod = body.data.paymentMethod;
+    if (body.data.notes !== undefined) input.notes = body.data.notes;
     await updateQuote(session.organizationId, id, input as import("@/server/quotes/service").QuoteInput);
     return Response.json({ ok: true });
   } catch (err) {

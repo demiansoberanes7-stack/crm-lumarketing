@@ -16,6 +16,9 @@ import { applyStatusUpdate } from "@/server/inbox/status";
 import { publish } from "@/server/events/bus";
 import { normalizeMx } from "@/lib/meta/client";
 import type { Channel } from "@/lib/channels";
+import { safeEqual } from "@/server/inbox/webhook";
+import { wahaWebhookToken } from "./webhook-token";
+import { whatsappProvider } from "@/server/whatsapp/provider";
 
 export type WahaWebhookEvent = {
   event: string;
@@ -33,13 +36,13 @@ function normalizeWahaMessage(payload: Record<string, unknown>) {
   const message = payload.message as Record<string, unknown> | undefined;
   const pushName = payload.pushName as string | undefined;
 
-  const remoteJid = (key?.remoteJid as string) ?? "";
-  const fromMe = key?.fromMe === true;
-  const id = (key?.id as string) ?? "";
+  const fromMe = payload.fromMe === true || key?.fromMe === true;
+  const remoteJid = (key?.remoteJid as string) ?? (fromMe ? payload.to : payload.from) as string ?? "";
+  const id = (payload.id as string) ?? (key?.id as string) ?? "";
 
   // Extraer tipo y contenido del mensaje
   let type = "text";
-  let text: string | null = null;
+  let text: string | null = typeof payload.body === "string" ? payload.body : null;
   let media: Record<string, unknown> | null = null;
 
   if (message) {
@@ -76,13 +79,13 @@ function normalizeWahaMessage(payload: Record<string, unknown>) {
 
   return {
     id,
-    phone,
+    phone: /@(g\.us|broadcast|lid)$/.test(remoteJid) || !/^\d+$/.test(phone) ? "" : phone,
     pushName,
     fromMe,
     type,
     text,
     media,
-    timestamp: (payload.messageTimestamp as number) ?? Math.floor(Date.now() / 1000),
+    timestamp: (payload.timestamp as number) ?? (payload.messageTimestamp as number) ?? Math.floor(Date.now() / 1000),
   };
 }
 
@@ -95,7 +98,7 @@ export async function processMessageAny(
 ): Promise<void> {
   const msg = normalizeWahaMessage(payload);
 
-  if (!msg.id) return;
+  if (!msg.id || !msg.phone) return;
 
   // Echo: mensaje saliente confirmado
   if (msg.fromMe) {
@@ -146,10 +149,11 @@ export async function processMessageAck(
   const key = payload.key as Record<string, unknown> | undefined;
   const ack = payload.ack as number | undefined;
 
-  if (!key?.id || ack === undefined) return;
+  const id = payload.id ?? key?.id;
+  if (!id || ack === undefined) return;
 
   const statusMap: Record<number, "sent" | "delivered" | "read" | "failed"> = {
-    0: "failed",
+    [-1]: "failed",
     1: "sent",
     2: "delivered",
     3: "read",
@@ -160,7 +164,7 @@ export async function processMessageAck(
   if (!status) return;
 
   await applyStatusUpdate(organizationId, {
-    id: key.id as string,
+    id: id as string,
     status,
     timestamp: String(Math.floor(Date.now() / 1000)),
   });
@@ -189,7 +193,7 @@ export async function handleWahaWebhook(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
-  const { token: _token } = await params;
+  const { token } = await params;
 
   // Buscar credenciales por token (el token es el webhookToken de la URL)
   // En WAHA, el token se configura en la URL del webhook.
@@ -207,66 +211,17 @@ export async function handleWahaWebhook(
   if (!event || !payload) {
     return NextResponse.json({ ok: true });
   }
-
-  // Para WAHA necesitamos resolver la organización por el session name.
-  // El token en la URL es el META_WEBHOOK_VERIFY_TOKEN (se reutiliza).
-  // La organización se resuelve por el session name en el payload.
-  // Por ahora, procesamos el evento y dejamos que el sistema de ingesta
-  // resuelva la organización por las credenciales de phone_number_id.
-
+  const { getDb, schema } = await import("@/lib/db");
+  const matches = await getDb().select().from(schema.wahaCredentials).where(eq(schema.wahaCredentials.sessionName, session ?? ""));
+  const authorized = matches.find((cred) => safeEqual(token, wahaWebhookToken(cred.organizationId)));
+  if (!authorized) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (await whatsappProvider(authorized.organizationId) !== "waha" && event !== "message.ack") return NextResponse.json({ ok: true });
   try {
-    if (event === "message.any") {
-      // WAHA no envía phone_number_id en el payload; necesitamos resolver
-      // la organización por el session name. Buscamos todas las credenciales
-      // WAHA activas y probamos con cada una.
-      const { getDb, schema } = await import("@/lib/db");
-      const db = getDb();
-      const creds = await db
-        .select()
-        .from(schema.wahaCredentials)
-        .where(
-          // Buscar por session name o todas las activas
-          eq(schema.wahaCredentials.status, "connected")
-        );
-
-      for (const cred of creds) {
-        if (cred.sessionName === session || creds.length === 1) {
-          await processMessageAny(cred.organizationId, payload);
-          break;
-        }
-      }
-    } else if (event === "message.ack") {
-      const { getDb, schema } = await import("@/lib/db");
-      const db = getDb();
-      const creds = await db
-        .select()
-        .from(schema.wahaCredentials)
-        .where(eq(schema.wahaCredentials.status, "connected"));
-
-      for (const cred of creds) {
-        if (cred.sessionName === session || creds.length === 1) {
-          await processMessageAck(cred.organizationId, payload);
-          break;
-        }
-      }
-    } else if (event === "session.status") {
-      const { getDb, schema } = await import("@/lib/db");
-      const db = getDb();
-      const creds = await db
-        .select()
-        .from(schema.wahaCredentials)
-        .where(eq(schema.wahaCredentials.status, "connected"));
-
-      for (const cred of creds) {
-        if (cred.sessionName === session || creds.length === 1) {
-          processSessionStatus(cred.organizationId, payload);
-          break;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[waha-webhook] error procesando evento:", err);
+    if (event === "message.any" || event === "message") await processMessageAny(authorized.organizationId, payload);
+    else if (event === "message.ack") await processMessageAck(authorized.organizationId, payload);
+    else if (event === "session.status") processSessionStatus(authorized.organizationId, payload);
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "processing_failed" }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true });
 }

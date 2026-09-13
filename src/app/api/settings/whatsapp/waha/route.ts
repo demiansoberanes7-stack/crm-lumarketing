@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
+import { wahaWebhookUrl } from "@/server/waha/webhook-token";
+import { wahaRequest } from "@/server/waha/client";
 import {
   getWahaCredentialsByOrg,
   saveWahaCredentials,
@@ -47,6 +49,7 @@ export const GET = withAuth(async (session) => {
       sessionStatus,
       apiKeyLast4: creds.apiKeyLast4,
       qr,
+      webhookUrl: wahaWebhookUrl(session.organizationId),
     },
   });
 });
@@ -74,11 +77,13 @@ export const PUT = withAuth(async (session, req: Request) => {
     }
   } catch (err) {
     const wahaErr = err as WahaError;
+    if (wahaErr.status !== 404) {
     return apiError(
       503,
       "waha_unreachable",
       `No se pudo conectar a WAHA: ${wahaErr.message}`
     );
+    }
   }
 
   await saveWahaCredentials({
@@ -109,6 +114,12 @@ export const POST = withAuth(async (session, req: Request) => {
 
   try {
     if (body.data.action === "start") {
+      try {
+        await getSessionStatus(fullCreds.baseUrl, fullCreds.apiKey, fullCreds.sessionName);
+      } catch (e) {
+        if ((e as WahaError).status !== 404) throw e;
+        await wahaRequest(fullCreds.baseUrl, fullCreds.apiKey, "/api/sessions", { method: "POST", body: { name: fullCreds.sessionName, start: false, config: { webhooks: [{ url: wahaWebhookUrl(session.organizationId), events: ["message.any", "message.ack", "session.status"] }] } } });
+      }
       await startSession(
         fullCreds.baseUrl,
         fullCreds.apiKey,

@@ -9,16 +9,17 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  initial?: { id: string; label: string | null; email: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; username: string };
 };
 
-export function NewAccountDialog({ open, onClose, onCreated }: Props) {
-  const [label, setLabel] = useState("");
-  const [email, setEmail] = useState("");
-  const [imapHost, setImapHost] = useState("");
-  const [imapPort, setImapPort] = useState("993");
-  const [smtpHost, setSmtpHost] = useState("");
-  const [smtpPort, setSmtpPort] = useState("465");
-  const [username, setUsername] = useState("");
+export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
+  const [label, setLabel] = useState(initial?.label ?? "");
+  const [email, setEmail] = useState(initial?.email ?? "");
+  const [imapHost, setImapHost] = useState(initial?.imapHost ?? "imap.hostinger.com");
+  const [imapPort, setImapPort] = useState(String(initial?.imapPort ?? 993));
+  const [smtpHost, setSmtpHost] = useState(initial?.smtpHost ?? "smtp.hostinger.com");
+  const [smtpPort, setSmtpPort] = useState(String(initial?.smtpPort ?? 465));
+  const [username, setUsername] = useState(initial?.username ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,8 +31,8 @@ export function NewAccountDialog({ open, onClose, onCreated }: Props) {
     setLoading(true);
     setError(null);
 
-    const res = await fetch("/api/email/accounts", {
-      method: "POST",
+    const res = await fetch(initial ? `/api/email/accounts/${initial.id}` : "/api/email/accounts", {
+      method: initial ? "PATCH" : "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         email,
@@ -81,8 +82,8 @@ export function NewAccountDialog({ open, onClose, onCreated }: Props) {
         onClick={onClose}
         className="absolute inset-0 bg-overlay"
       />
-      <div className="relative z-10 w-full max-w-md rounded-lg border border-border-strong bg-card p-6 shadow-lg">
-        <h2 className="text-lg font-bold">Nueva Cuenta de Correo</h2>
+      <div className="relative z-10 max-h-[90dvh] overflow-y-auto w-full max-w-md rounded-lg border border-border-strong bg-card p-6 shadow-lg">
+        <h2 className="text-lg font-bold">{initial ? "Editar cuenta de correo" : "Nueva Cuenta de Correo"}</h2>
         <p className="mb-4 mt-1 text-sm text-text-2">
           Configura una cuenta IMAP/SMTP para recibir y enviar correos.
         </p>
@@ -166,7 +167,8 @@ export function NewAccountDialog({ open, onClose, onCreated }: Props) {
             <Input
               id="email-pass"
               type="password"
-              required
+              required={!initial}
+              placeholder={initial ? "Vacío para conservar la contraseña" : ""}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />

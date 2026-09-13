@@ -94,7 +94,7 @@ export async function getProject(organizationId: string, projectId: string) {
     )
     .limit(1);
 
-  return rows[0] ?? null;
+  return rows[0] ? { ...rows[0], currentStageIndex: Math.round(rows[0].avance * 6 / 100) } : null;
 }
 
 /** Listar proyectos */
@@ -267,7 +267,7 @@ export async function getProjectReport(organizationId: string, projectId: string
     const [c] = await db
       .select()
       .from(schema.contact)
-      .where(eq(schema.contact.id, project.contactId))
+      .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, project.contactId)))
       .limit(1);
     contact = c ?? null;
   }
@@ -279,8 +279,8 @@ export async function getProjectReport(organizationId: string, projectId: string
     stageHistory,
     stats: {
       totalTasks: tasks.length,
-      completedTasks: tasks.filter((t) => t.estado === "terminado").length,
-      pendingTasks: tasks.filter((t) => t.estado === "pendiente").length,
+      completed: tasks.filter((t) => t.estado === "terminado").length,
+      pending: tasks.filter((t) => t.estado !== "terminado").length,
     },
   };
 }

@@ -8,6 +8,7 @@ import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { createHash } from "node:crypto";
 
 export type BalancePeriod = {
   from: Date;
@@ -146,13 +147,17 @@ export async function createPayment(
     comprobanteUrl?: string;
     notas?: string;
     fecha?: Date;
+    requestId?: string;
   },
   createdBy?: string
 ): Promise<string> {
-  const db = getDb();
-  const id = newId("payment");
-
-  await db.insert(schema.payment).values({
+  return getDb().transaction(async (db) => {
+  const id = input.requestId ? `pay_${createHash("sha256").update(`${organizationId}:${input.requestId}`).digest("hex").slice(0, 40)}` : newId("payment");
+  if (input.contactId) {
+    const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
+    if (!contact) throw new Error("Contacto no válido");
+  }
+  const [inserted] = await db.insert(schema.payment).values({
     id,
     organizationId,
     chargeId: input.chargeId ?? null,
@@ -164,16 +169,19 @@ export async function createPayment(
     comprobanteUrl: input.comprobanteUrl ?? null,
     notas: input.notas ?? null,
     createdBy: createdBy ?? null,
-  });
+  }).onConflictDoNothing().returning({ id: schema.payment.id });
+  if (!inserted) return id;
 
   // Actualizar saldo de la cuenta por cobrar
   if (input.chargeId) {
     const [charge] = await db
       .select()
       .from(schema.charge)
-      .where(eq(schema.charge.id, input.chargeId))
-      .limit(1);
+      .where(scoped(schema.charge.organizationId, organizationId, eq(schema.charge.id, input.chargeId)))
+      .limit(1).for("update");
 
+    if (!charge) throw new Error("Cuenta por cobrar no válida");
+    if (charge.status === "cancelado" || input.monto > charge.totalAmount - charge.paidAmount) throw new Error("El pago supera el saldo pendiente o la cuenta está cancelada");
     if (charge) {
       const newPaid = charge.paidAmount + input.monto;
       const newStatus = newPaid >= charge.totalAmount ? "pagado" : "parcial";
@@ -185,6 +193,7 @@ export async function createPayment(
   }
 
   return id;
+  });
 }
 
 /** Registrar un gasto */
@@ -235,7 +244,7 @@ export async function createChargeFromQuote(
   const [quote] = await db
     .select()
     .from(schema.quote)
-    .where(eq(schema.quote.id, quoteId))
+    .where(scoped(schema.quote.organizationId, organizationId, eq(schema.quote.id, quoteId)))
     .limit(1);
 
   if (!quote) throw new Error("Cotización no encontrada");

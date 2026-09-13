@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ContactPicker } from "@/components/contact-picker";
 
 interface QuoteItem {
   name: string;
@@ -35,16 +36,20 @@ function computeSubtotal(items: QuoteItem[]): number {
 export function NewQuoteDialog({
   onClose,
   onCreated,
+  initial,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  initial?: { id: string; items: QuoteItem[]; contactId: string | null; discountType: string | null; discountValue: number | null; taxRate: number; validUntil: string | null; message: string | null };
 }) {
-  const [items, setItems] = useState<QuoteItem[]>([{ ...EMPTY_ITEM }]);
-  const [discountType, setDiscountType] = useState("none");
-  const [discountValue, setDiscountValue] = useState("");
-  const [taxRate, setTaxRate] = useState("16");
+  const [items, setItems] = useState<QuoteItem[]>(initial ? initial.items.map((item) => ({ ...item, unitPrice: item.unitPrice / 100 })) : [{ ...EMPTY_ITEM }]);
+  const [discountType, setDiscountType] = useState(initial?.discountType ?? "none");
+  const [discountValue, setDiscountValue] = useState(initial?.discountValue != null ? String(initial.discountValue / (initial.discountType === "fixed" ? 100 : 1)) : "");
+  const [taxRate, setTaxRate] = useState(String(initial?.taxRate ?? 16));
   const [validDays, setValidDays] = useState("30");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initial?.message ?? "");
+  const [contactId, setContactId] = useState<string | null>(initial?.contactId ?? null);
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
 
@@ -96,12 +101,14 @@ export function NewQuoteDialog({
     const validItems = items.filter((it) => it.name.trim() && it.unitPrice > 0);
     if (validItems.length === 0) return;
     setSaving(true);
-    await fetch("/api/quotes", {
-      method: "POST",
+    setError("");
+    const response = await fetch(initial ? `/api/quotes/${initial.id}` : "/api/quotes", {
+      method: initial ? "PATCH" : "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        contactId,
         items: validItems.map((item) => ({ ...item, unitPrice: Math.round(item.unitPrice * 100) })),
-        discountType: discountType === "none" ? undefined : discountType,
+        discountType: discountType === "none" ? null : discountType,
         discountValue: discountValue ? (discountType === "fixed" ? Math.round(Number(discountValue) * 100) : Number(discountValue)) : undefined,
         taxRate: Number(taxRate),
         validDays: Number(validDays) || 30,
@@ -109,6 +116,7 @@ export function NewQuoteDialog({
       }),
     }).catch(() => null);
     setSaving(false);
+    if (!response?.ok) { setError((await response?.json())?.error?.message ?? "No se pudo guardar la cotización"); return; }
     onCreated();
   }
 
@@ -122,13 +130,15 @@ export function NewQuoteDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold">Nueva Cotización</h3>
+          <h3 className="font-semibold">{initial ? "Editar cotización" : "Nueva Cotización"}</h3>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>
 
         <div className="space-y-4">
+          {error && <p role="alert" className="text-destructive">{error}</p>}
+          <ContactPicker value={contactId} onChange={setContactId} />
           <div>
             <Label className="mb-2 block">Items</Label>
             <div className="space-y-3">

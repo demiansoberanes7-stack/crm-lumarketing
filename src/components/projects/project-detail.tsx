@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EditProject } from "./edit-project";
+import Link from "next/link";
 
 interface ProjectDetail {
   id: string;
+  contactId: string | null;
+  notas: string | null;
   code: string;
   name: string;
   estado: string;
@@ -27,6 +31,7 @@ interface Task {
 }
 
 interface Report {
+  contact: { id: string; name: string | null; phone: string | null } | null;
   stats: { totalTasks: number; completed: number; pending: number };
 }
 
@@ -60,6 +65,8 @@ export function ProjectDetail({
   const [report, setReport] = useState<Report | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [addingTask, setAddingTask] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const refetch = useCallback(async () => {
     const [projRes, tasksRes, reportRes] = await Promise.all([
@@ -143,9 +150,13 @@ export function ProjectDetail({
             <p className="text-xs text-muted-foreground">{project.service}</p>
           )}
         </div>
+        <Button onClick={() => setEditing(true)}>Editar proyecto</Button>
       </header>
 
       <div className="flex-1 space-y-6 p-4 sm:p-6">
+        {notice && <p role="status">{notice}</p>}
+        <p className="text-sm">Contacto: {report?.contact ? <Link className="underline" href={`/contacts?q=${encodeURIComponent(report.contact.name ?? report.contact.phone ?? "")}`}>{report.contact.name ?? report.contact.phone ?? "Ver contacto"}</Link> : "Sin contacto asignado"}</p>
+        {editing && <EditProject project={project} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); setNotice("Proyecto actualizado"); void refetch(); onUpdated(); }} />}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Avance</CardTitle>

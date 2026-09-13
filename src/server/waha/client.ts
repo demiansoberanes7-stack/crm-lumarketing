@@ -39,6 +39,7 @@ export async function wahaRequest(
   try {
     const res = await fetch(url, {
       method: opts?.method ?? "GET",
+      signal: AbortSignal.timeout(20000),
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": apiKey,
@@ -72,7 +73,7 @@ export async function getSessionStatus(
   const data = (await wahaRequest(
     baseUrl,
     apiKey,
-    `/api/${sessionName}`
+    `/api/sessions/${encodeURIComponent(sessionName)}`
   )) as Record<string, unknown>;
   return {
     status: (data.status as WahaSessionStatus) ?? "STOPPED",
@@ -86,7 +87,7 @@ export async function startSession(
   apiKey: string,
   sessionName: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${sessionName}/start`, {
+  await wahaRequest(baseUrl, apiKey, `/api/sessions/${encodeURIComponent(sessionName)}/start`, {
     method: "POST",
   });
 }
@@ -97,7 +98,7 @@ export async function stopSession(
   apiKey: string,
   sessionName: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${sessionName}/stop`, {
+  await wahaRequest(baseUrl, apiKey, `/api/sessions/${encodeURIComponent(sessionName)}/stop`, {
     method: "POST",
   });
 }
@@ -110,15 +111,18 @@ export async function sendText(
   chatId: string,
   text: string
 ): Promise<{ key: { id: string } }> {
-  return (await wahaRequest(
+  const result = (await wahaRequest(
     baseUrl,
     apiKey,
-    `/api/${sessionName}/sendText`,
+    `/api/sendText`,
     {
       method: "POST",
-      body: { chatId, text },
+      body: { session: sessionName, chatId, text },
     }
-  )) as { key: { id: string } };
+  )) as { id?: string; key?: { id: string } };
+  const id = result.id ?? result.key?.id;
+  if (!id) throw new WahaError("WAHA no confirmó el mensaje");
+  return { key: { id } };
 }
 
 /** Enviar archivo */
@@ -127,17 +131,20 @@ export async function sendFile(
   apiKey: string,
   sessionName: string,
   chatId: string,
-  file: { mimetype: string; url?: string; path?: string; caption?: string }
+  file: { mimetype: string; url?: string; path?: string; caption?: string; data?: string; filename?: string }
 ): Promise<{ key: { id: string } }> {
-  return (await wahaRequest(
+  const result = (await wahaRequest(
     baseUrl,
     apiKey,
-    `/api/${sessionName}/sendFile`,
+    `/api/sendFile`,
     {
       method: "POST",
-      body: { chatId, file },
+      body: { session: sessionName, chatId, file, caption: file.caption },
     }
-  )) as { key: { id: string } };
+  )) as { id?: string; key?: { id: string } };
+  const id = result.id ?? result.key?.id;
+  if (!id) throw new WahaError("WAHA no confirmó el archivo");
+  return { key: { id } };
 }
 
 /** Marcar como leído */
@@ -207,7 +214,7 @@ export async function getQR(
   const data = (await wahaRequest(
     baseUrl,
     apiKey,
-    `/api/${sessionName}/qr`
+    `/api/${encodeURIComponent(sessionName)}/auth/qr?format=image`
   )) as Record<string, unknown>;
-  return (data.qr as string) ?? null;
+  return typeof data.data === "string" ? `data:image/png;base64,${data.data}` : (data.qr as string) ?? null;
 }

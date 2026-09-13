@@ -32,7 +32,7 @@ services:
     build:
       context: .
       target: deps
-    command: ["pnpm", "dev", "--hostname", "0.0.0.0"]
+    command: ["sh", "-c", "CI=true pnpm install --no-frozen-lockfile 2>&1 | tail -3 && exec pnpm dev --hostname 0.0.0.0"]
     ports:
       - "127.0.0.1:3101:3000"
     environment:
@@ -51,6 +51,7 @@ services:
       AGENT_COALESCE_MS: "200"
       CHANNELS: whatsapp,instagram,messenger
       MEDIA_DIR: /data/media
+      CI: "true"
     volumes:
       - .:/app
       - /app/node_modules

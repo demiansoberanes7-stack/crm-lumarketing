@@ -12,6 +12,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NewPaymentDialog } from "./new-payment-dialog";
 import { NewExpenseDialog } from "./new-expense-dialog";
+import { NewReceivable } from "./new-receivable";
+import { PdfActions } from "@/components/pdf-actions";
+import { Input } from "@/components/ui/input";
 
 interface Balance {
   ingresos: number;
@@ -68,13 +71,19 @@ export function BalanceClient() {
   const [data, setData] = useState<BalanceData | null>(null);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
+  const [showReceivable, setShowReceivable] = useState(false);
+  const [from, setFrom] = useState(new Date().toISOString().slice(0, 7) + "-01");
+  const [to, setTo] = useState(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 0)).toISOString().slice(0, 10));
+  const [period, setPeriod] = useState("");
+  const [error, setError] = useState("");
 
   const refetch = useCallback(async () => {
-    const res = await fetch("/api/finances/balance").catch(() => null);
-    if (!res?.ok) return;
+    const res = await fetch(`/api/finances/balance?${period}`).catch(() => null);
+    if (!res?.ok) { setError((await res?.json())?.error?.message ?? "No se pudo cargar el balance"); return; }
+    setError("");
     const json = (await res.json()) as BalanceData;
     setData(json);
-  }, []);
+  }, [period]);
 
   useEffect(() => {
     void refetch();
@@ -86,7 +95,8 @@ export function BalanceClient() {
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[17px] font-bold tracking-tight">Balance General</h2>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowReceivable(true)}>Nueva cuenta por cobrar</Button>
           <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
             <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
             Registrar Pago
@@ -99,12 +109,20 @@ export function BalanceClient() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <label>Desde<Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <label>Hasta<Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+          <Button disabled={!from || !to || from > to} onClick={() => setPeriod(new URLSearchParams({ from, to }).toString())}>Aplicar periodo</Button>
+          <PdfActions url={`/api/finances/balance?format=pdf&${period}`} filename="Balance-LUMARK.pdf" />
+        </div>
+        {error && <p role="alert" className="text-destructive">{error}</p>}
+        {showReceivable && <NewReceivable onClose={() => setShowReceivable(false)} onSaved={() => { setShowReceivable(false); void refetch(); }} />}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <TrendingUp className="h-4 w-4" />
-                Ingresos del mes
+                Ingresos del periodo
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -117,7 +135,7 @@ export function BalanceClient() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <TrendingDown className="h-4 w-4" />
-                Egresos del mes
+                Egresos del periodo
               </CardTitle>
             </CardHeader>
             <CardContent>

@@ -12,7 +12,6 @@ import {
   Inbox,
   Kanban,
   LogOut,
-  Mail,
   Settings,
   Sparkles,
   Users,
@@ -41,7 +40,6 @@ const NAV: NavItem[] = [
   { href: "/balance", label: "Balance", icon: DollarSign },
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
-  { href: "/email", label: "Buzón", icon: Mail },
   { href: "/agent", label: "Agente", icon: Sparkles },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ];

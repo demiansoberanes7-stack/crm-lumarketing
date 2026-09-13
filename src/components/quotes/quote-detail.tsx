@@ -5,6 +5,8 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PdfActions } from "@/components/pdf-actions";
+import { NewQuoteDialog } from "./new-quote-dialog";
 
 interface QuoteItem {
   name: string;
@@ -27,6 +29,9 @@ interface QuoteData {
   validUntil: string | null;
   createdAt: string;
   contactName: string | null;
+  contactId: string | null;
+  message: string | null;
+  discountAmount: number;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -69,23 +74,28 @@ export function QuoteDetail({
 }) {
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const [sending, setSending] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch(`/api/quotes/${quoteId}`)
       .then((r) => r.json())
       .then((d: { quote: QuoteData }) => setQuote(d.quote))
       .catch(() => {});
-  }, [quoteId]);
+  }, [quoteId, revision]);
 
   const sendVia = useCallback(
     async (channel: "whatsapp" | "instagram" | "messenger") => {
       setSending(channel);
-      await fetch(`/api/quotes/${quoteId}/send`, {
+      setError("");
+      const response = await fetch(`/api/quotes/${quoteId}/send`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ channel }),
       }).catch(() => null);
       setSending(null);
+      if (!response?.ok) { setError((await response?.json())?.error?.message ?? "No se pudo enviar"); return; }
       const res = await fetch(`/api/quotes/${quoteId}`).catch(() => null);
       if (res?.ok) {
         const d = (await res.json()) as { quote: QuoteData };
@@ -104,12 +114,7 @@ export function QuoteDetail({
     );
   }
 
-  const discount =
-    quote.discountType === "fixed"
-      ? quote.discountValue ?? 0
-      : quote.discountType === "percentage"
-        ? (quote.subtotal * (quote.discountValue ?? 0)) / 100
-        : 0;
+  const discount = quote.discountAmount;
 
   return (
     <Card>
@@ -125,6 +130,10 @@ export function QuoteDetail({
         </Button>
       </CardHeader>
       <CardContent>
+        {error && <p role="alert" className="text-destructive">{error}</p>}
+        <div className="mb-4 flex flex-wrap gap-2"><PdfActions url={`/api/quotes/${quoteId}/pdf`} filename={`${quote.quoteNumber}.pdf`} />{quote.status === "draft" && <Button onClick={() => setEditing(true)}>Editar cotización</Button>}</div>
+        {editing && <NewQuoteDialog initial={quote} onClose={() => setEditing(false)} onCreated={() => { setEditing(false); setRevision((r) => r + 1); onUpdated(); }} />}
+        {quote.message && <p className="mb-3 whitespace-pre-wrap text-sm">{quote.message}</p>}
         <div className="mb-3 text-sm text-muted-foreground">
           {quote.contactName ?? "Sin contacto"} · {formatDate(quote.createdAt)}
         </div>

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NewAccountDialog } from "./new-account-dialog";
+import Link from "next/link";
 
 type EmailAccount = {
   id: string;
@@ -14,6 +15,10 @@ type EmailAccount = {
   email: string;
   enabled: boolean;
   imapHost: string;
+  imapPort: number;
+  smtpHost: string;
+  smtpPort: number;
+  username: string;
 };
 
 type EmailMessage = {
@@ -27,7 +32,12 @@ type EmailMessage = {
   seen: boolean;
 };
 
-export function EmailClient() {
+export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }) {
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [editing, setEditing] = useState<EmailAccount | undefined>();
+  const [testing, setTesting] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [messages, setMessages] = useState<EmailMessage[]>([]);
@@ -72,6 +82,7 @@ export function EmailClient() {
   const handleSync = async () => {
     if (!selectedAccount) return;
     setSyncing(true);
+    setError("");
     setSyncCount(null);
     const res = await fetch(`/api/email/accounts/${selectedAccount}/sync`, {
       method: "POST",
@@ -81,7 +92,7 @@ export function EmailClient() {
       const data = (await res.json()) as { synced: number };
       setSyncCount(data.synced);
       void refetchMessages(selectedAccount);
-    }
+    } else setError("No se pudo sincronizar. Revisa la conexión en Ajustes → Buzón.");
   };
 
   const handleSelectAccount = (id: string) => {
@@ -91,6 +102,7 @@ export function EmailClient() {
   const handleSelectMessage = (id: string) => {
     setSelectedMessage(id);
     setShowReply(false);
+    void fetch(`/api/email/messages/${id}`, { method: "PATCH" }).then((res) => { if (res.ok) setMessages((previous) => previous.map((m) => m.id === id ? { ...m, seen: true } : m)); });
   };
 
   const handleBack = () => {
@@ -111,7 +123,8 @@ export function EmailClient() {
     e.preventDefault();
     if (!selectedAccount) return;
     setSending(true);
-    await fetch("/api/email/messages", {
+    setError("");
+    const response = await fetch("/api/email/messages", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -123,6 +136,8 @@ export function EmailClient() {
       }),
     }).catch(() => null);
     setSending(false);
+    if (!response?.ok) { setError("No se pudo enviar el correo. Tu mensaje sigue disponible para reintentar."); return; }
+    void refetchMessages(selectedAccount);
     setShowReply(false);
     setReplyTo("");
     setReplySubject("");
@@ -132,18 +147,18 @@ export function EmailClient() {
   const selectedMsg = messages.find((m) => m.id === selectedMessage);
 
   return (
-    <div className="flex h-full">
-      <aside className="w-full shrink-0 overflow-hidden border-r md:w-[280px] lg:w-[320px]">
+    <div className="flex h-full flex-col overflow-auto md:flex-row">
+      <aside className="w-full shrink-0 overflow-auto border-r md:w-[280px] lg:w-[320px]">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h1 className="text-lg font-bold">Cuentas</h1>
-          <Button
+          {settingsOnly ? <Button
             variant="secondary"
             size="sm"
-            onClick={() => setShowNewAccount(true)}
+            onClick={() => { setEditing(undefined); setShowNewAccount(true); }}
           >
             <Plus className="mr-1 h-4 w-4" />
             Nueva Cuenta
-          </Button>
+          </Button> : <Link className="text-sm underline" href="/settings/email">Configurar</Link>}
         </div>
         <div className="flex flex-col">
           {accounts.length === 0 && (
@@ -152,6 +167,7 @@ export function EmailClient() {
             </p>
           )}
           {accounts.map((acc) => (
+            <div key={acc.id}>
             <button
               key={acc.id}
               onClick={() => handleSelectAccount(acc.id)}
@@ -175,12 +191,22 @@ export function EmailClient() {
                 {acc.email}
               </span>
             </button>
+            {settingsOnly && <div className="flex flex-wrap gap-1 p-2">
+            <Button variant="ghost" size="sm" onClick={() => { setEditing(acc); setShowNewAccount(true); }}>Editar</Button>
+            <Button variant="ghost" size="sm" disabled={!!testing} onClick={async () => { setTesting(acc.id); setError(""); const res = await fetch(`/api/email/accounts/${acc.id}/test`, { method: "POST" }).catch(() => null); setError(res?.ok ? "Conexión IMAP/SMTP verificada" : "Falló la conexión. Revisa servidores, puertos y contraseña."); setTesting(null); }}>{testing === acc.id ? "Probando…" : "Probar conexión"}</Button>
+            <Button variant="ghost" size="sm" onClick={async () => {
+              const res = await fetch(`/api/email/accounts/${acc.id}`, { method: "DELETE" }).catch(() => null);
+              if (res?.ok) void refetchAccounts(); else setError("No se pudo eliminar la cuenta");
+            }}>Eliminar cuenta</Button></div>}
+            </div>
           ))}
         </div>
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        {selectedAccount && !selectedMessage && (
+        {error && <p role="alert" className="p-3 text-destructive">{error}</p>}
+        {settingsOnly && <p className="p-4 text-sm">Configura tus cuentas IMAP/SMTP. Consulta y responde tus mensajes en <Link className="underline" href="/inbox?channel=email">Bandeja → Buzón</Link>.</p>}
+        {!settingsOnly && selectedAccount && !selectedMessage && (
           <>
             <header className="flex items-center justify-between border-b px-4 py-3">
               <h2 className="text-sm font-bold">
@@ -189,6 +215,7 @@ export function EmailClient() {
                   accounts.find((a) => a.id === selectedAccount)?.email}
               </h2>
               <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => { setReplyTo(""); setReplySubject(""); setReplyBody(""); setShowReply(true); }}>Redactar</Button>
                 {syncCount !== null && (
                   <span className="text-xs text-text-3">
                     {syncCount} sincronizados
@@ -208,12 +235,14 @@ export function EmailClient() {
               </div>
             </header>
             <div className="flex flex-col">
+              <Input aria-label="Buscar correo" placeholder="Buscar remitente o asunto" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <select aria-label="Filtrar correos" className="rounded border bg-background p-2" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Todos</option><option value="unread">No leídos</option></select>
               {messages.length === 0 && (
                 <p className="px-4 py-8 text-center text-sm text-text-2">
                   No hay mensajes. Presiona sincronizar para obtener correos.
                 </p>
               )}
-              {messages.map((msg) => (
+              {messages.filter((msg) => (filter !== "unread" || !msg.seen) && `${msg.subject} ${msg.from}`.toLowerCase().includes(query.toLowerCase())).map((msg) => (
                 <button
                   key={msg.id}
                   onClick={() => handleSelectMessage(msg.id)}
@@ -240,7 +269,7 @@ export function EmailClient() {
           </>
         )}
 
-        {selectedMessage && selectedMsg && (
+        {!settingsOnly && selectedMessage && selectedMsg && (
           <>
             <header className="flex items-center gap-3 border-b px-4 py-3">
               <button
@@ -288,7 +317,7 @@ export function EmailClient() {
           </>
         )}
 
-        {!selectedAccount && (
+        {!settingsOnly && !selectedAccount && (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
             <Mail className="h-12 w-12 text-text-3" />
             <p className="text-lg font-medium text-text-2">
@@ -297,7 +326,7 @@ export function EmailClient() {
           </div>
         )}
 
-        {showReply && selectedMsg && (
+        {showReply && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <button
               aria-label="Cerrar"
@@ -305,15 +334,16 @@ export function EmailClient() {
               className="absolute inset-0 bg-overlay"
             />
             <div className="relative z-10 w-full max-w-lg rounded-lg border border-border-strong bg-card p-6 shadow-lg">
-              <h2 className="mb-4 text-lg font-bold">Responder</h2>
+              <h2 className="mb-4 text-lg font-bold">Correo</h2>
+              {error && <p role="alert" className="text-destructive">{error}</p>}
               <form onSubmit={handleSendReply} className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
                   <Label>Para</Label>
-                  <Input value={replyTo} readOnly />
+                  <Input aria-label="Para" type="email" required value={replyTo} onChange={(e) => setReplyTo(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label>Asunto</Label>
-                  <Input value={replySubject} readOnly />
+                  <Input aria-label="Asunto" required value={replySubject} onChange={(e) => setReplySubject(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="reply-body">Mensaje *</Label>
@@ -344,14 +374,16 @@ export function EmailClient() {
         )}
       </main>
 
-      <NewAccountDialog
+      {showNewAccount && <NewAccountDialog
+        key={editing?.id ?? "new"}
+        initial={editing}
         open={showNewAccount}
         onClose={() => setShowNewAccount(false)}
         onCreated={() => {
           setShowNewAccount(false);
           void refetchAccounts();
         }}
-      />
+      />}
     </div>
   );
 }

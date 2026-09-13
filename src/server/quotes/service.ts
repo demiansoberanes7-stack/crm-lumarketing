@@ -4,7 +4,7 @@
  * Cotizaciones versionadas con partidas, descuentos, impuestos, vigencia.
  * PDF con marca LUMARK y envío por WhatsApp/Instagram/Messenger.
  */
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -63,6 +63,8 @@ function calculateTotals(items: QuoteInput["items"], input: {
   taxRate?: number;
 }): { subtotal: number; discountAmount: number; taxAmount: number; total: number } {
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  if (input.discountType === "percentage" && (input.discountValue ?? 0) > 100) throw new Error("El descuento no puede superar el 100%");
+  if (!Number.isSafeInteger(subtotal) || subtotal > 1800000000) throw new Error("Importe fuera de rango");
 
   let discountAmount = 0;
   if (input.discountType === "fixed" && input.discountValue) {
@@ -85,7 +87,12 @@ export async function createQuote(
   input: QuoteInput,
   createdBy?: string
 ): Promise<string> {
-  const db = getDb();
+  return getDb().transaction(async (db) => {
+  await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':quotes'}))`);
+  if (input.contactId) {
+    const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
+    if (!contact) throw new Error("Contacto no válido");
+  }
   const id = newId("quote");
   const quoteNumber = await nextQuoteNumber(organizationId);
   const totals = calculateTotals(input.items, {
@@ -113,6 +120,7 @@ export async function createQuote(
     taxAmount: totals.taxAmount,
     total: totals.total,
     paymentMethod: input.paymentMethod ?? null,
+    message: input.notes ?? null,
     version: 1,
     createdBy: createdBy ?? null,
   });
@@ -142,16 +150,20 @@ export async function createQuote(
   });
 
   return id;
+  });
 }
 
 /** Actualizar una cotización (solo si está en draft) */
 export async function updateQuote(
   organizationId: string,
   quoteId: string,
-  input: QuoteInput
+  input: Partial<QuoteInput>
 ): Promise<void> {
-  const db = getDb();
-
+  return getDb().transaction(async (db) => {
+  if (input.contactId) {
+    const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
+    if (!contact) throw new Error("Contacto no válido");
+  }
   // Verificar que existe y está en draft
   const rows = await db
     .select()
@@ -163,13 +175,15 @@ export async function updateQuote(
         eq(schema.quote.id, quoteId)
       )
     )
-    .limit(1);
+    .limit(1).for("update");
 
   const quote = rows[0];
   if (!quote) throw new Error("Cotización no encontrada");
   if (quote.status !== "draft") throw new Error("Solo se pueden editar cotizaciones en borrador");
+  const previous = await getQuote(organizationId, quoteId);
+  input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...input };
 
-  const totals = calculateTotals(input.items, {
+  const totals = calculateTotals(input.items!, {
     discountType: input.discountType,
     discountValue: input.discountValue,
     taxRate: input.taxRate,
@@ -187,6 +201,8 @@ export async function updateQuote(
       taxAmount: totals.taxAmount,
       total: totals.total,
       paymentMethod: input.paymentMethod ?? null,
+      message: input.notes ?? quote.message,
+      validUntil: input.validDays ? new Date(Date.now() + input.validDays * 86400000) : quote.validUntil,
       updatedAt: new Date(),
     })
     .where(eq(schema.quote.id, quoteId));
@@ -194,7 +210,7 @@ export async function updateQuote(
   // Eliminar partidas viejas y crear nuevas
   await db.delete(schema.quoteItem).where(eq(schema.quoteItem.quoteId, quoteId));
 
-  for (const [i, item] of input.items.entries()) {
+  for (const [i, item] of input.items!.entries()) {
     await db.insert(schema.quoteItem).values({
       id: newId("quoteItem"),
       quoteId,
@@ -207,6 +223,7 @@ export async function updateQuote(
       position: i,
     });
   }
+  });
 }
 
 /** Enviar cotización (cambia status a sent, congelando la versión) */
@@ -215,7 +232,7 @@ export async function sendQuote(
   quoteId: string,
   channel: "whatsapp" | "instagram" | "messenger"
 ): Promise<{ waMessageId?: string; total: number }> {
-  const db = getDb();
+  return getDb().transaction(async (db) => {
 
   const rows = await db
     .select()
@@ -227,10 +244,24 @@ export async function sendQuote(
         eq(schema.quote.id, quoteId)
       )
     )
-    .limit(1);
+    .limit(1).for("update");
 
   const quote = rows[0];
   if (!quote) throw new Error("Cotización no encontrada");
+  if (quote.status !== "draft") throw new Error("Esta cotización ya no es un borrador");
+  if (!quote.contactId) throw new Error("Asigna un contacto antes de enviar");
+  const [conversation] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.contactId, quote.contactId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
+  if (!conversation) throw new Error("El contacto no tiene una conversación real en este canal");
+  const { sendMediaMessage, sendText } = await import("@/server/inbox/send");
+  if (channel === "whatsapp") {
+    const { quotePdf } = await import("./pdf");
+    const pdf = await quotePdf(organizationId, quoteId);
+    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf!.bytes), mimeType: "application/pdf", fileName: pdf!.filename } });
+  } else {
+    const full = await getQuote(organizationId, quoteId);
+    const { money } = await import("@/server/documents/pdf");
+    await sendText({ organizationId, conversationId: conversation.id, text: [`Cotización ${quote.quoteNumber}`, ...full!.items.map((item) => `${item.quantity} x ${item.name}: ${money(item.unitPrice * item.quantity)}`), `Subtotal: ${money(quote.subtotal)}`, `Descuento: ${money(quote.discountAmount)}`, `IVA: ${money(quote.taxAmount)}`, `Total: ${money(quote.total)} MXN`, `Vigencia: ${quote.validUntil?.toLocaleDateString("es-MX") ?? "Sin fecha"}`, quote.message ?? ""].join("\n") });
+  }
 
   await db
     .update(schema.quote)
@@ -252,6 +283,7 @@ export async function sendQuote(
   });
 
   return { total: quote.total };
+  });
 }
 
 /** Obtener una cotización con sus items */
@@ -278,7 +310,8 @@ export async function getQuote(organizationId: string, quoteId: string) {
     .where(eq(schema.quoteItem.quoteId, quoteId))
     .orderBy(schema.quoteItem.position);
 
-  return { ...quote, items };
+  const [contact] = quote.contactId ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, quote.contactId))) : [];
+  return { ...quote, items, contactName: contact?.name ?? null };
 }
 
 /** Listar cotizaciones de una organización */

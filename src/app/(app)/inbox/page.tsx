@@ -1,4 +1,4 @@
-import { InboxClient } from "@/components/inbox/inbox-client";
+import { UnifiedInbox } from "@/components/inbox/unified-inbox";
 import { CHANNEL_ORDER } from "@/lib/channels";
 import { enabledChannels } from "@/server/channels/enabled";
 
@@ -15,5 +15,5 @@ export default function InboxPage() {
   const enabled = enabledChannels();
   const channels = CHANNEL_ORDER.filter((c) => enabled.has(c));
 
-  return <InboxClient channels={channels} />;
+  return <UnifiedInbox channels={channels} />;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,12 @@ export function NewPaymentDialog({ onClose, onSaved }: NewPaymentDialogProps) {
   const [referencia, setReferencia] = useState("");
   const [notas, setNotas] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [requestId] = useState(() => crypto.randomUUID());
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [chargeId, setChargeId] = useState("");
+  const [charges, setCharges] = useState<Array<{ id: string; concept: string; totalAmount: number; paidAmount: number }>>([]);
+  useEffect(() => { void fetch("/api/charges").then((r) => r.json()).then((d) => setCharges(d.charges)).catch(() => setError("No se pudieron consultar las cuentas por cobrar")); }, []);
 
   async function handleSave() {
     if (!monto || Number(monto) <= 0) return;
@@ -25,6 +31,9 @@ export function NewPaymentDialog({ onClose, onSaved }: NewPaymentDialogProps) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        requestId,
+        chargeId: chargeId || undefined,
+        fecha: new Date(`${fecha}T12:00:00Z`).toISOString(),
         monto: Math.round(Number(monto) * 100),
         metodo,
         referencia: referencia.trim() || undefined,
@@ -33,6 +42,7 @@ export function NewPaymentDialog({ onClose, onSaved }: NewPaymentDialogProps) {
     }).catch(() => null);
     setSaving(false);
     if (res?.ok) onSaved();
+    else setError((await res?.json())?.error?.message ?? "No se pudo registrar el pago");
   }
 
   return (
@@ -46,6 +56,9 @@ export function NewPaymentDialog({ onClose, onSaved }: NewPaymentDialogProps) {
       >
         <h3 className="mb-4 font-semibold">Registrar Pago</h3>
         <div className="space-y-3">
+          {error && <p role="alert" className="text-destructive">{error}</p>}
+          <label className="block">Fecha<Input type="date" required value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
+          <label className="block">Cuenta por cobrar<select className="w-full rounded border bg-background p-2" value={chargeId} onChange={(e) => setChargeId(e.target.value)}><option value="">Ingreso independiente</option>{charges.map((c) => <option value={c.id} key={c.id}>{c.concept} · Pendiente ${((c.totalAmount - c.paidAmount) / 100).toFixed(2)}</option>)}</select></label>
           <div className="space-y-1.5">
             <Label htmlFor="payment-monto">Monto (MXN)</Label>
             <Input

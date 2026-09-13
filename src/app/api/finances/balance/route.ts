@@ -1,41 +1,20 @@
-import { withAuth } from "@/lib/api";
-import {
-  getMonthlyBalance,
-  getBalanceByPeriod,
-  getAccountsReceivable,
-  getRecentPayments,
-  getRecentExpenses,
-} from "@/server/finances/service";
-
+import { withAuth, apiError } from "@/lib/api";
+import { reportPeriod, financialReport } from "@/server/finances/report";
+import { reportPdf, pdfResponse, money } from "@/server/documents/pdf";
 export const dynamic = "force-dynamic";
-
-/** GET — balance general y KPIs */
 export const GET = withAuth(async (session, req: Request) => {
-  const url = new URL(req.url);
-  const fromParam = url.searchParams.get("from");
-  const toParam = url.searchParams.get("to");
-
-  let balance;
-  if (fromParam && toParam) {
-    balance = await getBalanceByPeriod(
-      session.organizationId,
-      new Date(fromParam),
-      new Date(toParam)
-    );
-  } else {
-    balance = await getMonthlyBalance(session.organizationId);
-  }
-
-  const [receivable, payments, expenses] = await Promise.all([
-    getAccountsReceivable(session.organizationId),
-    getRecentPayments(session.organizationId, 10),
-    getRecentExpenses(session.organizationId, 10),
+  const search = new URL(req.url).searchParams;
+  let period;
+  try { period = reportPeriod(search); } catch (e) { return apiError(422, "invalid_period", (e as Error).message); }
+  const report = await financialReport(session.organizationId, period);
+  if (search.get("format") !== "pdf") return Response.json(report);
+  const from = period.from.toISOString().slice(0, 10); const to = period.to.toISOString().slice(0, 10);
+  const pdf = await reportPdf("Balance de ingresos y egresos", [
+    `Periodo: ${from} al ${to} (UTC)`,
+    `Ingresos: ${money(report.balance.ingresos)}`, `Egresos: ${money(report.balance.egresos)}`, `Resultado: ${money(report.balance.balance)}`,
+    "", "INGRESOS", ...report.pagosRecientes.map((p) => `${p.fecha.toISOString().slice(0, 10)} | ${money(p.monto)} | ${p.metodo} | ${p.referencia ?? ""} | ${p.notas ?? ""}`),
+    "", "GASTOS", ...report.gastosRecientes.map((p) => `${p.fecha.toISOString().slice(0, 10)} | ${money(p.monto)} | ${p.descripcion} | ${p.categoria} | ${p.metodo}`),
+    "", "CUENTAS POR COBRAR (saldo actual a la fecha de emisión)", ...report.cuentasPorCobrar.map((c) => `${c.concept} | Total: ${money(c.totalAmount)} | Pagado: ${money(c.paidAmount)} | Pendiente: ${money(c.totalAmount - c.paidAmount)}`),
   ]);
-
-  return Response.json({
-    balance,
-    cuentasPorCobrar: receivable,
-    pagosRecientes: payments,
-    gastosRecientes: expenses,
-  });
+  return pdfResponse(pdf, `Balance-${from}-${to}.pdf`, search.get("download") === "1");
 });

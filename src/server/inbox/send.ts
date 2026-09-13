@@ -1,4 +1,7 @@
 import { eq } from "drizzle-orm";
+import { whatsappProvider } from "@/server/whatsapp/provider";
+import { getWahaCredentialsFull } from "@/server/waha/credentials";
+import { sendText as wahaText, sendFile as wahaFile } from "@/server/waha/client";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import type { Channel } from "@/lib/channels";
@@ -72,6 +75,7 @@ type SendTarget = {
   instagram?: InstagramCredentials;
   /** 017: presente solo en conversaciones de Messenger. */
   messenger?: MessengerCredentials;
+  waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
 };
 
 /**
@@ -197,6 +201,13 @@ async function prepareSend(
     );
   }
 
+  if (await whatsappProvider(organizationId) === "waha") {
+    const waha = await getWahaCredentialsFull(organizationId);
+    if (!waha) throw new SendError("not_connected", "Configura WAHA en Ajustes");
+    if (!row.contact.phone) throw new SendError("meta_error", "WAHA necesita un contacto con teléfono; esta identidad de Meta no es compatible.");
+    const recipient = `${row.contact.phone.replace(/\D/g, "")}@c.us`;
+    return { conversation: row.conversation, credentials: null, destinatario: { to: recipient }, recipient, waha };
+  }
   const credentials = await getCredentialsByOrg(organizationId);
   if (!credentials) {
     throw new SendError("not_connected", "No hay número de WhatsApp conectado");
@@ -306,7 +317,9 @@ export async function sendText(input: {
   const target = await prepareSend(input.conversationId, input.organizationId);
   const { credentials } = target;
 
-  const waMessageId = target.instagram
+  const waMessageId = target.waha
+    ? (await wahaText(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, input.text)).key.id
+    : target.instagram
     ? await callInstagramSend(target, input.text)
     : target.messenger
       ? await callMessengerSend(target, input.text)
@@ -388,6 +401,10 @@ export async function sendMediaMessage(input: {
     .limit(1);
 
   try {
+    if (target.waha) {
+      const sent = await wahaFile(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, { mimetype: input.file.mimeType, data: input.file.data.toString("base64"), filename: input.file.fileName, caption: input.caption });
+      return { messageId: await persistOutbound({ organizationId: input.organizationId, conversationId: input.conversationId, waMessageId: sent.key.id, type: kind, text: null, status: "sent", origin: "operator", mediaAssetId: assetId, media: asset! }) };
+    }
     const waMediaId = await uploadGraphMedia(credentials!, input.file);
     await db
       .update(schema.mediaAsset)

@@ -241,6 +241,8 @@ export async function processMessagesValue(value: WebhookValue): Promise<void> {
   for (const status of value.statuses ?? []) {
     await applyStatusUpdate(organizationId, status);
   }
+  const { whatsappProvider } = await import("@/server/whatsapp/provider");
+  if (await whatsappProvider(organizationId) !== "meta") return;
 
   for (const msg of value.messages ?? []) {
     if (!SUPPORTED_TYPES.has(msg.type)) continue; // reacciones, etc.: ignorar

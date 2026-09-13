@@ -66,6 +66,10 @@ export async function listEmailAccounts(organizationId: string) {
       email: schema.emailAccount.emailAddress,
       enabled: schema.emailAccount.enabled,
       imapHost: schema.emailAccount.imapHost,
+      imapPort: schema.emailAccount.imapPort,
+      smtpHost: schema.emailAccount.smtpHost,
+      smtpPort: schema.emailAccount.smtpPort,
+      username: schema.emailAccount.smtpUser,
     })
     .from(schema.emailAccount)
     .where(scoped(schema.emailAccount.organizationId, organizationId))
@@ -81,7 +85,7 @@ export async function getEmailAccountCredentials(organizationId: string, account
     .where(scoped(schema.emailAccount.organizationId, organizationId, eq(schema.emailAccount.id, accountId)))
     .limit(1);
 
-  if (!account) return null;
+  if (!account || !account.enabled) return null;
 
   const smtpPassword = decryptSecret({
     cipher: account.smtpPassCipher,
@@ -132,6 +136,9 @@ export async function syncInbox(organizationId: string, accountId: string): Prom
     secure: creds.imapSecure,
     auth: { user: creds.imapUser, pass: creds.imapPassword },
     logger: false,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
 
   let synced = 0;
@@ -224,6 +231,9 @@ export async function sendEmail(
     host: creds.smtpHost,
     port: creds.smtpPort,
     secure: creds.smtpSecure,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
     auth: { user: creds.smtpUser, pass: creds.smtpPassword },
   });
 
@@ -253,6 +263,7 @@ export async function sendEmail(
     direction: "outbound",
     contactId: null,
     seen: true,
+    threadId: input.inReplyTo ?? null,
   });
 
   return result.messageId;
