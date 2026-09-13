@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 /*
-  Sistema de diseño de Vocero: la misma marca que vocerocrm.com dentro del CRM.
-  Papel frío (#f6f8fc), tinta azul marino, acento azul eléctrico con remate
-  cian, tipografía Archivo para la interfaz, Instrument Serif itálica para los
+  Sistema de diseño de LUMARK: marca LUMARK dentro del CRM.
+  Papel cálido (#faf8f5), tinta oscura, acento dorado luminoso,
+  tipografía Archivo para la interfaz, Instrument Serif itálica para los
   acentos editoriales e IBM Plex Mono para etiquetas y horas.
 
   El tema activo se selecciona con `data-theme` en <html> (ver src/lib/theme.ts):
@@ -37,12 +37,12 @@
     --bubble-out-border: var(--accent-soft);
     --bubble-out-text: var(--text);
 
-    /* Acento (default: azul Vocero; el white-label lo sobreescribe) */
-    --accent: #0d5bff;
-    --accent-hover: #0a4de6;
-    --accent-soft: #d3e2ff;
-    --accent-tint: #ebf1ff;
-    --accent-text: #0038d8;
+    /* Acento (default: dorado LUMARK; el white-label lo sobreescribe) */
+    --accent: #B8963E;
+    --accent-hover: #A38535;
+    --accent-soft: #E8D8B0;
+    --accent-tint: #FAF4E6;
+    --accent-text: #8B7230;
     --accent-fg: #ffffff;
     /* Velo translúcido ENCIMA del acento (contadores dentro de un chip). */
     --accent-veil: rgba(255, 255, 255, 0.22);
@@ -65,10 +65,10 @@
     --danger-text: #b73535;
     --danger-fg: #ffffff;
 
-    --info: #0d5bff;
-    --info-tint: #ebf1ff;
-    --info-soft: #d3e2ff;
-    --info-text: #0038d8;
+    --info: #B8963E;
+    --info-tint: #FAF4E6;
+    --info-soft: #E8D8B0;
+    --info-text: #8B7230;
 
     /* Superficies auxiliares */
     --overlay: rgba(4, 16, 46, 0.55);
@@ -107,13 +107,13 @@
     --bubble-in: #0f2419;
     --bubble-in-border: #1c3b2a;
 
-    /* Acento: respaldo con el azul Vocero ya aclarado para fondo oscuro; el
+    /* Acento: respaldo con el dorado LUMARK aclarado para fondo oscuro; el
        white-label lo recalcula (ver resolveAccentSet en lib/branding). */
-    --accent: #256bff;
-    --accent-hover: #4883ff;
-    --accent-soft: #122c64;
-    --accent-tint: #0e1e41;
-    --accent-text: #6294ff;
+    --accent: #D4A843;
+    --accent-hover: #E8C060;
+    --accent-soft: #3D3220;
+    --accent-tint: #2A2115;
+    --accent-text: #E8C060;
     --accent-fg: #ffffff;
     --accent-veil: rgba(0, 0, 0, 0.22);
 
@@ -134,10 +134,10 @@
     --danger-text: #f59a9a;
     --danger-fg: #1b0d10;
 
-    --info: #6a9dff;
-    --info-tint: #101c3a;
-    --info-soft: #1d3468;
-    --info-text: #9dbbff;
+    --info: #D4A843;
+    --info-tint: #2A2115;
+    --info-soft: #3D3220;
+    --info-text: #E8C060;
 
     --overlay: rgba(2, 8, 24, 0.74);
     --knob: #dfe6fa;
@@ -221,7 +221,7 @@
     height: 460px;
     left: -140px;
     bottom: -180px;
-    background: radial-gradient(circle, rgba(0, 198, 245, 0.14), transparent 65%);
+    background: radial-gradient(circle, rgba(212, 168, 67, 0.14), transparent 65%);
     animation: brand-drift 18s ease-in-out infinite alternate-reverse;
   }
   @keyframes brand-drift {

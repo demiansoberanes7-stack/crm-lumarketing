@@ -25,7 +25,7 @@ vi.mock("@/lib/db", () => ({
 
 beforeAll(() => {
   process.env.APP_BASE_URL = "http://localhost:3000";
-  process.env.DATABASE_URL = "postgresql://t:t@localhost:5432/t";
+  process.env.DATABASE_URL = "mysql://root:t@localhost:3306/t";
   process.env.BETTER_AUTH_SECRET = "secret-de-test-suficiente";
   process.env.ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
   process.env.META_WEBHOOK_VERIFY_TOKEN = "verify-test";

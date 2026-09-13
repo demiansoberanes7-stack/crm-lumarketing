@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import type { Channel } from "@/lib/channels";
 import { graphRequest, MetaApiError, normalizeRecipient } from "@/lib/meta/client";
 import { destinatarioMeta, type Destinatario } from "@/lib/meta/destinatario";
 import { publish } from "@/server/events/bus";
@@ -184,7 +185,7 @@ async function prepareSend(
   // El nucleo no decide la politica: la consulta. WhatsApp exige plantilla
   // fuera de ventana; Instagram etiqueta y sigue; otro canal podria no tener
   // ventana en absoluto.
-  const caps = capabilitiesFor(row.conversation.channel);
+  const caps = capabilitiesFor(row.conversation.channel as Channel);
   if (
     caps.windowMs !== null &&
     caps.outsideWindow === "template" &&
@@ -192,7 +193,7 @@ async function prepareSend(
   ) {
     throw new SendError(
       "window_closed",
-      windowClosedMessage(row.conversation.channel)
+      windowClosedMessage(row.conversation.channel as Channel)
     );
   }
 
@@ -255,10 +256,11 @@ async function persistOutbound(input: {
   media?: typeof schema.mediaAsset.$inferSelect | null;
 }): Promise<string> {
   const db = getDb();
-  const inserted = await db
+  const msgId = newId("message");
+  await db
     .insert(schema.message)
     .values({
-      id: newId("message"),
+      id: msgId,
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       waMessageId: input.waMessageId,
@@ -270,9 +272,13 @@ async function persistOutbound(input: {
       aiGenerated: input.aiGenerated ?? false,
       origin: input.origin,
       mediaAssetId: input.mediaAssetId ?? null,
-    })
-    .returning();
-  const message = inserted[0]!;
+    });
+  const [message] = await db
+    .select()
+    .from(schema.message)
+    .where(eq(schema.message.id, msgId))
+    .limit(1);
+  if (!message) throw new Error("No se encontró el mensaje persistido");
 
   await db
     .update(schema.conversation)
@@ -320,7 +326,7 @@ export async function sendText(input: {
     // Un canal sin acuses de entrega confirma al aceptar; uno con acuses
     // avanza despues por webhook. Sin esta distincion el mensaje se queda
     // con el reloj puesto para siempre.
-    status: capabilitiesFor(target.conversation.channel).deliveryReceipts
+    status: capabilitiesFor(target.conversation.channel as Channel).deliveryReceipts
       ? "pending"
       : "sent",
     aiGenerated: input.aiGenerated,
@@ -347,7 +353,7 @@ export async function sendMediaMessage(input: {
 
   const target = await prepareSend(input.conversationId, input.organizationId);
   const { credentials } = target;
-  const sendCaps = capabilitiesFor(target.conversation.channel);
+  const sendCaps = capabilitiesFor(target.conversation.channel as Channel);
   if (!sendCaps.outboundMedia) {
     throw new SendError(
       "meta_error",
@@ -362,7 +368,7 @@ export async function sendMediaMessage(input: {
     assetId,
     input.file.data
   );
-  const assetRows = await db
+  await db
     .insert(schema.mediaAsset)
     .values({
       id: assetId,
@@ -374,9 +380,12 @@ export async function sendMediaMessage(input: {
       caption: input.caption ?? null,
       storagePath,
       fetchStatus: "available",
-    })
-    .returning();
-  const asset = assetRows[0]!;
+    });
+  const [asset] = await db
+    .select()
+    .from(schema.mediaAsset)
+    .where(eq(schema.mediaAsset.id, assetId))
+    .limit(1);
 
   try {
     const waMediaId = await uploadGraphMedia(credentials!, input.file);
@@ -406,7 +415,7 @@ export async function sendMediaMessage(input: {
       status: "pending",
       origin: "operator",
       mediaAssetId: assetId,
-      media: asset,
+      media: asset!,
     });
     return { messageId };
   } catch (err) {
@@ -437,7 +446,7 @@ export async function sendMediaMessage(input: {
       error: sendErr.message,
       origin: "operator",
       mediaAssetId: assetId,
-      media: asset,
+      media: asset!,
     });
     throw sendErr;
   }
@@ -493,17 +502,21 @@ export async function sendStructured(
   });
 
   const db = getDb();
-  const assetRows = await db
+  const assetId = newId("mediaAsset");
+  await db
     .insert(schema.mediaAsset)
     .values({
-      id: newId("mediaAsset"),
+      id: assetId,
       organizationId: input.organizationId,
       kind: input.kind,
       payload: input.kind === "location" ? input.location : input.contacts,
       fetchStatus: "available",
-    })
-    .returning();
-  const asset = assetRows[0]!;
+    });
+  const [asset] = await db
+    .select()
+    .from(schema.mediaAsset)
+    .where(eq(schema.mediaAsset.id, assetId))
+    .limit(1);
 
   const messageId = await persistOutbound({
     organizationId: input.organizationId,
@@ -513,8 +526,8 @@ export async function sendStructured(
     text: null,
     status: "pending",
     origin: "operator",
-    mediaAssetId: asset.id,
-    media: asset,
+    mediaAssetId: asset!.id,
+    media: asset!,
   });
   return { messageId };
 }

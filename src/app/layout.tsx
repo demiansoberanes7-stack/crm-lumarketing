@@ -1,29 +1,35 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Archivo, IBM_Plex_Mono, Instrument_Serif } from "next/font/google";
+import localFont from "next/font/local";
 import { accentCssVariables, DEFAULT_BRANDING } from "@/lib/branding";
 import { faviconHref } from "@/lib/favicon";
 import { normalizeThemePreference, THEME_COOKIE } from "@/lib/theme";
 import { getBranding } from "@/server/branding";
 import "./globals.css";
 
-// Las tres voces de la marca, las mismas de vocerocrm.com. next/font las
-// descarga en BUILD y las sirve self-hosted (sin CDN en runtime: soberanía).
-const archivo = Archivo({
-  subsets: ["latin"],
+// Fuentes self-hosted (woff2 locales, sin CDN en runtime: soberanía).
+const archivo = localFont({
+  src: [
+    { path: "../fonts/Archivo-Regular.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/Archivo-Bold.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-sans",
   display: "swap",
 });
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
+const instrumentSerif = localFont({
+  src: [
+    { path: "../fonts/InstrumentSerif-Regular.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/InstrumentSerif-Italic.woff2", weight: "400", style: "italic" },
+  ],
   variable: "--font-serif",
   display: "swap",
 });
-const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const plexMono = localFont({
+  src: [
+    { path: "../fonts/IBMPlexMono-Regular.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/IBMPlexMono-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/IBMPlexMono-SemiBold.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-mono",
   display: "swap",
 });

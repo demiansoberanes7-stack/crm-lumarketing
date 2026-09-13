@@ -1,6 +1,6 @@
 /**
  * CLI del seed demo: `pnpm seed:demo` (local) o `node seed-demo.mjs` dentro
- * del contenedor. Acepta --force para recargar aunque haya datos.
+ * del contenedor. Acepta --force para recarga aunque haya datos.
  * Se bundlea con esbuild (alias @ → ./src).
  */
 import { readFileSync } from "node:fs";
@@ -26,7 +26,7 @@ if (!url) {
   process.exit(1);
 }
 
-const sql = postgres(url, { max: 1, onnotice: () => {} });
+const sql = postgres(url, { max: 1 });
 const db = drizzle(sql, { schema });
 
 const orgs = await db.select().from(schema.organization).limit(1);

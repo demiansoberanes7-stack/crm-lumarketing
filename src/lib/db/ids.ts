@@ -29,6 +29,22 @@ const prefixes = {
   adAttribution: "att",
   conversionEvent: "cve",
   capiSettings: "capi",
+  // LUMARK — módulos nuevos
+  wahaCredentials: "waha",
+  outboundWebhook: "wh",
+  outboundDelivery: "whd",
+  project: "prj",
+  projectStageEvent: "prje",
+  projectTask: "prjt",
+  catalogProduct: "cat",
+  quote: "qt",
+  quoteItem: "qti",
+  quoteEvent: "qte",
+  charge: "chr",
+  payment: "pay",
+  expense: "exp",
+  emailAccount: "emac",
+  emailMessage: "emmsg",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

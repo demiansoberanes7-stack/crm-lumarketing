@@ -11,8 +11,8 @@ const nextConfig: NextConfig = {
   // standalone es para la imagen Docker (Linux). En Windows el trazado crea
   // symlinks que requieren permisos elevados, así que ahí se omite.
   output: process.platform === "win32" ? undefined : "standalone",
-  // El paquete `postgres` usa APIs de Node que no deben empaquetarse en el bundle.
-  serverExternalPackages: ["postgres"],
+  // El paquete `mysql2` usa APIs de Node que no deben empaquetarse en el bundle.
+  serverExternalPackages: ["postgres", "nodemailer", "imapflow"],
   // Se congelan al construir: el binario lleva dentro de qué código salió, así
   // que no puede mentir en tiempo de ejecución. `SOURCE_COMMIT` lo inyecta
   // Coolify solo; con docker compose se pasa por `--build-arg` y si falta, la

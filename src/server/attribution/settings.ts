@@ -46,7 +46,7 @@ export async function getCapiSettings(
       tag: row.tokenTag,
     }),
     qualifiedStageId: row.qualifiedStageId,
-    status: row.status,
+    status: row.status as "connected" | "error",
   };
 }
 

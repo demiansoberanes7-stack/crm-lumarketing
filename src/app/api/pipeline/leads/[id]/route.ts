@@ -81,7 +81,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
       return apiError(422, "nothing_to_update", "No hay nada que actualizar");
     }
     const db = getDb();
-    const updated = await db
+    await db
       .update(schema.lead)
       .set({ ...extra, updatedAt: new Date() })
       .where(
@@ -90,10 +90,20 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
           session.organizationId,
           eq(schema.lead.id, id)
         )
+      );
+    const [lead] = await db
+      .select()
+      .from(schema.lead)
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          session.organizationId,
+          eq(schema.lead.id, id)
+        )
       )
-      .returning();
-    if (!updated[0]) return apiError(404, "not_found", "Lead no encontrado");
-    return Response.json({ lead: updated[0] });
+      .limit(1);
+    if (!lead) return apiError(404, "not_found", "Lead no encontrado");
+    return Response.json({ lead });
   }
 
   const res = await moveLeadToStage({

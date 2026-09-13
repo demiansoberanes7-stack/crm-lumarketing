@@ -96,7 +96,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
     if (!target) return { ok: false as const, reason: "stage_not_found" as const };
 
     const changed = current.lead.stageId !== target.id;
-    toStageKind = target.kind;
+    toStageKind = target.kind as "open" | "won" | "lost";
 
     // El motivo se exige al ENTRAR a la etapa perdida. Reordenar una tarjeta
     // que ya estaba ahí no vuelve a preguntar.
@@ -104,7 +104,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       return { ok: false as const, reason: "loss_reason_required" as const };
     }
 
-    const updated = await tx
+    await tx
       .update(schema.lead)
       .set({
         ...(input.extra ?? {}),
@@ -118,10 +118,19 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
           input.organizationId,
           eq(schema.lead.id, input.leadId)
         )
-      )
-      .returning();
+      );
 
-    const leadRow = updated[0];
+    const [leadRow] = await tx
+      .select()
+      .from(schema.lead)
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          input.organizationId,
+          eq(schema.lead.id, input.leadId)
+        )
+      )
+      .limit(1);
     if (!leadRow) return { ok: false as const, reason: "lead_not_found" as const };
 
     if (changed) {
@@ -210,7 +219,7 @@ export async function recordLeadCreated(input: {
     fromStageName: null,
     toStageId: s.id,
     toStageName: s.name,
-    toStageKind: s.kind,
+    toStageKind: s.kind as "open" | "won" | "lost",
     occurredAt: input.occurredAt ?? new Date(),
     actorUserId: input.actorUserId ?? null,
     source: input.source ?? "sistema",
@@ -305,7 +314,7 @@ export async function lastLossReason(
   const last = rows.filter((r) => r.lossReason).at(-1);
   if (!last?.lossReason) return null;
   return {
-    reason: last.lossReason,
+    reason: last.lossReason as LossReason,
     note: last.lossNote,
     at: last.occurredAt,
   };

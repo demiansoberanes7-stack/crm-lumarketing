@@ -1,0 +1,65 @@
+name: lumark-crm-test
+
+services:
+  preview:
+    image: lumark-crm-local-app
+    environment:
+      APP_BASE_URL: http://preview:3000
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lumark_test
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      META_WEBHOOK_VERIFY_TOKEN: lumark-local-test-webhook
+      CHANNELS: whatsapp,instagram,messenger
+      MEDIA_DIR: /data/media
+    volumes:
+      - /data/media
+    networks:
+      - local
+    profiles: [browser]
+
+  browser:
+    build:
+      context: .
+      target: test
+    environment:
+      APP_BASE_URL: http://preview:3000
+    networks:
+      - local
+    profiles: [browser]
+
+  app:
+    image: lumark-crm-check
+    build:
+      context: .
+      target: deps
+    command: ["pnpm", "dev", "--hostname", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:3101:3000"
+    environment:
+      APP_BASE_URL: http://localhost:3000
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lumark_test
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      META_WEBHOOK_VERIFY_TOKEN: lumark-local-test-webhook
+      BOT_API_KEY: lumark-local-test-bot-key
+      WA_MOCK_ENABLED: "true"
+      NODE_ENV: development
+      NODE_OPTIONS: --max-old-space-size=4096
+      META_GRAPH_BASE_URL: http://localhost:3000/api/dev/wa-mock/graph
+      OPENROUTER_BASE_URL: http://localhost:3000/api/dev/ai-mock
+      ALLOW_SIGNUP: "true"
+      AGENT_COALESCE_MS: "200"
+      CHANNELS: whatsapp,instagram,messenger
+      MEDIA_DIR: /data/media
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+      - /data/media
+    networks:
+      - local
+
+networks:
+  local:
+    external: true
+    name: lumark-crm-local_default

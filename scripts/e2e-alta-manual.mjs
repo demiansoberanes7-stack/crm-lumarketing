@@ -9,7 +9,7 @@
  * Uso: node --env-file=.env scripts/e2e-alta-manual.mjs
  * Requiere: app corriendo (pnpm dev) con WA_MOCK_ENABLED=true y BD migrada.
  */
-import postgres from "postgres";
+import mysql from "mysql2/promise";
 
 const BASE = process.env.APP_BASE_URL ?? "http://localhost:3000";
 const PN = "PN-ALTA-1";
@@ -47,7 +47,12 @@ async function api(path, opts = {}) {
   return { res, json };
 }
 
-const sql = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} });
+const pool = await mysql.createPool({
+  uri: process.env.DATABASE_URL,
+  waitForConnections: true,
+  connectionLimit: 1,
+  queueLimit: 0,
+});
 
 console.log("== Setup ==");
 const email = "e2e@vocero.test";
@@ -101,8 +106,10 @@ ok(
 );
 
 console.log("\n== Su nacimiento queda en la bitácora ==");
-const eventos = await sql`
-  select * from lead_stage_event where lead_id = ${alta.json.lead.id}`;
+const [eventos] = await pool.query(
+  "SELECT * FROM lead_stage_event WHERE lead_id = ? ORDER BY occurred_at ASC, created_at ASC",
+  [alta.json.lead.id]
+);
 ok("tiene exactamente un evento", eventos.length === 1, `hay ${eventos.length}`);
 ok(
   "marcado como capturado por el dueño, no por el sistema",
@@ -188,5 +195,5 @@ console.log(
     ? `\nTODO VERDE — ${checks}/${checks} checks`
     : `\n${checks - failures}/${checks} checks — ${failures} FALLARON`
 );
-await sql.end();
+await pool.end();
 process.exit(failures === 0 ? 0 : 1);

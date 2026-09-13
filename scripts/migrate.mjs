@@ -21,9 +21,10 @@ const migrationsFolder =
 
 const maxAttempts = 15;
 for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = postgres(url, { max: 1 });
   try {
-    await migrate(drizzle(sql), { migrationsFolder });
+    const db = drizzle(sql);
+    await migrate(db, { migrationsFolder });
     console.log("[migrate] migraciones aplicadas");
     await sql.end();
     process.exit(0);

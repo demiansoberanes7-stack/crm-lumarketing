@@ -75,7 +75,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   }
 
   const db = getDb();
-  const updated = await db
+  await db
     .update(schema.contact)
     .set(set)
     .where(
@@ -84,8 +84,8 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
         session.organizationId,
         eq(schema.contact.id, id)
       )
-    )
-    .returning();
-  if (!updated[0]) return apiError(404, "not_found", "Contacto no encontrado");
-  return Response.json({ contact: serializeContact(updated[0]) });
+    );
+  const contact = await getContactById(session.organizationId, id);
+  if (!contact) return apiError(404, "not_found", "Contacto no encontrado");
+  return Response.json({ contact: serializeContact(contact) });
 });

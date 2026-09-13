@@ -8,15 +8,12 @@ import * as schema from "./schema";
  * globalThis para no agotar conexiones.
  */
 const globalForDb = globalThis as unknown as {
-  __voceroSql?: ReturnType<typeof postgres>;
+  __voceroSql?: postgres.Sql;
 };
 
 function createClient() {
   const env = getEnv();
-  return postgres(env.DATABASE_URL, {
-    max: 10,
-    onnotice: () => {},
-  });
+  return postgres(env.DATABASE_URL);
 }
 
 export function getSql() {

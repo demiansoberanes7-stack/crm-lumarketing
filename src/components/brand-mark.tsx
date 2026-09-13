@@ -11,9 +11,9 @@ import { faviconInitial } from "@/lib/favicon";
 import { cn } from "@/lib/utils";
 
 /**
- * El trazo de la marca: la "v" caligráfica con remate cian de vocerocrm.com.
+ * El trazo de la marca LUMARK: la "L" geométrica con remate dorado.
  * El cuerpo hereda `currentColor`; píntalo con `text-brand` (o blanco sobre el
- * mosaico) y el remate sigue siendo cian.
+ * mosaico) y el remate sigue siendo dorado.
  */
 export function BrandMark({
   className,
@@ -44,7 +44,7 @@ export function BrandMark({
 
 /**
  * Mosaico cuadrado con degradado del acento: es el favicon en grande. Con la
- * marca Vocero lleva la "v"; con un nombre white-label, la inicial.
+ * marca LUMARK lleva la "L"; con un nombre white-label, la inicial.
  */
 export function BrandTile({
   branding,
@@ -86,9 +86,8 @@ const TILE_SIZE = {
 } as const;
 
 /**
- * La marca completa, como en la cabecera de la landing: trazo + wordmark
- * "vocero" en minúsculas y bien apretado. Una instancia rebautizada ve en su
- * lugar el mosaico con la inicial y su nombre (white-label).
+ * La marca completa: trazo + wordmark "LUMARK" en mayúsculas.
+ * Una instancia rebautizada ve en su lugar el mosaico con la inicial y su nombre (white-label).
  */
 export function BrandLogo({
   branding,
@@ -109,7 +108,7 @@ export function BrandLogo({
             WORDMARK_SIZE[size]
           )}
         >
-          vocero
+          LUMARK
         </span>
       </span>
     );

@@ -20,7 +20,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   if (!body.ok) return body.response;
 
   const db = getDb();
-  const updated = await db
+  await db
     .update(schema.pipelineStage)
     .set({
       ...(body.data.name !== undefined ? { name: body.data.name } : {}),
@@ -34,10 +34,20 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
         session.organizationId,
         eq(schema.pipelineStage.id, id)
       )
+    );
+  const [stage] = await db
+    .select()
+    .from(schema.pipelineStage)
+    .where(
+      scoped(
+        schema.pipelineStage.organizationId,
+        session.organizationId,
+        eq(schema.pipelineStage.id, id)
+      )
     )
-    .returning();
-  if (!updated[0]) return apiError(404, "not_found", "Etapa no encontrada");
-  return Response.json({ stage: updated[0] });
+    .limit(1);
+  if (!stage) return apiError(404, "not_found", "Etapa no encontrada");
+  return Response.json({ stage });
 });
 
 export const DELETE = withAuth(async (session, req: Request, ctx: Params) => {

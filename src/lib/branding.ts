@@ -45,23 +45,22 @@ export type Branding = {
 };
 
 export const DEFAULT_BRANDING: Branding = {
-  name: "Vocero",
-  // El azul eléctrico de vocerocrm.com: la instancia recién instalada se ve
-  // igual que la landing. Una agencia lo cambia en Configuración → Marca.
-  accent: "#0d5bff",
+  name: "LUMARK",
+  // Dorado luminoso LUMARK: la instancia recién instalada se ve
+  // con la marca LUMARK. Se cambia en Configuración → Marca.
+  accent: "#B8963E",
   currency: DEFAULT_CURRENCY,
   favicon: null,
 };
 
 /**
- * Presets. El primero es la marca Vocero (valores exactos de la landing); los
- * demás son los tonos sobrios del handoff Atlas, que siguen disponibles para
- * quien quiera un CRM más discreto.
+ * Presets. El primero es la marca LUMARK; los demás son opciones de color
+ * disponibles para quien quiera un CRM más discreto.
  */
 export const ACCENT_PRESETS: Record<string, { label: string; set: AccentSet }> = {
-  "#0d5bff": {
-    label: "Azul Vocero",
-    set: { accent: "#0d5bff", hover: "#0a4de6", soft: "#d3e2ff", tint: "#ebf1ff", text: "#0038d8", fg: "#ffffff" },
+  "#b8963e": {
+    label: "Dorado LUMARK",
+    set: { accent: "#B8963E", hover: "#A38535", soft: "#E8D8B0", tint: "#FAF4E6", text: "#8B7230", fg: "#ffffff" },
   },
   "#3f5972": {
     label: "Azul acero",
@@ -152,7 +151,7 @@ export function resolveAccentSet(
   if (mode === "light") {
     const preset = ACCENT_PRESETS[accentHex.toLowerCase()];
     if (preset) return preset.set;
-    if (!isValidHex(accentHex)) return ACCENT_PRESETS[DEFAULT_BRANDING.accent]!.set;
+    if (!isValidHex(accentHex)) return ACCENT_PRESETS[DEFAULT_BRANDING.accent.toLowerCase()]!.set;
 
     let base = hexToRgb(accentHex.toLowerCase());
     // contraste con blanco = (1.05) / (L + 0.05); exigir ≥ 3

@@ -94,7 +94,7 @@ export const GET = withAuth(async (session, req: Request) => {
       serializeContact(
         c,
         stageByContact.get(c.id) ?? null,
-        priorityByContact.get(c.id) ?? null
+        (priorityByContact.get(c.id) ?? null) as "alta" | "media" | "baja" | null
       )
     );
   return Response.json({ contacts });
@@ -126,10 +126,11 @@ export const POST = withAuth(async (session, req: Request) => {
   const db = getDb();
   // 003: la identidad WhatsApp se deriva del teléfono normalizado.
   const phone = normalizeMx(body.data.phone);
-  const inserted = await db
+  const contactId = newId("contact");
+  await db
     .insert(schema.contact)
     .values({
-      id: newId("contact"),
+      id: contactId,
       organizationId: session.organizationId,
       name: body.data.name,
       phone,
@@ -147,9 +148,13 @@ export const POST = withAuth(async (session, req: Request) => {
         schema.contact.channel,
         schema.contact.waIdentity,
       ],
-    })
-    .returning();
-  if (!inserted[0]) {
+    });
+  const [existingContact] = await db
+    .select()
+    .from(schema.contact)
+    .where(eq(schema.contact.id, contactId))
+    .limit(1);
+  if (!existingContact) {
     return apiError(409, "duplicate", "Ya existe un contacto con ese teléfono");
   }
 
@@ -158,7 +163,7 @@ export const POST = withAuth(async (session, req: Request) => {
   // es la mitad de la función.
   const lead = await createLeadForContact({
     organizationId: session.organizationId,
-    contactId: inserted[0].id,
+    contactId: existingContact.id,
     stageId: body.data.stageId,
     source: "dueno",
     actorUserId: session.userId,
@@ -172,7 +177,7 @@ export const POST = withAuth(async (session, req: Request) => {
   }
 
   return Response.json(
-    { contact: serializeContact(inserted[0]), lead: { id: lead.id } },
+    { contact: serializeContact(existingContact), lead: { id: lead.id } },
     { status: 201 }
   );
 });

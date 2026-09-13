@@ -50,10 +50,11 @@ export async function emitConversion(
     const db = getDb();
 
     // Dedup atómico: si ya existe ese evento para esta conversación, no-op.
-    const inserted = await db
+    const eventId = newId("conversionEvent");
+    await db
       .insert(schema.conversionEvent)
       .values({
-        id: newId("conversionEvent"),
+        id: eventId,
         organizationId,
         conversationId,
         eventName,
@@ -64,10 +65,12 @@ export async function emitConversion(
           schema.conversionEvent.conversationId,
           schema.conversionEvent.eventName,
         ],
-      })
-      .returning();
-
-    const event = inserted[0];
+      });
+    const [event] = await db
+      .select()
+      .from(schema.conversionEvent)
+      .where(eq(schema.conversionEvent.id, eventId))
+      .limit(1);
     if (!event) return "dedup";
 
     const attribution = await getAttributionForConversation(
@@ -264,7 +267,7 @@ export function toConversionActivityRow(row: {
   id: string;
   conversationId: string;
   eventName: string;
-  status: "pending" | "sent" | "failed" | "skipped";
+  status: string;
   error: string | null;
   fbTraceId: string | null;
   sentAt: Date | null;
@@ -278,7 +281,7 @@ export function toConversionActivityRow(row: {
     eventName: row.eventName,
     contactName: row.contactName,
     adHeadline: row.adHeadline,
-    status: row.status,
+    status: row.status as "pending" | "sent" | "failed" | "skipped",
     at: (row.sentAt ?? row.createdAt).toISOString(),
     fbTraceId: row.fbTraceId,
     error: row.error,

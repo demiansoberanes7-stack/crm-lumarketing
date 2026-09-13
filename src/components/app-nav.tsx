@@ -5,10 +5,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
+  DollarSign,
+  FileText,
   FlaskConical,
+  FolderKanban,
   Inbox,
   Kanban,
   LogOut,
+  Mail,
   Settings,
   Sparkles,
   Users,
@@ -34,6 +38,10 @@ const NAV: NavItem[] = [
   { href: "/inbox", label: "Bandeja", icon: Inbox, badge: true },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/contacts", label: "Contactos", icon: Users },
+  { href: "/balance", label: "Balance", icon: DollarSign },
+  { href: "/quotes", label: "Cotizador", icon: FileText },
+  { href: "/projects", label: "Proyectos", icon: FolderKanban },
+  { href: "/email", label: "Buzón", icon: Mail },
   { href: "/agent", label: "Agente", icon: Sparkles },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ];

@@ -337,12 +337,10 @@ export async function applyHandoff(
   reason: "cliente" | "modelo" | "error" | "ventana"
 ): Promise<void> {
   const db = getDb();
-  const updated = await db
+  await db
     .update(schema.conversation)
     .set({ handoffAt: new Date(), handoffReason: reason, updatedAt: new Date() })
-    .where(eq(schema.conversation.id, conversationId))
-    .returning();
-  if (!updated[0]) return;
+    .where(eq(schema.conversation.id, conversationId));
   publish(organizationId, {
     type: "conversation.updated",
     data: {

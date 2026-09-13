@@ -7,6 +7,7 @@ import { EventEmitter } from "node:events";
  */
 
 export type SseEvent =
+  | { type: "waha.session_status"; data: { status: string } }
   | { type: "message.new"; data: { conversationId: string; message: unknown } }
   | {
       type: "message.status";

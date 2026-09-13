@@ -34,7 +34,7 @@ export function isSourceValue(v: unknown): v is SourceValue {
  * Un contacto que llegó solo por WhatsApp no dice de dónde salió, y el CRM no
  * lo inventa: queda "sin identificar" hasta que alguien lo capture.
  */
-export function effectiveSource(stored: SourceValue | null): SourceDto {
-  if (stored) return { value: stored, source: "capturada" };
+export function effectiveSource(stored: string | null): SourceDto {
+  if (stored) return { value: stored as SourceValue, source: "capturada" };
   return { value: "desconocida", source: "deducida" };
 }

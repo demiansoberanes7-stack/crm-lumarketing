@@ -16,7 +16,7 @@ import {
  * el disco propio es la copia durable que la UI previsualiza.
  */
 
-export type MediaKind = (typeof schema.mediaAsset.$inferSelect)["kind"];
+export type MediaKind = "image" | "sticker" | "audio" | "video" | "document" | "location" | "contacts";
 
 /** Límites de la Cloud API por tipo (validados ANTES de tocar red, FR-007). */
 export const MEDIA_LIMITS: Record<
@@ -208,7 +208,7 @@ export async function ensureAssetAvailable(
       asset.waMediaId
     );
     const storagePath = await saveMediaFile(organizationId, assetId, data);
-    const updated = await db
+    await db
       .update(schema.mediaAsset)
       .set({
         storagePath,
@@ -218,9 +218,13 @@ export async function ensureAssetAvailable(
         fetchError: null,
         updatedAt: new Date(),
       })
+      .where(eq(schema.mediaAsset.id, assetId));
+    const [updated] = await db
+      .select()
+      .from(schema.mediaAsset)
       .where(eq(schema.mediaAsset.id, assetId))
-      .returning();
-    return updated[0] ?? null;
+      .limit(1);
+    return updated ?? null;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await db

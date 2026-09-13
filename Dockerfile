@@ -1,5 +1,5 @@
 # ============================================================
-# Vocero CRM — imagen multi-etapa (Next.js standalone + Node 22)
+# LUMARK CRM — imagen multi-etapa (Next.js standalone + Node 22)
 # Los secretos NO se necesitan en build: llegan en runtime.
 # ============================================================
 
@@ -7,7 +7,12 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
+
+FROM deps AS test
+RUN apk add --no-cache chromium
+COPY . .
+CMD ["node", "scripts/e2e-lumark.mjs"]
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -16,9 +21,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Commit del que sale la imagen, para que la app pueda decir qué está corriendo.
-# Coolify lo inyecta solo; con docker compose se pasa con
-# `--build-arg SOURCE_COMMIT=$(git rev-parse HEAD)`. Si falta, la app enseña
-# solo la versión de package.json — nunca es un error de build.
 ARG SOURCE_COMMIT=""
 ENV SOURCE_COMMIT=$SOURCE_COMMIT
 RUN pnpm build
@@ -34,20 +36,18 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN addgroup -S vocero && adduser -S vocero -G vocero
-# 008: punto de montaje del volumen de adjuntos, propiedad del usuario de la
-# app — el volumen nombrado hereda este dueño al montarse vacío (sin esto,
-# monta como root y el guardado de adjuntos falla con EACCES).
-RUN mkdir -p /data/media && chown -R vocero:vocero /data
+RUN addgroup -S lumark && adduser -S lumark -G lumark
+# Punto de montaje del volumen de adjuntos, propiedad del usuario de la app
+RUN mkdir -p /data/media && chown -R lumark:lumark /data
 
-COPY --from=builder --chown=vocero:vocero /app/.next/standalone ./
-COPY --from=builder --chown=vocero:vocero /app/.next/static ./.next/static
-COPY --from=builder --chown=vocero:vocero /app/public ./public
-COPY --from=builder --chown=vocero:vocero /app/migrate.bundle.mjs ./migrate.mjs
-COPY --from=builder --chown=vocero:vocero /app/seed-demo.bundle.mjs ./seed-demo.mjs
-COPY --from=builder --chown=vocero:vocero /app/drizzle ./drizzle
+COPY --from=builder --chown=lumark:lumark /app/.next/standalone ./
+COPY --from=builder --chown=lumark:lumark /app/.next/static ./.next/static
+COPY --from=builder --chown=lumark:lumark /app/public ./public
+COPY --from=builder --chown=lumark:lumark /app/migrate.bundle.mjs ./migrate.mjs
+COPY --from=builder --chown=lumark:lumark /app/seed-demo.bundle.mjs ./seed-demo.mjs
+COPY --from=builder --chown=lumark:lumark /app/drizzle ./drizzle
 
-USER vocero
+USER lumark
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0

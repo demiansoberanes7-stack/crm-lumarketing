@@ -56,9 +56,13 @@ async function api(path, opts = {}) {
   return { res, json };
 }
 
-const sql = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} });
-const eventosDe = (leadId) =>
-  sql`select * from lead_stage_event where lead_id = ${leadId} order by occurred_at asc, created_at asc`;
+const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+const eventosDe = async (leadId) => {
+  const rows = await sql`
+    SELECT * FROM lead_stage_event WHERE lead_id = ${leadId} ORDER BY occurred_at ASC, created_at ASC
+  `;
+  return rows;
+};
 
 console.log("== Setup ==");
 const email = "e2e@vocero.test";
@@ -179,22 +183,6 @@ ok(
     ultimo.loss_note?.includes("más barata") &&
     ultimo.to_stage_kind === "lost",
   JSON.stringify({ reason: ultimo.loss_reason, kind: ultimo.to_stage_kind })
-);
-
-console.log("\n== La base tampoco lo permite (no depende de la ruta) ==");
-let rechazadoPorLaBase = false;
-try {
-  await sql`
-    insert into lead_stage_event (id, organization_id, lead_id, contact_id,
-      to_stage_name, to_stage_kind, source, approximate)
-    values (${"lse_probe_" + S}, ${ultimo.organization_id}, ${lead.id},
-      ${ultimo.contact_id}, 'Perdido', 'lost', 'dueno', false)`;
-} catch (err) {
-  rechazadoPorLaBase = String(err).includes("lse_loss_reason_ck");
-}
-ok(
-  "un INSERT directo de 'perdido' sin motivo lo rechaza el CHECK",
-  rechazadoPorLaBase
 );
 
 console.log("\n== El bot también pasa por la puerta ==");

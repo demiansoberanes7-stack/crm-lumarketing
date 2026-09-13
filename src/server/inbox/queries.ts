@@ -2,6 +2,7 @@ import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isWindowOpen, windowRemainingMs } from "@/server/inbox/window";
+import type { Channel } from "@/lib/channels";
 import type { ConversationDto } from "@/lib/types";
 
 export async function listConversations(
@@ -105,7 +106,7 @@ export function serializeConversation(
 ): ConversationDto {
   return {
     id: c.id,
-    channel: c.channel,
+    channel: c.channel as Channel,
     contact: { id: contact.id, name: contact.name, phone: contact.phone },
     stageName,
     aiEnabled: c.aiEnabled,
@@ -135,7 +136,7 @@ export async function updateConversation(
   }
   if (patch.markRead) set.unreadCount = 0;
 
-  const updated = await db
+  await db
     .update(schema.conversation)
     .set(set)
     .where(
@@ -143,7 +144,16 @@ export async function updateConversation(
         eq(schema.conversation.organizationId, organizationId),
         eq(schema.conversation.id, conversationId)
       )
+    );
+  const [updated] = await db
+    .select()
+    .from(schema.conversation)
+    .where(
+      and(
+        eq(schema.conversation.organizationId, organizationId),
+        eq(schema.conversation.id, conversationId)
+      )
     )
-    .returning();
-  return updated[0] ?? null;
+    .limit(1);
+  return updated ?? null;
 }

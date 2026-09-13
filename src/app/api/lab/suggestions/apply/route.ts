@@ -37,15 +37,20 @@ export const POST = withAuth(async (session, req: Request) => {
     .limit(1);
   if (!cases[0]) return apiError(404, "not_found", "Caso no encontrado");
 
-  const inserted = await db
+  const entryId = newId("kbEntry");
+  await db
     .insert(schema.kbEntry)
     .values({
-      id: newId("kbEntry"),
+      id: entryId,
       organizationId: session.organizationId,
       kind: "qa",
       question: body.data.pregunta,
       answer: body.data.respuesta,
-    })
-    .returning();
-  return Response.json({ entry: inserted[0] }, { status: 201 });
+    });
+  const [entry] = await db
+    .select()
+    .from(schema.kbEntry)
+    .where(eq(schema.kbEntry.id, entryId))
+    .limit(1);
+  return Response.json({ entry }, { status: 201 });
 });

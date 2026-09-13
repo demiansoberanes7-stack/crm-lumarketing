@@ -29,12 +29,12 @@ function toCredentials(row: Row): InstagramCredentials {
   return {
     id: row.id,
     organizationId: row.organizationId,
-    source: row.source,
+    source: row.source as "zernio" | "meta",
     igUserId: row.igUserId,
     accountRef: row.accountRef,
     username: row.username,
     webhookSecret: row.webhookSecret,
-    status: row.status,
+    status: row.status as "connected" | "reconnect_required",
     token: decryptSecret({
       cipher: row.tokenCipher,
       iv: row.tokenIv,

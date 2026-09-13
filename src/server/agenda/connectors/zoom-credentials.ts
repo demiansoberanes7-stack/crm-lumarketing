@@ -37,7 +37,7 @@ export async function getZoomCredentials(
       iv: row.secretIv,
       tag: row.secretTag,
     }),
-    status: row.status,
+    status: row.status as "connected" | "error",
   };
 }
 

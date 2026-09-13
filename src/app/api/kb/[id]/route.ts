@@ -20,7 +20,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   if (!body.ok) return body.response;
 
   const db = getDb();
-  const updated = await db
+  await db
     .update(schema.kbEntry)
     .set({ ...body.data, updatedAt: new Date() })
     .where(
@@ -29,17 +29,10 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
         session.organizationId,
         eq(schema.kbEntry.id, id)
       )
-    )
-    .returning();
-  if (!updated[0]) return apiError(404, "not_found", "Entrada no encontrada");
-  return Response.json({ entry: updated[0] });
-});
-
-export const DELETE = withAuth(async (session, _req: Request, ctx: Params) => {
-  const { id } = await ctx.params;
-  const db = getDb();
-  const deleted = await db
-    .delete(schema.kbEntry)
+    );
+  const [entry] = await db
+    .select()
+    .from(schema.kbEntry)
     .where(
       scoped(
         schema.kbEntry.organizationId,
@@ -47,7 +40,34 @@ export const DELETE = withAuth(async (session, _req: Request, ctx: Params) => {
         eq(schema.kbEntry.id, id)
       )
     )
-    .returning();
-  if (!deleted[0]) return apiError(404, "not_found", "Entrada no encontrada");
+    .limit(1);
+  if (!entry) return apiError(404, "not_found", "Entrada no encontrada");
+  return Response.json({ entry });
+});
+
+export const DELETE = withAuth(async (session, _req: Request, ctx: Params) => {
+  const { id } = await ctx.params;
+  const db = getDb();
+  const [existing] = await db
+    .select({ id: schema.kbEntry.id })
+    .from(schema.kbEntry)
+    .where(
+      scoped(
+        schema.kbEntry.organizationId,
+        session.organizationId,
+        eq(schema.kbEntry.id, id)
+      )
+    )
+    .limit(1);
+  if (!existing) return apiError(404, "not_found", "Entrada no encontrada");
+  await db
+    .delete(schema.kbEntry)
+    .where(
+      scoped(
+        schema.kbEntry.organizationId,
+        session.organizationId,
+        eq(schema.kbEntry.id, id)
+      )
+    );
   return Response.json({ deleted: true });
 });

@@ -1,6 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
-  check,
   index,
   integer,
   jsonb,
@@ -8,95 +8,95 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  varchar,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 /* ============================================================
  * Auth (Better Auth + plugin organization)
  * ============================================================ */
 
 export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  id: varchar("id", { length: 255 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
-  image: text("image"),
+  image: varchar("image", { length: 1024 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const session = pgTable("session", {
-  id: text("id").primaryKey(),
+  id: varchar("id", { length: 255 }).primaryKey(),
   expiresAt: timestamp("expires_at").notNull(),
-  token: text("token").notNull().unique(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  userId: text("user_id")
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: varchar("user_agent", { length: 1024 }),
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  activeOrganizationId: text("active_organization_id"),
+  activeOrganizationId: varchar("active_organization_id", { length: 255 }),
 });
 
 export const account = pgTable("account", {
-  id: text("id").primaryKey(),
-  accountId: text("account_id").notNull(),
-  providerId: text("provider_id").notNull(),
-  userId: text("user_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  accountId: varchar("account_id", { length: 255 }).notNull(),
+  providerId: varchar("provider_id", { length: 255 }).notNull(),
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  idToken: text("id_token"),
+  accessToken: varchar("access_token", { length: 2048 }),
+  refreshToken: varchar("refresh_token", { length: 2048 }),
+  idToken: varchar("id_token", { length: 2048 }),
   accessTokenExpiresAt: timestamp("access_token_expires_at"),
   refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
-  scope: text("scope"),
-  password: text("password"),
+  scope: varchar("scope", { length: 1024 }),
+  password: varchar("password", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const verification = pgTable("verification", {
-  id: text("id").primaryKey(),
-  identifier: text("identifier").notNull(),
-  value: text("value").notNull(),
+  id: varchar("id", { length: 255 }).primaryKey(),
+  identifier: varchar("identifier", { length: 255 }).notNull(),
+  value: varchar("value", { length: 255 }).notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const organization = pgTable("organization", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  slug: text("slug").unique(),
-  logo: text("logo"),
+  id: varchar("id", { length: 255 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).unique(),
+  logo: varchar("logo", { length: 1024 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   metadata: text("metadata"),
 });
 
 export const member = pgTable("member", {
-  id: text("id").primaryKey(),
-  organizationId: text("organization_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  organizationId: varchar("organization_id", { length: 255 })
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
-  userId: text("user_id")
+  userId: varchar("user_id", { length: 255 })
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  role: text("role").notNull().default("member"),
+  role: varchar("role", { length: 50 }).notNull().default("member"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const invitation = pgTable("invitation", {
-  id: text("id").primaryKey(),
-  organizationId: text("organization_id")
+  id: varchar("id", { length: 255 }).primaryKey(),
+  organizationId: varchar("organization_id", { length: 255 })
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
-  email: text("email").notNull(),
-  role: text("role"),
-  status: text("status").notNull().default("pending"),
+  email: varchar("email", { length: 255 }).notNull(),
+  role: varchar("role", { length: 50 }),
+  status: varchar("status", { length: 50 }).notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
-  inviterId: text("inviter_id")
+  inviterId: varchar("inviter_id", { length: 255 })
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
 });
@@ -108,73 +108,28 @@ export const invitation = pgTable("invitation", {
 export const contact = pgTable(
   "contact",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /**
-     * Llave de resolución WhatsApp (003): teléfono normalizado (521→52) o
-     * `bsuid:<id>` cuando Meta no manda wa_id. Estable de por vida.
-     */
-    /**
-     * 014: canal por el que vive este contacto. Aditivo y con default: toda
-     * fila existente sigue significando exactamente lo mismo.
-     */
-    channel: text("channel", { enum: ["whatsapp", "instagram", "messenger"] })
+    channel: varchar("channel", { length: 20 })
       .notNull()
       .default("whatsapp"),
-    /**
-     * Llave de resolucion. WhatsApp: telefono normalizado (521 a 52) o
-     * `bsuid:<id>`. Instagram (014): `ig:<IGSID>`. Estable de por vida.
-     * El nombre `wa_identity` se conserva porque es contrato publicado:
-     * `/api/bot/context?waIdentity=...` lo recibe y lo devuelve, y hay
-     * cerebros externos que dependen de el.
-     */
-    waIdentity: text("wa_identity").notNull(),
-    /** Teléfono como ATRIBUTO opcional (003): falta en contactos BSUID. */
-    phone: text("phone"),
-    /** Business-Scoped User ID si se conoce (003). */
-    waUserId: text("wa_user_id"),
-    name: text("name").notNull(),
-    /**
-     * Quién puso este nombre.
-     *
-     * `perfil` = lo trajo WhatsApp y puede seguir actualizandose solo;
-     * `manual` = lo escribio una persona en el CRM y NADIE lo pisa.
-     *
-     * Existe porque las dos cosas se necesitan a la vez: un contacto que
-     * cambia su nombre de WhatsApp tiene que reflejarse (#51), y el operador
-     * que renombro a alguien como "Juan - obra Polanco" no puede perder ese
-     * trabajo con el siguiente mensaje.
-     */
-    nameSource: text("name_source", { enum: ["perfil", "manual"] })
+    waIdentity: varchar("wa_identity", { length: 255 }).notNull(),
+    phone: varchar("phone", { length: 20 }),
+    waUserId: varchar("wa_user_id", { length: 255 }),
+    name: varchar("name", { length: 255 }).notNull(),
+    nameSource: varchar("name_source", { length: 20 })
       .notNull()
       .default("perfil"),
     notes: text("notes"),
-    /**
-     * Ficha de calificación que levanta un cerebro externo por
-     * `PUT /api/bot/ficha`. Es un objeto libre a propósito: los datos que
-     * importan de un lead los define cada negocio (una clínica querrá
-     * "tratamiento", una constructora "metros"), y cablearlos como columnas
-     * obligaría a migrar el CRM cada vez que alguien cambia su cuestionario.
-     * Merge campo a campo; `null` explícito borra la clave.
-     */
-    ficha: jsonb("ficha").$type<Record<string, unknown>>(),
-    /**
-     * De dónde salió el prospecto. NULL = nadie la capturó, y entonces la API
-     * la deduce. Así no hace falta backfill ni marcar en falso los contactos
-     * que ya existían.
-     */
-    source: text("source", {
-      enum: ["anuncio", "organico", "referido", "conocido", "otro"],
-    }),
+    ficha: jsonb("ficha"),
+    source: varchar("source", { length: 20 }),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    // 014: el canal entra en la llave. Sin el, un IGSID que coincidiera con
-    // un telefono normalizado mezclaria dos personas en silencio.
     uniqueIndex("contact_org_channel_identity_uq").on(
       t.organizationId,
       t.channel,
@@ -188,14 +143,13 @@ export const contact = pgTable(
 export const pipelineStage = pgTable(
   "pipeline_stage",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    position: integer("position").notNull(),
-    /** open = etapa normal · won / lost = anclas no borrables */
-    kind: text("kind", { enum: ["open", "won", "lost"] })
+    name: varchar("name", { length: 255 }).notNull(),
+    position:   integer("position").notNull(),
+    kind: varchar("kind", { length: 20 })
       .notNull()
       .default("open"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -206,31 +160,20 @@ export const pipelineStage = pgTable(
 export const lead = pgTable(
   "lead",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    contactId: text("contact_id")
+    contactId: varchar("contact_id", { length: 255 })
       .notNull()
       .references(() => contact.id, { onDelete: "cascade" }),
-    stageId: text("stage_id")
+    stageId: varchar("stage_id", { length: 255 })
       .notNull()
       .references(() => pipelineStage.id),
-    position: integer("position").notNull().default(0),
-    /**
-     * Monto de la negociación en CENTAVOS ENTEROS. NULL = nadie lo capturó, que
-     * no es lo mismo que cero: un trato sin monto no vale $0, simplemente no se
-     * sabe, y el tablero lo dice con palabras en vez de sumar un cero.
-     */
-    amountCents: integer("amount_cents"),
-    /** Moneda del monto; la del negocio al capturarlo (Ajustes → Marca). */
-    currency: text("currency"),
-    /**
-     * Prioridad de cierre. NULL = nadie la ha decidido, que NO es lo mismo que
-     * "media": nada la escribe automáticamente, así que el dueño puede confiar
-     * en que lo que ve es lo que él puso.
-     */
-    priority: text("priority", { enum: ["alta", "media", "baja"] }),
+    position:   integer("position").notNull().default(0),
+    amountCents:   integer("amount_cents"),
+    currency: varchar("currency", { length: 10 }),
+    priority: varchar("priority", { length: 20 }),
     priorityUpdatedAt: timestamp("priority_updated_at"),
     lastActivityAt: timestamp("last_activity_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -242,71 +185,42 @@ export const lead = pgTable(
   ]
 );
 
-/**
- * Bitácora de movimientos de etapa: append-only. Nada se actualiza ni se borra;
- * corregir un dato es agregar un movimiento nuevo.
- *
- * Es el cimiento de todo lo histórico: sin ella el CRM solo sabe dónde está
- * cada lead HOY, y "¿cuánto cerré en julio?" no tiene respuesta.
- *
- * Regla dura: la ÚNICA puerta que escribe aquí —y que escribe `lead.stage_id`—
- * es `src/server/leads/stage-history.ts`. Un unit test de vigilancia falla si
- * aparece otra escritura, porque un camino que mueva el lead sin registrar el
- * evento no truena: solo hace que las gráficas mientan meses después.
- */
 export const leadStageEvent = pgTable(
   "lead_stage_event",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    leadId: text("lead_id")
+    leadId: varchar("lead_id", { length: 255 })
       .notNull()
       .references(() => lead.id, { onDelete: "cascade" }),
-    /** Denormalizado a propósito: casi toda agregación cruza con el contacto,
-     *  y el join extra se pagaría en cada consulta. */
-    contactId: text("contact_id")
+    contactId: varchar("contact_id", { length: 255 })
       .notNull()
       .references(() => contact.id, { onDelete: "cascade" }),
-    /** NULL = el lead nació en `toStage` (evento de creación). */
-    fromStageId: text("from_stage_id").references(() => pipelineStage.id, {
-      onDelete: "set null",
-    }),
-    fromStageName: text("from_stage_name"),
-    toStageId: text("to_stage_id").references(() => pipelineStage.id, {
-      onDelete: "set null",
-    }),
-    /** Snapshots: sobreviven al renombre y al borrado de la etapa, para que
-     *  reorganizar el tablero de hoy no reescriba el embudo del pasado. */
-    toStageName: text("to_stage_name").notNull(),
-    toStageKind: text("to_stage_kind", { enum: ["open", "won", "lost"] })
+    fromStageId: varchar("from_stage_id", { length: 255 }).references(
+      () => pipelineStage.id,
+      { onDelete: "set null" }
+    ),
+    fromStageName: varchar("from_stage_name", { length: 255 }),
+    toStageId: varchar("to_stage_id", { length: 255 }).references(
+      () => pipelineStage.id,
+      { onDelete: "set null" }
+    ),
+    toStageName: varchar("to_stage_name", { length: 255 }).notNull(),
+    toStageKind: varchar("to_stage_kind", { length: 20 })
       .notNull()
       .default("open"),
-    /** Cuándo PASÓ (no cuándo se registró). */
     occurredAt: timestamp("occurred_at").notNull().defaultNow(),
-    /** NULL = no lo movió una persona (bot, sistema, migración). */
-    actorUserId: text("actor_user_id").references(() => user.id, {
-      onDelete: "set null",
-    }),
-    source: text("source", {
-      enum: ["dueno", "bot", "sistema", "migracion"],
-    })
+    actorUserId: varchar("actor_user_id", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    source: varchar("source", { length: 20 })
       .notNull()
       .default("dueno"),
-    /** true = fecha SEMBRADA en la migración, no observada. Cuenta para los
-     *  totales pero jamás para promedios de tiempo. */
     approximate: boolean("approximate").notNull().default(false),
-    lossReason: text("loss_reason", {
-      enum: [
-        "precio",
-        "no_es_perfil",
-        "sin_presupuesto",
-        "eligio_otro",
-        "nunca_contesto",
-        "otro",
-      ],
-    }),
+    lossReason: varchar("loss_reason", { length: 30 }),
     lossNote: text("loss_note"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -318,106 +232,67 @@ export const leadStageEvent = pgTable(
       t.toStageKind,
       t.occurredAt
     ),
-    // Perder un trato sin motivo es imposible a nivel de BASE, no por
-    // disciplina de cada ruta. La excepción es la siembra de la migración: no
-    // puede inventar un motivo que nadie capturó.
-    check(
-      "lse_loss_reason_ck",
-      sql`${t.toStageKind} <> 'lost' OR ${t.approximate} = true OR ${t.lossReason} IS NOT NULL`
-    ),
   ]
 );
 
 export const conversation = pgTable(
   "conversation",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    contactId: text("contact_id")
+    contactId: varchar("contact_id", { length: 255 })
       .notNull()
       .references(() => contact.id, { onDelete: "cascade" }),
-    /** Conversación del Laboratorio: jamás toca la API de WhatsApp. */
     isTest: boolean("is_test").notNull().default(false),
-    /**
-     * 014: canal de la conversacion. Denormalizado del contacto a proposito:
-     * el ruteo de salida y el filtro de la bandeja lo leen en cada mensaje.
-     */
-    channel: text("channel", { enum: ["whatsapp", "instagram", "messenger"] })
+    channel: varchar("channel", { length: 20 })
       .notNull()
       .default("whatsapp"),
-    /**
-     * 014: identificador del hilo en la plataforma de origen. Zernio entrega
-     * un conversationId opaco ("no asumas su formato") que hace falta para
-     * responder; WhatsApp no lo necesita y queda null.
-     */
-    channelThreadRef: text("channel_thread_ref"),
+    channelThreadRef: varchar("channel_thread_ref", { length: 255 }),
     aiEnabled: boolean("ai_enabled").notNull().default(true),
     handoffAt: timestamp("handoff_at"),
-    handoffReason: text("handoff_reason", {
-      // 008: manual_reply = el dueño respondió desde la app del teléfono.
-      // hostilidad = el lead se puso agresivo y el agente se retiró.
-      enum: [
-        "cliente",
-        "modelo",
-        "error",
-        "ventana",
-        "hostilidad",
-        "manual_reply",
-      ],
-    }),
+    handoffReason: varchar("handoff_reason", { length: 30 }),
     lastInboundAt: timestamp("last_inbound_at"),
     lastMessageAt: timestamp("last_message_at"),
-    unreadCount: integer("unread_count").notNull().default(0),
+    unreadCount:   integer("unread_count").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    // Una conversación real por contacto; las de prueba no compiten.
-    uniqueIndex("conversation_org_contact_real_uq")
+    index("conversation_org_last_idx").on(t.organizationId, t.lastMessageAt),
+    uniqueIndex("conversation_org_contact_real_idx")
       .on(t.organizationId, t.contactId)
       .where(sql`${t.isTest} = false`),
-    index("conversation_org_last_idx").on(t.organizationId, t.lastMessageAt),
   ]
 );
 
 export const message = pgTable(
   "message",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    conversationId: text("conversation_id")
+    conversationId: varchar("conversation_id", { length: 255 })
       .notNull()
       .references(() => conversation.id, { onDelete: "cascade" }),
-    /** ID de WhatsApp — UNIQUE (idempotencia). Nullable en salientes de prueba. */
-    waMessageId: text("wa_message_id").unique(),
-    direction: text("direction", { enum: ["in", "out"] }).notNull(),
-    type: text("type").notNull().default("text"),
+    waMessageId: varchar("wa_message_id", { length: 255 }).unique(),
+    direction: varchar("direction", { length: 10 }).notNull(),
+    type: varchar("type", { length: 50 }).notNull().default("text"),
     text: text("text"),
-    status: text("status", {
-      enum: ["pending", "sent", "delivered", "read", "failed"],
-    })
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("pending"),
     error: text("error"),
     aiGenerated: boolean("ai_generated").notNull().default(false),
-    /**
-     * 008 — Origen del saliente: IA (bot), operador del CRM, manual desde la
-     * app de WhatsApp Business del teléfono (echo), o plantilla. En entrantes
-     * queda el default y la UI lo ignora.
-     */
-    origin: text("origin", {
-      enum: ["ai", "operator", "manual", "template"],
-    })
+    origin: varchar("origin", { length: 20 })
       .notNull()
       .default("operator"),
-    /** 008 — Adjunto del mensaje (imagen, doc, ubicación…), si lo hay. */
-    mediaAssetId: text("media_asset_id").references(() => mediaAsset.id, {
-      onDelete: "set null",
-    }),
+    mediaAssetId: varchar("media_asset_id", { length: 255 }).references(
+      () => mediaAsset.id,
+      { onDelete: "set null" }
+    ),
     waTimestamp: timestamp("wa_timestamp"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -430,43 +305,22 @@ export const message = pgTable(
   ]
 );
 
-/**
- * 008 — Adjuntos: archivo (imagen/video/audio/documento/sticker) copiado al
- * volumen local (`MEDIA_DIR`) o contenido estructurado (location/contacts) en
- * `payload`. Meta expira sus archivos (~30 días): el disco propio es la
- * fuente durable (constitución II: sin S3/R2).
- */
 export const mediaAsset = pgTable(
   "media_asset",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    kind: text("kind", {
-      enum: [
-        "image",
-        "video",
-        "audio",
-        "document",
-        "sticker",
-        "location",
-        "contacts",
-      ],
-    }).notNull(),
-    /** media id de Graph (entrantes/salientes subidos); NULL en location/contacts. */
-    waMediaId: text("wa_media_id"),
-    mimeType: text("mime_type"),
-    fileName: text("file_name"),
-    fileSize: integer("file_size"),
+    kind: varchar("kind", { length: 20 }).notNull(),
+    waMediaId: varchar("wa_media_id", { length: 255 }),
+    mimeType: varchar("mime_type", { length: 255 }),
+    fileName: varchar("file_name", { length: 512 }),
+    fileSize:   integer("file_size"),
     caption: text("caption"),
-    /** location {latitude, longitude, name?, address?} o contacts (subset). */
     payload: jsonb("payload"),
-    /** Ruta relativa dentro de MEDIA_DIR; NULL si aún no descargado o no aplica. */
-    storagePath: text("storage_path"),
-    fetchStatus: text("fetch_status", {
-      enum: ["available", "pending", "failed"],
-    })
+    storagePath: varchar("storage_path", { length: 512 }),
+    fetchStatus: varchar("fetch_status", { length: 20 })
       .notNull()
       .default("pending"),
     fetchError: text("fetch_error"),
@@ -482,18 +336,18 @@ export const mediaAsset = pgTable(
 export const metaCredentials = pgTable(
   "meta_credentials",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    wabaId: text("waba_id").notNull(),
-    phoneNumberId: text("phone_number_id").notNull(),
-    displayPhoneNumber: text("display_phone_number"),
-    verifiedName: text("verified_name"),
-    tokenCipher: text("token_cipher").notNull(),
-    tokenIv: text("token_iv").notNull(),
-    tokenTag: text("token_tag").notNull(),
-    status: text("status", { enum: ["connected", "reconnect_required"] })
+    wabaId: varchar("waba_id", { length: 255 }).notNull(),
+    phoneNumberId: varchar("phone_number_id", { length: 255 }).notNull(),
+    displayPhoneNumber: varchar("display_phone_number", { length: 50 }),
+    verifiedName: varchar("verified_name", { length: 255 }),
+    tokenCipher: varchar("token_cipher", { length: 1024 }).notNull(),
+    tokenIv: varchar("token_iv", { length: 255 }).notNull(),
+    tokenTag: varchar("token_tag", { length: 255 }).notNull(),
+    status: varchar("status", { length: 30 })
       .notNull()
       .default("connected"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -501,38 +355,26 @@ export const metaCredentials = pgTable(
   },
   (t) => [
     uniqueIndex("meta_credentials_org_uq").on(t.organizationId),
-    // El webhook enruta por phone_number_id: debe ser único en la instancia.
     uniqueIndex("meta_credentials_phone_uq").on(t.phoneNumberId),
   ]
 );
 
-/**
- * 014 - Credenciales del canal de Instagram. Tabla explicita (no un jsonb
- * generico) porque unas credenciales tienen forma fija y conocida: asi
- * conservan tipado e indices. El token se cifra con los mismos helpers que el
- * de WhatsApp; un segundo mecanismo de cifrado seria un segundo mecanismo que
- * auditar.
- */
 export const instagramCredentials = pgTable(
   "instagram_credentials",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /** De donde vienen los mensajes: API unificada o app propia de Meta. */
-    source: text("source", { enum: ["zernio", "meta"] }).notNull(),
-    /** IG_ID del perfil profesional: por el enruta el webhook. */
-    igUserId: text("ig_user_id").notNull(),
-    /** Zernio: accountId de la cuenta conectada. Meta directo: null. */
-    accountRef: text("account_ref"),
-    username: text("username"),
-    tokenCipher: text("token_cipher").notNull(),
-    tokenIv: text("token_iv").notNull(),
-    tokenTag: text("token_tag").notNull(),
-    /** Secreto HMAC de las entregas (Zernio); null en modo Meta. */
-    webhookSecret: text("webhook_secret"),
-    status: text("status", { enum: ["connected", "reconnect_required"] })
+    source: varchar("source", { length: 20 }).notNull(),
+    igUserId: varchar("ig_user_id", { length: 255 }).notNull(),
+    accountRef: varchar("account_ref", { length: 255 }),
+    username: varchar("username", { length: 255 }),
+    tokenCipher: varchar("token_cipher", { length: 1024 }).notNull(),
+    tokenIv: varchar("token_iv", { length: 255 }).notNull(),
+    tokenTag: varchar("token_tag", { length: 255 }).notNull(),
+    webhookSecret: varchar("webhook_secret", { length: 255 }),
+    status: varchar("status", { length: 30 })
       .notNull()
       .default("connected"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -545,38 +387,24 @@ export const instagramCredentials = pgTable(
   ]
 );
 
-/**
- * 017 — Credenciales del canal de Messenger: la página de Facebook y su token
- * de acceso, cifrado con el mismo AES-256-GCM que los demás. Tabla propia y
- * explícita, como la de Instagram: unas credenciales tienen forma fija y
- * conocida, y esconderlas en un jsonb perdería el tipado y los índices.
- */
 export const messengerCredentials = pgTable(
   "messenger_credentials",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /** De donde vienen los mensajes: API unificada o app propia de Meta. */
-    source: text("source", { enum: ["zernio", "meta"] })
+    source: varchar("source", { length: 20 })
       .notNull()
       .default("meta"),
-    /**
-     * ID de la página de Facebook: por él enruta el webhook de Meta
-     * (`entry[].id`). En modo Zernio puede no conocerse — ahí enruta
-     * `account_ref` — así que es opcional.
-     */
-    pageId: text("page_id"),
-    pageName: text("page_name"),
-    /** Zernio: accountId de la cuenta conectada. Meta directo: null. */
-    accountRef: text("account_ref"),
-    tokenCipher: text("token_cipher").notNull(),
-    tokenIv: text("token_iv").notNull(),
-    tokenTag: text("token_tag").notNull(),
-    /** Secreto HMAC de las entregas (Zernio); null en modo Meta. */
-    webhookSecret: text("webhook_secret"),
-    status: text("status", { enum: ["connected", "reconnect_required"] })
+    pageId: varchar("page_id", { length: 255 }),
+    pageName: varchar("page_name", { length: 255 }),
+    accountRef: varchar("account_ref", { length: 255 }),
+    tokenCipher: varchar("token_cipher", { length: 1024 }).notNull(),
+    tokenIv: varchar("token_iv", { length: 255 }).notNull(),
+    tokenTag: varchar("token_tag", { length: 255 }).notNull(),
+    webhookSecret: varchar("webhook_secret", { length: 255 }),
+    status: varchar("status", { length: 30 })
       .notNull()
       .default("connected"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -592,12 +420,12 @@ export const messengerCredentials = pgTable(
 export const agentProfile = pgTable(
   "agent_profile",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     enabled: boolean("enabled").notNull().default(false),
-    name: text("name").notNull().default("Asistente"),
+    name: varchar("name", { length: 255 }).notNull().default("Asistente"),
     tone: text("tone"),
     instructions: text("instructions"),
     escalationRules: text("escalation_rules"),
@@ -611,11 +439,11 @@ export const agentProfile = pgTable(
 export const kbEntry = pgTable(
   "kb_entry",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["qa", "block"] }).notNull(),
+    kind: varchar("kind", { length: 20 }).notNull(),
     question: text("question"),
     answer: text("answer"),
     content: text("content"),
@@ -628,21 +456,19 @@ export const kbEntry = pgTable(
 export const template = pgTable(
   "template",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    language: text("language").notNull(),
-    category: text("category").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    language: varchar("language", { length: 20 }).notNull(),
+    category: varchar("category", { length: 50 }).notNull(),
     body: text("body").notNull(),
-    status: text("status", {
-      enum: ["draft", "pending", "approved", "rejected"],
-    })
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("draft"),
     rejectionReason: text("rejection_reason"),
-    waTemplateId: text("wa_template_id"),
+    waTemplateId: varchar("wa_template_id", { length: 255 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -658,116 +484,86 @@ export const template = pgTable(
 export const agentTestRun = pgTable(
   "agent_test_run",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    status: text("status", { enum: ["running", "done", "failed"] })
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("running"),
-    score: integer("score"),
+    score:   integer("score"),
     error: text("error"),
     startedAt: timestamp("started_at").notNull().defaultNow(),
     finishedAt: timestamp("finished_at"),
   },
   (t) => [
-    // Lock de concurrencia en BD: máximo 1 corrida activa por organización.
-    uniqueIndex("test_run_org_running_uq")
-      .on(t.organizationId)
-      .where(sql`${t.status} = 'running'`),
     index("test_run_org_idx").on(t.organizationId, t.startedAt),
+    index("test_run_org_status_idx").on(t.organizationId, t.status),
   ]
 );
 
 /* ============================================================
  * 015 — Motor de agenda (detrás de la bandera AGENDA)
- *
- * Las tablas se crean SIEMPRE, encendida o apagada la bandera: una tabla
- * vacía es inerte, y a cambio todas las instancias del mundo comparten la
- * misma estructura y la misma cadena de migraciones (ADR-001).
  * ============================================================ */
 
-/** Configuración de la agenda del negocio: una fila por organización. */
 export const calendarSettings = pgTable(
   "calendar_settings",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /** `{"mon":[{"start":"09:00","end":"18:00"}]}` — hora de PARED, no UTC. */
     weeklyHours: jsonb("weekly_hours").notNull(),
-    slotMinutes: integer("slot_minutes").notNull().default(30),
-    bufferMinutes: integer("buffer_minutes").notNull().default(0),
-    minNoticeHours: integer("min_notice_hours").notNull().default(2),
-    maxDaysAhead: integer("max_days_ahead").notNull().default(7),
-    timezone: text("timezone").notNull().default("America/Mexico_City"),
-    /**
-     * Cómo se entrega la reunión. `enlace-fijo` no habla con nadie: es el
-     * default y la razón de que encender la agenda no exija terceros.
-     * Un fork agrega el suyo al catálogo del código sin tocar esta columna.
-     */
-    connector: text("connector").notNull().default("enlace-fijo"),
-    /** Sala fija del conector `enlace-fijo`; null ⇒ citas sin link. */
-    meetingLink: text("meeting_link"),
+    slotMinutes:   integer("slot_minutes").notNull().default(30),
+    bufferMinutes:   integer("buffer_minutes").notNull().default(0),
+    minNoticeHours:   integer("min_notice_hours").notNull().default(2),
+    maxDaysAhead:   integer("max_days_ahead").notNull().default(7),
+    timezone: varchar("timezone", { length: 50 })
+      .notNull()
+      .default("America/Mexico_City"),
+    connector: varchar("connector", { length: 50 })
+      .notNull()
+      .default("enlace-fijo"),
+    meetingLink: varchar("meeting_link", { length: 1024 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("calendar_settings_org_uq").on(t.organizationId)]
 );
 
-/**
- * La cita. Una sola tabla para sesiones y bloqueos manuales: un bloqueo es
- * una cita sin contacto que ocupa agenda igual.
- */
 export const booking = pgTable(
   "booking",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["session", "block"] })
+    kind: varchar("kind", { length: 20 })
       .notNull()
       .default("session"),
-    status: text("status", {
-      enum: ["agendada", "realizada", "no_show", "cancelada"],
-    })
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("agendada"),
-    source: text("source", { enum: ["manual", "ai"] })
+    source: varchar("source", { length: 20 })
       .notNull()
       .default("manual"),
-    contactId: text("contact_id").references(() => contact.id, {
-      onDelete: "cascade",
-    }),
-    conversationId: text("conversation_id").references(() => conversation.id, {
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "cascade" }
+    ),
+    conversationId: varchar("conversation_id", { length: 255 }).references(
+      () => conversation.id,
+      { onDelete: "set null" }
+    ),
+    leadId: varchar("lead_id", { length: 255 }).references(() => lead.id, {
       onDelete: "set null",
     }),
-    leadId: text("lead_id").references(() => lead.id, { onDelete: "set null" }),
-    /** Instante UTC. El horario semanal es de pared; esto ya está resuelto. */
     scheduledAt: timestamp("scheduled_at").notNull(),
-    /** Capturada al crear: cambiar la configuración no reescribe el pasado. */
-    durationMinutes: integer("duration_minutes").notNull(),
-    /**
-     * Con qué conector nació la ENTREGA. Reprogramar y cancelar hablan con
-     * ESTE, no con el activo: si el negocio cambia de proveedor, las citas ya
-     * confirmadas siguen viviendo donde se crearon.
-     */
-    connector: text("connector"),
-    /** Id de la reunión/evento en el proveedor; null en `enlace-fijo`. */
-    externalRef: text("external_ref"),
-    /**
-     * El link que se le dio al cliente. Se COPIA, no se lee de la
-     * configuración: la cita es un hecho histórico, no una vista del presente.
-     */
-    meetingLink: text("meeting_link"),
-    /**
-     * El proveedor falló al crear la reunión. La cita existe igual —un tercero
-     * caído no cuesta la conversión— y el operador reintenta desde "Citas".
-     */
+    durationMinutes:   integer("duration_minutes").notNull(),
+    connector: varchar("connector", { length: 50 }),
+    externalRef: varchar("external_ref", { length: 255 }),
+    meetingLink: varchar("meeting_link", { length: 1024 }),
     linkPending: boolean("link_pending").notNull().default(false),
-    /** Conversación del Laboratorio: jamás llama a un conector real. */
     isTest: boolean("is_test").notNull().default(false),
     notes: text("notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -776,69 +572,42 @@ export const booking = pgTable(
   (t) => [
     index("booking_org_when_idx").on(t.organizationId, t.scheduledAt),
     index("booking_org_status_idx").on(t.organizationId, t.status),
-    /**
-     * Anti doble-booking ATÓMICO. La re-validación al confirmar deja una
-     * ventana entre leer y escribir; esto la cierra en la BASE: dos
-     * confirmaciones simultáneas del mismo instante no pueden ganar las dos, y
-     * la perdedora recibe un 23505 que el servicio traduce a `slot_taken` con
-     * alternativas frescas. Las citas de prueba quedan fuera: no consumen la
-     * agenda real.
-     */
-    uniqueIndex("booking_org_active_slot_uq")
+    uniqueIndex("booking_org_active_slot_idx")
       .on(t.organizationId, t.scheduledAt)
-      .where(
-        sql`${t.status} in ('agendada','realizada') and ${t.isTest} = false`
-      ),
+      .where(sql`${t.status} = 'agendada' AND ${t.isTest} = false`),
   ]
 );
 
-/**
- * La memoria de lo ofrecido. Es lo que hace verificable el requisito
- * innegociable: sin fila aquí, no hay reserva.
- *
- * Vive en el CRM y no en quien conduce la conversación porque Vocero promete
- * "conecta TU propio cerebro": con la garantía del lado del cliente, cualquier
- * cerebro podría reservar un instante que jamás se ofreció y el CRM lo
- * aceptaría.
- */
 export const offeredSlot = pgTable(
   "offered_slot",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    conversationId: text("conversation_id")
+    conversationId: varchar("conversation_id", { length: 255 })
       .notNull()
       .references(() => conversation.id, { onDelete: "cascade" }),
     startUtc: timestamp("start_utc").notNull(),
-    /** La etiqueta EXACTA que se le mostró al cliente. */
-    label: text("label").notNull(),
+    label: varchar("label", { length: 255 }).notNull(),
     offeredAt: timestamp("offered_at").notNull().defaultNow(),
   },
   (t) => [index("offered_slot_conv_idx").on(t.conversationId, t.startUtc)]
 );
 
-/**
- * Credenciales del conector Zoom (app Server-to-Server del propio negocio).
- * Tabla explícita como las de WhatsApp e Instagram: unas credenciales tienen
- * forma fija y conocida, y así conservan tipado e índices. El secreto se cifra
- * con los mismos helpers; un segundo mecanismo sería otro que auditar.
- */
 export const zoomCredentials = pgTable(
   "zoom_credentials",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    accountId: text("account_id").notNull(),
-    clientId: text("client_id").notNull(),
-    secretCipher: text("secret_cipher").notNull(),
-    secretIv: text("secret_iv").notNull(),
-    secretTag: text("secret_tag").notNull(),
-    /** `error` SE ESCRIBE cuando el proveedor rechaza la autenticación. */
-    status: text("status", { enum: ["connected", "error"] })
+    accountId: varchar("account_id", { length: 255 }).notNull(),
+    clientId: varchar("client_id", { length: 255 }).notNull(),
+    secretCipher: varchar("secret_cipher", { length: 1024 }).notNull(),
+    secretIv: varchar("secret_iv", { length: 255 }).notNull(),
+    secretTag: varchar("secret_tag", { length: 255 }).notNull(),
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("connected"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -847,27 +616,24 @@ export const zoomCredentials = pgTable(
   (t) => [uniqueIndex("zoom_credentials_org_uq").on(t.organizationId)]
 );
 
-/**
- * Credenciales del conector Google (Calendar + Meet), de la app de Google
- * Cloud del propio negocio. DOS secretos cifrados: el client secret y el
- * refresh token pegado una sola vez.
- */
 export const googleCredentials = pgTable(
   "google_credentials",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    clientId: text("client_id").notNull(),
-    clientSecretCipher: text("client_secret_cipher").notNull(),
-    clientSecretIv: text("client_secret_iv").notNull(),
-    clientSecretTag: text("client_secret_tag").notNull(),
-    refreshTokenCipher: text("refresh_token_cipher").notNull(),
-    refreshTokenIv: text("refresh_token_iv").notNull(),
-    refreshTokenTag: text("refresh_token_tag").notNull(),
-    calendarId: text("calendar_id").notNull().default("primary"),
-    status: text("status", { enum: ["connected", "error"] })
+    clientId: varchar("client_id", { length: 255 }).notNull(),
+    clientSecretCipher: varchar("client_secret_cipher", { length: 1024 }).notNull(),
+    clientSecretIv: varchar("client_secret_iv", { length: 255 }).notNull(),
+    clientSecretTag: varchar("client_secret_tag", { length: 255 }).notNull(),
+    refreshTokenCipher: varchar("refresh_token_cipher", { length: 1024 }).notNull(),
+    refreshTokenIv: varchar("refresh_token_iv", { length: 255 }).notNull(),
+    refreshTokenTag: varchar("refresh_token_tag", { length: 255 }).notNull(),
+    calendarId: varchar("calendar_id", { length: 255 })
+      .notNull()
+      .default("primary"),
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("connected"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -879,23 +645,22 @@ export const googleCredentials = pgTable(
 export const agentTestCase = pgTable(
   "agent_test_case",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    runId: text("run_id")
+    runId: varchar("run_id", { length: 255 })
       .notNull()
       .references(() => agentTestRun.id, { onDelete: "cascade" }),
-    persona: text("persona").notNull(),
-    conversationId: text("conversation_id").references(() => conversation.id, {
-      onDelete: "set null",
-    }),
+    persona: varchar("persona", { length: 255 }).notNull(),
+    conversationId: varchar("conversation_id", { length: 255 }).references(
+      () => conversation.id,
+      { onDelete: "set null" }
+    ),
     transcript: jsonb("transcript"),
-    veredicto: text("veredicto", { enum: ["verde", "amarillo", "rojo"] }),
+    veredicto: varchar("veredicto", { length: 20 }),
     hallazgos: jsonb("hallazgos"),
-    status: text("status", {
-      enum: ["pending", "running", "done", "judge_failed"],
-    })
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("pending"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -905,43 +670,28 @@ export const agentTestCase = pgTable(
 
 /* ============================================================
  * 016 — Atribución de anuncios y Conversions API
- * (detrás de la bandera ATRIBUCION)
  * ============================================================ */
 
-/**
- * De qué anuncio vino una conversación. El primer referral gana: el UNIQUE de
- * abajo es lo que vuelve idempotente la captura ante los reintentos de Meta,
- * en vez de un "consulta y luego inserta" que dos webhooks simultáneos
- * ganarían los dos.
- */
 export const adAttribution = pgTable(
   "ad_attribution",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    contactId: text("contact_id")
+    contactId: varchar("contact_id", { length: 255 })
       .notNull()
       .references(() => contact.id, { onDelete: "cascade" }),
-    conversationId: text("conversation_id")
+    conversationId: varchar("conversation_id", { length: 255 })
       .notNull()
       .references(() => conversation.id, { onDelete: "cascade" }),
-    /**
-     * El identificador del clic en el anuncio. Es la llave de TODO: sin él no
-     * hay nada que reportarle a Meta. Nullable porque hay referrals sin clid.
-     */
-    ctwaClid: text("ctwa_clid"),
-    sourceId: text("source_id"),
-    sourceType: text("source_type"),
-    sourceUrl: text("source_url"),
-    headline: text("headline"),
+    ctwaClid: varchar("ctwa_clid", { length: 255 }),
+    sourceId: varchar("source_id", { length: 255 }),
+    sourceType: varchar("source_type", { length: 50 }),
+    sourceUrl: varchar("source_url", { length: 1024 }),
+    headline: varchar("headline", { length: 512 }),
     body: text("body"),
-    mediaType: text("media_type"),
-    /**
-     * Payload íntegro del referral. Es la póliza contra "Meta agregó un campo":
-     * nada se pierde y un fork puede pintar el creativo sin migrar nada.
-     */
+    mediaType: varchar("media_type", { length: 50 }),
     raw: jsonb("raw").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -954,43 +704,30 @@ export const adAttribution = pgTable(
   ]
 );
 
-/**
- * Cada intento de reportarle un desenlace a Meta. Las filas `skipped` no son
- * basura: son la respuesta a "¿por qué este lead no aparece en Meta?", que sin
- * ellas se contesta adivinando.
- */
 export const conversionEvent = pgTable(
   "conversion_event",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    conversationId: text("conversation_id")
+    conversationId: varchar("conversation_id", { length: 255 })
       .notNull()
       .references(() => conversation.id, { onDelete: "cascade" }),
-    attributionId: text("attribution_id").references(() => adAttribution.id, {
-      onDelete: "set null",
-    }),
-    /** Nombre del catálogo de Meta tal cual (`QualifiedLead`, `Purchase`). */
-    eventName: text("event_name").notNull(),
-    status: text("status", { enum: ["pending", "sent", "failed", "skipped"] })
+    attributionId: varchar("attribution_id", { length: 255 }).references(
+      () => adAttribution.id,
+      { onDelete: "set null" }
+    ),
+    eventName: varchar("event_name", { length: 100 }).notNull(),
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("pending"),
-    /** Motivo legible: por qué se omitió, o qué contestó Meta. */
     error: text("error"),
-    /**
-     * Acuse del envío. Es la única referencia que Meta pide para rastrear un
-     * evento de su lado; sin persistirla, un `sent` no se puede reclamar.
-     */
-    fbTraceId: text("fb_trace_id"),
+    fbTraceId: varchar("fb_trace_id", { length: 255 }),
     sentAt: timestamp("sent_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
-    // El dedup ES este índice: la fila se inserta ANTES de hablar con Meta y
-    // con ON CONFLICT DO NOTHING. Dos movimientos simultáneos del mismo lead
-    // no pueden mandar dos compras.
     uniqueIndex("conversion_event_org_conv_name_uq").on(
       t.organizationId,
       t.conversationId,
@@ -1003,34 +740,506 @@ export const conversionEvent = pgTable(
   ]
 );
 
-/** Conexión del negocio con su dataset de Meta (token cifrado en reposo). */
 export const capiSettings = pgTable(
   "capi_settings",
   {
-    id: text("id").primaryKey(),
-    organizationId: text("organization_id")
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    datasetId: text("dataset_id").notNull(),
-    tokenCipher: text("token_cipher").notNull(),
-    tokenIv: text("token_iv").notNull(),
-    tokenTag: text("token_tag").notNull(),
-    /**
-     * Qué etapa significa "lead calificado" PARA ESTE NEGOCIO. Las etapas
-     * sembradas de Vocero no incluyen ninguna con ese nombre y cada quien
-     * renombra las suyas, así que se elige en vez de adivinarse. NULL = ese
-     * evento no se emite. `set null` a propósito: borrar la etapa apaga el
-     * evento, no rompe la configuración.
-     */
-    qualifiedStageId: text("qualified_stage_id").references(
+    datasetId: varchar("dataset_id", { length: 255 }).notNull(),
+    tokenCipher: varchar("token_cipher", { length: 1024 }).notNull(),
+    tokenIv: varchar("token_iv", { length: 255 }).notNull(),
+    tokenTag: varchar("token_tag", { length: 255 }).notNull(),
+    qualifiedStageId: varchar("qualified_stage_id", { length: 255 }).references(
       () => pipelineStage.id,
       { onDelete: "set null" }
     ),
-    status: text("status", { enum: ["connected", "error"] })
+    status: varchar("status", { length: 20 })
       .notNull()
       .default("connected"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("capi_settings_org_uq").on(t.organizationId)]
+);
+
+/* ============================================================
+ * WAHA — Credenciales del adaptador WhatsApp HTTP
+ * ============================================================ */
+
+export const wahaCredentials = pgTable(
+  "waha_credentials",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    baseUrl: varchar("base_url", { length: 1024 }).notNull(),
+    apiKeyCipher: varchar("api_key_cipher", { length: 1024 }).notNull(),
+    apiKeyIv: varchar("api_key_iv", { length: 255 }).notNull(),
+    apiKeyTag: varchar("api_key_tag", { length: 255 }).notNull(),
+    sessionName: varchar("session_name", { length: 100 }).notNull().default("default"),
+    status: varchar("status", { length: 30 })
+      .notNull()
+      .default("connected"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("waha_credentials_org_uq").on(t.organizationId),
+  ]
+);
+
+/* ============================================================
+ * Webhooks salientes — configurables por organización
+ * ============================================================ */
+
+export const outboundWebhook = pgTable(
+  "outbound_webhook",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    url: varchar("url", { length: 1024 }).notNull(),
+    secretCipher: varchar("secret_cipher", { length: 1024 }),
+    secretIv: varchar("secret_iv", { length: 255 }),
+    secretTag: varchar("secret_tag", { length: 255 }),
+    events: jsonb("events").notNull(),
+    active: boolean("active").notNull().default(true),
+    maxRetries:   integer("max_retries").notNull().default(3),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("outbound_webhook_org_idx").on(t.organizationId),
+  ]
+);
+
+export const outboundDelivery = pgTable(
+  "outbound_delivery",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    webhookId: varchar("webhook_id", { length: 255 })
+      .notNull()
+      .references(() => outboundWebhook.id, { onDelete: "cascade" }),
+    event: varchar("event", { length: 100 }).notNull(),
+    payload: jsonb("payload").notNull(),
+    status: varchar("status", { length: 20 })
+      .notNull()
+      .default("pending"),
+    attempts:   integer("attempts").notNull().default(0),
+    lastStatusCode:   integer("last_status_code"),
+    lastError: text("last_error"),
+    nextRetryAt: timestamp("next_retry_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    deliveredAt: timestamp("delivered_at"),
+  },
+  (t) => [
+    index("outbound_delivery_org_idx").on(t.organizationId, t.createdAt),
+    index("outbound_delivery_webhook_idx").on(t.webhookId),
+    index("outbound_delivery_status_idx").on(t.status, t.nextRetryAt),
+  ]
+);
+
+/* ============================================================
+ * Proyectos — seguimiento de proyectos de clientes
+ * ============================================================ */
+
+export const project = pgTable(
+  "project",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    code: varchar("code", { length: 50 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    service: varchar("service", { length: 100 }),
+    estado: varchar("estado", { length: 20 })
+      .notNull()
+      .default("activo"),
+    stageId: varchar("stage_id", { length: 255 }).references(
+      () => pipelineStage.id,
+      { onDelete: "set null" }
+    ),
+    avance:   integer("avance").notNull().default(0),
+    prioridad: varchar("prioridad", { length: 20 }),
+    riesgo: varchar("riesgo", { length: 20 }),
+    notas: text("notas"),
+    assignedUserId: varchar("assigned_user_id", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    nextMeetingAt: timestamp("next_meeting_at"),
+    lastActivityAt: timestamp("last_activity_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("project_org_code_uq").on(t.organizationId, t.code),
+    index("project_org_idx").on(t.organizationId),
+    index("project_contact_idx").on(t.contactId),
+  ]
+);
+
+export const projectStageEvent = pgTable(
+  "project_stage_event",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id", { length: 255 })
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    fromStageId: varchar("from_stage_id", { length: 255 }).references(
+      () => pipelineStage.id,
+      { onDelete: "set null" }
+    ),
+    fromStageName: varchar("from_stage_name", { length: 255 }),
+    toStageId: varchar("to_stage_id", { length: 255 }).references(
+      () => pipelineStage.id,
+      { onDelete: "set null" }
+    ),
+    toStageName: varchar("to_stage_name", { length: 255 }).notNull(),
+    actorUserId: varchar("actor_user_id", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    source: varchar("source", { length: 20 })
+      .notNull()
+      .default("dueno"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("project_stage_event_org_idx").on(t.organizationId, t.createdAt),
+    index("project_stage_event_project_idx").on(t.projectId, t.createdAt),
+  ]
+);
+
+export const projectTask = pgTable(
+  "project_task",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id", { length: 255 })
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    assigneeId: varchar("assignee_id", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    priority: varchar("priority", { length: 20 }),
+    estado: varchar("estado", { length: 20 })
+      .notNull()
+      .default("pendiente"),
+    dueDate: timestamp("due_date"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("project_task_org_idx").on(t.organizationId),
+    index("project_task_project_idx").on(t.projectId),
+  ]
+);
+
+/* ============================================================
+ * Cotizador — catálogo y cotizaciones versionadas
+ * ============================================================ */
+
+export const catalogProduct = pgTable(
+  "catalog_product",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    price:   integer("price").notNull().default(0),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    available: boolean("available").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("catalog_product_org_idx").on(t.organizationId),
+  ]
+);
+
+export const quote = pgTable(
+  "quote",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    quoteNumber: varchar("quote_number", { length: 50 }).notNull(),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    status: varchar("status", { length: 20 })
+      .notNull()
+      .default("draft"),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    validUntil: timestamp("valid_until"),
+    subtotal:   integer("subtotal").notNull().default(0),
+    discountType: varchar("discount_type", { length: 20 }),
+    discountValue:   integer("discount_value"),
+    discountAmount:   integer("discount_amount").notNull().default(0),
+    taxRate:   integer("tax_rate").notNull().default(16),
+    taxAmount:   integer("tax_amount").notNull().default(0),
+    total:   integer("total").notNull().default(0),
+    paymentPlan: jsonb("payment_plan"),
+    paymentMethod: jsonb("payment_method"),
+    sendChannel: varchar("send_channel", { length: 20 }),
+    message: text("message"),
+    version:   integer("version").notNull().default(1),
+    lockedAt: timestamp("locked_at"),
+    createdBy: varchar("created_by", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("quote_org_number_uq").on(t.organizationId, t.quoteNumber),
+    index("quote_org_idx").on(t.organizationId),
+    index("quote_contact_idx").on(t.contactId),
+  ]
+);
+
+export const quoteItem = pgTable(
+  "quote_item",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    quoteId: varchar("quote_id", { length: 255 })
+      .notNull()
+      .references(() => quote.id, { onDelete: "cascade" }),
+    productId: varchar("product_id", { length: 255 }).references(
+      () => catalogProduct.id,
+      { onDelete: "set null" }
+    ),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    quantity:   integer("quantity").notNull().default(1),
+    unitPrice:   integer("unit_price").notNull().default(0),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    position:   integer("position").notNull().default(0),
+  },
+  (t) => [
+    index("quote_item_quote_idx").on(t.quoteId),
+  ]
+);
+
+export const quoteEvent = pgTable(
+  "quote_event",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    quoteId: varchar("quote_id", { length: 255 })
+      .notNull()
+      .references(() => quote.id, { onDelete: "cascade" }),
+    eventType: varchar("event_type", { length: 50 }).notNull(),
+    channel: varchar("channel", { length: 20 }),
+    actorId: varchar("actor_id", { length: 255 }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("quote_event_org_idx").on(t.organizationId, t.createdAt),
+    index("quote_event_quote_idx").on(t.quoteId),
+  ]
+);
+
+/* ============================================================
+ * Cobranza — cuentas por cobrar, pagos y gastos
+ * ============================================================ */
+
+export const charge = pgTable(
+  "charge",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    quoteId: varchar("quote_id", { length: 255 }).references(
+      () => quote.id,
+      { onDelete: "set null" }
+    ),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    concept: varchar("concept", { length: 255 }).notNull(),
+    totalAmount:   integer("total_amount").notNull().default(0),
+    paidAmount:   integer("paid_amount").notNull().default(0),
+    dueDate: timestamp("due_date"),
+    status: varchar("status", { length: 20 })
+      .notNull()
+      .default("pendiente"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("charge_org_idx").on(t.organizationId),
+    index("charge_contact_idx").on(t.contactId),
+    index("charge_status_idx").on(t.status),
+  ]
+);
+
+export const payment = pgTable(
+  "payment",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    chargeId: varchar("charge_id", { length: 255 }).references(
+      () => charge.id,
+      { onDelete: "set null" }
+    ),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    fecha: timestamp("fecha").notNull().defaultNow(),
+    monto:   integer("monto").notNull(),
+    metodo: varchar("metodo", { length: 50 }).notNull(),
+    referencia: varchar("referencia", { length: 255 }),
+    comprobanteUrl: varchar("comprobante_url", { length: 1024 }),
+    notas: text("notas"),
+    createdBy: varchar("created_by", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("payment_org_idx").on(t.organizationId),
+    index("payment_charge_idx").on(t.chargeId),
+    index("payment_fecha_idx").on(t.fecha),
+  ]
+);
+
+export const expense = pgTable(
+  "expense",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    fecha: timestamp("fecha").notNull().defaultNow(),
+    descripcion: varchar("descripcion", { length: 255 }).notNull(),
+    categoria: varchar("categoria", { length: 100 }).notNull(),
+    proveedor: varchar("proveedor", { length: 255 }),
+    monto:   integer("monto").notNull(),
+    metodo: varchar("metodo", { length: 50 }).notNull(),
+    referencia: varchar("referencia", { length: 255 }),
+    comprobanteUrl: varchar("comprobante_url", { length: 1024 }),
+    notas: text("notas"),
+    createdBy: varchar("created_by", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("expense_org_idx").on(t.organizationId),
+    index("expense_fecha_idx").on(t.fecha),
+    index("expense_categoria_idx").on(t.categoria),
+  ]
+);
+
+/* ============================================================
+ * Buzón Hostinger — cuentas de correo IMAP/SMTP
+ * ============================================================ */
+
+export const emailAccount = pgTable(
+  "email_account",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 255 }).notNull(),
+    emailAddress: varchar("email_address", { length: 255 }).notNull(),
+    fromName: varchar("from_name", { length: 255 }),
+    smtpHost: varchar("smtp_host", { length: 255 }).notNull(),
+    smtpPort:   integer("smtp_port").notNull().default(465),
+    smtpSecure: boolean("smtp_secure").notNull().default(true),
+    smtpUser: varchar("smtp_user", { length: 255 }).notNull(),
+    smtpPassCipher: varchar("smtp_pass_cipher", { length: 1024 }).notNull(),
+    smtpPassIv: varchar("smtp_pass_iv", { length: 255 }).notNull(),
+    smtpPassTag: varchar("smtp_pass_tag", { length: 255 }).notNull(),
+    imapHost: varchar("imap_host", { length: 255 }).notNull(),
+    imapPort:   integer("imap_port").notNull().default(993),
+    imapSecure: boolean("imap_secure").notNull().default(true),
+    imapUser: varchar("imap_user", { length: 255 }).notNull(),
+    imapPassCipher: varchar("imap_pass_cipher", { length: 1024 }).notNull(),
+    imapPassIv: varchar("imap_pass_iv", { length: 255 }).notNull(),
+    imapPassTag: varchar("imap_pass_tag", { length: 255 }).notNull(),
+    signature: text("signature"),
+    dailyLimit:   integer("daily_limit").notNull().default(100),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("email_account_org_idx").on(t.organizationId),
+  ]
+);
+
+export const emailMessage = pgTable(
+  "email_message",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    accountId: varchar("account_id", { length: 255 })
+      .notNull()
+      .references(() => emailAccount.id, { onDelete: "cascade" }),
+    messageId: varchar("message_id", { length: 512 }).notNull(),
+    threadId: varchar("thread_id", { length: 512 }),
+    from: varchar("from_email", { length: 255 }).notNull(),
+    to: jsonb("to").notNull(),
+    cc: jsonb("cc"),
+    subject: varchar("subject", { length: 1024 }),
+    bodyText: text("body_text"),
+    bodyHtml: text("body_html"),
+    attachments: jsonb("attachments"),
+    direction: varchar("direction", { length: 10 }).notNull(),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    campaignId: varchar("campaign_id", { length: 255 }),
+    seen: boolean("seen").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("email_message_account_message_uq").on(t.accountId, t.messageId),
+    index("email_message_org_idx").on(t.organizationId, t.createdAt),
+    index("email_message_thread_idx").on(t.threadId),
+    index("email_message_contact_idx").on(t.contactId),
+  ]
 );

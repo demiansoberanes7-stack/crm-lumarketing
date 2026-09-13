@@ -1,0 +1,2 @@
+DROP INDEX "conversation_org_contact_real_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "conversation_org_contact_real_idx" ON "conversation" USING btree ("organization_id","contact_id") WHERE "conversation"."is_test" = false;

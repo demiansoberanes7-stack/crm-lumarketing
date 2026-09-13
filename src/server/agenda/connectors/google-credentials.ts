@@ -42,7 +42,7 @@ export async function getGoogleCredentials(
       tag: row.refreshTokenTag,
     }),
     calendarId: row.calendarId,
-    status: row.status,
+    status: row.status as "connected" | "error",
   };
 }
 

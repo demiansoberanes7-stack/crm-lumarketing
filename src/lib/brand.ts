@@ -1,38 +1,31 @@
 /**
- * La marca Vocero — la misma de vocerocrm.com.
+ * La marca LUMARK — logo y colores de identidad.
  *
  * Vive aquí, sin React, porque la usan dos mundos: los componentes (el trazo
  * del panel lateral y del login) y el servidor (el favicon generado que se
- * sirve como texto). Tener el dibujo en un solo sitio es lo que garantiza que
- * la pestaña y la barra lateral enseñen la MISMA "v".
+ * sirve como texto).
  *
- * El trazo es una "v" caligráfica fluida con remate cian. El cuerpo se pinta
- * con `currentColor` (así hereda el acento white-label); el remate es una
- * constante de marca y NO se recalcula con el acento: es lo que la hace
- * reconocible.
+ * El trazo es una "L" geométrica con acento luminoso.
  */
 
-/** Cuerpo de la "v": se pinta con el color del contexto. */
+/** Cuerpo de la "L": se pinta con el color del contexto. */
 export const BRAND_MARK_BODY =
-  "M4 5c2 8 5 14.5 7.8 14.7 2.3.2 3.7-4.1 4.7-8.2";
+  "M4 4v16h2.5V11.5H16V9H6.5V4H4z";
 
-/** Remate corto, siempre cian. */
-export const BRAND_MARK_TAIL = "M16.5 11.5c.8-3 2-5.5 4-6.1";
+/** Remate luminoso, siempre ámbar dorado. */
+export const BRAND_MARK_TAIL = "M12 5h4v2h-4V5z";
 
 export const BRAND_MARK_STROKE = 3.4;
 
-/** Cian sobre fondos claros (texto azul al lado). */
-export const BRAND_CYAN = "#00c6f5";
+/** Dorado luminoso sobre fondos claros. */
+export const BRAND_CYAN = "#D4A843";
 
-/** Cian sobre el mosaico azul: un punto más claro para que no se hunda. */
-export const BRAND_CYAN_ON_TILE = "#3fdcff";
+/** Dorado luminoso sobre fondos oscuros. */
+export const BRAND_CYAN_ON_TILE = "#E8C060";
 
 /**
- * ¿Esta instancia se llama Vocero? Solo entonces se dibuja el logo: una
- * agencia que rebautizó el CRM para su cliente no debe ver la "v" de otro
- * producto en su barra lateral ni en su pestaña. El nombre por defecto es
- * "Vocero", así que una instancia sin configurar la ve de inmediato.
+ * ¿Esta instancia se llama LUMARK? Solo entonces se dibuja el logo.
  */
 export function isVoceroName(name: string): boolean {
-  return name.trim().toLowerCase() === "vocero";
+  return name.trim().toLowerCase() === "lumark";
 }

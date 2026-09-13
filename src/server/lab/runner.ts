@@ -26,11 +26,10 @@ export async function startRun(organizationId: string): Promise<string> {
   const db = getDb();
   let runId: string;
   try {
-    const inserted = await db
+    runId = newId("testRun");
+    await db
       .insert(schema.agentTestRun)
-      .values({ id: newId("testRun"), organizationId, status: "running" })
-      .returning();
-    runId = inserted[0]!.id;
+      .values({ id: runId, organizationId, status: "running" });
   } catch (err) {
     // Violación del índice parcial UNIQUE → ya hay una corrida activa.
     if (isUniqueViolation(err)) {
@@ -237,7 +236,7 @@ async function upsertTestContact(
   persona: Persona
 ): Promise<string> {
   const db = getDb();
-  const inserted = await db
+  const _inserted = await db
     .insert(schema.contact)
     .values({
       id: newId("contact"),
@@ -256,9 +255,7 @@ async function upsertTestContact(
         schema.contact.channel,
         schema.contact.waIdentity,
       ],
-    })
-    .returning();
-  if (inserted[0]) return inserted[0].id;
+    });
   const rows = await db
     .select({ id: schema.contact.id })
     .from(schema.contact)

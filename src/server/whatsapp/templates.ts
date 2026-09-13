@@ -132,7 +132,7 @@ export async function createTemplate(
   }
 
   const db = getDb();
-  const inserted = await db
+  await db
     .insert(schema.template)
     .values({
       id: newId("template"),
@@ -158,9 +158,19 @@ export async function createTemplate(
         waTemplateId,
         updatedAt: new Date(),
       },
-    })
-    .returning();
-  return inserted[0]!;
+    });
+  const [inserted] = await db
+    .select()
+    .from(schema.template)
+    .where(
+      and(
+        eq(schema.template.organizationId, organizationId),
+        eq(schema.template.name, name),
+        eq(schema.template.language, input.language)
+      )
+    )
+    .limit(1);
+  return inserted!;
 }
 
 function mapMetaStatus(
@@ -377,10 +387,11 @@ export async function sendTemplate(input: {
     },
   });
 
-  const inserted = await db
+  const messageId = newId("message");
+  await db
     .insert(schema.message)
     .values({
-      id: newId("message"),
+      id: messageId,
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       waMessageId,
@@ -389,9 +400,13 @@ export async function sendTemplate(input: {
       text: renderBody(template.body, values),
       status: "pending",
       origin: "template",
-    })
-    .returning();
-  const message = inserted[0]!;
+    });
+  const [message] = await db
+    .select()
+    .from(schema.message)
+    .where(eq(schema.message.id, messageId))
+    .limit(1);
+  if (!message) throw new Error("No se encontró el mensaje persistido");
 
   await db
     .update(schema.conversation)

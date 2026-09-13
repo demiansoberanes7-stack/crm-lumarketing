@@ -1,6 +1,6 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -35,17 +35,21 @@ export const POST = withAuth(async (session, req: Request) => {
   if (!body.ok) return body.response;
 
   const db = getDb();
-  const inserted = await db
+  const id = newId("kbEntry");
+  await db
     .insert(schema.kbEntry)
     .values({
-      id: newId("kbEntry"),
+      id,
       organizationId: session.organizationId,
       kind: body.data.kind,
       question: body.data.kind === "qa" ? body.data.question : null,
       answer: body.data.kind === "qa" ? body.data.answer : null,
       content: body.data.kind === "block" ? body.data.content : null,
-    })
-    .returning();
-  if (!inserted[0]) return apiError(500, "internal", "No se pudo crear");
-  return Response.json({ entry: inserted[0] }, { status: 201 });
+    });
+  const [entry] = await db
+    .select()
+    .from(schema.kbEntry)
+    .where(eq(schema.kbEntry.id, id))
+    .limit(1);
+  return Response.json({ entry }, { status: 201 });
 });

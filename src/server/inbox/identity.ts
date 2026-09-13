@@ -116,10 +116,11 @@ export async function getOrCreateContactByIdentity(
       }
       return { contact: existingIg, isNew: false };
     }
-    const createdIg = await db
+    const createdIgId = newId("contact");
+    await db
       .insert(schema.contact)
       .values({
-        id: newId("contact"),
+        id: createdIgId,
         organizationId,
         channel,
         waIdentity: resolved.identity,
@@ -133,8 +134,12 @@ export async function getOrCreateContactByIdentity(
           schema.contact.channel,
           schema.contact.waIdentity,
         ],
-      })
-      .returning();
+      });
+    const createdIg = await db
+      .select()
+      .from(schema.contact)
+      .where(eq(schema.contact.id, createdIgId))
+      .limit(1);
     if (createdIg[0]) return { contact: createdIg[0], isNew: true };
     const racedIg = await db
       .select()
@@ -212,10 +217,11 @@ export async function getOrCreateContactByIdentity(
     return { contact: existing, isNew: false };
   }
 
-  const inserted = await db
+  const insertedId = newId("contact");
+  await db
     .insert(schema.contact)
     .values({
-      id: newId("contact"),
+      id: insertedId,
       organizationId,
       waIdentity: resolved.identity,
       phone: resolved.phone,
@@ -228,8 +234,12 @@ export async function getOrCreateContactByIdentity(
         schema.contact.channel,
         schema.contact.waIdentity,
       ],
-    })
-    .returning();
+    });
+  const inserted = await db
+    .select()
+    .from(schema.contact)
+    .where(eq(schema.contact.id, insertedId))
+    .limit(1);
   if (inserted[0]) return { contact: inserted[0], isNew: true };
 
   // Carrera: otro request lo creó entre el SELECT y el INSERT.

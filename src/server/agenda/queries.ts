@@ -50,9 +50,9 @@ export async function listBookings(
     const parts = partsInTz(scheduledAtUtc, settings.timezone);
     return {
       id: r.booking.id,
-      kind: r.booking.kind,
-      status: r.booking.status,
-      source: r.booking.source,
+      kind: r.booking.kind as "session" | "block",
+      status: r.booking.status as "agendada" | "realizada" | "no_show" | "cancelada",
+      source: r.booking.source as "manual" | "ai",
       scheduledAtUtc,
       durationMinutes: r.booking.durationMinutes,
       date: parts.date,

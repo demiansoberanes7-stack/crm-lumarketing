@@ -1,4 +1,4 @@
-import { asc, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
@@ -33,15 +33,20 @@ export const POST = withAuth(async (session, req: Request) => {
     .from(schema.pipelineStage)
     .where(scoped(schema.pipelineStage.organizationId, session.organizationId));
 
-  const inserted = await db
+  const stageId = newId("stage");
+  await db
     .insert(schema.pipelineStage)
     .values({
-      id: newId("stage"),
+      id: stageId,
       organizationId: session.organizationId,
       name: body.data.name,
       position: (maxPos[0]?.max ?? -1) + 1,
       kind: "open",
-    })
-    .returning();
-  return Response.json({ stage: inserted[0] }, { status: 201 });
+    });
+  const [stage] = await db
+    .select()
+    .from(schema.pipelineStage)
+    .where(eq(schema.pipelineStage.id, stageId))
+    .limit(1);
+  return Response.json({ stage }, { status: 201 });
 });

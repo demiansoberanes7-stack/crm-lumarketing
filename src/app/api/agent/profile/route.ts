@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export const GET = withAuth(async (session) => {
   const db = getDb();
+  if (!db) return apiError(500, "db_error", "Base de datos no disponible");
   const rows = await db
     .select()
     .from(schema.agentProfile)
@@ -42,11 +43,10 @@ export const PUT = withAuth(async (session, req: Request) => {
   if (!body.ok) return body.response;
 
   const db = getDb();
-  const updated = await db
+  if (!db) return apiError(500, "db_error", "Base de datos no disponible");
+  await db
     .update(schema.agentProfile)
     .set({ ...body.data, updatedAt: new Date() })
-    .where(scoped(schema.agentProfile.organizationId, session.organizationId))
-    .returning();
-  if (!updated[0]) return apiError(404, "not_found", "Perfil no encontrado");
+    .where(scoped(schema.agentProfile.organizationId, session.organizationId));
   return Response.json({ ok: true });
 });

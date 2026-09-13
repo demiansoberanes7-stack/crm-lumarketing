@@ -32,12 +32,12 @@ function toCredentials(row: Row): MessengerCredentials {
   return {
     id: row.id,
     organizationId: row.organizationId,
-    source: row.source,
+    source: row.source as "zernio" | "meta",
     pageId: row.pageId,
     pageName: row.pageName,
     accountRef: row.accountRef,
     webhookSecret: row.webhookSecret,
-    status: row.status,
+    status: row.status as "connected" | "reconnect_required",
     token: decryptSecret({
       cipher: row.tokenCipher,
       iv: row.tokenIv,

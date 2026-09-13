@@ -25,7 +25,7 @@ function toCredentials(row: Row): Credentials {
     phoneNumberId: row.phoneNumberId,
     displayPhoneNumber: row.displayPhoneNumber,
     verifiedName: row.verifiedName,
-    status: row.status,
+    status: row.status as "connected" | "reconnect_required",
     token: decryptSecret({
       cipher: row.tokenCipher,
       iv: row.tokenIv,

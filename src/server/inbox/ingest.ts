@@ -22,6 +22,7 @@ import { atribucionEnabled } from "@/server/attribution/flag";
 import { recordAttribution } from "@/server/attribution/store";
 import { onLeadActivity } from "@/server/inbox/lead-activity";
 import { maybeRunAgentTurn } from "@/server/ai/trigger";
+import type { MessageDto, MessageMediaDto } from "@/lib/types";
 
 /** Tipos de contenido soportados; el resto se ignora sin error. */
 const SUPPORTED_TYPES = new Set([
@@ -114,10 +115,11 @@ async function attachMediaAsset(
 ): Promise<typeof schema.mediaAsset.$inferSelect | null> {
   try {
     const db = getDb();
-    const inserted = await db
+    const assetId = newId("mediaAsset");
+    await db
       .insert(schema.mediaAsset)
       .values({
-        id: newId("mediaAsset"),
+        id: assetId,
         organizationId,
         kind: media.kind,
         waMediaId: media.waMediaId,
@@ -126,19 +128,21 @@ async function attachMediaAsset(
         caption: media.caption,
         payload: media.payload ?? null,
         fetchStatus: media.fetchStatus,
-      })
-      .returning();
-    const asset = inserted[0];
-    if (!asset) return null;
+      });
     await db
       .update(schema.message)
-      .set({ mediaAssetId: asset.id })
+      .set({ mediaAssetId: assetId })
       .where(eq(schema.message.id, messageId));
-    if (asset.fetchStatus === "pending") {
+    if (media.fetchStatus === "pending") {
       // Descarga in-process, sin bloquear la ingesta; on-demand reintenta.
-      void ensureAssetAvailable(organizationId, asset.id).catch(() => {});
+      void ensureAssetAvailable(organizationId, assetId).catch(() => {});
     }
-    return asset;
+    const [asset] = await db
+      .select()
+      .from(schema.mediaAsset)
+      .where(eq(schema.mediaAsset.id, assetId))
+      .limit(1);
+    return asset ?? null;
   } catch (err) {
     console.warn(`[media] no se pudo registrar el adjunto de ${messageId}:`, err);
     return null;
@@ -170,18 +174,23 @@ export async function getOrCreateConversation(
   opts?: { channel?: Channel; threadRef?: string | null }
 ) {
   const db = getDb();
-  const inserted = await db
+  const convId = newId("conversation");
+  await db
     .insert(schema.conversation)
     .values({
-      id: newId("conversation"),
+      id: convId,
       organizationId,
       contactId,
       channel: opts?.channel ?? "whatsapp",
       channelThreadRef: opts?.threadRef ?? null,
     })
-    .onConflictDoNothing()
-    .returning();
-  if (inserted[0]) return inserted[0];
+    .onConflictDoNothing();
+  const [inserted] = await db
+    .select()
+    .from(schema.conversation)
+    .where(eq(schema.conversation.id, convId))
+    .limit(1);
+  if (inserted) return inserted;
 
   const rows = await db
     .select()
@@ -311,10 +320,11 @@ async function ingestManualEcho(
 
   // Idempotencia dura: los mensajes ya registrados (o echoes repetidos) no
   // duplican efectos — mismo wa_message_id → sin inserción ni handoff extra.
-  const inserted = await db
+  const msgId = newId("message");
+  await db
     .insert(schema.message)
     .values({
-      id: newId("message"),
+      id: msgId,
       organizationId,
       conversationId: conversation.id,
       waMessageId: echo.id,
@@ -325,9 +335,12 @@ async function ingestManualEcho(
       origin: "manual",
       waTimestamp,
     })
-    .onConflictDoNothing({ target: [schema.message.waMessageId] })
-    .returning();
-  const message = inserted[0];
+    .onConflictDoNothing({ target: [schema.message.waMessageId] });
+  const [message] = await db
+    .select()
+    .from(schema.message)
+    .where(eq(schema.message.id, msgId))
+    .limit(1);
   if (!message) return; // duplicado
 
   const mediaInput = mediaInputFrom(echo);
@@ -342,7 +355,7 @@ async function ingestManualEcho(
     .where(eq(schema.conversation.id, conversation.id));
 
   // Pausa automática de la IA, idempotente y atómica (solo si no hay handoff).
-  const paused = await db
+  await db
     .update(schema.conversation)
     .set({
       aiEnabled: false,
@@ -355,13 +368,10 @@ async function ingestManualEcho(
         eq(schema.conversation.id, conversation.id),
         sql`${schema.conversation.handoffAt} is null`
       )
-    )
-    .returning();
-  if (paused[0]) {
-    console.log(
-      `[webhook] respuesta manual del dueño en ${conversation.id} — IA pausada (manual_reply)`
     );
-  }
+  console.log(
+    `[webhook] respuesta manual del dueño en ${conversation.id} — IA pausada (manual_reply)`
+  );
 
   publish(organizationId, {
     type: "message.new",
@@ -399,7 +409,7 @@ export async function ingestInboundMessage(input: {
   const conversation = await getOrCreateConversation(
     organizationId,
     contact.id,
-    { channel: contact.channel, threadRef: input.threadRef ?? null }
+    { channel: contact.channel as Channel, threadRef: input.threadRef ?? null }
   );
 
   // 016 — Si el mensaje viene de un anuncio, capturar su origen ANTES del
@@ -419,10 +429,11 @@ export async function ingestInboundMessage(input: {
   const waTimestamp = toDate(input.timestamp);
 
   // Idempotencia dura: mismo wa_message_id → sin efectos adicionales.
-  const inserted = await db
+  const msgId = newId("message");
+  await db
     .insert(schema.message)
     .values({
-      id: newId("message"),
+      id: msgId,
       organizationId,
       conversationId: conversation.id,
       waMessageId: input.waMessageId,
@@ -432,9 +443,12 @@ export async function ingestInboundMessage(input: {
       status: "delivered",
       waTimestamp,
     })
-    .onConflictDoNothing({ target: [schema.message.waMessageId] })
-    .returning();
-  const message = inserted[0];
+    .onConflictDoNothing({ target: [schema.message.waMessageId] });
+  const [message] = await db
+    .select()
+    .from(schema.message)
+    .where(eq(schema.message.id, msgId))
+    .limit(1);
   if (!message) return; // duplicado
 
   const asset = input.media
@@ -484,20 +498,20 @@ export function serializeMessage(
     direction: m.direction,
     type: m.type,
     text: m.text,
-    status: m.status,
+    status: m.status as MessageDto["status"],
     /** Motivo del fallo, ya traducido a algo accionable (`describeSendError`). */
     error: m.error,
     aiGenerated: m.aiGenerated,
-    origin: m.origin,
+    origin: m.origin as MessageDto["origin"],
     media: media
       ? {
           assetId: media.id,
-          kind: media.kind,
+          kind: media.kind as MessageMediaDto["kind"],
           mimeType: media.mimeType,
           fileName: media.fileName,
           fileSize: media.fileSize,
           caption: media.caption,
-          fetchStatus: media.fetchStatus,
+          fetchStatus: media.fetchStatus as MessageMediaDto["fetchStatus"],
           payload: media.payload,
         }
       : null,

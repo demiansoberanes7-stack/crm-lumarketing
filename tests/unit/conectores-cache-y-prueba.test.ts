@@ -40,7 +40,7 @@ beforeEach(() => {
   // `getEnv()` valida el entorno entero: sin lo mínimo, el conector falla
   // antes de tocar la red y el test mediría otra cosa.
   vi.stubEnv("APP_BASE_URL", "http://localhost:3000");
-  vi.stubEnv("DATABASE_URL", "postgresql://t:t@localhost:5432/t");
+  vi.stubEnv("DATABASE_URL", "mysql://root:t@localhost:3306/t");
   vi.stubEnv("BETTER_AUTH_SECRET", "secret-de-test-suficiente");
   vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32, 3).toString("base64"));
   vi.stubEnv("META_WEBHOOK_VERIFY_TOKEN", "verify-test");
