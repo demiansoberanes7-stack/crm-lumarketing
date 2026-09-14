@@ -1,24 +1,23 @@
-# MySQL local para desarrollo. Uso: docker compose -f docker-compose.dev.yml up -d
+# PostgreSQL local para desarrollo. Uso: docker compose -f docker-compose.dev.yml up -d
 # `name` propio: evita colisionar con el proyecto del docker-compose.yml (Ruta B).
-name: vocero-dev
+name: lumark-dev
 
 services:
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: vocero
-    command: --default-authentication-plugin=mysql_native_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lumark}
+      POSTGRES_DB: lumark
     ports:
-      - "3306:3306"
+      - "5433:5432"
     volumes:
-      - vocero_dev_mysql:/var/lib/mysql
+      - lumark_dev_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 10
 
 volumes:
-  vocero_dev_mysql:
+  lumark_dev_postgres:

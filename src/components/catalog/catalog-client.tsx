@@ -110,6 +110,7 @@ export function CatalogClient() {
                     variant="ghost"
                     size="icon"
                     onClick={() => void deleteProduct(p.id)}
+                    aria-label="Eliminar producto"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>

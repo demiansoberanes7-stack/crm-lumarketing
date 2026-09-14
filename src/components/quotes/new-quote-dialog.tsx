@@ -119,7 +119,7 @@ export function NewQuoteDialog({
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-semibold">{initial ? "Editar cotización" : "Nueva Cotización"}</h3>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Cerrar">
             <X className="h-4 w-4" />
           </Button>
         </div>

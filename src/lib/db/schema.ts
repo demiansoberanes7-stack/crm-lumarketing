@@ -1103,6 +1103,7 @@ export const charge = pgTable(
     index("charge_org_idx").on(t.organizationId),
     index("charge_contact_idx").on(t.contactId),
     index("charge_status_idx").on(t.status),
+    uniqueIndex("charge_quote_uq").on(t.organizationId, t.quoteId),
   ]
 );
 

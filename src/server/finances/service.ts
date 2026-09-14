@@ -236,36 +236,35 @@ export async function createChargeFromQuote(
   organizationId: string,
   quoteId: string
 ): Promise<string> {
-  const db = getDb();
+  return getDb().transaction(async (db) => {
+    const [existing] = await db
+      .select({ id: schema.charge.id })
+      .from(schema.charge)
+      .where(scoped(schema.charge.organizationId, organizationId, eq(schema.charge.quoteId, quoteId)))
+      .limit(1).for("update");
+    if (existing) return existing.id;
 
-  // Verificar si ya existe una cuenta por cobrar para esta cotización
-  const [existing] = await db
-    .select({ id: schema.charge.id })
-    .from(schema.charge)
-    .where(scoped(schema.charge.organizationId, organizationId, eq(schema.charge.quoteId, quoteId)))
-    .limit(1);
-  if (existing) return existing.id;
+    const id = newId("charge");
 
-  const id = newId("charge");
+    const [quote] = await db
+      .select()
+      .from(schema.quote)
+      .where(scoped(schema.quote.organizationId, organizationId, eq(schema.quote.id, quoteId)))
+      .limit(1);
 
-  const [quote] = await db
-    .select()
-    .from(schema.quote)
-    .where(scoped(schema.quote.organizationId, organizationId, eq(schema.quote.id, quoteId)))
-    .limit(1);
+    if (!quote) throw new Error("Cotización no encontrada");
 
-  if (!quote) throw new Error("Cotización no encontrada");
+    await db.insert(schema.charge).values({
+      id,
+      organizationId,
+      quoteId,
+      contactId: quote.contactId,
+      concept: `Cotización ${quote.quoteNumber}`,
+      totalAmount: quote.total,
+      paidAmount: 0,
+      status: "pendiente",
+    });
 
-  await db.insert(schema.charge).values({
-    id,
-    organizationId,
-    quoteId,
-    contactId: quote.contactId,
-    concept: `Cotización ${quote.quoteNumber}`,
-    totalAmount: quote.total,
-    paidAmount: 0,
-    status: "pendiente",
+    return id;
   });
-
-  return id;
 }

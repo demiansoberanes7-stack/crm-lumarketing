@@ -39,7 +39,7 @@
 | Variable | Valor |
 |---|---|
 | `APP_BASE_URL` | `https://<dominio>` |
-| `DATABASE_URL` | `mysql://root:<MYSQL_ROOT_PASSWORD>@<host-mysql>:3306/vocero` |
+| `DATABASE_URL` | `postgres://postgres:<POSTGRES_PASSWORD>@<host>:5432/lumark` |
 | `POSTGRES_PASSWORD` | generado |
 | `BETTER_AUTH_SECRET` | generado |
 | `ENCRYPTION_KEY` | generado (base64, 44 caracteres) |
@@ -53,7 +53,7 @@
 ## Ruta A — Coolify (con el MCP de Coolify)
 
 1. **Base de datos**: crea un servicio PostgreSQL 16 en el proyecto
-   (`database` tipo `mysql`), con la contraseña generada y base `vocero`.
+   (`database` tipo `PostgreSQL`), con la contraseña generada y base `lumark`.
    Anota su host interno (algo como `<uuid>:5432`).
 2. **Aplicación**: crea una app tipo **repositorio público** apuntando a
    `https://github.com/kevinrivm/vocero-crm` (rama `main`, build pack

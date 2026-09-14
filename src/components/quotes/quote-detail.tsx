@@ -91,7 +91,7 @@ export function QuoteDetail({
             {STATUS_LABELS[quote.status] ?? quote.status}
           </Badge>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">
           <X className="h-4 w-4" />
         </Button>
       </CardHeader>
@@ -105,6 +105,7 @@ export function QuoteDetail({
         </div>
 
         <table className="mb-4 w-full text-sm">
+          <caption className="sr-only">Artículos de la cotización</caption>
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="pb-1 font-medium">Artículo</th>
