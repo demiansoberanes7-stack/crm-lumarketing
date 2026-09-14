@@ -188,7 +188,6 @@ export function ProjectDetail({
               {STAGES.map((stage, i) => {
                 const isCurrent = i === project.currentStageIndex;
                 const isCompleted = i < project.currentStageIndex;
-                const _isFuture = i > project.currentStageIndex;
                 return (
                   <div
                     key={stage}

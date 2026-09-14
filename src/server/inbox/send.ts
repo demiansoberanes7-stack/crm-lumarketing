@@ -205,7 +205,7 @@ async function prepareSend(
     const waha = await getWahaCredentialsFull(organizationId);
     if (!waha) throw new SendError("not_connected", "Configura WAHA en Ajustes");
     if (!row.contact.phone) throw new SendError("meta_error", "WAHA necesita un contacto con teléfono; esta identidad de Meta no es compatible.");
-    const recipient = `${row.contact.phone.replace(/\D/g, "")}@c.us`;
+    const recipient = `${row.contact.phone.replace(/\D/g, "")}@s.whatsapp.net`;
     return { conversation: row.conversation, credentials: null, destinatario: { to: recipient }, recipient, waha };
   }
   const credentials = await getCredentialsByOrg(organizationId);

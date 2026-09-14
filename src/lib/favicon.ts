@@ -1,9 +1,9 @@
 import {
-  BRAND_CYAN_ON_TILE,
+  BRAND_ACCENT_ON_TILE,
   BRAND_MARK_BODY,
   BRAND_MARK_STROKE,
   BRAND_MARK_TAIL,
-  isVoceroName,
+  isLumarkName,
 } from "./brand";
 import { resolveAccentSet, type Branding } from "./branding";
 
@@ -103,7 +103,7 @@ export function faviconInitial(name: string): string {
  */
 export function generatedFaviconSvg(branding: Branding): string {
   const { accent, hover, fg } = resolveAccentSet(branding.accent);
-  if (isVoceroName(branding.name)) return voceroFaviconSvg(accent, hover);
+  if (isLumarkName(branding.name)) return voceroFaviconSvg(accent, hover);
   const letra = faviconInitial(branding.name)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;");
@@ -130,7 +130,7 @@ function voceroFaviconSvg(from: string, to: string): string {
     `<rect width="64" height="64" rx="14" fill="url(#g)"/>`,
     `<g transform="translate(5.6 5.6) scale(2.2)" fill="none" stroke-linecap="round">`,
     `<path d="${BRAND_MARK_BODY}" stroke="#ffffff" stroke-width="${BRAND_MARK_STROKE}"/>`,
-    `<path d="${BRAND_MARK_TAIL}" stroke="${BRAND_CYAN_ON_TILE}" stroke-width="${BRAND_MARK_STROKE}"/>`,
+    `<path d="${BRAND_MARK_TAIL}" stroke="${BRAND_ACCENT_ON_TILE}" stroke-width="${BRAND_MARK_STROKE}"/>`,
     `</g></svg>`,
   ].join("");
 }

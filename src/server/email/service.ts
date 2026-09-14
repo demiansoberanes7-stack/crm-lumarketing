@@ -155,8 +155,11 @@ export async function syncInbox(organizationId: string, accountId: string): Prom
       });
 
       const db = getDb();
+      let processed = 0;
+      const MAX_SYNC = 500;
 
       for await (const msg of messages) {
+        if (processed >= MAX_SYNC) break;
         if (!msg.source) continue;
 
         const parsed = await simpleParser(msg.source);
@@ -171,12 +174,8 @@ export async function syncInbox(organizationId: string, accountId: string): Prom
 
         if (existing) continue;
 
-        // Buscar contacto por email del remitente
-        let contactId: string | null = null;
-        if (parsed.from?.value[0]?.address) {
-          // El schema de contact no tiene campo email, por ahora no asociamos
-          contactId = null;
-        }
+        // Buscar contacto por email del remitente (TODO: asociar cuando schema.contact tenga campo email)
+        const contactId: string | null = null;
 
         await db.insert(schema.emailMessage).values({
           id: newId("emailMessage"),
@@ -196,6 +195,7 @@ export async function syncInbox(organizationId: string, accountId: string): Prom
         });
 
         synced++;
+        processed++;
       }
     } finally {
       lock.release();

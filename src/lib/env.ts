@@ -62,7 +62,7 @@ export type Env = z.infer<typeof envSchema>;
 
 const BUILD_PLACEHOLDERS: Record<string, string> = {
   APP_BASE_URL: "http://localhost:3000",
-  DATABASE_URL: "mysql://build:build@localhost:3306/build",
+  DATABASE_URL: "postgres://build:build@localhost:5432/build",
   BETTER_AUTH_SECRET: "placeholder-build-secret",
   ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
   META_WEBHOOK_VERIFY_TOKEN: "placeholder-verify-token",

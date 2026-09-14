@@ -182,14 +182,12 @@ export async function createPayment(
 
     if (!charge) throw new Error("Cuenta por cobrar no válida");
     if (charge.status === "cancelado" || input.monto > charge.totalAmount - charge.paidAmount) throw new Error("El pago supera el saldo pendiente o la cuenta está cancelada");
-    if (charge) {
-      const newPaid = charge.paidAmount + input.monto;
-      const newStatus = newPaid >= charge.totalAmount ? "pagado" : "parcial";
-      await db
-        .update(schema.charge)
-        .set({ paidAmount: newPaid, status: newStatus, updatedAt: new Date() })
-        .where(eq(schema.charge.id, input.chargeId));
-    }
+    const newPaid = charge.paidAmount + input.monto;
+    const newStatus = newPaid >= charge.totalAmount ? "pagado" : "parcial";
+    await db
+      .update(schema.charge)
+      .set({ paidAmount: newPaid, status: newStatus, updatedAt: new Date() })
+      .where(eq(schema.charge.id, input.chargeId));
   }
 
   return id;
@@ -233,12 +231,21 @@ export async function createExpense(
   return id;
 }
 
-/** Crear cuenta por cobrar desde cotización aceptada */
+/** Crear cuenta por cobrar desde cotización aceptada (idempotente) */
 export async function createChargeFromQuote(
   organizationId: string,
   quoteId: string
 ): Promise<string> {
   const db = getDb();
+
+  // Verificar si ya existe una cuenta por cobrar para esta cotización
+  const [existing] = await db
+    .select({ id: schema.charge.id })
+    .from(schema.charge)
+    .where(scoped(schema.charge.organizationId, organizationId, eq(schema.charge.quoteId, quoteId)))
+    .limit(1);
+  if (existing) return existing.id;
+
   const id = newId("charge");
 
   const [quote] = await db

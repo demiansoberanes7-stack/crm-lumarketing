@@ -4,7 +4,7 @@
  * Tabla + Kanban, avance calculado como index/(n-1), 7 etapas predefinidas,
  * reporte integral por proyecto, relación con contactos/conversaciones/cotizaciones.
  */
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -24,9 +24,10 @@ export const PROJECT_STAGES = [
   { slug: "renovacion", name: "7. Renovación", order: 7 },
 ];
 
-/** Generar código secuencial de proyecto */
-async function nextProjectCode(organizationId: string): Promise<string> {
-  const db = getDb();
+/** Generar código secuencial de proyecto (usa advisory lock para evitar race condition) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function nextProjectCode(db: any, organizationId: string): Promise<string> {
+  await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':projects'}))`);
   const last = await db
     .select({ code: schema.project.code })
     .from(schema.project)
@@ -57,9 +58,9 @@ export async function createProject(
     assignedUserId?: string;
   }
 ): Promise<string> {
-  const db = getDb();
+  return getDb().transaction(async (db) => {
   const id = newId("project");
-  const code = await nextProjectCode(organizationId);
+  const code = await nextProjectCode(db, organizationId);
 
   await db.insert(schema.project).values({
     id,
@@ -77,6 +78,7 @@ export async function createProject(
   });
 
   return id;
+  });
 }
 
 /** Obtener proyecto con etapa actual */

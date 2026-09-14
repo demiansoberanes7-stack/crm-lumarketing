@@ -37,9 +37,9 @@ export type QuoteInput = {
   paymentMethod?: Record<string, unknown>;
 };
 
-/** Generar número de cotización secuencial */
-async function nextQuoteNumber(organizationId: string): Promise<string> {
-  const db = getDb();
+/** Generar número de cotización secuencial (usa el db del transaction para evitar race condition) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function nextQuoteNumber(db: any, organizationId: string): Promise<string> {
   const last = await db
     .select({ quoteNumber: schema.quote.quoteNumber })
     .from(schema.quote)
@@ -94,7 +94,7 @@ export async function createQuote(
     if (!contact) throw new Error("Contacto no válido");
   }
   const id = newId("quote");
-  const quoteNumber = await nextQuoteNumber(organizationId);
+  const quoteNumber = await nextQuoteNumber(db, organizationId);
   const totals = calculateTotals(input.items, {
     discountType: input.discountType,
     discountValue: input.discountValue,
@@ -256,11 +256,13 @@ export async function sendQuote(
   if (channel === "whatsapp") {
     const { quotePdf } = await import("./pdf");
     const pdf = await quotePdf(organizationId, quoteId);
-    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf!.bytes), mimeType: "application/pdf", fileName: pdf!.filename } });
+    if (!pdf) throw new Error("No se pudo generar el PDF de la cotización");
+    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: pdf.filename } });
   } else {
     const full = await getQuote(organizationId, quoteId);
+    if (!full) throw new Error("Cotización no encontrada");
     const { money } = await import("@/server/documents/pdf");
-    await sendText({ organizationId, conversationId: conversation.id, text: [`Cotización ${quote.quoteNumber}`, ...full!.items.map((item) => `${item.quantity} x ${item.name}: ${money(item.unitPrice * item.quantity)}`), `Subtotal: ${money(quote.subtotal)}`, `Descuento: ${money(quote.discountAmount)}`, `IVA: ${money(quote.taxAmount)}`, `Total: ${money(quote.total)} MXN`, `Vigencia: ${quote.validUntil?.toLocaleDateString("es-MX") ?? "Sin fecha"}`, quote.message ?? ""].join("\n") });
+    await sendText({ organizationId, conversationId: conversation.id, text: [`Cotización ${quote.quoteNumber}`, ...full.items.map((item) => `${item.quantity} x ${item.name}: ${money(item.unitPrice * item.quantity)}`), `Subtotal: ${money(quote.subtotal)}`, `Descuento: ${money(quote.discountAmount)}`, `IVA: ${money(quote.taxAmount)}`, `Total: ${money(quote.total)} MXN`, `Vigencia: ${quote.validUntil?.toLocaleDateString("es-MX") ?? "Sin fecha"}`, quote.message ?? ""].join("\n") });
   }
 
   await db

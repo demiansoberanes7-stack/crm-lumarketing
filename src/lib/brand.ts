@@ -18,14 +18,14 @@ export const BRAND_MARK_TAIL = "M12 5h4v2h-4V5z";
 export const BRAND_MARK_STROKE = 3.4;
 
 /** Dorado luminoso sobre fondos claros. */
-export const BRAND_CYAN = "#D4A843";
+export const BRAND_ACCENT = "#D4A843";
 
 /** Dorado luminoso sobre fondos oscuros. */
-export const BRAND_CYAN_ON_TILE = "#E8C060";
+export const BRAND_ACCENT_ON_TILE = "#E8C060";
 
 /**
  * ¿Esta instancia se llama LUMARK? Solo entonces se dibuja el logo.
  */
-export function isVoceroName(name: string): boolean {
+export function isLumarkName(name: string): boolean {
   return name.trim().toLowerCase() === "lumark";
 }

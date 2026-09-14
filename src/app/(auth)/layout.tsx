@@ -1,4 +1,4 @@
-import { isVoceroName } from "@/lib/brand";
+import { isLumarkName } from "@/lib/brand";
 import { DEFAULT_BRANDING } from "@/lib/branding";
 import { getBranding } from "@/server/branding";
 import { BrandLogo } from "@/components/brand-mark";
@@ -13,7 +13,7 @@ export default async function AuthLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const branding = await getBranding().catch(() => DEFAULT_BRANDING);
-  const vocero = isVoceroName(branding.name);
+  const vocero = isLumarkName(branding.name);
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-subtle p-4">
       <div className="brand-grid absolute inset-0" aria-hidden />

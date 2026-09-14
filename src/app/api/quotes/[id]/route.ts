@@ -4,8 +4,6 @@ import { getQuote, updateQuote } from "@/server/quotes/service";
 
 export const dynamic = "force-dynamic";
 
-type _Params = { params: Promise<{ id: string }> };
-
 /** GET — obtener cotización con items */
 export const GET = withAuth(async (session, _req, { params }) => {
   const { id } = await params;

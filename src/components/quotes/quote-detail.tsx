@@ -7,12 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PdfActions } from "@/components/pdf-actions";
 import { NewQuoteDialog } from "./new-quote-dialog";
-
-interface QuoteItem {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-}
+import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
 
 interface QuoteData {
   id: string;
@@ -32,35 +27,6 @@ interface QuoteData {
   contactId: string | null;
   message: string | null;
   discountAmount: number;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Borrador",
-  sent: "Enviada",
-  accepted: "Aceptada",
-  rejected: "Rechazada",
-};
-
-const STATUS_VARIANT: Record<string, "secondary" | "outline" | "success" | "destructive"> = {
-  draft: "secondary",
-  sent: "outline",
-  accepted: "success",
-  rejected: "destructive",
-};
-
-function formatMXN(amount: number): string {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-  }).format(amount / 100);
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 export function QuoteDetail({
@@ -152,8 +118,8 @@ export function QuoteDetail({
               <tr key={i} className="border-b border-dashed">
                 <td className="py-2">{it.name}</td>
                 <td className="py-2 text-right">{it.quantity}</td>
-                <td className="py-2 text-right">{formatMXN(it.unitPrice)}</td>
-                <td className="py-2 text-right">{formatMXN(it.quantity * it.unitPrice)}</td>
+                <td className="py-2 text-right">{formatMXNCents(it.unitPrice)}</td>
+                <td className="py-2 text-right">{formatMXNCents(it.quantity * it.unitPrice)}</td>
               </tr>
             ))}
           </tbody>
@@ -162,21 +128,21 @@ export function QuoteDetail({
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal</span>
-            <span>{formatMXN(quote.subtotal)}</span>
+            <span>{formatMXNCents(quote.subtotal)}</span>
           </div>
           {discount > 0 && (
             <div className="flex justify-between text-destructive">
               <span>Descuento</span>
-              <span>-{formatMXN(discount)}</span>
+              <span>-{formatMXNCents(discount)}</span>
             </div>
           )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">IVA ({quote.taxRate}%)</span>
-            <span>{formatMXN(quote.taxAmount)}</span>
+            <span>{formatMXNCents(quote.taxAmount)}</span>
           </div>
           <div className="flex justify-between border-t border-border-strong pt-1 font-semibold">
             <span>Total</span>
-            <span>{formatMXN(quote.total)}</span>
+            <span>{formatMXNCents(quote.total)}</span>
           </div>
         </div>
 

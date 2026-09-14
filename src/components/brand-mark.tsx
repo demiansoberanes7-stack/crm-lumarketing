@@ -1,11 +1,11 @@
 import type { Branding } from "@/lib/branding";
 import {
-  BRAND_CYAN,
-  BRAND_CYAN_ON_TILE,
+  BRAND_ACCENT,
+  BRAND_ACCENT_ON_TILE,
   BRAND_MARK_BODY,
   BRAND_MARK_STROKE,
   BRAND_MARK_TAIL,
-  isVoceroName,
+  isLumarkName,
 } from "@/lib/brand";
 import { faviconInitial } from "@/lib/favicon";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  */
 export function BrandMark({
   className,
-  cyan = BRAND_CYAN,
+  cyan = BRAND_ACCENT,
 }: {
   className?: string;
   cyan?: string;
@@ -61,8 +61,8 @@ export function BrandTile({
       )}
       aria-hidden
     >
-      {isVoceroName(branding.name) ? (
-        <BrandMark className="h-[64%] w-[64%]" cyan={BRAND_CYAN_ON_TILE} />
+      {isLumarkName(branding.name) ? (
+        <BrandMark className="h-[64%] w-[64%]" cyan={BRAND_ACCENT_ON_TILE} />
       ) : (
         <span className="font-bold leading-none">{faviconInitial(branding.name)}</span>
       )}
@@ -98,7 +98,7 @@ export function BrandLogo({
   size?: keyof typeof WORDMARK_SIZE;
   className?: string;
 }) {
-  if (isVoceroName(branding.name)) {
+  if (isLumarkName(branding.name)) {
     return (
       <span className={cn("flex items-center gap-2 text-foreground", className)}>
         <BrandMark className={cn("shrink-0 text-brand", MARK_SIZE[size])} />

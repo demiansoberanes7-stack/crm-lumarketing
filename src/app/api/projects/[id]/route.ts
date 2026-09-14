@@ -7,8 +7,6 @@ import { getProject } from "@/server/projects/service";
 
 export const dynamic = "force-dynamic";
 
-type _Params = { params: Promise<{ id: string }> };
-
 /** GET — obtener proyecto con etapa actual */
 export const GET = withAuth(async (session, _req, { params }) => {
   const { id } = await params;
@@ -17,7 +15,7 @@ export const GET = withAuth(async (session, _req, { params }) => {
   return Response.json({ project });
 });
 
-export const PATCH = withAuth(async (session, req: Request, { params }: _Params) => {
+export const PATCH = withAuth(async (session, req: Request, { params }) => {
   const { id } = await params;
   const body = await parseBody(req, z.object({
     name: z.string().trim().min(1).max(255).optional(),

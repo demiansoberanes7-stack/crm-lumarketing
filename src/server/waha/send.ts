@@ -1,8 +1,7 @@
 /**
- * WAHA Send — envío de mensajes por WAHA.
- *
- * Reutiliza la lógica de ventana 24h y plantillas internas de Vocero.
- * El adaptador WAHA reemplaza la llamada a Graph API por una llamada a WAHA.
+ * DEPRECATED — Este archivo NO se usa. El envío WAHA se maneja directamente
+ * en src/server/inbox/send.ts (línea 204+). Mantenido como referencia.
+ * Puede eliminarse en una limpieza futura.
  */
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";

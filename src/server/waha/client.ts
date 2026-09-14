@@ -154,7 +154,7 @@ export async function markSeen(
   sessionName: string,
   chatId: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${sessionName}/markSeen`, {
+  await wahaRequest(baseUrl, apiKey, `/api/${encodeURIComponent(sessionName)}/markSeen`, {
     method: "POST",
     body: { chatId },
   });
@@ -167,7 +167,7 @@ export async function typing(
   sessionName: string,
   chatId: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${sessionName}/typing`, {
+  await wahaRequest(baseUrl, apiKey, `/api/${encodeURIComponent(sessionName)}/typing`, {
     method: "POST",
     body: { chatId, interval: 5000 },
   });
@@ -180,7 +180,7 @@ export async function clearTyping(
   sessionName: string,
   chatId: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${sessionName}/clearTyping`, {
+  await wahaRequest(baseUrl, apiKey, `/api/${encodeURIComponent(sessionName)}/clearTyping`, {
     method: "POST",
     body: { chatId },
   });
@@ -194,7 +194,7 @@ export async function sendTemplate(
   chatId: string,
   template: { name: string; language: { code: string }; components?: unknown[] }
 ): Promise<{ key: { id: string } }> {
-  return (await wahaRequest(
+  const result = (await wahaRequest(
     baseUrl,
     apiKey,
     `/api/${sessionName}/sendTemplate`,
@@ -202,7 +202,10 @@ export async function sendTemplate(
       method: "POST",
       body: { chatId, template },
     }
-  )) as { key: { id: string } };
+  )) as { id?: string; key?: { id: string } };
+  const id = result.id ?? result.key?.id;
+  if (!id) throw new WahaError("WAHA no confirmó la plantilla");
+  return { key: { id } };
 }
 
 /** Obtener QR code */

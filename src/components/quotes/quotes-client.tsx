@@ -6,12 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NewQuoteDialog } from "./new-quote-dialog";
 import { QuoteDetail } from "./quote-detail";
-
-interface QuoteItem {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-}
+import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
 
 interface Quote {
   id: string;
@@ -28,35 +23,6 @@ interface Quote {
   validDays: number;
   notes: string | null;
   createdAt: string;
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Borrador",
-  sent: "Enviada",
-  accepted: "Aceptada",
-  rejected: "Rechazada",
-};
-
-const STATUS_VARIANT: Record<string, "secondary" | "outline" | "success" | "destructive"> = {
-  draft: "secondary",
-  sent: "outline",
-  accepted: "success",
-  rejected: "destructive",
-};
-
-function formatMXN(amount: number): string {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-  }).format(amount / 100);
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-MX", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 export function QuotesClient() {
@@ -131,7 +97,7 @@ export function QuotesClient() {
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-semibold">
-                      {formatMXN(q.total)}
+                      {formatMXNCents(q.total)}
                     </span>
                   </button>
                 )}
@@ -217,7 +183,7 @@ function CatalogInline({ onClose }: { onClose: () => void }) {
           <div key={p.id} className="flex items-center justify-between rounded-md border px-3 py-2">
             <div>
               <span className="text-sm font-medium">{p.name}</span>
-              <span className="ml-2 text-xs text-muted-foreground">{formatMXN(p.price)}</span>
+              <span className="ml-2 text-xs text-muted-foreground">{formatMXNCents(p.price)}</span>
             </div>
             <Button variant="ghost" size="icon" onClick={() => void deleteProduct(p.id)}>
               <span className="sr-only">Eliminar</span>

@@ -22,7 +22,7 @@ export function EditProject({ project, onSaved, onCancel }: {
     <ContactPicker value={form.contactId} onChange={(contactId) => setForm({ ...form, contactId })} />
     <label className="block">Estado <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} className="rounded border bg-background p-2"><option value="activo">Activo</option><option value="reunion">Reunión</option><option value="cerrado">Cerrado</option></select></label>
     <label className="block">Prioridad <select value={form.prioridad ?? ""} onChange={(e) => setForm({ ...form, prioridad: e.target.value || null })} className="rounded border bg-background p-2"><option value="">Sin prioridad</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>
-    <label className="block">Notas<Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></label>
+    <label className="block">Notas<textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></label>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     <div className="flex gap-2"><Button disabled={busy} type="submit">{busy ? "Guardando…" : "Guardar cambios"}</Button><Button disabled={busy} variant="outline" type="button" onClick={onCancel}>Cancelar</Button></div>
   </form>;

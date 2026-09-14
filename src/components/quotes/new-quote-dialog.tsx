@@ -6,12 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ContactPicker } from "@/components/contact-picker";
-
-interface QuoteItem {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-}
+import { QuoteItem, formatMXNDisplay } from "./shared";
 
 interface CatalogProduct {
   id: string;
@@ -21,13 +16,6 @@ interface CatalogProduct {
 }
 
 const EMPTY_ITEM: QuoteItem = { name: "", quantity: 1, unitPrice: 0 };
-
-function formatMXN(amount: number): string {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-  }).format(amount);
-}
 
 function computeSubtotal(items: QuoteItem[]): number {
   return items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
@@ -168,7 +156,7 @@ export function NewQuoteDialog({
                           <option value="">Catálogo…</option>
                           {catalog.map((p) => (
                             <option key={p.id} value={p.id}>
-                              {p.name} — {formatMXN(p.price / 100)}
+                              {p.name} — {formatMXNDisplay(p.price / 100)}
                             </option>
                           ))}
                         </select>
@@ -275,21 +263,21 @@ export function NewQuoteDialog({
           <div className="rounded-md bg-secondary p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatMXN(subtotal)}</span>
+              <span>{formatMXNDisplay(subtotal)}</span>
             </div>
             {discount > 0 && (
               <div className="flex justify-between text-destructive">
                 <span>Descuento</span>
-                <span>-{formatMXN(discount)}</span>
+                <span>-{formatMXNDisplay(discount)}</span>
               </div>
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">IVA ({Number(taxRate) || 0}%)</span>
-              <span>{formatMXN(tax)}</span>
+              <span>{formatMXNDisplay(tax)}</span>
             </div>
             <div className="mt-1 flex justify-between border-t border-border-strong pt-1 font-semibold">
               <span>Total</span>
-              <span>{formatMXN(total)}</span>
+              <span>{formatMXNDisplay(total)}</span>
             </div>
           </div>
 

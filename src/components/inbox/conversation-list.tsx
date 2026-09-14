@@ -118,7 +118,7 @@ export function ConversationList({
     filter === "unread" ? inInbox.filter((c) => c.unreadCount > 0) : inInbox;
   // Con un solo canal encendido no hay bandejas que distinguir: ni marca en
   // los renglones ni filtro. La pantalla queda exactamente como antes de 014.
-  const multiChannel = true;
+  const multiChannel = channels.length > 1;
 
   // Etapas presentes en la bandeja, en el orden en que llegan del pipeline.
   const stages: string[] = [];

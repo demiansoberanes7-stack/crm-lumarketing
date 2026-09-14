@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const status = url.searchParams.get("status") ?? undefined;
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 100);
-  const offset = parseInt(url.searchParams.get("offset") ?? "0");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50") || 50, 100);
+  const offset = parseInt(url.searchParams.get("offset") ?? "0") || 0;
 
   const quotes = await listQuotes(session.organizationId, { status, limit, offset });
   return Response.json({ quotes });
