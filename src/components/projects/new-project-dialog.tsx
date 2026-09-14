@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MemberPicker } from "@/components/member-picker";
 
 const ESTADOS = ["activo", "reunion", "cerrado"] as const;
 const PRIORIDADES = ["alta", "media", "baja"] as const;
@@ -23,6 +24,7 @@ export function NewProjectDialog({
   const [prioridad, setPrioridad] = useState<(typeof PRIORIDADES)[number]>("media");
   const [riesgo, setRiesgo] = useState<(typeof RIESGOS)[number]>("bajo");
   const [notas, setNotas] = useState("");
+  const [assignedUserId, setAssignedUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +36,7 @@ export function NewProjectDialog({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: name.trim(),
+        assignedUserId,
         service: service.trim() || undefined,
         estado,
         prioridad,
@@ -65,12 +68,14 @@ export function NewProjectDialog({
       <div
         role="dialog"
         aria-label="Nuevo proyecto"
-        className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
+        aria-modal="true"
+        className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-4 font-semibold">Nuevo proyecto</h3>
 
         <div className="space-y-3">
+          <MemberPicker value={assignedUserId} onChange={setAssignedUserId} disabled={saving} />
           <div className="space-y-1.5">
             <Label htmlFor="np-name">Nombre</Label>
             <Input

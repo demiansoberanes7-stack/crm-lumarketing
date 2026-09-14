@@ -39,6 +39,7 @@ export function ProjectsClient() {
   }, []);
 
   useEffect(() => {
+    setSelectedProject(new URLSearchParams(window.location.search).get("projectId"));
     void refetch();
   }, [refetch]);
 
@@ -46,7 +47,7 @@ export function ProjectsClient() {
     return (
       <ProjectDetail
         projectId={selectedProject}
-        onBack={() => setSelectedProject(null)}
+        onBack={() => { setSelectedProject(null); window.history.replaceState(null, "", "/projects"); }}
         onUpdated={() => void refetch()}
       />
     );
@@ -76,6 +77,9 @@ export function ProjectsClient() {
               <Card
                 key={p.id}
                 className="cursor-pointer transition-shadow hover:shadow-md"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedProject(p.id); } }}
                 onClick={() => setSelectedProject(p.id)}
               >
                 <CardHeader className="flex-row items-center justify-between gap-2 p-4">

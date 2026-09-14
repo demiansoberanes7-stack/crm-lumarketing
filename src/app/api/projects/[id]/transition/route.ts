@@ -1,14 +1,15 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { parseBody, withAuth } from "@/lib/api";
 import { transitionProject } from "@/server/projects/service";
+import { projectErrorResponse } from "@/server/projects/errors";
 
 export const dynamic = "force-dynamic";
 
-type _Params = { params: Promise<{ id: string }> };
-
 const postSchema = z.object({
   toStageId: z.string().min(1),
-});
+  complete: z.boolean().optional(),
+  expectedStageId: z.string().min(1).optional(),
+}).strict();
 
 /** POST — transicionar proyecto a nueva etapa */
 export const POST = withAuth(async (session, req: Request, { params }) => {
@@ -21,10 +22,12 @@ export const POST = withAuth(async (session, req: Request, { params }) => {
       session.organizationId,
       id,
       body.data.toStageId,
-      session.userId
+      session.userId,
+      body.data.complete,
+      body.data.expectedStageId
     );
     return Response.json({ ok: true, ...result });
   } catch (err) {
-    return apiError(400, "transition_failed", String(err));
+    return projectErrorResponse(err);
   }
 });

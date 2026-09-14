@@ -1,28 +1,20 @@
 /**
  * Projects Service — gestión de proyectos con pipeline de etapas.
  *
- * Tabla + Kanban, avance calculado como index/(n-1), 7 etapas predefinidas,
+ * Avance por etapas completadas; 100% solo al terminar la última etapa,
  * reporte integral por proyecto, relación con contactos/conversaciones/cotizaciones.
  */
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
+import { ProjectError } from "./errors";
+import { validateProjectMember } from "./members";
 
 export type ProjectEstado = "activo" | "reunion" | "cerrado";
 export type ProjectPrioridad = "alta" | "media" | "baja";
 export type ProjectRiesgo = "bajo" | "medio" | "alto";
-
-/** Las 7 etapas predefinidas del pipeline de proyectos LUMARK */
-export const PROJECT_STAGES = [
-  { slug: "activacion", name: "1. Activación", order: 1 },
-  { slug: "diagnostico", name: "2. Diagnóstico", order: 2 },
-  { slug: "calendario", name: "3. Calendario de Contenido", order: 3 },
-  { slug: "creacion", name: "4. Creación de Contenido", order: 4 },
-  { slug: "campana", name: "5. Campaña", order: 5 },
-  { slug: "reporte", name: "6. Reporte de Resultados", order: 6 },
-  { slug: "renovacion", name: "7. Renovación", order: 7 },
-];
 
 /** Generar código secuencial de proyecto (usa advisory lock para evitar race condition) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,6 +50,13 @@ export async function createProject(
     assignedUserId?: string;
   }
 ): Promise<string> {
+  await validateProjectMember(organizationId, input.assignedUserId);
+  if (input.contactId) {
+    const [contact] = await getDb().select({ id: schema.contact.id }).from(schema.contact)
+      .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId))).limit(1);
+    if (!contact) throw new ProjectError(422, "El contacto no pertenece a tu organización");
+  }
+  const stages = await getProjectStages(organizationId);
   return getDb().transaction(async (db) => {
   const id = newId("project");
   const code = await nextProjectCode(db, organizationId);
@@ -71,6 +70,7 @@ export async function createProject(
     service: input.service ?? null,
     estado: input.estado ?? "activo",
     avance: 0,
+    stageId: stages[0]?.id,
     prioridad: input.prioridad ?? null,
     riesgo: input.riesgo ?? null,
     notas: input.notas ?? null,
@@ -96,7 +96,21 @@ export async function getProject(organizationId: string, projectId: string) {
     )
     .limit(1);
 
-  return rows[0] ? { ...rows[0], currentStageIndex: Math.round(rows[0].avance * 6 / 100) } : null;
+  if (!rows[0]) return null;
+  const stages = await getProjectStages(organizationId);
+  const currentStageIndex = Math.max(0, stages.findIndex((s) => s.id === rows[0]?.stageId));
+  return { ...rows[0], currentStageIndex, stages };
+}
+
+/** Catálogo exclusivo de Proyectos; no modifica el pipeline comercial. */
+export async function getProjectStages(organizationId: string) {
+  const db = getDb();
+  const existing = await db.select().from(schema.projectStage).where(scoped(schema.projectStage.organizationId, organizationId)).orderBy(schema.projectStage.position);
+  if (existing.length === DEFAULT_PROJECT_STAGES.length) return existing;
+  await db.insert(schema.projectStage).values(DEFAULT_PROJECT_STAGES.map((name, position) => ({
+    id: `pst_${organizationId}_${position}`, organizationId, name, position,
+  }))).onConflictDoNothing();
+  return db.select().from(schema.projectStage).where(scoped(schema.projectStage.organizationId, organizationId)).orderBy(schema.projectStage.position);
 }
 
 /** Listar proyectos */
@@ -124,10 +138,12 @@ export async function transitionProject(
   organizationId: string,
   projectId: string,
   toStageId: string,
-  actorUserId?: string
+  actorUserId?: string,
+  complete = false,
+  expectedStageId?: string
 ): Promise<{ changed: boolean }> {
-  const db = getDb();
-
+  const allStages = await getProjectStages(organizationId);
+  return getDb().transaction(async (db) => {
   const [project] = await db
     .select()
     .from(schema.project)
@@ -138,32 +154,16 @@ export async function transitionProject(
         eq(schema.project.id, projectId)
       )
     )
-    .limit(1);
+    .limit(1).for("update");
 
-  if (!project) throw new Error("Proyecto no encontrado");
-
-  // Obtener info de la etapa destino
-  const [targetStage] = await db
-    .select()
-    .from(schema.pipelineStage)
-    .where(eq(schema.pipelineStage.id, toStageId))
-    .limit(1);
-
-  if (!targetStage) throw new Error("Etapa no encontrada");
-
-  // Calcular avance basado en posición
-  const allStages = await db
-    .select()
-    .from(schema.pipelineStage)
-    .where(
-      scoped(schema.pipelineStage.organizationId, organizationId)
-    )
-    .orderBy(schema.pipelineStage.position);
-
+  if (!project) throw new ProjectError(404, "Proyecto no encontrado");
+  if (expectedStageId && project.stageId !== expectedStageId) throw new ProjectError(409, "La etapa cambió. Actualiza el proyecto e inténtalo de nuevo");
+  const targetStage = allStages.find((s) => s.id === toStageId);
+  if (!targetStage) throw new ProjectError(422, "Etapa no válida para tu organización");
   const stageIndex = allStages.findIndex((s) => s.id === toStageId);
-  const avance = allStages.length > 1
-    ? Math.round((stageIndex / (allStages.length - 1)) * 100)
-    : 0;
+  if (complete && (stageIndex !== allStages.length - 1 || project.stageId !== toStageId)) throw new ProjectError(422, "Completa primero las etapas anteriores");
+  if (project.stageId === toStageId && (project.estado === "cerrado") === complete) return { changed: false };
+  const avance = complete ? 100 : Math.round(stageIndex / allStages.length * 100);
 
   // Actualizar proyecto
   await db
@@ -171,10 +171,11 @@ export async function transitionProject(
     .set({
       stageId: toStageId,
       avance,
+      estado: complete ? "cerrado" : project.estado === "cerrado" ? "activo" : project.estado,
       lastActivityAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(schema.project.id, projectId));
+    .where(scoped(schema.project.organizationId, organizationId, eq(schema.project.id, projectId)));
 
   // Registrar evento de transición
   await db.insert(schema.projectStageEvent).values({
@@ -182,14 +183,15 @@ export async function transitionProject(
     organizationId,
     projectId,
     fromStageId: project.stageId,
-    fromStageName: null, // Se obtendría del stage anterior
+    fromStageName: allStages.find((s) => s.id === project.stageId)?.name ?? null,
     toStageId,
     toStageName: targetStage.name,
     actorUserId: actorUserId ?? null,
-    source: "dueno",
+    source: complete ? "completado" : "dueno",
   });
 
   return { changed: true };
+  });
 }
 
 /** Crear tarea para un proyecto */
@@ -202,9 +204,12 @@ export async function createTask(
     assigneeId?: string;
     prioridad?: string;
     dueDate?: Date;
+    estado?: "no_empezado" | "pendiente" | "terminado";
   }
 ): Promise<string> {
   const db = getDb();
+  if (!await getProject(organizationId, projectId)) throw new ProjectError(404, "Proyecto no encontrado");
+  await validateProjectMember(organizationId, input.assigneeId);
   const id = newId("projectTask");
 
   await db.insert(schema.projectTask).values({
@@ -215,7 +220,7 @@ export async function createTask(
     description: input.description ?? null,
     assigneeId: input.assigneeId ?? null,
     priority: input.prioridad ?? null,
-    estado: "pendiente",
+    estado: input.estado ?? "no_empezado",
     dueDate: input.dueDate ?? null,
   });
 

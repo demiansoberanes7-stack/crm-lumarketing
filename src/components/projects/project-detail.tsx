@@ -5,288 +5,105 @@ import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { EditProject } from "./edit-project";
+import { TaskForm, TaskRow, type Task } from "@/components/tasks/task-panel";
+import { type CrmMember } from "@/components/member-picker";
+import { taskRequest } from "@/components/tasks/api";
 import Link from "next/link";
 
-interface ProjectDetail {
-  id: string;
-  contactId: string | null;
-  notas: string | null;
-  code: string;
-  name: string;
-  estado: string;
-  avance: number;
-  prioridad: string | null;
-  riesgo: string | null;
-  service: string | null;
-  currentStageIndex: number;
+interface Project {
+  id: string; contactId: string | null; notas: string | null; code: string; name: string;
+  estado: string; avance: number; prioridad: string | null; riesgo: string | null;
+  service: string | null; assignedUserId: string | null; stageId: string | null; currentStageIndex: number;
+  stages: { id: string; name: string; position: number }[];
 }
-
-interface Task {
-  id: string;
-  title: string;
-  estado: string;
-  priority: string | null;
-}
-
 interface Report {
   contact: { id: string; name: string | null; phone: string | null } | null;
-  stats: { totalTasks: number; completed: number; pending: number };
+  stageHistory: { id: string; fromStageName: string | null; toStageName: string; source: string; createdAt: string }[];
 }
 
-const STAGES = [
-  "Activación",
-  "Diagnóstico",
-  "Calendario de Contenido",
-  "Creación de Contenido",
-  "Campaña",
-  "Reporte de Resultados",
-  "Renovación",
-];
-
-const prioridadBadge: Record<string, "destructive" | "secondary" | "outline"> = {
-  alta: "destructive",
-  media: "secondary",
-  baja: "outline",
-};
-
-export function ProjectDetail({
-  projectId,
-  onBack,
-  onUpdated,
-}: {
-  projectId: string;
-  onBack: () => void;
-  onUpdated: () => void;
-}) {
-  const [project, setProject] = useState<ProjectDetail | null>(null);
+export function ProjectDetail({ projectId, onBack, onUpdated }: { projectId: string; onBack: () => void; onUpdated: () => void }) {
+  const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [members, setMembers] = useState<CrmMember[]>([]);
   const [report, setReport] = useState<Report | null>(null);
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [addingTask, setAddingTask] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
 
   const refetch = useCallback(async () => {
-    const [projRes, tasksRes, reportRes] = await Promise.all([
-      fetch(`/api/projects/${projectId}`).catch(() => null),
-      fetch(`/api/projects/${projectId}/tasks`).catch(() => null),
-      fetch(`/api/projects/${projectId}/report`).catch(() => null),
-    ]);
-
-    if (projRes?.ok) {
-      const data = (await projRes.json()) as { project: ProjectDetail };
-      setProject(data.project);
-    }
-    if (tasksRes?.ok) {
-      const data = (await tasksRes.json()) as { tasks: Task[] };
-      setTasks(data.tasks);
-    }
-    if (reportRes?.ok) {
-      const data = (await reportRes.json()) as { report: Report };
-      setReport(data.report);
-    }
+    try {
+      const [p, t, r, m] = await Promise.all([
+        taskRequest<{ project: Project }>(`/api/projects/${projectId}`),
+        taskRequest<{ tasks: Task[] }>(`/api/projects/${projectId}/tasks`),
+        taskRequest<{ report: Report }>(`/api/projects/${projectId}/report`),
+        taskRequest<{ members: CrmMember[] }>("/api/members"),
+      ]);
+      setProject(p.project); setTasks(t.tasks); setReport(r.report); setMembers(m.members);
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo cargar el proyecto"); }
   }, [projectId]);
+  useEffect(() => { void refetch(); const refresh = () => void refetch(); window.addEventListener("focus", refresh); return () => window.removeEventListener("focus", refresh); }, [refetch]);
 
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-
-  async function addTask() {
-    const title = newTaskTitle.trim();
-    if (!title) return;
-    setAddingTask(true);
-    await fetch(`/api/projects/${projectId}/tasks`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title }),
-    }).catch(() => null);
-    setNewTaskTitle("");
-    setAddingTask(false);
-    void refetch();
-  }
-
-  async function advanceStage() {
+  async function moveStage(toStageId: string, complete = false) {
     if (!project) return;
-    const nextIndex = project.currentStageIndex + 1;
-    if (nextIndex >= STAGES.length) return;
-    await fetch(`/api/projects/${projectId}/transition`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ toStageId: String(nextIndex + 1) }),
-    }).catch(() => null);
-    void refetch();
-    onUpdated();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await taskRequest(`/api/projects/${projectId}/transition`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ toStageId, complete, expectedStageId: project.stageId ?? undefined }),
+      });
+      await refetch(); onUpdated(); setNotice(complete ? "Todas las etapas completadas. Proyecto terminado." : "Etapa actualizada");
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo cambiar la etapa"); await refetch(); }
+    finally { setBusy(false); }
   }
 
-  if (!project) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground">Cargando...</p>
-      </div>
-    );
-  }
+  if (!project) return <div className="space-y-3 p-6"><Button variant="outline" onClick={onBack}>Volver a proyectos</Button>{error ? <><p role="alert" className="text-destructive">{error}</p><Button onClick={() => void refetch()}>Reintentar</Button></> : <p role="status">Cargando proyecto…</p>}</div>;
+  const stages = project.stages;
+  const current = stages[project.currentStageIndex];
+  const previous = stages[project.currentStageIndex - 1];
+  const next = stages[project.currentStageIndex + 1];
+  const finished = project.estado === "cerrado" && project.avance === 100;
+  const completed = tasks.filter((t) => t.estado === "terminado").length;
 
-  const canAdvance = project.currentStageIndex < STAGES.length - 1;
-
-  return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      <header className="flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-6 sm:py-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              {project.code}
-            </span>
-            <h2 className="text-[17px] font-bold tracking-tight">{project.name}</h2>
-            <Badge variant={project.estado === "activo" ? "success" : project.estado === "reunion" ? "warning" : "secondary"}>
-              {project.estado === "activo" ? "Activo" : project.estado === "reunion" ? "Reunion" : "Cerrado"}
-            </Badge>
+  return <div className="flex h-full flex-col overflow-y-auto">
+    <header className="flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-6">
+      <Button variant="ghost" size="icon" aria-label="Volver a proyectos" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
+      <div className="flex-1"><p className="text-xs text-muted-foreground">{project.code}</p><h1 className="text-lg font-bold">{project.name}</h1><p className="text-sm">{project.service}</p></div>
+      <Badge variant={finished ? "success" : "secondary"}>{finished ? "Terminado" : project.estado === "activo" ? "Activo" : project.estado === "reunion" ? "Reunión" : "Cerrado"}</Badge>
+      <Button onClick={() => setEditing(true)}>Editar proyecto</Button>
+    </header>
+    <div className="space-y-6 p-4 sm:p-6">
+      {notice && <p role="status">{notice}</p>}
+      {error && <p role="alert" className="text-destructive">{error}</p>}
+      <p className="text-sm">Contacto: {report?.contact ? <Link className="underline" href={`/contacts?q=${encodeURIComponent(report.contact.name ?? report.contact.phone ?? "")}`}>{report.contact.name ?? report.contact.phone ?? "Ver contacto"}</Link> : "Sin contacto asignado"}</p>
+      <p className="text-sm">Responsable del proyecto: {members.find((m) => m.userId === project.assignedUserId)?.name ?? "Sin asignar"}</p>
+      {editing && <EditProject project={project} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); setNotice("Proyecto actualizado"); void refetch(); onUpdated(); }} />}
+      <Card><CardHeader><CardTitle className="text-sm">Avance</CardTitle></CardHeader><CardContent><div className="flex items-center gap-3"><div role="progressbar" aria-label="Avance del proyecto" aria-valuenow={project.avance} aria-valuemin={0} aria-valuemax={100} className="h-3 flex-1 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-primary transition-all" style={{ width: `${project.avance}%` }} /></div><span>{project.avance}%</span></div></CardContent></Card>
+      <Card>
+        <CardHeader className="gap-3"><CardTitle className="text-sm">Etapas del Proyecto</CardTitle>
+          <div className="flex flex-wrap gap-2">
+            {previous && <Button variant="outline" size="sm" disabled={busy} onClick={() => void moveStage(previous.id)}>Etapa anterior</Button>}
+            {current && !finished && <Button size="sm" disabled={busy} onClick={() => void moveStage(next?.id ?? current.id, !next)}>{busy ? "Guardando…" : next ? "Completar etapa y continuar" : "Terminar proyecto"}</Button>}
+            {current && finished && <Button size="sm" variant="outline" disabled={busy} onClick={() => void moveStage(current.id)}>Reabrir última etapa</Button>}
           </div>
-          {project.service && (
-            <p className="text-xs text-muted-foreground">{project.service}</p>
-          )}
-        </div>
-        <Button onClick={() => setEditing(true)}>Editar proyecto</Button>
-      </header>
-
-      <div className="flex-1 space-y-6 p-4 sm:p-6">
-        {notice && <p role="status">{notice}</p>}
-        <p className="text-sm">Contacto: {report?.contact ? <Link className="underline" href={`/contacts?q=${encodeURIComponent(report.contact.name ?? report.contact.phone ?? "")}`}>{report.contact.name ?? report.contact.phone ?? "Ver contacto"}</Link> : "Sin contacto asignado"}</p>
-        {editing && <EditProject project={project} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); setNotice("Proyecto actualizado"); void refetch(); onUpdated(); }} />}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Avance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-3">
-              <div className="h-3 flex-1 overflow-hidden rounded-full bg-secondary">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${project.avance}%` }}
-                />
-              </div>
-              <span className="text-sm font-semibold tabular-nums">{project.avance}%</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-sm">Etapas del Proyecto</CardTitle>
-            {canAdvance && (
-              <Button size="sm" onClick={() => void advanceStage()}>
-                Siguiente Etapa
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {STAGES.map((stage, i) => {
-                const isCurrent = i === project.currentStageIndex;
-                const isCompleted = i < project.currentStageIndex;
-                return (
-                  <div
-                    key={stage}
-                    className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                      isCurrent
-                        ? "bg-primary/10 font-semibold"
-                        : isCompleted
-                          ? "text-muted-foreground"
-                          : "opacity-50"
-                    }`}
-                  >
-                    {isCompleted ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-success-text" />
-                    ) : (
-                      <Circle
-                        className={`h-4 w-4 shrink-0 ${
-                          isCurrent ? "text-primary" : "text-muted-foreground"
-                        }`}
-                      />
-                    )}
-                    <span>{stage}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Tareas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Nueva tarea..."
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void addTask();
-                }}
-              />
-              <Button
-                size="sm"
-                disabled={!newTaskTitle.trim() || addingTask}
-                onClick={() => void addTask()}
-              >
-                Agregar
-              </Button>
-            </div>
-            {tasks.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Sin tareas aun</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {tasks.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                  >
-                    <span className="flex-1 truncate">{t.title}</span>
-                    {t.priority && (
-                      <Badge variant={prioridadBadge[t.priority] ?? "secondary"} className="shrink-0">
-                        {t.priority}
-                      </Badge>
-                    )}
-                    <Badge variant={t.estado === "completada" ? "success" : "outline"} className="shrink-0">
-                      {t.estado}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {report && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Resumen</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-2xl font-bold">{report.stats.totalTasks}</p>
-                  <p className="text-xs text-muted-foreground">Total</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-success-text">{report.stats.completed}</p>
-                  <p className="text-xs text-muted-foreground">Completadas</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-warning-text">{report.stats.pending}</p>
-                  <p className="text-xs text-muted-foreground">Pendientes</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+        </CardHeader>
+        <CardContent className="space-y-3"><p className="text-xs text-muted-foreground">Selecciona una etapa para cambiarla. Las anteriores quedarán completadas; volver atrás reabre esa etapa y las siguientes.</p>
+          <ol className="space-y-2">{stages.map((stage, i) => {
+            const done = finished || i < project.currentStageIndex;
+            const active = !finished && i === project.currentStageIndex;
+            return <li key={stage.id}><button type="button" disabled={busy || active} aria-current={active ? "step" : undefined} onClick={() => void moveStage(stage.id)} className={`flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-accent disabled:cursor-default ${active ? "bg-primary/10 font-semibold" : ""}`}>
+              {done ? <CheckCircle2 className="h-4 w-4 text-success-text" /> : <Circle className="h-4 w-4" />}<span className="flex-1">{stage.name}</span><span className="text-xs">{done ? "Completada" : active ? "Actual" : "No empezada"}</span>
+            </button></li>;
+          })}</ol>
+        </CardContent>
+      </Card>
+      <Card><CardHeader><CardTitle className="text-sm">Tareas</CardTitle></CardHeader><CardContent className="space-y-4">
+        <TaskForm projectId={projectId} members={members} onSaved={() => void refetch()} />
+        {tasks.length ? <ul className="space-y-3">{tasks.map((task) => <TaskRow key={task.id} task={task} members={members} onUpdated={() => void refetch()} />)}</ul> : <p className="text-sm text-muted-foreground">Sin tareas todavía</p>}
+      </CardContent></Card>
+      <Card><CardHeader><CardTitle className="text-sm">Resumen de tareas</CardTitle></CardHeader><CardContent><p>Total: {tasks.length} · Terminadas: {completed} · Pendientes: {tasks.filter((t) => t.estado === "pendiente").length} · No empezadas: {tasks.filter((t) => t.estado === "no_empezado").length}</p></CardContent></Card>
+      {!!report?.stageHistory.length && <Card><CardHeader><CardTitle className="text-sm">Historial de etapas</CardTitle></CardHeader><CardContent><ul className="space-y-2 text-sm">{report.stageHistory.map((event) => <li key={event.id}>{event.fromStageName ?? "Inicio"} → {event.toStageName}{event.source === "completado" ? " (proyecto terminado)" : ""} · {new Date(event.createdAt).toLocaleString("es-MX")}</li>)}</ul></CardContent></Card>}
     </div>
-  );
+  </div>;
 }

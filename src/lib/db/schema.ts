@@ -851,6 +851,13 @@ export const outboundDelivery = pgTable(
  * Proyectos — seguimiento de proyectos de clientes
  * ============================================================ */
 
+export const projectStage = pgTable("project_stage", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  organizationId: varchar("organization_id", { length: 255 }).notNull().references(() => organization.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  position: integer("position").notNull(),
+}, (t) => [uniqueIndex("project_stage_org_position_uq").on(t.organizationId, t.position)]);
+
 export const project = pgTable(
   "project",
   {
@@ -869,7 +876,7 @@ export const project = pgTable(
       .notNull()
       .default("activo"),
     stageId: varchar("stage_id", { length: 255 }).references(
-      () => pipelineStage.id,
+      () => projectStage.id,
       { onDelete: "set null" }
     ),
     avance:   integer("avance").notNull().default(0),
@@ -903,12 +910,12 @@ export const projectStageEvent = pgTable(
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
     fromStageId: varchar("from_stage_id", { length: 255 }).references(
-      () => pipelineStage.id,
+      () => projectStage.id,
       { onDelete: "set null" }
     ),
     fromStageName: varchar("from_stage_name", { length: 255 }),
     toStageId: varchar("to_stage_id", { length: 255 }).references(
-      () => pipelineStage.id,
+      () => projectStage.id,
       { onDelete: "set null" }
     ),
     toStageName: varchar("to_stage_name", { length: 255 }).notNull(),
