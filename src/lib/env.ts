@@ -108,8 +108,25 @@ export function isMockEnabled(): boolean {
   );
 }
 
-/** true si hay proveedor de IA configurado (token presente y no vacío). */
-export function isAiConfigured(): boolean {
-  const token = process.env.OPENROUTER_API_TOKEN;
+/**
+ * true si hay proveedor de IA configurado.
+ * Accepts an optional DB-stored token as fallback.
+ */
+export function isAiConfigured(dbToken?: string): boolean {
+  const token = process.env.OPENROUTER_API_TOKEN || dbToken;
   return typeof token === "string" && token.trim().length > 0;
+}
+
+/**
+ * Resolve AI provider token: env var takes priority, DB token as fallback.
+ */
+export function resolveAiToken(dbToken?: string): string | undefined {
+  return process.env.OPENROUTER_API_TOKEN?.trim() || dbToken?.trim() || undefined;
+}
+
+/**
+ * Resolve AI model: env var takes priority, DB model as fallback.
+ */
+export function resolveAiModel(dbModel?: string): string | undefined {
+  return process.env.OPENROUTER_MODEL?.trim() || dbModel?.trim() || undefined;
 }

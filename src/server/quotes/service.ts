@@ -316,6 +316,44 @@ export async function getQuote(organizationId: string, quoteId: string) {
   return { ...quote, items, contactName: contact?.name ?? null };
 }
 
+/** Cambiar estado de una cotización (accepted / rejected) */
+export async function changeQuoteStatus(
+  organizationId: string,
+  quoteId: string,
+  newStatus: "accepted" | "rejected"
+): Promise<void> {
+  return getDb().transaction(async (db) => {
+    const rows = await db
+      .select()
+      .from(schema.quote)
+      .where(
+        scoped(
+          schema.quote.organizationId,
+          organizationId,
+          eq(schema.quote.id, quoteId)
+        )
+      )
+      .limit(1).for("update");
+
+    const quote = rows[0];
+    if (!quote) throw new Error("Cotización no encontrada");
+    if (!["draft", "sent", "viewed"].includes(quote.status))
+      throw new Error("Solo se pueden aprobar o rechazar cotizaciones en borrador, enviadas o vistas");
+
+    await db
+      .update(schema.quote)
+      .set({ status: newStatus, updatedAt: new Date() })
+      .where(eq(schema.quote.id, quoteId));
+
+    await db.insert(schema.quoteEvent).values({
+      id: newId("quoteEvent"),
+      organizationId,
+      quoteId,
+      eventType: newStatus,
+    });
+  });
+}
+
 /** Listar cotizaciones de una organización */
 export async function listQuotes(
   organizationId: string,

@@ -1,5 +1,7 @@
 import type { z } from "zod";
-import { getEnv, isAiConfigured } from "@/lib/env";
+import { getEnv, isAiConfigured, resolveAiToken, resolveAiModel } from "@/lib/env";
+import { getDb, schema } from "@/lib/db";
+import { scoped } from "@/lib/db/tenant";
 
 /**
  * Adaptador LLM OpenRouter-compatible — ÚNICA frontera con el proveedor de IA
@@ -20,12 +22,37 @@ export type ChatJsonResult<T> =
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
 
+/** Resolve AI token+model from DB for a given organization (env vars take priority). */
+export async function resolveAiConfig(organizationId: string) {
+  const db = getDb();
+  if (!db) return { token: undefined as string | undefined, model: undefined as string | undefined };
+  const rows = await db
+    .select({ aiToken: schema.agentProfile.aiToken, aiModel: schema.agentProfile.aiModel })
+    .from(schema.agentProfile)
+    .where(scoped(schema.agentProfile.organizationId, organizationId))
+    .limit(1);
+  const row = rows[0];
+  return {
+    token: resolveAiToken(row?.aiToken ?? undefined),
+    model: resolveAiModel(row?.aiModel ?? undefined),
+  };
+}
+
 export async function chatJson<T>(
   schema: z.ZodType<T>,
   messages: ChatMessage[],
-  opts?: { model?: string; judge?: boolean; timeoutMs?: number }
+  opts?: { model?: string; judge?: boolean; timeoutMs?: number; organizationId?: string }
 ): Promise<ChatJsonResult<T>> {
-  if (!isAiConfigured()) {
+  // Resolve DB fallback when organizationId is provided
+  let dbToken: string | undefined;
+  let dbModel: string | undefined;
+  if (opts?.organizationId) {
+    const cfg = await resolveAiConfig(opts.organizationId);
+    dbToken = cfg.token;
+    dbModel = cfg.model;
+  }
+
+  if (!isAiConfigured(dbToken)) {
     return {
       ok: false,
       error: "not_configured",
@@ -36,8 +63,8 @@ export async function chatJson<T>(
   const model =
     opts?.model ??
     (opts?.judge
-      ? (env.OPENROUTER_JUDGE_MODEL ?? env.OPENROUTER_MODEL)
-      : env.OPENROUTER_MODEL);
+      ? (env.OPENROUTER_JUDGE_MODEL ?? dbModel ?? env.OPENROUTER_MODEL)
+      : dbModel ?? env.OPENROUTER_MODEL);
   if (!model?.trim()) {
     return {
       ok: false,
@@ -60,7 +87,7 @@ export async function chatJson<T>(
             },
           ];
     try {
-      const raw = await callProvider(model, attemptMessages, opts?.timeoutMs);
+      const raw = await callProvider(model, attemptMessages, opts?.timeoutMs, dbToken);
       const extracted = extractJson(raw);
       if (extracted === null) {
         lastDetail = `sin JSON extraíble (raw=${truncate(raw)})`;
@@ -94,9 +121,11 @@ export async function chatJson<T>(
 async function callProvider(
   model: string,
   messages: ChatMessage[],
-  timeoutMs = 60_000
+  timeoutMs = 60_000,
+  fallbackToken?: string
 ): Promise<string> {
   const env = getEnv();
+  const token = resolveAiToken(fallbackToken);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -104,7 +133,7 @@ async function callProvider(
       method: "POST",
       headers: {
         // El token jamás se loguea; solo viaja en este header.
-        Authorization: `Bearer ${env.OPENROUTER_API_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model, messages }),

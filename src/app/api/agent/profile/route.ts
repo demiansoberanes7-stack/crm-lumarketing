@@ -24,8 +24,11 @@ export const GET = withAuth(async (session) => {
       instructions: p.instructions,
       escalationRules: p.escalationRules,
       greeting: p.greeting,
+      aiToken: p.aiToken ? `${p.aiToken.slice(0, 8)}…${p.aiToken.slice(-4)}` : null,
+      aiTokenSet: !!p.aiToken,
+      aiModel: p.aiModel,
     },
-    aiConfigured: isAiConfigured(),
+    aiConfigured: isAiConfigured(p.aiToken ?? undefined),
   });
 });
 
@@ -36,6 +39,8 @@ const putSchema = z.object({
   instructions: z.string().max(8000).nullable().optional(),
   escalationRules: z.string().max(4000).nullable().optional(),
   greeting: z.string().max(1000).nullable().optional(),
+  aiToken: z.string().max(500).nullable().optional(),
+  aiModel: z.string().max(255).nullable().optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
@@ -44,9 +49,15 @@ export const PUT = withAuth(async (session, req: Request) => {
 
   const db = getDb();
   if (!db) return apiError(500, "db_error", "Base de datos no disponible");
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  for (const [key, val] of Object.entries(body.data)) {
+    if (val !== undefined) patch[key] = val;
+  }
+
   await db
     .update(schema.agentProfile)
-    .set({ ...body.data, updatedAt: new Date() })
+    .set(patch)
     .where(scoped(schema.agentProfile.organizationId, session.organizationId));
   return Response.json({ ok: true });
 });

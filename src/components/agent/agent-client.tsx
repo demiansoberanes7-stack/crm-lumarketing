@@ -16,6 +16,9 @@ type Profile = {
   instructions: string | null;
   escalationRules: string | null;
   greeting: string | null;
+  aiToken: string | null;
+  aiTokenSet: boolean;
+  aiModel: string | null;
 };
 
 type KbEntry = {
@@ -89,13 +92,6 @@ export function AgentClient() {
               profile.enabled ? "bg-brand" : "bg-border-strong"
             }`}
           >
-            {/*
-              `shadow-sm` no es adorno: el pomo es blanco (`--knob`) y sobre el
-              fondo encendido se perdía, así que el interruptor parecía una
-              pastilla sólida sin control (#53). El de la bandeja ya la
-              llevaba; este era el único del producto sin ella. Mismos tokens
-              que allí, para que no vuelvan a divergir.
-            */}
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full bg-knob shadow-sm transition-transform ${
                 profile.enabled ? "translate-x-5" : "translate-x-0.5"
@@ -105,24 +101,99 @@ export function AgentClient() {
         </div>
       </header>
 
-      {!aiConfigured && (
-        <div className="mx-4 mt-4 rounded-lg border border-brand-soft bg-brand-tint p-5 text-center sm:mx-6 sm:mt-6 sm:p-6">
-          <Sparkles className="mx-auto mb-2 h-8 w-8 text-primary" />
-          <p className="font-medium">Configura tu proveedor de IA para activar el agente</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            Agrega <code className="rounded bg-secondary px-1">OPENROUTER_API_TOKEN</code> y{" "}
-            <code className="rounded bg-secondary px-1">OPENROUTER_MODEL</code> a las variables
-            de entorno de la instancia y reiníciala. Mientras tanto puedes dejar listo el
-            comportamiento y el conocimiento aquí abajo.
-          </p>
-        </div>
-      )}
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+        <AiProviderSection profile={profile} aiConfigured={aiConfigured} onSave={saveProfile} />
 
-      <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-2">
-        <ProfileSection profile={profile} onSave={saveProfile} />
-        <KbSection entries={entries} kbSize={kbSize} onChanged={() => void refetch()} />
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          <ProfileSection profile={profile} onSave={saveProfile} />
+          <KbSection entries={entries} kbSize={kbSize} onChanged={() => void refetch()} />
+        </div>
       </div>
     </div>
+  );
+}
+
+function AiProviderSection({
+  profile,
+  aiConfigured,
+  onSave,
+}: {
+  profile: Profile;
+  aiConfigured: boolean;
+  onSave: (patch: Partial<Profile>) => Promise<void>;
+}) {
+  const [token, setToken] = useState("");
+  const [model, setModel] = useState(profile.aiModel ?? "");
+
+  useEffect(() => {
+    setModel(profile.aiModel ?? "");
+  }, [profile.aiModel]);
+
+  async function saveAi() {
+    const patch: Partial<Profile> = {};
+    if (token.trim()) patch.aiToken = token.trim();
+    if (model.trim()) patch.aiModel = model.trim();
+    else patch.aiModel = null;
+    await onSave(patch);
+    setToken("");
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          Proveedor de IA
+        </CardTitle>
+        <CardDescription>
+          Configura el token y modelo de OpenRouter (u otro compatible) directamente desde aquí.
+          Si ya tienes las variables de entorno, se usan por defecto.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!aiConfigured && (
+          <div className="rounded-lg border border-brand-soft bg-brand-tint p-4 text-center">
+            <Sparkles className="mx-auto mb-2 h-6 w-6 text-primary" />
+            <p className="text-sm font-medium">Configura tu proveedor de IA para activar el agente</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ingresa tu API key y modelo aquí abajo, o agrégalos como variables de entorno.
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <Label htmlFor="ai-token">API Key</Label>
+          <Input
+            id="ai-token"
+            type="password"
+            placeholder={profile.aiTokenSet ? "sk-or-•••••••• (ya configurada)" : "sk-or-v1-..."}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+          />
+          {profile.aiTokenSet && (
+            <p className="text-xs text-muted-foreground">
+              Token actual: {profile.aiToken}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="ai-model">Modelo</Label>
+          <Input
+            id="ai-model"
+            placeholder="anthropic/claude-sonnet-4.5"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Ejemplo: <code>anthropic/claude-sonnet-4.5</code>, <code>openai/gpt-4o</code>,{" "}
+            <code>google/gemini-2.0-flash</code>
+          </p>
+        </div>
+
+        <Button onClick={() => void saveAi()}>Guardar proveedor IA</Button>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -120,15 +120,15 @@ export const GET = withAuth(async (session, req: Request) => {
   const periodQuotes = await db.select().from(schema.quote).where(
     and(scoped(schema.quote.organizationId, orgId), gte(schema.quote.createdAt, from))
   );
-  const sentQuotes = periodQuotes.filter((q) => q.status === "sent" || q.status === "approved");
-  const approvedQuotes = periodQuotes.filter((q) => q.status === "approved");
+  const sentQuotes = periodQuotes.filter((q) => q.status === "sent" || q.status === "accepted");
+  const approvedQuotes = periodQuotes.filter((q) => q.status === "accepted");
 
   const quotesByMonth = new Map<string, { sent: number; approved: number }>();
   for (const q of periodQuotes) {
     const month = new Date(q.createdAt).toISOString().slice(0, 7);
     const entry = quotesByMonth.get(month) ?? { sent: 0, approved: 0 };
     if (q.status === "sent") entry.sent++;
-    if (q.status === "approved") entry.approved++;
+    if (q.status === "accepted") entry.approved++;
     quotesByMonth.set(month, entry);
   }
 
