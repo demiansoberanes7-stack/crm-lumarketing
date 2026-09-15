@@ -37,9 +37,9 @@ const HELP: Record<Source, { title: string; items: string[] }> = {
   zernio: {
     title: "Conecta la cuenta de Instagram en Zernio y pega aquí su cuenta y tu API key",
     items: [
-      "La cuenta de Instagram se vincula en el panel de Zernio, no desde Vocero. Copia de ahí el accountId de la cuenta conectada.",
+      "La cuenta de Instagram se vincula en el panel de Zernio, no desde LUMARK. Copia de ahí el accountId de la cuenta conectada.",
       "La API key se crea en Zernio → Settings → API Keys y se muestra una sola vez (empieza con sk_).",
-      "El mismo webhook de Zernio entrega WhatsApp, Messenger y X si esas cuentas están conectadas; Vocero filtra por plataforma y solo ingesta lo de Instagram aquí.",
+      "El mismo webhook de Zernio entrega WhatsApp, Messenger y X si esas cuentas están conectadas; LUMARK filtra por plataforma y solo ingesta lo de Instagram aquí.",
       "El secreto del webhook es opcional pero recomendado: con él se verifica la firma de cada entrega.",
     ],
   },
