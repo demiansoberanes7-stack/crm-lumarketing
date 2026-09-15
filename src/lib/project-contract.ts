@@ -13,4 +13,4 @@ export const taskFields = {
 export const createTaskSchema = z.object(taskFields).strict();
 export const updateTaskSchema = createTaskSchema.partial().refine((v) => Object.keys(v).length > 0, "Indica al menos un cambio");
 
-export const DEFAULT_PROJECT_STAGES = ["Activación", "Diagnóstico", "Calendario de Contenido", "Creación de Contenido", "Campaña", "Reporte de Resultados", "Renovación"];
+export const DEFAULT_PROJECT_STAGES = ["Activación", "Diagnóstico", "Calendario de Entregable", "Creación de Entregable", "Terminación de Entregable", "Reporte de Resultados", "Renovación"];

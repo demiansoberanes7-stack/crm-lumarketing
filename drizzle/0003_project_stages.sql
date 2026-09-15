@@ -21,8 +21,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "project_stage_org_position_uq" ON "project_st
 INSERT INTO project_stage (id, organization_id, name, position)
 SELECT 'pst_' || o.id || '_' || s.position, o.id, s.name, s.position
 FROM organization o CROSS JOIN (VALUES
-  (0, 'Activación'), (1, 'Diagnóstico'), (2, 'Calendario de Contenido'),
-  (3, 'Creación de Contenido'), (4, 'Campaña'), (5, 'Reporte de Resultados'), (6, 'Renovación')
+  (0, 'Activación'), (1, 'Diagnóstico'), (2, 'Calendario de Entregable'),
+  (3, 'Creación de Entregable'), (4, 'Terminación de Entregable'), (5, 'Reporte de Resultados'), (6, 'Renovación')
 ) AS s(position, name)
 ON CONFLICT (id) DO NOTHING;--> statement-breakpoint
 UPDATE project SET stage_id = 'pst_' || organization_id || '_' || LEAST(6, GREATEST(0, round(avance * 6.0 / 100)::integer));--> statement-breakpoint

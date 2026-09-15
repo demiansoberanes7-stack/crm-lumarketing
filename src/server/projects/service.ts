@@ -116,12 +116,19 @@ export async function getProjectStages(organizationId: string) {
 /** Listar proyectos */
 export async function listProjects(
   organizationId: string,
-  opts?: { estado?: string; limit?: number; offset?: number }
+  opts?: { estado?: string; archived?: boolean; limit?: number; offset?: number }
 ) {
   const db = getDb();
   const conditions = [scoped(schema.project.organizationId, organizationId)];
   if (opts?.estado) {
     conditions.push(eq(schema.project.estado, opts.estado));
+  }
+  if (opts?.archived !== undefined) {
+    if (opts.archived) {
+      conditions.push(sql`${schema.project.archivedAt} IS NOT NULL`);
+    } else {
+      conditions.push(sql`${schema.project.archivedAt} IS NULL`);
+    }
   }
 
   return db
@@ -290,4 +297,42 @@ export async function getProjectReport(organizationId: string, projectId: string
       pending: tasks.filter((t) => t.estado !== "terminado").length,
     },
   };
+}
+
+/** Archivar un proyecto (solo si está cerrado o avance = 100) */
+export async function archiveProject(organizationId: string, projectId: string) {
+  const project = await getProject(organizationId, projectId);
+  if (!project) throw new ProjectError(404, "Proyecto no encontrado");
+  if (project.archivedAt) throw new ProjectError(409, "El proyecto ya está archivado");
+
+  await getDb()
+    .update(schema.project)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        scoped(schema.project.organizationId, organizationId),
+        eq(schema.project.id, projectId)
+      )
+    );
+
+  return { archived: true };
+}
+
+/** Desarchivar un proyecto */
+export async function unarchiveProject(organizationId: string, projectId: string) {
+  const project = await getProject(organizationId, projectId);
+  if (!project) throw new ProjectError(404, "Proyecto no encontrado");
+  if (!project.archivedAt) throw new ProjectError(409, "El proyecto no está archivado");
+
+  await getDb()
+    .update(schema.project)
+    .set({ archivedAt: null, updatedAt: new Date() })
+    .where(
+      and(
+        scoped(schema.project.organizationId, organizationId),
+        eq(schema.project.id, projectId)
+      )
+    );
+
+  return { archived: false };
 }

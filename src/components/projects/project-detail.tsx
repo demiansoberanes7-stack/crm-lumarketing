@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ interface Project {
   id: string; contactId: string | null; notas: string | null; code: string; name: string;
   estado: string; avance: number; prioridad: string | null; riesgo: string | null;
   service: string | null; assignedUserId: string | null; stageId: string | null; currentStageIndex: number;
+  archivedAt: string | null;
   stages: { id: string; name: string; position: number }[];
 }
 interface Report {
@@ -58,6 +59,19 @@ export function ProjectDetail({ projectId, onBack, onUpdated }: { projectId: str
     finally { setBusy(false); }
   }
 
+  async function handleArchive(archive: boolean) {
+    if (!project) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await taskRequest(`/api/projects/${projectId}`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: archive ? "archive" : "unarchive" }),
+      });
+      await refetch(); onUpdated(); setNotice(archive ? "Proyecto archivado" : "Proyecto desarchivado");
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo archivar/desarchivar"); await refetch(); }
+    finally { setBusy(false); }
+  }
+
   if (!project) return <div className="space-y-3 p-6"><Button variant="outline" onClick={onBack}>Volver a proyectos</Button>{error ? <><p role="alert" className="text-destructive">{error}</p><Button onClick={() => void refetch()}>Reintentar</Button></> : <p role="status">Cargando proyecto…</p>}</div>;
   const stages = project.stages;
   const current = stages[project.currentStageIndex];
@@ -70,7 +84,11 @@ export function ProjectDetail({ projectId, onBack, onUpdated }: { projectId: str
     <header className="flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-6">
       <Button variant="ghost" size="icon" aria-label="Volver a proyectos" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
       <div className="flex-1"><p className="text-xs text-muted-foreground">{project.code}</p><h1 className="text-lg font-bold">{project.name}</h1><p className="text-sm">{project.service}</p></div>
-      <Badge variant={finished ? "success" : "secondary"}>{finished ? "Terminado" : project.estado === "activo" ? "Activo" : project.estado === "reunion" ? "Reunión" : "Cerrado"}</Badge>
+      <Badge variant={finished ? "success" : "secondary"}>{project.archivedAt ? "Archivado" : finished ? "Terminado" : project.estado === "activo" ? "Activo" : project.estado === "reunion" ? "Reunión" : "Cerrado"}</Badge>
+      <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleArchive(!project.archivedAt)}>
+        {project.archivedAt ? <ArchiveRestore className="mr-1.5 h-4 w-4" /> : <Archive className="mr-1.5 h-4 w-4" />}
+        {project.archivedAt ? "Desarchivar" : "Archivar"}
+      </Button>
       <Button onClick={() => setEditing(true)}>Editar proyecto</Button>
     </header>
     <div className="space-y-6 p-4 sm:p-6">

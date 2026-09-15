@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ interface Project {
   avance: number;
   prioridad: string | null;
   riesgo: string | null;
+  archivedAt: string | null;
 }
 
 const estadoBadge: Record<string, "success" | "warning" | "secondary"> = {
@@ -28,20 +29,39 @@ const estadoBadge: Record<string, "success" | "warning" | "secondary"> = {
 
 export function ProjectsClient() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
-    const res = await fetch("/api/projects").catch(() => null);
-    if (!res?.ok) return;
-    const data = (await res.json()) as { projects: Project[] };
-    setProjects(data.projects);
+    const [activeRes, archivedRes] = await Promise.all([
+      fetch("/api/projects?archived=false").catch(() => null),
+      fetch("/api/projects?archived=true").catch(() => null),
+    ]);
+    if (activeRes?.ok) {
+      const data = (await activeRes.json()) as { projects: Project[] };
+      setProjects(data.projects);
+    }
+    if (archivedRes?.ok) {
+      const data = (await archivedRes.json()) as { projects: Project[] };
+      setArchivedProjects(data.projects);
+    }
   }, []);
 
   useEffect(() => {
     setSelectedProject(new URLSearchParams(window.location.search).get("projectId"));
     void refetch();
   }, [refetch]);
+
+  const handleArchive = async (projectId: string, archive: boolean) => {
+    await fetch(`/api/projects/${projectId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: archive ? "archive" : "unarchive" }),
+    });
+    void refetch();
+  };
 
   if (selectedProject) {
     return (
@@ -53,6 +73,8 @@ export function ProjectsClient() {
     );
   }
 
+  const displayedProjects = showArchived ? archivedProjects : projects;
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
@@ -63,17 +85,45 @@ export function ProjectsClient() {
         </Button>
       </header>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b px-4 sm:px-6">
+        <button
+          onClick={() => setShowArchived(false)}
+          className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            !showArchived
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Activos ({projects.length})
+        </button>
+        <button
+          onClick={() => setShowArchived(true)}
+          className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            showArchived
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Archivados ({archivedProjects.length})
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {projects.length === 0 ? (
+        {displayedProjects.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <p className="text-sm font-medium">Sin proyectos</p>
+            <p className="text-sm font-medium">
+              {showArchived ? "Sin proyectos archivados" : "Sin proyectos"}
+            </p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              Crea tu primer proyecto para comenzar a dar seguimiento a tus servicios.
+              {showArchived
+                ? "Los proyectos archivados aparecerán aquí."
+                : "Crea tu primer proyecto para comenzar a dar seguimiento a tus servicios."}
             </p>
           </div>
         ) : (
           <div className="space-y-2">
-            {projects.map((p) => (
+            {displayedProjects.map((p) => (
               <Card
                 key={p.id}
                 className="cursor-pointer transition-shadow hover:shadow-md"
@@ -116,6 +166,19 @@ export function ProjectsClient() {
                       </p>
                     )}
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={(e) => { e.stopPropagation(); handleArchive(p.id, !showArchived); }}
+                    title={showArchived ? "Desarchivar" : "Archivar"}
+                  >
+                    {showArchived ? (
+                      <ArchiveRestore className="h-3.5 w-3.5" />
+                    ) : (
+                      <Archive className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
                 </CardHeader>
                 <CardContent className="pt-0 pb-4">
                   <div className="flex items-center gap-3">

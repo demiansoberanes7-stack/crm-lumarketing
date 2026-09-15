@@ -82,7 +82,7 @@ export function NewProjectDialog({
               id="np-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Campaña de Social Media"
+              placeholder="Proyecto de Social Media"
             />
           </div>
 

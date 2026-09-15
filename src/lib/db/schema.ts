@@ -888,6 +888,7 @@ export const project = pgTable(
       { onDelete: "set null" }
     ),
     nextMeetingAt: timestamp("next_meeting_at"),
+    archivedAt: timestamp("archived_at"),
     lastActivityAt: timestamp("last_activity_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

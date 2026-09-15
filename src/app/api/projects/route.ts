@@ -9,10 +9,12 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const estado = url.searchParams.get("estado") ?? undefined;
+  const archivedParam = url.searchParams.get("archived");
+  const archived = archivedParam === "true" ? true : archivedParam === "false" ? false : undefined;
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 100);
   const offset = parseInt(url.searchParams.get("offset") ?? "0");
 
-  const projects = await listProjects(session.organizationId, { estado, limit, offset });
+  const projects = await listProjects(session.organizationId, { estado, archived, limit, offset });
   return Response.json({ projects });
 });
 

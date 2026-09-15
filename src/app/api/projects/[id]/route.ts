@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
-import { getProject } from "@/server/projects/service";
+import { getProject, archiveProject, unarchiveProject } from "@/server/projects/service";
 import { validateProjectMember } from "@/server/projects/members";
 import { projectErrorResponse } from "@/server/projects/errors";
 
@@ -15,6 +15,24 @@ export const GET = withAuth(async (session, _req, { params }) => {
   const project = await getProject(session.organizationId, id);
   if (!project) return apiError(404, "not_found", "Proyecto no encontrado");
   return Response.json({ project });
+});
+
+/** POST — archivar / desarchivar proyecto */
+export const POST = withAuth(async (session, req: Request, { params }) => {
+  const { id } = await params;
+  const body = await parseBody(req, z.object({
+    action: z.enum(["archive", "unarchive"]),
+  }).strict());
+  if (!body.ok) return body.response;
+
+  try {
+    const result = body.data.action === "archive"
+      ? await archiveProject(session.organizationId, id)
+      : await unarchiveProject(session.organizationId, id);
+    return Response.json(result);
+  } catch (error) {
+    return projectErrorResponse(error);
+  }
 });
 
 export const PATCH = withAuth(async (session, req: Request, { params }) => {
