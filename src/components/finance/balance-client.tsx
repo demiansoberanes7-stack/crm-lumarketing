@@ -6,6 +6,7 @@ import {
   TrendingDown,
   TrendingUp,
   Plus,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +77,7 @@ export function BalanceClient() {
   const [to, setTo] = useState(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 0)).toISOString().slice(0, 10));
   const [period, setPeriod] = useState("");
   const [error, setError] = useState("");
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     const res = await fetch(`/api/finances/balance?${period}`).catch(() => null);
@@ -88,6 +90,34 @@ export function BalanceClient() {
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  async function markAsPaid(cuenta: CuentaPorCobrar) {
+    const remaining = cuenta.totalAmount - cuenta.paidAmount;
+    if (remaining <= 0) return;
+    setPayingId(cuenta.id);
+    try {
+      const res = await fetch("/api/charges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chargeId: cuenta.id,
+          monto: remaining,
+          metodo: "completo",
+          notas: "Marcado como pagado desde Balance",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setError(err?.error?.message ?? "No se pudo marcar como pagado");
+        return;
+      }
+      void refetch();
+    } catch {
+      setError("Error de conexión");
+    } finally {
+      setPayingId(null);
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -176,9 +206,20 @@ export function BalanceClient() {
                       Total: {formatCurrency(cuenta.totalAmount)} · Pagado: {formatCurrency(cuenta.paidAmount)} · Pendiente: {formatCurrency(cuenta.totalAmount - cuenta.paidAmount)}
                     </p>
                   </div>
-                  <Badge variant={cuenta.status === "paid" ? "success" : "warning"}>
-                    {cuenta.status === "paid" ? "Pagado" : "Pendiente"}
+                  <Badge variant={cuenta.status === "pagado" ? "success" : "warning"}>
+                    {cuenta.status === "pagado" ? "Pagado" : "Pendiente"}
                   </Badge>
+                  {cuenta.status !== "pagado" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={payingId === cuenta.id}
+                      onClick={() => void markAsPaid(cuenta)}
+                    >
+                      <CheckCircle className="mr-1 h-3.5 w-3.5" />
+                      {payingId === cuenta.id ? "Procesando…" : "Marcar pagado"}
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
