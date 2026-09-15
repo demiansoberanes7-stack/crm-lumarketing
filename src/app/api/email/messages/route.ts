@@ -29,6 +29,11 @@ const sendSchema = z.object({
   text: z.string().optional(),
   html: z.string().optional(),
   inReplyTo: z.string().nullable().optional(),
+  attachments: z.array(z.object({
+    filename: z.string().min(1),
+    content: z.string().min(1),
+    contentType: z.string().min(1),
+  })).max(10).optional(),
 });
 
 /** POST — enviar email */
@@ -43,6 +48,7 @@ export const POST = withAuth(async (session, req: Request) => {
       text: body.data.text,
       html: body.data.html,
       inReplyTo: body.data.inReplyTo ?? undefined,
+      attachments: body.data.attachments,
     });
     return Response.json({ ok: true, messageId });
   } catch (err) {

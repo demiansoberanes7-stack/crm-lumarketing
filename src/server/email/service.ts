@@ -220,6 +220,7 @@ export async function sendEmail(
     text?: string;
     html?: string;
     inReplyTo?: string;
+    attachments?: { filename: string; content: string; contentType: string }[];
   }
 ): Promise<string> {
   const creds = await getEmailAccountCredentials(organizationId, accountId);
@@ -244,6 +245,11 @@ export async function sendEmail(
     text: input.text,
     html: input.html,
     inReplyTo: input.inReplyTo,
+    attachments: input.attachments?.map((a) => ({
+      filename: a.filename,
+      content: Buffer.from(a.content, "base64"),
+      contentType: a.contentType,
+    })),
   });
 
   // Guardar mensaje enviado en la base

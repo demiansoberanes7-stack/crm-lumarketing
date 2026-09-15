@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Mail, RefreshCw, Plus, ArrowLeft, Send } from "lucide-react";
+import { useCallback, useEffect, useState, useRef } from "react";
+import { Mail, RefreshCw, Plus, ArrowLeft, Send, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -50,6 +50,8 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
   const [replySubject, setReplySubject] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<{ filename: string; content: string; contentType: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refetchAccounts = useCallback(async () => {
     const res = await fetch("/api/email/accounts").catch(() => null);
@@ -116,7 +118,26 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
     setReplyTo(msg.from);
     setReplySubject(msg.subject.startsWith("Re:") ? msg.subject : `Re: ${msg.subject}`);
     setReplyBody("");
+    setAttachments([]);
     setShowReply(true);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newAttachments: { filename: string; content: string; contentType: string }[] = [];
+    for (const file of Array.from(files)) {
+      if (file.size > 10 * 1024 * 1024) { setError(`El archivo ${file.name} supera 10MB`); continue; }
+      const buffer = await file.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      newAttachments.push({ filename: file.name, content: base64, contentType: file.type || "application/octet-stream" });
+    }
+    setAttachments((prev) => [...prev, ...newAttachments]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSendReply = async (e: React.FormEvent) => {
@@ -133,6 +154,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
         subject: replySubject,
         text: replyBody,
         inReplyTo: messages.find((message) => message.id === selectedMessage)?.messageId,
+        attachments: attachments.length > 0 ? attachments : undefined,
       }),
     }).catch(() => null);
     setSending(false);
@@ -142,6 +164,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
     setReplyTo("");
     setReplySubject("");
     setReplyBody("");
+    setAttachments([]);
   };
 
   const selectedMsg = messages.find((m) => m.id === selectedMessage);
@@ -215,7 +238,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                   accounts.find((a) => a.id === selectedAccount)?.email}
               </h2>
               <div className="flex items-center gap-2">
-                <Button size="sm" onClick={() => { setReplyTo(""); setReplySubject(""); setReplyBody(""); setShowReply(true); }}>Redactar</Button>
+                <Button size="sm" onClick={() => { setReplyTo(""); setReplySubject(""); setReplyBody(""); setAttachments([]); setShowReply(true); }}>Redactar</Button>
                 {syncCount !== null && (
                   <span className="text-xs text-text-3">
                     {syncCount} sincronizados
@@ -355,6 +378,27 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                     value={replyBody}
                     onChange={(e) => setReplyBody(e.target.value)}
                   />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Adjuntos (PDF, máx 10MB c/u)</Label>
+                  <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple className="hidden" onChange={(e) => void handleFileChange(e)} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    <Paperclip className="mr-1.5 h-3.5 w-3.5" /> Adjuntar archivo
+                  </Button>
+                  {attachments.length > 0 && (
+                    <ul className="mt-1 space-y-1">
+                      {attachments.map((a, i) => (
+                        <li key={i} className="flex items-center gap-2 rounded-md bg-muted px-2 py-1 text-xs">
+                          <Paperclip className="h-3 w-3 shrink-0" />
+                          <span className="flex-1 truncate">{a.filename}</span>
+                          <span className="text-muted-foreground">{(a.content.length * 0.75 / 1024).toFixed(0)}KB</span>
+                          <button type="button" onClick={() => removeAttachment(i)} className="shrink-0 text-muted-foreground hover:text-destructive">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
