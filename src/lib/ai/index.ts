@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { getEnv, isAiConfigured, resolveAiToken, resolveAiModel } from "@/lib/env";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { decryptSecret } from "@/lib/crypto";
 
 /**
  * Adaptador LLM OpenRouter-compatible — ÚNICA frontera con el proveedor de IA
@@ -27,13 +28,29 @@ export async function resolveAiConfig(organizationId: string) {
   const db = getDb();
   if (!db) return { token: undefined as string | undefined, model: undefined as string | undefined };
   const rows = await db
-    .select({ aiToken: schema.agentProfile.aiToken, aiModel: schema.agentProfile.aiModel })
+    .select({
+      aiToken: schema.agentProfile.aiToken,
+      aiTokenCipher: schema.agentProfile.aiTokenCipher,
+      aiTokenIv: schema.agentProfile.aiTokenIv,
+      aiTokenTag: schema.agentProfile.aiTokenTag,
+      aiModel: schema.agentProfile.aiModel,
+    })
     .from(schema.agentProfile)
     .where(scoped(schema.agentProfile.organizationId, organizationId))
     .limit(1);
   const row = rows[0];
+  let dbToken: string | undefined;
+  if (row?.aiTokenCipher && row.aiTokenIv && row.aiTokenTag) {
+    try {
+      dbToken = decryptSecret({ cipher: row.aiTokenCipher, iv: row.aiTokenIv, tag: row.aiTokenTag });
+    } catch {
+      // corrupted encrypted token — ignore
+    }
+  } else if (row?.aiToken) {
+    dbToken = row.aiToken;
+  }
   return {
-    token: resolveAiToken(row?.aiToken ?? undefined),
+    token: resolveAiToken(dbToken),
     model: resolveAiModel(row?.aiModel ?? undefined),
   };
 }

@@ -122,7 +122,7 @@ function ConnectForm({
     const res = await fetch("/api/settings/whatsapp/test", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ phoneNumberId, token }),
+      body: JSON.stringify({ phoneNumberId, token, wabaId }),
     }).catch(() => null);
     setTesting(false);
     if (!res) {

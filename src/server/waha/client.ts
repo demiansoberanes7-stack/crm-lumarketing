@@ -4,16 +4,18 @@
  * WAHA corre en un servidor propio con HTTPS. El CRM le habla por REST.
  * Documentación: https://waha.devlike.pro/docs/
  */
-
+import { validateWahaUrl } from "./url";
 
 export type WahaSessionStatus =
   | "STARTING"
   | "SCAN_QR_CODE"
   | "WORKING"
+  | "PASSKEY_REQUIRED"
+  | "PASSKEY_CONFIRMATION_REQUIRED"
   | "FAILED"
   | "STOPPED";
 
-export type WahaMessageAck = 0 | 1 | 2 | 3 | 4 | 5;
+export type WahaMessageAck = -1 | 0 | 1 | 2 | 3 | 4;
 
 export class WahaError extends Error {
   constructor(
@@ -27,40 +29,44 @@ export class WahaError extends Error {
 
 /**
  * Realiza una petición a la API de WAHA.
- * No lanza errores de red hacia afuera — los captura y retorna null.
+ * Traduce fallos a errores seguros, sin cuerpos remotos ni credenciales.
  */
 export async function wahaRequest(
   baseUrl: string,
   apiKey: string,
   path: string,
-  opts?: { method?: string; body?: unknown }
+  opts?: { method?: string; body?: unknown; binary?: boolean }
 ): Promise<unknown> {
-  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  await validateWahaUrl(baseUrl);
+  const url = new URL(path, baseUrl);
+  if (url.origin !== new URL(baseUrl).origin) throw new WahaError("Origen WAHA inválido");
   try {
     const res = await fetch(url, {
       method: opts?.method ?? "GET",
       signal: AbortSignal.timeout(20000),
+      redirect: "error",
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": apiKey,
+        Accept: opts?.binary ? "image/png" : "application/json",
       },
       body: opts?.body ? JSON.stringify(opts.body) : undefined,
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
       throw new WahaError(
-        `WAHA ${opts?.method ?? "GET"} ${path} → ${res.status}: ${text}`,
+        res.status === 401 || res.status === 403 ? "WAHA rechazó la API key o sus permisos" : `WAHA respondió HTTP ${res.status}`,
         res.status
       );
     }
     const contentType = res.headers.get("content-type") ?? "";
+    if (opts?.binary && contentType.includes("image/png")) return Buffer.from(await res.arrayBuffer());
     if (contentType.includes("application/json")) {
       return res.json();
     }
     return res.text();
   } catch (err) {
     if (err instanceof WahaError) throw err;
-    throw new WahaError(`WAHA request failed: ${String(err)}`);
+    throw new WahaError("No se pudo conectar a WAHA o la solicitud excedió 20 segundos");
   }
 }
 
@@ -136,10 +142,10 @@ export async function sendFile(
   const result = (await wahaRequest(
     baseUrl,
     apiKey,
-    `/api/sendFile`,
+    file.mimetype.startsWith("image/") ? "/api/sendImage" : file.mimetype.startsWith("video/") ? "/api/sendVideo" : file.mimetype.startsWith("audio/") ? "/api/sendVoice" : "/api/sendFile",
     {
       method: "POST",
-      body: { session: sessionName, chatId, file, caption: file.caption },
+      body: { session: sessionName, chatId, file, caption: file.caption, ...(file.mimetype.startsWith("audio/") ? { convert: true } : {}) },
     }
   )) as { id?: string; key?: { id: string } };
   const id = result.id ?? result.key?.id;
@@ -154,9 +160,9 @@ export async function markSeen(
   sessionName: string,
   chatId: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${encodeURIComponent(sessionName)}/markSeen`, {
+  await wahaRequest(baseUrl, apiKey, "/api/sendSeen", {
     method: "POST",
-    body: { chatId },
+    body: { session: sessionName, chatId },
   });
 }
 
@@ -167,9 +173,9 @@ export async function typing(
   sessionName: string,
   chatId: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${encodeURIComponent(sessionName)}/typing`, {
+  await wahaRequest(baseUrl, apiKey, "/api/startTyping", {
     method: "POST",
-    body: { chatId, interval: 5000 },
+    body: { session: sessionName, chatId },
   });
 }
 
@@ -180,9 +186,9 @@ export async function clearTyping(
   sessionName: string,
   chatId: string
 ): Promise<void> {
-  await wahaRequest(baseUrl, apiKey, `/api/${encodeURIComponent(sessionName)}/clearTyping`, {
+  await wahaRequest(baseUrl, apiKey, "/api/stopTyping", {
     method: "POST",
-    body: { chatId },
+    body: { session: sessionName, chatId },
   });
 }
 
@@ -217,7 +223,10 @@ export async function getQR(
   const data = (await wahaRequest(
     baseUrl,
     apiKey,
-    `/api/${encodeURIComponent(sessionName)}/auth/qr?format=image`
-  )) as Record<string, unknown>;
-  return typeof data.data === "string" ? `data:image/png;base64,${data.data}` : (data.qr as string) ?? null;
+    `/api/${encodeURIComponent(sessionName)}/auth/qr?format=image`,
+    { binary: true }
+  ));
+  if (Buffer.isBuffer(data)) return `data:image/png;base64,${data.toString("base64")}`;
+  const json = data as { data?: string };
+  return typeof json?.data === "string" && /^[A-Za-z0-9+/=]+$/.test(json.data) ? `data:image/png;base64,${json.data}` : null;
 }

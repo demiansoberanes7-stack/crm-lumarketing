@@ -97,8 +97,8 @@ export function InstagramClient() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         source,
-        igUserId: igUserId.trim() || null,
-        accountRef: accountRef.trim() || null,
+        igUserId: source === "meta" ? igUserId.trim() : null,
+        accountRef: source === "zernio" ? accountRef.trim() : null,
         token: token.trim(),
         webhookSecret: webhookSecret.trim() || null,
       }),
@@ -133,7 +133,8 @@ export function InstagramClient() {
   const help = HELP[source];
   const canSave =
     token.trim().length > 0 &&
-    (source === "zernio" ? accountRef.trim().length > 0 : igUserId.trim().length > 0);
+    ((source === "zernio" && accountRef.trim().length > 0) ||
+     (source === "meta" && igUserId.trim().length > 0));
 
   return (
     <div className="max-w-3xl space-y-6">

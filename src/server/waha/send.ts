@@ -56,8 +56,8 @@ function checkWindow(
  * Preparar chatId de WAHA desde phone normalizado.
  */
 function chatIdFromPhone(phone: string): string {
-  // WAHA usa formato: 521XXXXXXXXXX@s.whatsapp.net
-  return `${phone}@s.whatsapp.net`;
+  // WAHA usa formato: 521XXXXXXXXXX@c.us
+  return `${phone}@c.us`;
 }
 
 /**

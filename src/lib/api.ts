@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { requireSession, UnauthorizedError, type SessionContext } from "@/lib/auth/session";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
 
 /** Respuesta de error estándar de la API interna (contrato api.md). */
 export function apiError(
@@ -30,11 +31,17 @@ export function withAuth<Args extends unknown[]>(
     try {
       return await handler(session, ...args);
     } catch (err) {
-      console.error("[api] error no controlado:", err);
+      await recordDiagnostic({ organizationId: session.organizationId, source: "api", code: "api_failed", error: err });
       return apiError(500, "internal", "Error interno");
     }
   };
 }
+
+export function withOwner<Args extends unknown[]>(handler: (session: SessionContext, ...args: Args) => Promise<Response>) {
+  return withAuth<Args>(async (session, ...args) => {
+    if (session.role !== "owner") return apiError(403, "forbidden", "Sólo el propietario puede administrar esta configuración");
+    return handler(session, ...args);
+  });
 
 /** Parsea el body JSON con un esquema Zod; inválido → Response 422. */
 export async function parseBody<T>(

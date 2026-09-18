@@ -3,8 +3,20 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
+import { encryptSecret, decryptSecret, type EncryptedValue } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
+
+function decryptAiToken(row: Record<string, unknown>): string | null {
+  if (row.aiTokenCipher && row.aiTokenIv && row.aiTokenTag) {
+    try {
+      return decryptSecret({ cipher: String(row.aiTokenCipher), iv: String(row.aiTokenIv), tag: String(row.aiTokenTag) });
+    } catch {
+      return null;
+    }
+  }
+  return typeof row.aiToken === "string" ? row.aiToken : null;
+}
 
 export const GET = withAuth(async (session) => {
   const db = getDb();
@@ -16,6 +28,7 @@ export const GET = withAuth(async (session) => {
     .limit(1);
   const p = rows[0];
   if (!p) return apiError(404, "not_found", "Perfil del agente no encontrado");
+  const aiToken = decryptAiToken(p);
   return Response.json({
     profile: {
       enabled: p.enabled,
@@ -24,11 +37,11 @@ export const GET = withAuth(async (session) => {
       instructions: p.instructions,
       escalationRules: p.escalationRules,
       greeting: p.greeting,
-      aiToken: p.aiToken ? `${p.aiToken.slice(0, 8)}…${p.aiToken.slice(-4)}` : null,
-      aiTokenSet: !!p.aiToken,
+      aiToken: aiToken ? `${aiToken.slice(0, 8)}…${aiToken.slice(-4)}` : null,
+      aiTokenSet: !!aiToken,
       aiModel: p.aiModel,
     },
-    aiConfigured: isAiConfigured(p.aiToken ?? undefined),
+    aiConfigured: isAiConfigured(aiToken ?? undefined),
   });
 });
 
@@ -52,7 +65,24 @@ export const PUT = withAuth(async (session, req: Request) => {
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const [key, val] of Object.entries(body.data)) {
-    if (val !== undefined) patch[key] = val;
+    if (val !== undefined) {
+      if (key === "aiToken") {
+        if (val && typeof val === "string" && val.trim().length > 0) {
+          const encrypted = encryptSecret(val.trim());
+          patch.aiToken = null;
+          patch.aiTokenCipher = encrypted.cipher;
+          patch.aiTokenIv = encrypted.iv;
+          patch.aiTokenTag = encrypted.tag;
+        } else if (val === null) {
+          patch.aiToken = null;
+          patch.aiTokenCipher = null;
+          patch.aiTokenIv = null;
+          patch.aiTokenTag = null;
+        }
+      } else {
+        patch[key] = val;
+      }
+    }
   }
 
   await db

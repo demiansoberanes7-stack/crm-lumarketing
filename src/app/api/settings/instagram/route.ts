@@ -9,6 +9,7 @@ import {
   channelDisabledResponse,
   isChannelEnabled,
 } from "@/server/channels/enabled";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,8 @@ export const GET = withAuth(async (session) => {
 
 const putSchema = z.object({
   source: z.enum(["zernio", "meta"]),
-  igUserId: z.string().trim().min(1),
-  accountRef: z.string().trim().min(1).nullish(),
+  igUserId: z.string().trim().max(100).nullish(),
+  accountRef: z.string().trim().max(100).nullish(),
   username: z.string().trim().nullish(),
   token: z.string().trim().min(1),
   webhookSecret: z.string().trim().min(1).nullish(),
@@ -56,6 +57,14 @@ export const PUT = withAuth(async (session, req: Request) => {
     );
   }
 
+  if (data.source === "meta" && !data.igUserId) {
+    return apiError(
+      422,
+      "invalid_body",
+      "En modo Meta hace falta el IG User ID"
+    );
+  }
+
   const check = await verify(data);
   if (!check.ok) {
     return apiError(check.status, check.code, check.message);
@@ -70,6 +79,8 @@ export const PUT = withAuth(async (session, req: Request) => {
     token: data.token,
     webhookSecret: data.webhookSecret ?? null,
   });
+
+  await recordDiagnostic({ organizationId: session.organizationId, source: "instagram", code: "connection_saved", severity: "info" });
 
   return Response.json({ ok: true, username: check.username ?? null });
 });

@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({
   phoneNumberId: z.string().trim().min(1),
   token: z.string().trim().min(1),
+  wabaId: z.string().trim().min(1).optional(),
 });
 
 /** Prueba de conexión: valida token↔número, NO guarda (FR-040). */
@@ -14,7 +15,7 @@ export const POST = withAuth(async (_session, req: Request) => {
   const body = await parseBody(req, bodySchema);
   if (!body.ok) return body.response;
 
-  const check = await testConnection(body.data.phoneNumberId, body.data.token);
+  const check = await testConnection(body.data.phoneNumberId, body.data.token, body.data.wabaId);
   if (!check.ok) {
     const status = check.code === "meta_unavailable" ? 503 : 422;
     return apiError(status, check.code, check.message);
@@ -23,5 +24,6 @@ export const POST = withAuth(async (_session, req: Request) => {
     ok: true,
     displayPhoneNumber: check.displayPhoneNumber,
     verifiedName: check.verifiedName,
+    wabaStatus: check.wabaStatus,
   });
 });

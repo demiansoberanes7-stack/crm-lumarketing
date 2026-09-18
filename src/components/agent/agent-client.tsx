@@ -172,7 +172,7 @@ function AiProviderSection({
           />
           {profile.aiTokenSet && (
             <p className="text-xs text-muted-foreground">
-              Token actual: {profile.aiToken}
+              Token cifrado en la base de datos: {profile.aiToken}
             </p>
           )}
         </div>

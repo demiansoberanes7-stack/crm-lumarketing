@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type Tab = { href: string; label: string };
 
 const TABS: Tab[] = [
-  { href: "/settings/whatsapp", label: "WhatsApp · Meta" },
+  { href: "/settings/whatsapp", label: "WhatsApp Cloud API" },
   { href: "/settings/waha", label: "WAHA" },
   { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },
@@ -32,21 +32,24 @@ export function SettingsNav({
   atribucion = false,
   messenger = false,
   instagram = false,
+  owner = false,
 }: {
   agenda?: boolean;
   atribucion?: boolean;
   messenger?: boolean;
   instagram?: boolean;
+  owner?: boolean;
 }) {
   const pathname = usePathname();
   // Qué pestañas existen lo decide el servidor y baja por prop: este es un
   // componente de cliente y no puede leer variables de entorno.
   // Messenger va junto a WhatsApp: son las dos conexiones de mensajería.
   const tabs = [
-    ...TABS.slice(0, 1),
+    ...TABS.slice(0, 2),
     ...(messenger ? [MESSENGER_TAB] : []),
     ...(instagram ? [INSTAGRAM_TAB] : []),
-    ...TABS.slice(1),
+    ...TABS.slice(2),
+    ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
     ...(agenda ? [AGENDA_TAB] : []),
     ...(atribucion ? [ADS_TAB] : []),
   ];

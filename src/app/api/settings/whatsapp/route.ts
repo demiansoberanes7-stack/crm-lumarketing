@@ -6,6 +6,7 @@ import {
   tokenLast4,
 } from "@/server/whatsapp/credentials";
 import { subscribeAppToWaba, testConnection } from "@/server/whatsapp/connect";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export const PUT = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, putSchema);
   if (!body.ok) return body.response;
 
-  const check = await testConnection(body.data.phoneNumberId, body.data.token);
+  const check = await testConnection(body.data.phoneNumberId, body.data.token, body.data.wabaId);
   if (!check.ok) {
     const status = check.code === "meta_unavailable" ? 503 : 422;
     return apiError(status, check.code, check.message);
@@ -51,10 +52,13 @@ export const PUT = withAuth(async (session, req: Request) => {
   });
 
   // Best-effort: necesaria en modo directo; el modo agencia usa su override.
-  await subscribeAppToWaba(body.data.wabaId, body.data.token);
+  await subscribeAppToWaba(body.data.wabaId, body.data.token, session.organizationId);
+
+  await recordDiagnostic({ organizationId: session.organizationId, source: "meta", code: "connection_saved", severity: "info" });
 
   return Response.json({
     ok: true,
     displayPhoneNumber: check.displayPhoneNumber,
+    wabaStatus: check.wabaStatus,
   });
 });

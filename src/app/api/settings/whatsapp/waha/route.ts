@@ -1,154 +1,83 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { apiError, parseBody, withOwner } from "@/lib/api";
+import { getDb, schema } from "@/lib/db";
+import { scoped } from "@/lib/db/tenant";
 import { wahaWebhookUrl } from "@/server/waha/webhook-token";
-import { wahaRequest } from "@/server/waha/client";
-import {
-  getWahaCredentialsByOrg,
-  saveWahaCredentials,
-} from "@/server/waha/credentials";
-import {
-  getSessionStatus,
-  startSession,
-  stopSession,
-  getQR,
-  type WahaError,
-} from "@/server/waha/client";
+import { getWahaCredentialsByOrg, getWahaCredentialsFull, saveWahaCredentials, markWahaReconnectRequired } from "@/server/waha/credentials";
+import { getQR, WahaError, wahaRequest } from "@/server/waha/client";
+import { inspectSession, reconcileSession } from "@/server/waha/session";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
+import { validateWahaUrl } from "@/server/waha/url";
 
 export const dynamic = "force-dynamic";
-
-/** GET — estado de la conexión WAHA */
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   const creds = await getWahaCredentialsByOrg(session.organizationId);
   if (!creds) return Response.json({ connection: null });
-
-  // Verificar estado real de la sesión en WAHA
-  let sessionStatus = "UNKNOWN";
-  let qr: string | null = null;
+  const full = await getWahaCredentialsFull(session.organizationId);
+  let state = "UNKNOWN";
+  let error: string | null = null;
+  let account: string | null = null;
+  let restrictions: unknown = null;
   try {
-    const fullCreds = await import("@/server/waha/credentials").then((m) =>
-      m.getWahaCredentialsFull(session.organizationId)
-    );
-    if (fullCreds) {
-      const status = await getSessionStatus(
-        fullCreds.baseUrl,
-        fullCreds.apiKey,
-        fullCreds.sessionName
-      );
-      sessionStatus = status.status;
-      qr = status.qr ?? null;
-    }
-  } catch {
-    sessionStatus = "UNKNOWN";
-  }
-
-  return Response.json({
-    connection: {
-      baseUrl: creds.baseUrl,
-      sessionName: creds.sessionName,
-      status: creds.status,
-      sessionStatus,
-      apiKeyLast4: creds.apiKeyLast4,
-      qr,
-      webhookUrl: wahaWebhookUrl(session.organizationId),
-    },
-  });
+    const live = await inspectSession(full!);
+    state = live.status;
+    account = live.me?.id ?? null;
+    restrictions = { reachoutTimelock: live.me?.reachoutTimelock, messageCapping: live.me?.messageCapping };
+  } catch (err) { error = err instanceof WahaError ? err.message : "No se pudo consultar WAHA"; }
+  return Response.json({ connection: { ...creds, sessionStatus: state, error, account, restrictions, webhookUrl: wahaWebhookUrl(session.organizationId) } });
 });
 
-const putSchema = z.object({
-  baseUrl: z.string().url(),
-  apiKey: z.string().min(1),
-  sessionName: z.string().min(1).default("default"),
-});
-
-/** PUT — guardar credenciales WAHA */
-export const PUT = withAuth(async (session, req: Request) => {
-  const body = await parseBody(req, putSchema);
+export const PUT = withOwner(async (session, req: Request) => {
+  const body = await parseBody(req, z.object({ baseUrl: z.string().url(), apiKey: z.string().trim().optional(), sessionName: z.string().trim().regex(/^[a-zA-Z0-9_-]{1,100}$/).default("default") }));
   if (!body.ok) return body.response;
-
-  // Verificar que la URL es accesible
   try {
-    const status = await getSessionStatus(
-      body.data.baseUrl,
-      body.data.apiKey,
-      body.data.sessionName ?? "default"
-    );
-    if (status.status === "FAILED") {
-      return apiError(422, "waha_session_failed", "La sesión de WAHA falló al iniciar");
+    await validateWahaUrl(body.data.baseUrl);
+    const previous = await getWahaCredentialsFull(session.organizationId);
+    const apiKey = body.data.apiKey || (previous?.baseUrl === body.data.baseUrl ? previous.apiKey : "");
+    if (!apiKey) return apiError(422, "missing_key", "Introduce la API key de este servidor WAHA");
+    const creds = { ...body.data, apiKey };
+    try { await inspectSession(creds); }
+    catch (err) {
+      if (!(err instanceof WahaError) || err.status !== 404) throw err;
+      // Verify that a 404 really comes from an authenticated WAHA server.
+      const sessions = await wahaRequest(creds.baseUrl, apiKey, "/api/sessions?all=true");
+      if (!Array.isArray(sessions)) throw new WahaError("La URL no devolvió una API WAHA válida");
     }
+    await saveWahaCredentials({ organizationId: session.organizationId, ...creds });
+    await recordDiagnostic({ organizationId: session.organizationId, source: "waha", code: "connection_saved", severity: "info" });
+    return Response.json({ ok: true });
   } catch (err) {
-    const wahaErr = err as WahaError;
-    if (wahaErr.status !== 404) {
-    return apiError(
-      503,
-      "waha_unreachable",
-      `No se pudo conectar a WAHA: ${wahaErr.message}`
-    );
-    }
+    await recordDiagnostic({ organizationId: session.organizationId, source: "waha", code: "connection_failed", error: err });
+    return apiError(422, "waha_connection_failed", err instanceof WahaError ? err.message : "Revisa la URL HTTPS de WAHA, el host autorizado y la API key");
   }
-
-  await saveWahaCredentials({
-    organizationId: session.organizationId,
-    baseUrl: body.data.baseUrl,
-    apiKey: body.data.apiKey,
-    sessionName: body.data.sessionName,
-  });
-
-  return Response.json({ ok: true });
 });
 
-const actionSchema = z.object({
-  action: z.enum(["start", "stop", "qr"]),
-});
-
-/** POST — acciones de sesión (start/stop/qr) */
-export const POST = withAuth(async (session, req: Request) => {
-  const body = await parseBody(req, actionSchema);
+export const POST = withOwner(async (session, req: Request) => {
+  const body = await parseBody(req, z.object({ action: z.enum(["test", "start", "stop", "restart", "logout", "qr", "webhook"]) }));
   if (!body.ok) return body.response;
-
-  const fullCreds = await import("@/server/waha/credentials").then((m) =>
-    m.getWahaCredentialsFull(session.organizationId)
-  );
-  if (!fullCreds) {
-    return apiError(404, "not_configured", "WAHA no está configurado");
-  }
-
+  const creds = await getWahaCredentialsFull(session.organizationId);
+  if (!creds) return apiError(404, "not_configured", "Guarda primero la conexión WAHA");
   try {
-    if (body.data.action === "start") {
-      try {
-        await getSessionStatus(fullCreds.baseUrl, fullCreds.apiKey, fullCreds.sessionName);
-      } catch (e) {
-        if ((e as WahaError).status !== 404) throw e;
-        await wahaRequest(fullCreds.baseUrl, fullCreds.apiKey, "/api/sessions", { method: "POST", body: { name: fullCreds.sessionName, start: false, config: { webhooks: [{ url: wahaWebhookUrl(session.organizationId), events: ["message.any", "message.ack", "session.status"] }] } } });
-      }
-      await startSession(
-        fullCreds.baseUrl,
-        fullCreds.apiKey,
-        fullCreds.sessionName
-      );
-      return Response.json({ ok: true, action: "started" });
-    }
-
-    if (body.data.action === "stop") {
-      await stopSession(
-        fullCreds.baseUrl,
-        fullCreds.apiKey,
-        fullCreds.sessionName
-      );
-      return Response.json({ ok: true, action: "stopped" });
-    }
-
-    if (body.data.action === "qr") {
-      const qr = await getQR(
-        fullCreds.baseUrl,
-        fullCreds.apiKey,
-        fullCreds.sessionName
-      );
+    const { action } = body.data;
+    if (action === "qr") {
+      const qr = await getQR(creds.baseUrl, creds.apiKey, creds.sessionName);
+      if (!qr) return apiError(409, "qr_unavailable", "El QR no está disponible. Comprueba que la sesión esté en SCAN_QR_CODE.");
       return Response.json({ ok: true, qr });
     }
+    if (action === "start" || action === "webhook") await reconcileSession(session.organizationId, creds);
+    if (["start", "stop", "restart", "logout"].includes(action)) await wahaRequest(creds.baseUrl, creds.apiKey, `/api/sessions/${encodeURIComponent(creds.sessionName)}/${action}`, { method: "POST" });
+    const live = await inspectSession(creds);
+    await recordDiagnostic({ organizationId: session.organizationId, source: "waha", code: "session_action", severity: "info", metadata: { operation: action, state: live.status } });
+    return Response.json({ ok: true, sessionStatus: live.status });
   } catch (err) {
-    const wahaErr = err as WahaError;
-    return apiError(500, "waha_error", wahaErr.message);
+    if (err instanceof WahaError && (err.status === 401 || err.status === 403)) await markWahaReconnectRequired(session.organizationId);
+    await recordDiagnostic({ organizationId: session.organizationId, source: "waha", code: "connection_failed", error: err });
+    return apiError(503, "waha_error", err instanceof WahaError ? err.message : "No se pudo completar la acción WAHA");
   }
+});
 
-  return apiError(400, "invalid_action", "Acción no válida");
+export const DELETE = withOwner(async (session) => {
+  await getDb().delete(schema.wahaCredentials).where(scoped(schema.wahaCredentials.organizationId, session.organizationId));
+  await recordDiagnostic({ organizationId: session.organizationId, source: "waha", code: "disconnected", severity: "info" });
+  return Response.json({ ok: true });
 });
