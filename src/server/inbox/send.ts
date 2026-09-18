@@ -14,7 +14,7 @@ import {
   type Credentials,
 } from "@/server/whatsapp/credentials";
 import { isWindowOpen } from "@/server/inbox/window";
-import { IG_PREFIX } from "@/server/inbox/identity";
+import { IG_PREFIX, TT_PREFIX } from "@/server/inbox/identity";
 import {
   getInstagramCredentialsByOrg,
   markInstagramReconnectRequired,
@@ -28,6 +28,12 @@ import {
   type MessengerCredentials,
 } from "@/server/messenger/credentials";
 import { sendMessengerText } from "@/server/messenger/send";
+import {
+  getTikTokCredentialsByOrg,
+  markTikTokReconnectRequired,
+  type TikTokCredentials,
+} from "@/server/tiktok/credentials";
+import { sendTikTokText } from "@/server/tiktok/send";
 import {
   capabilitiesFor,
   textFits,
@@ -75,6 +81,8 @@ type SendTarget = {
   instagram?: InstagramCredentials;
   /** 017: presente solo en conversaciones de Messenger. */
   messenger?: MessengerCredentials;
+  /** Presente solo en conversaciones de TikTok. */
+  tiktok?: TikTokCredentials;
   waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
 };
 
@@ -186,6 +194,39 @@ async function prepareSend(
     };
   }
 
+  // TikTok, mismo patrón que Instagram/Messenger: transporte propio vía Zernio.
+  if (row.conversation.channel === "tiktok") {
+    if (!isChannelEnabled("tiktok")) {
+      throw new SendError(
+        "not_connected",
+        "El canal de TikTok está desactivado en esta instancia"
+      );
+    }
+    const ttCreds = await getTikTokCredentialsByOrg(organizationId);
+    if (!ttCreds) {
+      throw new SendError(
+        "not_connected",
+        "No hay cuenta de TikTok conectada"
+      );
+    }
+    if (ttCreds.status === "reconnect_required") {
+      throw new SendError(
+        "reconnect_required",
+        "El token de TikTok expiró: reconecta la cuenta en Configuración"
+      );
+    }
+    const ttRecipient = row.contact.waIdentity.startsWith(TT_PREFIX)
+      ? row.contact.waIdentity.slice(TT_PREFIX.length)
+      : row.contact.waIdentity;
+    return {
+      conversation: row.conversation,
+      credentials: null,
+      destinatario: { to: ttRecipient },
+      recipient: ttRecipient,
+      tiktok: ttCreds,
+    };
+  }
+
   // El nucleo no decide la politica: la consulta. WhatsApp exige plantilla
   // fuera de ventana; Instagram etiqueta y sigue; otro canal podria no tener
   // ventana en absoluto.
@@ -265,9 +306,11 @@ async function persistOutbound(input: {
   origin: "ai" | "operator";
   mediaAssetId?: string | null;
   media?: typeof schema.mediaAsset.$inferSelect | null;
+  /** Pre-generated ID for idempotent sends (Instagram/Zernio). */
+  preGeneratedId?: string;
 }): Promise<string> {
   const db = getDb();
-  const msgId = newId("message");
+  const msgId = input.preGeneratedId ?? newId("message");
   await db
     .insert(schema.message)
     .values({
@@ -317,18 +360,23 @@ export async function sendText(input: {
   const target = await prepareSend(input.conversationId, input.organizationId);
   const { credentials } = target;
 
+  // Pre-generate message ID for Zernio idempotent sends (Instagram, TikTok).
+  const preGenId = (target.instagram || target.tiktok) ? newId("message") : undefined;
+
   const waMessageId = target.waha
     ? (await wahaText(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, input.text)).key.id
     : target.instagram
-    ? await callInstagramSend(target, input.text)
-    : target.messenger
-      ? await callMessengerSend(target, input.text)
-      : await callGraphSend(credentials!, {
-          messaging_product: "whatsapp",
-          ...target.destinatario,
-          type: "text",
-          text: { body: input.text },
-        });
+    ? await callInstagramSend(target, input.text, preGenId)
+    : target.tiktok
+      ? await callTikTokSend(target, input.text, preGenId)
+      : target.messenger
+        ? await callMessengerSend(target, input.text)
+        : await callGraphSend(credentials!, {
+            messaging_product: "whatsapp",
+            ...target.destinatario,
+            type: "text",
+            text: { body: input.text },
+          });
 
   const messageId = await persistOutbound({
     organizationId: input.organizationId,
@@ -344,6 +392,7 @@ export async function sendText(input: {
       : "sent",
     aiGenerated: input.aiGenerated,
     origin: input.aiGenerated ? "ai" : "operator",
+    preGeneratedId: preGenId,
   });
 
   return { messageId };
@@ -588,7 +637,8 @@ export async function callGraphSend(
  */
 async function callInstagramSend(
   target: SendTarget,
-  text: string
+  text: string,
+  idempotencyKey?: string
 ): Promise<string> {
   const creds = target.instagram!;
 
@@ -611,6 +661,7 @@ async function callInstagramSend(
       threadRef: target.conversation.channelThreadRef,
       text,
       humanAgentTag,
+      idempotencyKey,
     });
     return res.platformMessageId;
   } catch (err) {
@@ -680,6 +731,58 @@ async function callMessengerSend(
         throw new SendError(
           "meta_unavailable",
           "Messenger no está disponible en este momento; intenta de nuevo"
+        );
+      }
+      throw new SendError("meta_error", err.message);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Envío por el canal de TikTok. Traduce los fallos al mismo vocabulario
+ * de SendError que los demás canales.
+ */
+async function callTikTokSend(
+  target: SendTarget,
+  text: string,
+  idempotencyKey?: string
+): Promise<string> {
+  const creds = target.tiktok!;
+
+  const caps = capabilitiesFor("tiktok");
+  if (!textFits("tiktok", text)) {
+    throw new SendError(
+      "meta_error",
+      `${caps.label} no acepta mensajes de más de ${caps.maxTextBytes} bytes: acorta el texto`
+    );
+  }
+
+  const humanAgentTag = !isWindowOpen(target.conversation.lastInboundAt);
+
+  try {
+    const res = await sendTikTokText({
+      credentials: creds,
+      recipient: target.recipient,
+      threadRef: target.conversation.channelThreadRef,
+      text,
+      humanAgentTag,
+      idempotencyKey,
+    });
+    return res.platformMessageId;
+  } catch (err) {
+    if (err instanceof MetaApiError) {
+      if (err.isAuthError) {
+        await markTikTokReconnectRequired(creds.organizationId);
+        throw new SendError(
+          "reconnect_required",
+          "El token de TikTok expiró o fue revocado: reconecta la cuenta"
+        );
+      }
+      if (err.status === 0 || err.status >= 500) {
+        throw new SendError(
+          "meta_unavailable",
+          "TikTok no está disponible en este momento; intenta de nuevo"
         );
       }
       throw new SendError("meta_error", err.message);

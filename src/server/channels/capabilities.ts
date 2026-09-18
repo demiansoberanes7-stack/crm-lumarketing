@@ -73,6 +73,14 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     outboundMedia: false,
     deliveryReceipts: false,
   },
+  tiktok: {
+    label: CHANNEL_LABEL.tiktok,
+    windowMs: DAY_MS,
+    outsideWindow: "human_agent_tag",
+    maxTextBytes: 1000,
+    outboundMedia: false,
+    deliveryReceipts: true,
+  },
 };
 
 export function capabilitiesFor(channel: Channel): ChannelCapabilities {

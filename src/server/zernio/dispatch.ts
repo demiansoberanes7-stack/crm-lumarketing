@@ -4,6 +4,8 @@ import { getInstagramCredentialsByAccountRef } from "@/server/instagram/credenti
 import { processZernioEvent } from "@/server/instagram/ingest";
 import { getMessengerCredentialsByAccountRef } from "@/server/messenger/credentials";
 import { processZernioMessengerEvent } from "@/server/messenger/ingest";
+import { getTikTokCredentialsByAccountRef } from "@/server/tiktok/credentials";
+import { processZernioTikTokEvent } from "@/server/tiktok/ingest";
 import { parseZernioEvent, type ZernioEvent } from "@/server/zernio";
 
 /**
@@ -20,15 +22,16 @@ import { parseZernioEvent, type ZernioEvent } from "@/server/zernio";
  * cuál de las dos URLs esté configurada.
  */
 
-/** A qué canal pertenece un evento, o null si no es de ninguno nuestro. */
-export function zernioTargetChannel(payload: unknown): Channel | null {
-  const evt = payload as ZernioEvent | null;
-  if (!evt || typeof evt !== "object") return null;
-  const platform = (evt.account?.platform ?? "").toLowerCase();
-  if (platform === "instagram") return "instagram";
-  if (platform === "facebook" || platform === "messenger") return "messenger";
-  return null;
-}
+ /** A qué canal pertenece un evento, o null si no es de ninguno nuestro. */
+ export function zernioTargetChannel(payload: unknown): Channel | null {
+   const evt = payload as ZernioEvent | null;
+   if (!evt || typeof evt !== "object") return null;
+   const platform = (evt.account?.platform ?? "").toLowerCase();
+   if (platform === "instagram") return "instagram";
+   if (platform === "facebook" || platform === "messenger") return "messenger";
+   if (platform === "tiktok") return "tiktok";
+   return null;
+ }
 
 /**
  * El secreto de firma de la cuenta que manda el evento, buscándolo en el canal
@@ -43,12 +46,14 @@ export async function resolveZernioSecret(
   const channel = zernioTargetChannel(evt);
   if (!accountRef) return { secret: null, accountRef: null, channel };
 
-  const creds =
-    channel === "messenger"
-      ? await getMessengerCredentialsByAccountRef(accountRef)
-      : channel === "instagram"
-        ? await getInstagramCredentialsByAccountRef(accountRef)
-        : null;
+    const creds =
+      channel === "messenger"
+        ? await getMessengerCredentialsByAccountRef(accountRef)
+        : channel === "instagram"
+          ? await getInstagramCredentialsByAccountRef(accountRef)
+          : channel === "tiktok"
+            ? await getTikTokCredentialsByAccountRef(accountRef)
+            : null;
 
   return { secret: creds?.webhookSecret ?? null, accountRef, channel };
 }
@@ -68,6 +73,7 @@ export async function processZernioPayload(payload: unknown): Promise<void> {
     return;
   }
 
-  if (channel === "messenger") await processZernioMessengerEvent(payload);
-  else await processZernioEvent(payload);
+    if (channel === "messenger") await processZernioMessengerEvent(payload);
+    else if (channel === "tiktok") await processZernioTikTokEvent(payload);
+    else await processZernioEvent(payload);
 }

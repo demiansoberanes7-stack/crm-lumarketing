@@ -423,6 +423,33 @@ export const messengerCredentials = pgTable(
   ]
 );
 
+export const tiktokCredentials = pgTable(
+  "tiktok_credentials",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    source: varchar("source", { length: 20 }).notNull().default("zernio"),
+    tiktokUserId: varchar("tiktok_user_id", { length: 255 }),
+    username: varchar("username", { length: 255 }),
+    accountRef: varchar("account_ref", { length: 255 }),
+    tokenCipher: varchar("token_cipher", { length: 1024 }).notNull(),
+    tokenIv: varchar("token_iv", { length: 255 }).notNull(),
+    tokenTag: varchar("token_tag", { length: 255 }).notNull(),
+    webhookSecret: varchar("webhook_secret", { length: 255 }),
+    status: varchar("status", { length: 30 })
+      .notNull()
+      .default("connected"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("tiktok_credentials_org_uq").on(t.organizationId),
+    index("tiktok_credentials_account_ref_idx").on(t.accountRef),
+  ]
+);
+
 export const agentProfile = pgTable(
   "agent_profile",
   {

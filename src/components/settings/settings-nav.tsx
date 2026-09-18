@@ -27,17 +27,22 @@ const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
 /** 014 — "Instagram" solo si el canal está encendido con CHANNELS. */
 const INSTAGRAM_TAB: Tab = { href: "/settings/instagram", label: "Instagram" };
 
+/** TikTok solo si el canal está encendido con CHANNELS. */
+const TIKTOK_TAB: Tab = { href: "/settings/tiktok", label: "TikTok" };
+
 export function SettingsNav({
   agenda = false,
   atribucion = false,
   messenger = false,
   instagram = false,
+  tiktok = false,
   owner = false,
 }: {
   agenda?: boolean;
   atribucion?: boolean;
   messenger?: boolean;
   instagram?: boolean;
+  tiktok?: boolean;
   owner?: boolean;
 }) {
   const pathname = usePathname();
@@ -48,6 +53,7 @@ export function SettingsNav({
     ...TABS.slice(0, 2),
     ...(messenger ? [MESSENGER_TAB] : []),
     ...(instagram ? [INSTAGRAM_TAB] : []),
+    ...(tiktok ? [TIKTOK_TAB] : []),
     ...TABS.slice(2),
     ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
     ...(agenda ? [AGENDA_TAB] : []),

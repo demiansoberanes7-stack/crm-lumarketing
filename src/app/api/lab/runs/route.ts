@@ -3,6 +3,7 @@ import { apiError, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
+import { resolveAiConfig } from "@/lib/ai";
 import { RunConflictError, startRun } from "@/server/lab/runner";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +35,13 @@ export const GET = withAuth(async (session) => {
           : null,
     };
   });
-  return Response.json({ runs: withDelta, aiConfigured: isAiConfigured() });
+  const aiConfig = await resolveAiConfig(session.organizationId);
+  return Response.json({ runs: withDelta, aiConfigured: isAiConfigured(aiConfig.token) });
 });
 
 export const POST = withAuth(async (session) => {
-  if (!isAiConfigured()) {
+  const aiConfig = await resolveAiConfig(session.organizationId);
+  if (!isAiConfigured(aiConfig.token)) {
     return apiError(
       409,
       "ai_not_configured",

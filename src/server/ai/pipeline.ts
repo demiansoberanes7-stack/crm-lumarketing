@@ -4,7 +4,7 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-history";
 import { getEnv, isAiConfigured } from "@/lib/env";
-import { chatJson, type ChatMessage } from "@/lib/ai";
+import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
 import { publish } from "@/server/events/bus";
 import { isWindowOpen } from "@/server/inbox/window";
 import { SendError, sendText } from "@/server/inbox/send";
@@ -93,8 +93,6 @@ async function executeTurn(conversationId: string): Promise<void> {
  * debounce 0 y sin pasar por el coalesce).
  */
 export async function runAgentTurn(conversationId: string): Promise<void> {
-  if (!isAiConfigured()) return;
-
   const db = getDb();
   const convRows = await db
     .select()
@@ -104,6 +102,9 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const conversation = convRows[0];
   if (!conversation) return;
   const organizationId = conversation.organizationId;
+
+  const aiConfig = await resolveAiConfig(organizationId);
+  if (!isAiConfigured(aiConfig.token)) return;
 
   // Condiciones de silencio: handoff activo o IA apagada en la conversación.
   if (conversation.handoffAt || !conversation.aiEnabled) return;

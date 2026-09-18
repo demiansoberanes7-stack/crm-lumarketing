@@ -26,6 +26,7 @@ export default async function SettingsLayout({
           atribucion={atribucionEnabled()}
           messenger={isChannelEnabled("messenger")}
           instagram={isChannelEnabled("instagram")}
+          tiktok={isChannelEnabled("tiktok")}
         />
         <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </div>
