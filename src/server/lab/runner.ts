@@ -131,6 +131,7 @@ async function runAllCases(
       transcript,
       kbText,
       behaviorText,
+      organizationId,
     });
 
     await db

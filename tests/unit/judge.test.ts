@@ -22,10 +22,11 @@ describe("judgeCase (FR-032)", () => {
       transcript: [{ role: "cliente", text: "hola" }],
       kbText: "kb",
       behaviorText: "b",
+      organizationId: "org_test",
     });
     expect(outcome.status).toBe("done");
     // usa el modelo del juez (opts.judge)
-    expect(chatJson.mock.calls[0]![2]).toMatchObject({ judge: true });
+    expect(chatJson.mock.calls[0]![2]).toMatchObject({ judge: true, organizationId: "org_test" });
   });
 
   it("salida inválida tras reintentos internos → judge_failed (no lanza)", async () => {
@@ -39,6 +40,7 @@ describe("judgeCase (FR-032)", () => {
       transcript: [],
       kbText: "",
       behaviorText: "",
+      organizationId: "org_test",
     });
     expect(outcome.status).toBe("judge_failed");
   });

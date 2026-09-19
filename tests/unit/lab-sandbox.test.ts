@@ -18,6 +18,11 @@ vi.mock("@/lib/ai", () => ({
     data: { action: "reply", text: "respuesta simulada" },
     raw: "{}",
   }),
+  resolveAiConfig: vi.fn().mockResolvedValue({
+    token: "test-token",
+    model: "test-model",
+  }),
+  isAiConfigured: vi.fn().mockReturnValue(true),
 }));
 
 // BD simulada: cola de resultados de select + capturas de insert/update.

@@ -27,7 +27,7 @@ type Connection = {
 };
 
 type WebhookInfo = {
-  igUrl: string | null;
+  instagramUrl: string | null;
   verifyToken: string;
   isHttps: boolean;
   signatureLayer: boolean;
@@ -272,7 +272,7 @@ export function InstagramClient() {
         </CardContent>
       </Card>
 
-      {webhook?.igUrl && (
+      {webhook?.instagramUrl && (
         <Card>
           <CardHeader>
             <CardTitle>Webhook de Instagram</CardTitle>
@@ -296,12 +296,12 @@ export function InstagramClient() {
             <div className="space-y-1.5">
               <Label>URL de callback</Label>
               <div className="flex gap-2">
-                <Input readOnly value={webhook.igUrl} className="font-mono text-xs" />
+                <Input readOnly value={webhook.instagramUrl} className="font-mono text-xs" />
                 <Button
                   variant="outline"
                   size="icon"
                   aria-label="Copiar la URL"
-                  onClick={() => void copy(webhook.igUrl!, "url")}
+                  onClick={() => void copy(webhook.instagramUrl!, "url")}
                 >
                   {copied === "url" ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 </Button>

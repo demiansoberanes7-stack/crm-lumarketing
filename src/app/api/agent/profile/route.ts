@@ -67,6 +67,14 @@ export const PUT = withAuth(async (session, req: Request) => {
   for (const [key, val] of Object.entries(body.data)) {
     if (val !== undefined) {
       if (key === "aiToken") {
+        // Reject masked tokens (e.g., "sk-or-12…abcd") — never store display
+        // values as credentials.
+        if (
+          typeof val === "string" &&
+          (val.includes("…") || val.includes("*") || val.includes("•"))
+        ) {
+          continue;
+        }
         if (val && typeof val === "string" && val.trim().length > 0) {
           const encrypted = encryptSecret(val.trim());
           patch.aiToken = null;

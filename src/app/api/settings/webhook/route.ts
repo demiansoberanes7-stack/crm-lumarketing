@@ -26,7 +26,7 @@ export const GET = withAuth(async () => {
       ? `${base}/api/webhooks/messenger/${env.META_WEBHOOK_VERIFY_TOKEN}`
       : null,
     tiktokUrl: isChannelEnabled("tiktok")
-      ? `${base}/api/webhooks/ig/${env.META_WEBHOOK_VERIFY_TOKEN}`
+      ? `${base}/api/webhooks/tiktok/${env.META_WEBHOOK_VERIFY_TOKEN}`
       : null,
     verifyToken: env.META_WEBHOOK_VERIFY_TOKEN,
     isHttps: url.startsWith("https://"),

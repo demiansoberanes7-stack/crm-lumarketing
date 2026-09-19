@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -537,6 +537,9 @@ export const agentTestRun = pgTable(
   (t) => [
     index("test_run_org_idx").on(t.organizationId, t.startedAt),
     index("test_run_org_status_idx").on(t.organizationId, t.status),
+    uniqueIndex("one_running_run_per_org")
+      .on(t.organizationId)
+      .where(eq(t.status, "running")),
   ]
 );
 

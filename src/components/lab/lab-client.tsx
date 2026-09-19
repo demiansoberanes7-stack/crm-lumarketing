@@ -273,7 +273,8 @@ function HistoryList({
 function ScoreBadge({ run }: { run: Run }) {
   if (run.status === "running") return <Badge variant="secondary">En curso…</Badge>;
   if (run.status === "failed") return <Badge variant="destructive">Fallida</Badge>;
-  const score = run.score ?? 0;
+  if (run.score === null) return <Badge variant="secondary">Sin score</Badge>;
+  const score = run.score;
   const variant = score >= 80 ? "success" : score >= 50 ? "warning" : "destructive";
   return <Badge variant={variant}>Score {score}</Badge>;
 }

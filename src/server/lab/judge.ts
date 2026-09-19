@@ -32,6 +32,7 @@ export async function judgeCase(input: {
   transcript: { role: "cliente" | "agente"; text: string }[];
   kbText: string;
   behaviorText: string;
+  organizationId: string;
 }): Promise<JudgeOutcome> {
   const { system, user } = buildJudgePrompt({
     persona: input.personaKey,
@@ -45,7 +46,7 @@ export async function judgeCase(input: {
       { role: "system", content: system },
       { role: "user", content: user },
     ],
-    { judge: true }
+    { judge: true, organizationId: input.organizationId }
   );
   if (!result.ok) {
     // Diagnóstico operativo: el caso queda visible como judge_failed y aquí
