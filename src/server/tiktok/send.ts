@@ -1,4 +1,3 @@
-import { MetaApiError } from "@/lib/meta/client";
 import type { TikTokCredentials } from "@/server/tiktok/credentials";
 import { sendZernioMessage } from "@/server/zernio";
 

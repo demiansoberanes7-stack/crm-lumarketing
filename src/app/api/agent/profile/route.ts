@@ -3,7 +3,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
-import { encryptSecret, decryptSecret, type EncryptedValue } from "@/lib/crypto";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
 
