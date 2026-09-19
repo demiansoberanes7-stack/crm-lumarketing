@@ -32,7 +32,7 @@ export const GET = withAuth(async (session) => {
 
 const putSchema = z.object({
   source: z.enum(["zernio", "meta"]),
-  igUserId: z.string().trim().max(100).nullish(),
+  igUserId: z.string().trim().max(100).min(1),
   accountRef: z.string().trim().max(100).nullish(),
   username: z.string().trim().nullish(),
   token: z.string().trim().min(1),
@@ -57,14 +57,6 @@ export const PUT = withAuth(async (session, req: Request) => {
     );
   }
 
-  if (data.source === "meta" && !data.igUserId) {
-    return apiError(
-      422,
-      "invalid_body",
-      "En modo Meta hace falta el IG User ID"
-    );
-  }
-
   const check = await verify(data);
   if (!check.ok) {
     return apiError(check.status, check.code, check.message);
@@ -73,7 +65,7 @@ export const PUT = withAuth(async (session, req: Request) => {
   await saveInstagramCredentials({
     organizationId: session.organizationId,
     source: data.source,
-    igUserId: data.igUserId ?? null,
+    igUserId: data.igUserId,
     accountRef: data.accountRef ?? null,
     username: check.username ?? data.username ?? null,
     token: data.token,
