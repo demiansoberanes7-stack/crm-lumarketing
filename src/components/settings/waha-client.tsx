@@ -22,7 +22,7 @@ export function WahaClient() {
     if (!connection) return;
     const timer = setInterval(() => { void load().catch(() => setNotice("No se pudo actualizar el estado")); }, 10000);
     return () => clearInterval(timer);
-  }, [connection?.sessionStatus, load]);
+  }, [connection, load]);
   useEffect(() => {
     if (!qr || connection?.sessionStatus !== "SCAN_QR_CODE") return;
     const timer = setInterval(() => {
@@ -61,7 +61,7 @@ export function WahaClient() {
       <label className="block text-sm">Webhook del CRM<input className="mt-1 w-full rounded border bg-background p-2" readOnly value={connection.webhookUrl} /></label>
       <button className="rounded border px-3 py-1" onClick={() => void navigator.clipboard.writeText(connection.webhookUrl).then(() => setNotice("URL copiada")).catch(() => setNotice("Selecciona y copia la URL manualmente"))}>Copiar webhook</button>
       <p className="text-xs">Eventos: message.any, message.ack, session.status. Firma HMAC SHA-512 y reintentos automáticos al configurar.</p>
-      {connection.restrictions && <details><summary>Restricciones informadas por WhatsApp</summary><pre className="overflow-auto text-xs">{JSON.stringify(connection.restrictions, null, 2)}</pre></details>}
+      {connection.restrictions ? <details><summary>Restricciones informadas por WhatsApp</summary><pre className="overflow-auto text-xs">{JSON.stringify(connection.restrictions as Record<string, unknown>, null, 2)}</pre></details> : null}
       <div className="flex gap-3"><button disabled={busy} className="rounded border p-2" onClick={() => { if (confirm("¿Cerrar sesión en WhatsApp? Necesitarás vincularlo de nuevo.")) void request("POST", { action: "logout" }); }}>Cerrar sesión WhatsApp</button><button disabled={busy} className="rounded border p-2" onClick={() => { if (confirm("¿Eliminar la conexión guardada del CRM? El historial se conserva.")) void request("DELETE"); }}>Desconectar del CRM</button></div>
     </section>}
     {notice && <p role="status" className="rounded border p-3">{notice}</p>}
