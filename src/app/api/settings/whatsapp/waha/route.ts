@@ -35,7 +35,7 @@ export const PUT = withOwner(async (session, req: Request) => {
     const previous = await getWahaCredentialsFull(session.organizationId);
     const apiKey = body.data.apiKey || (previous?.baseUrl === body.data.baseUrl ? previous.apiKey : "");
     if (!apiKey) return apiError(422, "missing_key", "Introduce la API key de este servidor WAHA");
-    const creds = { ...body.data, apiKey };
+    const creds = { baseUrl: body.data.baseUrl, apiKey, sessionName: body.data.sessionName ?? "default" };
     try { await inspectSession(creds); }
     catch (err) {
       if (!(err instanceof WahaError) || err.status !== 404) throw err;
