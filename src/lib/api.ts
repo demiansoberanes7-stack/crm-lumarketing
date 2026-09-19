@@ -42,6 +42,7 @@ export function withOwner<Args extends unknown[]>(handler: (session: SessionCont
     if (session.role !== "owner") return apiError(403, "forbidden", "Sólo el propietario puede administrar esta configuración");
     return handler(session, ...args);
   });
+}
 
 /** Parsea el body JSON con un esquema Zod; inválido → Response 422. */
 export async function parseBody<T>(
