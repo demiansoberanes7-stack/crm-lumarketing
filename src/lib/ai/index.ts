@@ -1,8 +1,5 @@
 import type { z } from "zod";
-import { getEnv, isAiConfigured, resolveAiToken, resolveAiModel } from "@/lib/env";
-import { getDb, schema } from "@/lib/db";
-import { scoped } from "@/lib/db/tenant";
-import { decryptSecret } from "@/lib/crypto";
+import { getEnv, isAiConfigured, resolveAiToken } from "@/lib/env";
 
 /**
  * Adaptador LLM OpenRouter-compatible — ÚNICA frontera con el proveedor de IA
@@ -23,36 +20,9 @@ export type ChatJsonResult<T> =
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
 
-/** Resolve AI token+model from DB for a given organization (env vars take priority). */
-export async function resolveAiConfig(organizationId: string) {
-  const db = getDb();
-  if (!db) return { token: undefined as string | undefined, model: undefined as string | undefined };
-  const rows = await db
-    .select({
-      aiToken: schema.agentProfile.aiToken,
-      aiTokenCipher: schema.agentProfile.aiTokenCipher,
-      aiTokenIv: schema.agentProfile.aiTokenIv,
-      aiTokenTag: schema.agentProfile.aiTokenTag,
-      aiModel: schema.agentProfile.aiModel,
-    })
-    .from(schema.agentProfile)
-    .where(scoped(schema.agentProfile.organizationId, organizationId))
-    .limit(1);
-  const row = rows[0];
-  let dbToken: string | undefined;
-  if (row?.aiTokenCipher && row.aiTokenIv && row.aiTokenTag) {
-    try {
-      dbToken = decryptSecret({ cipher: row.aiTokenCipher, iv: row.aiTokenIv, tag: row.aiTokenTag });
-    } catch {
-      // corrupted encrypted token — ignore
-    }
-  } else if (row?.aiToken) {
-    dbToken = row.aiToken;
-  }
-  return {
-    token: resolveAiToken(dbToken),
-    model: resolveAiModel(row?.aiModel ?? undefined),
-  };
+/** Resolve AI token+model — env vars only (DB fields are deprecated). */
+export async function resolveAiConfig(_organizationId: string) {
+  return { token: resolveAiToken(), model: process.env.OPENROUTER_MODEL?.trim() || undefined };
 }
 
 export async function chatJson<T>(
@@ -60,13 +30,11 @@ export async function chatJson<T>(
   messages: ChatMessage[],
   opts?: { model?: string; judge?: boolean; timeoutMs?: number; organizationId?: string }
 ): Promise<ChatJsonResult<T>> {
-  // Resolve DB fallback when organizationId is provided
+  // Resolve env-var config
   let dbToken: string | undefined;
-  let dbModel: string | undefined;
   if (opts?.organizationId) {
     const cfg = await resolveAiConfig(opts.organizationId);
     dbToken = cfg.token;
-    dbModel = cfg.model;
   }
 
   if (!isAiConfigured(dbToken)) {
@@ -80,8 +48,8 @@ export async function chatJson<T>(
   const model =
     opts?.model ??
     (opts?.judge
-      ? (env.OPENROUTER_JUDGE_MODEL ?? dbModel ?? env.OPENROUTER_MODEL)
-      : dbModel ?? env.OPENROUTER_MODEL);
+      ? (env.OPENROUTER_JUDGE_MODEL ?? env.OPENROUTER_MODEL)
+      : env.OPENROUTER_MODEL);
   if (!model?.trim()) {
     return {
       ok: false,

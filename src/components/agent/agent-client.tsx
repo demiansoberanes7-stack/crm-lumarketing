@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +16,6 @@ type Profile = {
   instructions: string | null;
   escalationRules: string | null;
   greeting: string | null;
-  aiToken: string | null;
-  aiTokenSet: boolean;
-  aiModel: string | null;
 };
 
 type KbEntry = {
@@ -102,98 +99,12 @@ export function AgentClient() {
       </header>
 
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        <AiProviderSection profile={profile} aiConfigured={aiConfigured} onSave={saveProfile} />
-
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           <ProfileSection profile={profile} onSave={saveProfile} />
           <KbSection entries={entries} kbSize={kbSize} onChanged={() => void refetch()} />
         </div>
       </div>
     </div>
-  );
-}
-
-function AiProviderSection({
-  profile,
-  aiConfigured,
-  onSave,
-}: {
-  profile: Profile;
-  aiConfigured: boolean;
-  onSave: (patch: Partial<Profile>) => Promise<void>;
-}) {
-  const [token, setToken] = useState("");
-  const [model, setModel] = useState(profile.aiModel ?? "");
-
-  useEffect(() => {
-    setModel(profile.aiModel ?? "");
-  }, [profile.aiModel]);
-
-  async function saveAi() {
-    const patch: Partial<Profile> = {};
-    if (token.trim()) patch.aiToken = token.trim();
-    if (model.trim()) patch.aiModel = model.trim();
-    else patch.aiModel = null;
-    await onSave(patch);
-    setToken("");
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          Proveedor de IA
-        </CardTitle>
-        <CardDescription>
-          Configura el token y modelo de OpenRouter (u otro compatible) directamente desde aquí.
-          Si ya tienes las variables de entorno, se usan por defecto.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {!aiConfigured && (
-          <div className="rounded-lg border border-brand-soft bg-brand-tint p-4 text-center">
-            <Sparkles className="mx-auto mb-2 h-6 w-6 text-primary" />
-            <p className="text-sm font-medium">Configura tu proveedor de IA para activar el agente</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Ingresa tu API key y modelo aquí abajo, o agrégalos como variables de entorno.
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-1.5">
-          <Label htmlFor="ai-token">API Key</Label>
-          <Input
-            id="ai-token"
-            type="password"
-            placeholder={profile.aiTokenSet ? "sk-or-•••••••• (ya configurada)" : "sk-or-v1-..."}
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          {profile.aiTokenSet && (
-            <p className="text-xs text-muted-foreground">
-              Token cifrado en la base de datos: {profile.aiToken}
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="ai-model">Modelo</Label>
-          <Input
-            id="ai-model"
-            placeholder="anthropic/claude-sonnet-4.5"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Ejemplo: <code>anthropic/claude-sonnet-4.5</code>, <code>openai/gpt-4o</code>,{" "}
-            <code>google/gemini-2.0-flash</code>
-          </p>
-        </div>
-
-        <Button onClick={() => void saveAi()}>Guardar proveedor IA</Button>
-      </CardContent>
-    </Card>
   );
 }
 

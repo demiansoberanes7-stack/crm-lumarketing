@@ -3,20 +3,8 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
-import { encryptSecret, decryptSecret } from "@/lib/crypto";
 
 export const dynamic = "force-dynamic";
-
-function decryptAiToken(row: Record<string, unknown>): string | null {
-  if (row.aiTokenCipher && row.aiTokenIv && row.aiTokenTag) {
-    try {
-      return decryptSecret({ cipher: String(row.aiTokenCipher), iv: String(row.aiTokenIv), tag: String(row.aiTokenTag) });
-    } catch {
-      return null;
-    }
-  }
-  return typeof row.aiToken === "string" ? row.aiToken : null;
-}
 
 export const GET = withAuth(async (session) => {
   const db = getDb();
@@ -28,7 +16,6 @@ export const GET = withAuth(async (session) => {
     .limit(1);
   const p = rows[0];
   if (!p) return apiError(404, "not_found", "Perfil del agente no encontrado");
-  const aiToken = decryptAiToken(p);
   return Response.json({
     profile: {
       enabled: p.enabled,
@@ -37,11 +24,8 @@ export const GET = withAuth(async (session) => {
       instructions: p.instructions,
       escalationRules: p.escalationRules,
       greeting: p.greeting,
-      aiToken: aiToken ? `${aiToken.slice(0, 8)}…${aiToken.slice(-4)}` : null,
-      aiTokenSet: !!aiToken,
-      aiModel: p.aiModel,
     },
-    aiConfigured: isAiConfigured(aiToken ?? undefined),
+    aiConfigured: isAiConfigured(),
   });
 });
 
@@ -52,8 +36,6 @@ const putSchema = z.object({
   instructions: z.string().max(8000).nullable().optional(),
   escalationRules: z.string().max(4000).nullable().optional(),
   greeting: z.string().max(1000).nullable().optional(),
-  aiToken: z.string().max(500).nullable().optional(),
-  aiModel: z.string().max(255).nullable().optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
@@ -66,30 +48,7 @@ export const PUT = withAuth(async (session, req: Request) => {
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const [key, val] of Object.entries(body.data)) {
     if (val !== undefined) {
-      if (key === "aiToken") {
-        // Reject masked tokens (e.g., "sk-or-12…abcd") — never store display
-        // values as credentials.
-        if (
-          typeof val === "string" &&
-          (val.includes("…") || val.includes("*") || val.includes("•"))
-        ) {
-          continue;
-        }
-        if (val && typeof val === "string" && val.trim().length > 0) {
-          const encrypted = encryptSecret(val.trim());
-          patch.aiToken = null;
-          patch.aiTokenCipher = encrypted.cipher;
-          patch.aiTokenIv = encrypted.iv;
-          patch.aiTokenTag = encrypted.tag;
-        } else if (val === null) {
-          patch.aiToken = null;
-          patch.aiTokenCipher = null;
-          patch.aiTokenIv = null;
-          patch.aiTokenTag = null;
-        }
-      } else {
-        patch[key] = val;
-      }
+      patch[key] = val;
     }
   }
 
