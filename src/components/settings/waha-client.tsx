@@ -22,14 +22,14 @@ export function WahaClient() {
     if (!connection) return;
     const timer = setInterval(() => { void load().catch(() => setNotice("No se pudo actualizar el estado")); }, 10000);
     return () => clearInterval(timer);
-  }, [Boolean(connection), load]);
+  }, [connection?.sessionStatus, load]);
   useEffect(() => {
     if (!qr || connection?.sessionStatus !== "SCAN_QR_CODE") return;
     const timer = setInterval(() => {
       void fetch("/api/settings/whatsapp/waha", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "qr" }) }).then(async (res) => { if (res.ok) { const data = await res.json(); setQr(data.qr); } }).catch(() => {});
     }, 20000);
     return () => clearInterval(timer);
-  }, [Boolean(qr), connection?.sessionStatus]);
+  }, [qr, connection?.sessionStatus]);
   async function request(method: string, body?: unknown) {
     setBusy(true); setNotice("");
     try {
