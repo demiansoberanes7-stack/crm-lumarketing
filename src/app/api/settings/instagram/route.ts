@@ -73,7 +73,7 @@ export const PUT = withAuth(async (session, req: Request) => {
   await saveInstagramCredentials({
     organizationId: session.organizationId,
     source: data.source,
-    igUserId: data.igUserId,
+    igUserId: data.igUserId ?? null,
     accountRef: data.accountRef ?? null,
     username: check.username ?? data.username ?? null,
     token: data.token,
