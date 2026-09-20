@@ -2,8 +2,8 @@
 
 ---
 
-**Version:** 1.3.0  
-**Fecha:** 19 de Septiembre de 2026  
+**Version:** 1.4.0  
+**Fecha:** 20 de Septiembre de 2026  
 **Licencia:** MIT  
 **Repositorio:** CRM LUMARK (monolito Next.js)  
 **Autor:** LUMARK / Ghostbreakfast  
@@ -62,10 +62,10 @@ CRM LUMARK es un sistema de gestion de relaciones con clientes (CRM) open source
 | Metrica | Valor |
 |---------|-------|
 | Tablas de base de datos | 47+ |
-| Migraciones | 9 (0000-0008) |
+| Migraciones | 10 (0000-0009) |
 | Rutas API | 80+ |
 | Componentes UI | 60+ |
-| Unit tests | 67 |
+| Unit tests | 450 |
 | Scripts E2E | 17 |
 | Lineas de codigo (estimado) | ~25,000+ |
 | Canales soportados | 4 |
@@ -247,8 +247,8 @@ No hay WebSockets ni colas externas. El trabajo en segundo plano (agente IA, Lab
 
 | Tecnologia | Version | Proposito |
 |------------|---------|-----------|
-| OpenRouter | API | Adaptador LLM unificado |
-| Claude/GPT | via OpenRouter | Modelos de lenguaje |
+| Groq | API | Proveedor de IA (via adaptador OpenRouter-compatible) |
+| openai/gpt-oss-20b | via Groq | Modelo de lenguaje (gratis, 131K contexto) |
 
 ## UI y Componentes
 
@@ -478,7 +478,7 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 
 | Tabla | Descripcion | Columnas clave |
 |-------|-------------|----------------|
-| `agent_profile` | Perfil del agente | organizationId, name, tone, instructions, aiTokenCipher/iv/tag |
+| `agent_profile` | Perfil del agente | organizationId, name, tone, instructions, aiTokenCipher/iv/tag (deprecated, usar env vars) |
 | `kb_entry` | Base de conocimiento | organizationId, question, answer, category |
 | `agent_test_run` | Ejecuciones del Laboratorio | organizationId, status, score |
 | `agent_test_case` | Casos de prueba | runId, persona, verdict (verde/amarillo/rojo) |
@@ -559,6 +559,7 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 | 0006 | `0006_diagnostics_messaging.sql` | diagnostic_event, whatsapp_settings, integration_secret |
 | 0007 | `0007_agent_ai_token_encrypted.sql` | Token cifrado (cipher, iv, tag) en agent_profile |
 | 0008 | `0008_tiktok_credentials.sql` | Tabla tiktok_credentials con token cifrado |
+| 0009 | `0009_one_running_run_index.sql` | Unique index: una ejecucion corriendo por organizacion |
 
 ---
 
@@ -762,13 +763,22 @@ export async function chatJson<T>(
   messages: ChatMessage[],
   opts?: { model?: string; organizationId?: string }
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
-  // 1. Resolver config (token + model) de DB o env vars
-  // 2. Enviar a OpenRouter-compatible API
+  // 1. Resolver config SOLO de env vars (DB fields deprecated)
+  // 2. Enviar a OpenRouter-compatible API (Groq, OpenRouter, etc.)
   // 3. Extraer JSON de la respuesta
   // 4. Validar contra schema Zod
   // 5. Reintentar hasta 3 veces con prompts mas estrictos
   // 6. Retornar resultado tipado
 }
+```
+
+**IMPORTANTE (v1.4.0)**: La configuracion de IA ahora es **solo por variables de entorno**. Los campos `aiToken` y `aiModel` en `agent_profile` estan deprecated. La UI ya no muestra la seccion "Proveedor de IA" — todo se configura via env vars en EasyPanel.
+
+```bash
+# Configuracion de IA (solo env vars)
+OPENROUTER_BASE_URL=https://api.groq.com/openai
+OPENROUTER_API_TOKEN=gsk_...
+OPENROUTER_MODEL=openai/gpt-oss-20b
 ```
 
 ## Pipeline del Agente (7 acciones)
@@ -995,12 +1005,15 @@ Configuracion semanal (weeklyHours)
 - HMAC-SHA256 para verificacion de firmas
 - Un solo webhook para todas las plataformas
 - Dispatch por `account.platform`
+- **Fix v1.4.0**: Aceptar webhooks sin firma cuando no hay signing secret configurado en Zernio (el token de la URL ya valida la fuente)
 
 ## OpenRouter
 
-- Adaptador LLM unificado
-- Compatible con Claude, GPT, Gemini, etc.
-- Soporte para modelos custom (aiToken en DB)
+- Adaptador LLM unificado (compatible con Groq, OpenRouter, etc.)
+- Configuracion **solo por env vars** (v1.4.0+)
+- Modelo actual: `openai/gpt-oss-20b` (Groq, gratis, 131K contexto)
+- Base URL: `https://api.groq.com/openai`
+- Los campos `aiToken`/`aiModel` en la DB estan deprecated
 
 ## Better Auth
 
@@ -1262,9 +1275,10 @@ META_APP_SECRET=(opcional, para firma HMAC)
 # Canales
 CHANNELS=whatsapp,instagram,messenger,tiktok
 
-# IA (opcional)
-OPENROUTER_API_TOKEN=sk-or-...
-OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
+# IA (solo env vars — v1.4.0+)
+OPENROUTER_BASE_URL=https://api.groq.com/openai
+OPENROUTER_API_TOKEN=gsk_...
+OPENROUTER_MODEL=openai/gpt-oss-20b
 
 # WAHA (opcional)
 WAHA_BASE_URL=http://waha:3000
@@ -1275,6 +1289,8 @@ ALLOW_SIGNUP=true
 AGENT_COALESCE_MS=6000
 MEDIA_DIR=/data/media
 ```
+
+**NOTA v1.4.0**: La configuracion de IA (token y modelo) ahora es SOLO por variables de entorno. Los campos `aiToken` y `aiModel` en la DB estan deprecated y la UI ya no los muestra.
 
 ## Paso 4: Verificar Salud
 
@@ -1304,6 +1320,72 @@ Respuesta esperada:
 - En EasyPanel -> CRM -> Env vars -> `CHANNELS`
 - Agregar `tiktok` si se desea: `CHANNELS=whatsapp,instagram,messenger,tiktok`
 - Reiniciar el contenedor
+
+## Paso 7: Configurar Dominio Personalizado
+
+### 7.1 Configurar DNS en tu proveedor (Hostinger, etc.)
+
+Agregar registros DNS:
+
+| Tipo | Nombre | Apunta a | TTL |
+|------|--------|----------|-----|
+| **A** | `@` | `35.232.183.92` (IP del VPS) | 3600 |
+| **A** | `www` | `35.232.183.92` (IP del VPS) | 3600 |
+
+### 7.2 Agregar dominio en EasyPanel
+
+EasyPanel necesita registrar el dominio para configurar proxy inverso + SSL automatico:
+
+```bash
+# Via API (o desde la UI de EasyPanel)
+curl -sk -X POST "https://35.232.183.92/api/trpc/domains.createDomain" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{
+    "json": {
+      "projectId": "crm",
+      "host": "tudominio.com",
+      "serviceName": "crm",
+      "path": "/",
+      "https": true,
+      "certificateResolver": "",
+      "id": "generated-id",
+      "middlewares": [],
+      "wildcard": false,
+      "destinationType": "service"
+    }
+  }'
+```
+
+EasyPanel creara automaticamente un certificado SSL via Let's Encrypt.
+
+### 7.3 Actualizar APP_BASE_URL
+
+Cambiar la env var en EasyPanel:
+```
+APP_BASE_URL=https://tudominio.com
+```
+
+Esto asegura que los links internos (webhooks, auth, etc.) usen tu dominio.
+
+### 7.4 Actualizar Webhooks
+
+Despues de configurar el dominio, actualizar las URLs de webhook en:
+
+- **Meta/Facebook** (WhatsApp Business): `https://tudominio.com/api/webhooks/wa/{token}`
+- **Meta/Facebook** (Instagram): `https://tudominio.com/api/webhooks/ig/{token}`
+- **Zernio**: `https://tudominio.com/api/webhooks/ig/{token}`
+
+### Flujo de conexion
+
+```
+Usuario escribe tudominio.com
+    ↓ DNS (Hostinger/A Records)
+    ↓ 35.232.183.92
+    ↓ EasyPanel (Traefik + SSL automatico)
+    ↓ Contenedor CRM (puerto 3000)
+    ↓ App responde
+```
 
 ---
 
@@ -1386,13 +1468,114 @@ Consider using `<Image />` from `next/image`
 
 **Solucion potencial**: Reemplazar `<img>` por `<Image>` de next/image con loader personalizado (el QR code viene de una URL externa).
 
+## Bug 5: Agent Pipeline Missing organizationId
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Alta  
+**Simptomas**: Agente IA fallaba al resolver configuracion de IA (token/modelo) porque no recibia `organizationId`
+
+**Causa**: `chatJson()` en `pipeline.ts`, `judge.ts` y `runner.ts` no pasaban `organizationId` al llamar `chatJson()`, asi que `resolveAiConfig()` nunca consultaba la DB.
+
+**Solucion**: Agregar `organizationId` a las llamadas `chatJson()` en:
+- `src/server/ai/pipeline.ts` — turno del agente
+- `src/server/lab/judge.ts` — juez del Laboratorio
+- `src/server/lab/runner.ts` — runner del Laboratorio
+
+**Commits**: `f47c2a0`
+
+## Bug 6: Masked Token Storage
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Media  
+**Simptomas**: Si un usuario pegaba un token enmascarado (`sk-or-12…abcd`) en la UI, se guardaba como credencial real
+
+**Causa**: El endpoint PUT de `/api/agent/profile` no validaba si el token estaba enmascarado.
+
+**Solucion**: Rechazar tokens que contengan `…`, `*`, o `•` en el handler PUT.
+
+**Commit**: `f47c2a0`
+
+## Bug 7: Instagram Webhook URL Field Mismatch
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Alta  
+**Simptomas**: URL de webhook de Instagram no se mostraba correctamente en Settings
+
+**Causa**: El componente usaba `igUrl` pero el backend retornaba `instagramUrl`. TikTok URL también estaba malformada.
+
+**Solucion**: 
+- Cambiar `igUrl` → `instagramUrl` en `instagram-client.tsx`
+- Corregir URL de TikTok a `/api/webhooks/tiktok/`
+
+**Commit**: `f47c2a0`
+
+## Bug 8: Lab Score Display
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Baja  
+**Simptomas**: Laboratorio mostraba "0" cuando no habia score en vez de indicar que no habia evaluacion
+
+**Causa**: `score === null ?? 0` retornaba 0 en vez de mostrar un estado vacio.
+
+**Solucion**: Mostrar badge "Sin score" cuando `score === null`.
+
+**Commit**: `f47c2a0`
+
+## Bug 9: Concurrent Lab Runs
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Media  
+**Simptomas**: Multiples ejecuciones del Laboratorio podian correr simultaneamente para la misma organizacion
+
+**Causa**: No habia constraint de unicidad para ejecuciones activas.
+
+**Solucion**: Migracion `0009` con unique index parcial: solo una ejecucion `running` por organizacion.
+
+**Commit**: `f47c2a0`
+
+## Bug 10: Zernio Webhook 401 Unauthorized
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Alta  
+**Simptomas**: Webhooks de Zernio (Instagram/Messenger/TikTok) retornaban 401
+
+**Causa**: `isValidZernioSignature()` rechazaba requests sin firma cuando la DB tenia un `webhookSecret` guardado. Pero Zernio no envia firma si el webhook no tiene signing secret configurado en su panel.
+
+**Solucion**: Aceptar requests sin firma cuando no hay signing secret configurado — el token de la URL ya valida la fuente.
+
+```typescript
+// ANTES (bug):
+if (!signature) return false;
+
+// DESPUES (fix):
+if (!signature) return true; // URL token ya valido la fuente
+```
+
+**Commit**: `34a578a`
+
+## Bug 11: AI Model Not Found (Groq)
+
+**Fecha**: 20 de Septiembre de 2026  
+**Severidad**: Alta  
+**Simptomas**: Agente IA fallaba con "model not found" o "no access"
+
+**Causa**: El modelo `llama-3.1-8b-instant` es Enterprise-only en Groq. Ademas, el modelo de la DB tenia prioridad sobre la env var en `chatJson()`.
+
+**Solucion**: 
+1. Cambiar modelo a `openai/gpt-oss-20b` (gratis, 131K contexto)
+2. Invertir prioridad: env var siempre gana sobre DB
+3. Eliminar UI de "Proveedor de IA" (configuracion solo por env vars)
+4. Simplificar `resolveAiConfig()` para solo usar env vars
+
+**Commits**: `4e6d8f4`
+
 ---
 
 # 17. TESTING Y VERIFICACION
 
 ## Unit Tests (Vitest)
 
-67 archivos de test cubriendo:
+450 tests en 53 archivos cubriendo:
 
 | Modulo | Tests |
 |--------|-------|
@@ -1628,6 +1811,7 @@ node scripts/migrate.mjs
 - Drizzle ORM: https://orm.drizzle.team
 - Better Auth: https://www.better-auth.com
 - OpenRouter: https://openrouter.ai
+- Groq: https://console.groq.com
 - Meta Graph API: https://developers.facebook.com/docs/graph-api
 - WAHA: https://github.com/evolution/whatsapp-web.js
 - Zernio: https://zernio.com
@@ -1639,5 +1823,5 @@ node scripts/migrate.mjs
 
 **Fin de la Documentacion**
 
-*Documento generado el 19 de Septiembre de 2026*
-*Version 1.3.0 - CRM LUMARK*
+*Documento generado el 20 de Septiembre de 2026*
+*Version 1.4.0 - CRM LUMARK*
