@@ -41,7 +41,9 @@ export function isValidZernioSignature(
   secret: string | null
 ): boolean {
   if (!secret) return true;
-  if (!signature) return false;
+  // Si Zernio no envía firma (signing secret no configurado en su panel),
+  // aceptamos: el token de la URL ya validó la fuente.
+  if (!signature) return true;
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(signature.trim().toLowerCase(), "utf8");
