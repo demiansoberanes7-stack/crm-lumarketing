@@ -2,6 +2,7 @@ import type { schema } from "@/lib/db";
 
 type AgentProfile = typeof schema.agentProfile.$inferSelect;
 type KbEntry = typeof schema.kbEntry.$inferSelect;
+type CatalogProduct = typeof schema.catalogProduct.$inferSelect;
 
 /** Marcador del prompt del juez: el ai-mock lo usa para despachar veredictos. */
 export const JUDGE_MARKER = "[JUEZ]";
@@ -18,6 +19,18 @@ export function renderKb(entries: KbEntry[]): string {
     .join("\n\n");
 }
 
+export function renderCatalog(products: CatalogProduct[]): string {
+  if (products.length === 0) return "(catálogo vacío)";
+  return products
+    .filter((p) => p.available)
+    .map((p) => {
+      const price = `$${(p.price / 100).toFixed(2)} ${p.currency}`;
+      const desc = p.description ? ` — ${p.description}` : "";
+      return `- ${p.name} | ${price}${desc}`;
+    })
+    .join("\n");
+}
+
 /**
  * System prompt del agente (v1: inyecta el KB completo — el límite se
  * documenta con el contador de tamaño en la UI).
@@ -25,6 +38,7 @@ export function renderKb(entries: KbEntry[]): string {
 export function buildAgentSystemPrompt(input: {
   profile: AgentProfile;
   kb: KbEntry[];
+  catalog: CatalogProduct[];
   stages: { name: string }[];
   /**
    * 015 — ¿esta instancia tiene agenda? Apagada, el prompt no gasta ni un
@@ -56,6 +70,9 @@ export function buildAgentSystemPrompt(input: {
       : null,
     profile.greeting ? `Saludo sugerido para conversaciones nuevas: ${profile.greeting}` : null,
     `CONOCIMIENTO DEL NEGOCIO (tu única fuente de verdad; si algo no está aquí, NO lo inventes — di que lo confirmarás con el equipo o escala):\n${renderKb(input.kb)}`,
+    input.catalog.length > 0
+      ? `CATÁLOGO DE PRODUCTOS (precios en centavos — al mostrar, divide entre 100):\n${renderCatalog(input.catalog)}`
+      : null,
     `Etapas del pipeline disponibles: ${stageNames}`,
     [
       "En cada turno respondes ÚNICAMENTE un objeto JSON con UNA acción:",

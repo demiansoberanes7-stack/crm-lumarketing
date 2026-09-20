@@ -24,6 +24,7 @@ export const GET = withAuth(async (session) => {
       instructions: p.instructions,
       escalationRules: p.escalationRules,
       greeting: p.greeting,
+      pipelineKeywords: p.pipelineKeywords,
     },
     aiConfigured: isAiConfigured(),
   });
@@ -36,6 +37,7 @@ const putSchema = z.object({
   instructions: z.string().max(8000).nullable().optional(),
   escalationRules: z.string().max(4000).nullable().optional(),
   greeting: z.string().max(1000).nullable().optional(),
+  pipelineKeywords: z.string().max(2000).nullable().optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {

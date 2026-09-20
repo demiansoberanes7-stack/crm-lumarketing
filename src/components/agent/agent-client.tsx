@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Package, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ type Profile = {
   instructions: string | null;
   escalationRules: string | null;
   greeting: string | null;
+  pipelineKeywords: string | null;
 };
 
 type KbEntry = {
@@ -31,20 +32,23 @@ export function AgentClient() {
   const [aiConfigured, setAiConfigured] = useState(true);
   const [entries, setEntries] = useState<KbEntry[]>([]);
   const [kbSize, setKbSize] = useState<{ chars: number; warnAt: number; warning: boolean } | null>(null);
+  const [catalogCount, setCatalogCount] = useState(0);
   const [saved, setSaved] = useState(false);
 
   const refetch = useCallback(async () => {
-    const [p, kb, size] = await Promise.all([
+    const [p, kb, size, cat] = await Promise.all([
       fetch("/api/agent/profile").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/kb").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/kb/size").then((r) => (r.ok ? r.json() : null)),
-    ]).catch(() => [null, null, null]);
+      fetch("/api/catalog").then((r) => (r.ok ? r.json() : null)),
+    ]).catch(() => [null, null, null, null]);
     if (p) {
       setProfile(p.profile);
       setAiConfigured(p.aiConfigured);
     }
     if (kb) setEntries(kb.entries);
     if (size) setKbSize(size);
+    if (cat?.products) setCatalogCount(cat.products.length);
   }, []);
 
   useEffect(() => {
@@ -101,7 +105,7 @@ export function AgentClient() {
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           <ProfileSection profile={profile} onSave={saveProfile} />
-          <KbSection entries={entries} kbSize={kbSize} onChanged={() => void refetch()} />
+          <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} onChanged={() => void refetch()} />
         </div>
       </div>
     </div>
@@ -165,6 +169,19 @@ function ProfileSection({
           />
         </div>
         <div className="space-y-1.5">
+          <Label htmlFor="agent-pipeline-keywords">Palabras clave del pipeline</Label>
+          <Textarea
+            id="agent-pipeline-keywords"
+            rows={3}
+            placeholder={"cotización → Cotización\nperdido → Perdido\nganado → Cerrado"}
+            value={form.pipelineKeywords ?? ""}
+            onChange={(e) => setForm({ ...form, pipelineKeywords: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Cuando un cliente envíe estas palabras, el agente moverá el lead a la etapa indicada automáticamente. Una keyword por línea: <code>palabra → nombre de etapa</code>
+          </p>
+        </div>
+        <div className="space-y-1.5">
           <Label htmlFor="agent-greeting">Saludo</Label>
           <Input
             id="agent-greeting"
@@ -182,10 +199,12 @@ function ProfileSection({
 function KbSection({
   entries,
   kbSize,
+  catalogCount,
   onChanged,
 }: {
   entries: KbEntry[];
   kbSize: { chars: number; warnAt: number; warning: boolean } | null;
+  catalogCount: number;
   onChanged: () => void;
 }) {
   const [question, setQuestion] = useState("");
@@ -245,6 +264,15 @@ function KbSection({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
+        {catalogCount > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-brand-soft bg-brand-tint p-3 text-sm">
+            <Package className="h-4 w-4 text-primary shrink-0" />
+            <span>
+              El bot conoce automáticamente <strong>{catalogCount}</strong> {catalogCount === 1 ? "producto del" : "productos del"} catálogo.
+            </span>
+          </div>
+        )}
+
         <div className="space-y-2 rounded-md border p-3">
           <p className="text-sm font-medium">Nueva pregunta / respuesta</p>
           <Input

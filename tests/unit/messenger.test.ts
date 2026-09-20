@@ -265,7 +265,9 @@ describe("017 · firma de Zernio (control de seguridad compartido)", () => {
     expect(isValidZernioSignature(body, good.toUpperCase(), secret)).toBe(true);
     expect(isValidZernioSignature(body, "deadbeef", secret)).toBe(false);
     expect(isValidZernioSignature(body + " ", good, secret)).toBe(false);
-    expect(isValidZernioSignature(body, null, secret)).toBe(false);
+    // v1.4.0: sin firma se acepta — el token de la URL ya valida la fuente
+    // (Zernio no envía firma si el webhook no tiene signing secret configurado)
+    expect(isValidZernioSignature(body, null, secret)).toBe(true);
   });
 
   it("sin secreto configurado la capa queda desactivada, como en WhatsApp", () => {

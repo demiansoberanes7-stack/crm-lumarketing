@@ -14,7 +14,7 @@ import {
   resolveStage,
   type AgentActionType,
 } from "@/server/ai/actions";
-import { matchesHandoffIntent } from "@/server/ai/handoff";
+import { matchesHandoffIntent, matchesPipelineKeyword } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { bookSlot, offerSlots } from "@/server/agenda/agent";
@@ -147,11 +147,33 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .from(schema.kbEntry)
     .where(eq(schema.kbEntry.organizationId, organizationId))
     .orderBy(asc(schema.kbEntry.createdAt));
+  const catalog = await db
+    .select()
+    .from(schema.catalogProduct)
+    .where(eq(schema.catalogProduct.organizationId, organizationId));
   const stages = await db
     .select({ id: schema.pipelineStage.id, name: schema.pipelineStage.name })
     .from(schema.pipelineStage)
     .where(eq(schema.pipelineStage.organizationId, organizationId))
     .orderBy(asc(schema.pipelineStage.position));
+
+  // Pipeline keywords: si el mensaje contiene una keyword configurada,
+  // mover directamente a la etapa sin pasar por el LLM.
+  if (lastInbound.text && profile.pipelineKeywords) {
+    const targetStage = matchesPipelineKeyword(lastInbound.text, profile.pipelineKeywords);
+    if (targetStage) {
+      const stage = resolveStage(targetStage, stages);
+      if (stage) {
+        await moveLeadToStage(organizationId, conversation.contactId, stage.id);
+        publish(organizationId, {
+          type: "conversation.updated",
+          data: { conversation: { id: conversationId } },
+        });
+        await deliverReply(conversation, `Listo, tu solicitud ha sido registrada en "${targetStage}".`);
+        return;
+      }
+    }
+  }
 
   const agenda = agendaEnabled();
 
@@ -181,7 +203,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: buildAgentSystemPrompt({ profile, kb, stages, agenda }),
+      content: buildAgentSystemPrompt({ profile, kb, catalog, stages, agenda }),
     },
     ...history
       .filter((m) => m.text)

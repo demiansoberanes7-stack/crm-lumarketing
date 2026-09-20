@@ -463,6 +463,7 @@ export const agentProfile = pgTable(
     instructions: text("instructions"),
     escalationRules: text("escalation_rules"),
     greeting: text("greeting"),
+    pipelineKeywords: text("pipeline_keywords"),
     aiToken: text("ai_token"),
     aiTokenCipher: text("ai_token_cipher"),
     aiTokenIv: text("ai_token_iv"),

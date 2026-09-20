@@ -10,3 +10,27 @@ export const HANDOFF_BACKUP_REGEX =
 export function matchesHandoffIntent(text: string): boolean {
   return HANDOFF_BACKUP_REGEX.test(text);
 }
+
+/**
+ * Keywords configurables del pipeline. Formato del campo:
+ *   "cotización → Cotización\nperdido → Perdido"
+ *
+ * Devuelve el nombre de la etapa si el texto contiene alguna keyword, o null.
+ */
+export function matchesPipelineKeyword(
+  text: string,
+  pipelineKeywords: string | null
+): string | null {
+  if (!pipelineKeywords?.trim()) return null;
+  const lower = text.toLowerCase();
+  const lines = pipelineKeywords.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.includes("→")) continue;
+    const [keyword, stage] = trimmed.split("→").map((s) => s.trim());
+    if (keyword && stage && lower.includes(keyword.toLowerCase())) {
+      return stage;
+    }
+  }
+  return null;
+}

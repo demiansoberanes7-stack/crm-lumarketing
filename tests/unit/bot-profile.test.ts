@@ -46,6 +46,7 @@ function profileRow(overrides: Partial<AgentProfile> = {}): AgentProfile {
     aiTokenCipher: null,
     aiTokenIv: null,
     aiTokenTag: null,
+    pipelineKeywords: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
