@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type RGB } from "pdf-lib";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { financialReport, type reportPeriod } from "./report";
+import { financialReport } from "./report";
 import { getBusinessSettings } from "@/server/business-settings";
 import { money } from "@/server/documents/pdf";
 

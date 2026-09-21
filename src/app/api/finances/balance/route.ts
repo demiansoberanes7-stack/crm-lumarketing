@@ -1,7 +1,6 @@
 import { withAuth, apiError } from "@/lib/api";
 import { reportPeriod, financialReport } from "@/server/finances/report";
 import { balancePdf } from "@/server/finances/balance-pdf";
-import { money } from "@/server/documents/pdf";
 export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session, req: Request) => {
   const search = new URL(req.url).searchParams;
