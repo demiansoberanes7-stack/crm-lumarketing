@@ -7,7 +7,7 @@ import { PieChartCard } from "../charts";
 interface Props {
   data: {
     total: number; completed: number; pending: number; notStarted: number;
-    completedThisWeek: number; pendingDueSoon: number; unassigned: number;
+    completedThisWeek: number; pendingDueSoon: number; overdue: number; unassigned: number;
     byPriority: { name: string; count: number }[];
   };
 }
@@ -19,11 +19,12 @@ export function TasksSection({ data }: Props) {
         <CheckCircle2 className="h-4 w-4" /> Tareas
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6 mb-4">
-        <KpiCard title="Completadas esta semana" value={data.completedThisWeek} icon={<CheckCircle2 />} />
-        <KpiCard title="Pendientes por vencer" value={data.pendingDueSoon} icon={<Clock />}
+        <KpiCard title="Terminadas actualizadas esta semana" value={data.completedThisWeek} subtitle="Por última actualización; lunes a hoy (UTC)" icon={<CheckCircle2 />} />
+        <KpiCard title="Por vencer en 7 días" value={data.pendingDueSoon} icon={<Clock />}
           trend={data.pendingDueSoon > 5 ? "down" : "neutral"} />
         <KpiCard title="Sin asignar" value={data.unassigned} icon={<UserX />}
           trend={data.unassigned > 0 ? "down" : "neutral"} />
+        <KpiCard title="Vencidas" value={data.overdue} />
         <KpiCard title="Total" value={data.total} />
         <KpiCard title="Completadas" value={data.completed} />
         <KpiCard title="No empezadas" value={data.notStarted} />

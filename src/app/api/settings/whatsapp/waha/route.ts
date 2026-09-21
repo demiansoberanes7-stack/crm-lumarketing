@@ -8,6 +8,7 @@ import { getQR, WahaError, wahaRequest } from "@/server/waha/client";
 import { inspectSession, reconcileSession } from "@/server/waha/session";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { validateWahaUrl } from "@/server/waha/url";
+import { publicWahaSettings, wahaSettingsSchema } from "@/lib/waha-settings";
 
 export const dynamic = "force-dynamic";
 export const GET = withOwner(async (session) => {
@@ -18,13 +19,17 @@ export const GET = withOwner(async (session) => {
   let error: string | null = null;
   let account: string | null = null;
   let restrictions: unknown = null;
+  let settings = null;
+  let engine: string | null = null;
   try {
     const live = await inspectSession(full!);
     state = live.status;
+    engine = live.engine?.engine ?? null;
+    settings = publicWahaSettings(live.config ?? {}, wahaWebhookUrl(session.organizationId));
     account = live.me?.id ?? null;
     restrictions = { reachoutTimelock: live.me?.reachoutTimelock, messageCapping: live.me?.messageCapping };
   } catch (err) { error = err instanceof WahaError ? err.message : "No se pudo consultar WAHA"; }
-  return Response.json({ connection: { ...creds, sessionStatus: state, error, account, restrictions, webhookUrl: wahaWebhookUrl(session.organizationId) } });
+  return Response.json({ connection: { ...creds, sessionStatus: state, error, account, restrictions, settings, engine, webhookUrl: wahaWebhookUrl(session.organizationId) } });
 });
 
 export const PUT = withOwner(async (session, req: Request) => {
@@ -53,12 +58,16 @@ export const PUT = withOwner(async (session, req: Request) => {
 });
 
 export const POST = withOwner(async (session, req: Request) => {
-  const body = await parseBody(req, z.object({ action: z.enum(["test", "start", "stop", "restart", "logout", "qr", "webhook"]) }));
+  const body = await parseBody(req, z.object({ action: z.enum(["test", "start", "stop", "restart", "logout", "qr", "webhook", "configure"]), settings: wahaSettingsSchema.optional() }));
   if (!body.ok) return body.response;
   const creds = await getWahaCredentialsFull(session.organizationId);
   if (!creds) return apiError(404, "not_configured", "Guarda primero la conexión WAHA");
   try {
     const { action } = body.data;
+    if (action === "configure") {
+      if (!body.data.settings) return apiError(422, "missing_settings", "Falta la configuración de sesión");
+      await reconcileSession(session.organizationId, creds, body.data.settings);
+    }
     if (action === "qr") {
       const qr = await getQR(creds.baseUrl, creds.apiKey, creds.sessionName);
       if (!qr) return apiError(409, "qr_unavailable", "El QR no está disponible. Comprueba que la sesión esté en SCAN_QR_CODE.");

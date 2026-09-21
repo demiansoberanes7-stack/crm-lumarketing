@@ -28,11 +28,11 @@ export function PaymentsSection({ data }: Props) {
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">Por método de pago</p>
-          <PieChartCard data={data.byMethod} nameKey="name" valueKey="amount" inner />
+          <PieChartCard data={data.byMethod.map((d) => ({ ...d, amount: d.amount / 100 }))} nameKey="name" valueKey="amount" inner />
         </div>
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">Ingresos por mes</p>
-          <AreaChartCard data={data.byMonth} xKey="month" yKeys={["amount"]} height={200} />
+          <AreaChartCard data={data.byMonth.map((d) => ({ ...d, MXN: d.amount / 100 }))} xKey="month" yKeys={["MXN"]} height={200} />
         </div>
       </div>
     </section>

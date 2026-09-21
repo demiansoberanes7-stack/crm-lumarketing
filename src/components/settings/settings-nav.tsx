@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type Tab = { href: string; label: string };
 
 const TABS: Tab[] = [
-  { href: "/settings/whatsapp", label: "WhatsApp Cloud API" },
+  { href: "/settings/whatsapp", label: "WhatsApp" },
   { href: "/settings/waha", label: "WAHA" },
   { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },

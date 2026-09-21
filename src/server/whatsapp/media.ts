@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { graphRequest, MetaApiError } from "@/lib/meta/client";
+import { getWhatsappZernio } from "./zernio-credentials";
+import { ZERNIO_BASE } from "@/server/zernio";
 import {
   getCredentialsByOrg,
   type Credentials,
@@ -199,14 +201,30 @@ export async function ensureAssetAvailable(
   if (asset.fetchStatus === "available") return asset;
   if (!asset.waMediaId) return null; // location/contacts no tienen binario
 
-  const creds = await getCredentialsByOrg(organizationId);
-  if (!creds) return null;
-
   try {
-    const { data, mimeType, fileSize } = await downloadGraphMedia(
-      creds.token,
-      asset.waMediaId
-    );
+    const { data, mimeType, fileSize } = await (async () => {
+      if (asset.waMediaId!.startsWith("zernio:")) {
+        const [, accountId, mediaId] = asset.waMediaId!.split(":");
+        const creds = await getWhatsappZernio(organizationId);
+        if (!creds || creds.accountId !== accountId || !mediaId) throw new MediaFetchError("Reconecta la cuenta Zernio de este adjunto");
+        const res = await fetch(`${ZERNIO_BASE}/whatsapp/media/${encodeURIComponent(mediaId)}?accountId=${encodeURIComponent(accountId)}`, { headers: { Authorization: `Bearer ${creds.token}` }, redirect: "error", signal: AbortSignal.timeout(30000) });
+        if (!res.ok || !res.body) throw new MediaFetchError(`No se pudo descargar el adjunto Zernio (HTTP ${res.status})`);
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > MEDIA_LIMITS.document.maxBytes) { await reader.cancel(); throw new MediaFetchError("Adjunto demasiado grande", true); }
+          chunks.push(value);
+        }
+        return { data: Buffer.concat(chunks), mimeType: res.headers.get("content-type"), fileSize: size };
+      }
+      const creds = await getCredentialsByOrg(organizationId);
+      if (!creds) throw new MediaFetchError("WhatsApp no configurado");
+      return downloadGraphMedia(creds.token, asset.waMediaId!);
+    })();
     const storagePath = await saveMediaFile(organizationId, assetId, data);
     await db
       .update(schema.mediaAsset)

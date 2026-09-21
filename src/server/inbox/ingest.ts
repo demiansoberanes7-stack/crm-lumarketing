@@ -398,6 +398,7 @@ export async function ingestInboundMessage(input: {
   media?: MediaInput | null;
   /** 014: hilo en la plataforma de origen (Zernio); null en WhatsApp. */
   threadRef?: string | null;
+  suppressAi?: boolean;
   /** 016: origen del anuncio, si el mensaje vino de uno. */
   referral?: WebhookReferral | null;
 }): Promise<void> {
@@ -481,7 +482,7 @@ export async function ingestInboundMessage(input: {
     data: { conversation: { id: conversation.id } },
   });
 
-  await maybeRunAgentTurn(conversation.id);
+  if (!input.suppressAi) await maybeRunAgentTurn(conversation.id);
 }
 
 function toDate(timestamp: string): Date {

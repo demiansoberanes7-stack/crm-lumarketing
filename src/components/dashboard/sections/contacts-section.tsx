@@ -1,12 +1,12 @@
 "use client";
 
 import { Users } from "lucide-react";
-import { KpiCard } from "../kpi-card";
+import { KpiCard, formatPercent } from "../kpi-card";
 import { PieChartCard } from "../charts";
 
 interface Props {
   data: {
-    total: number; active: number; newThisPeriod: number; retentionRate: number;
+    total: number; active: number; newThisPeriod: number; activityRate: number | null;
     bySource: { name: string; count: number }[];
   };
 }
@@ -21,7 +21,7 @@ export function ContactsSection({ data }: Props) {
         <KpiCard title="Total" value={data.total} icon={<Users />} />
         <KpiCard title="Activos (con proyecto)" value={data.active} />
         <KpiCard title="Nuevos en período" value={data.newThisPeriod} />
-        <KpiCard title="Retención" value={`${data.retentionRate.toFixed(0)}%`} />
+        <KpiCard title="Contactos con proyecto activo" value={formatPercent(data.activityRate)} subtitle="Sobre contactos no archivados" />
       </div>
       {data.bySource.length > 0 && (
         <div>

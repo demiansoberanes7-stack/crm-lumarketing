@@ -9,7 +9,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { KpiCard, formatCurrency } from "./kpi-card";
+import { KpiCard, formatCurrency, formatPercent } from "./kpi-card";
 import { ProjectsSection } from "./sections/projects-section";
 import { TasksSection } from "./sections/tasks-section";
 import { QuotesSection } from "./sections/quotes-section";
@@ -22,6 +22,7 @@ import { ContactsSection } from "./sections/contacts-section";
 
 interface DashboardData {
   period: string;
+  range: { from: string; to: string; timezone: string };
   projects: {
     total: number; active: number; archived: number; completed: number;
     completionRate: number; avgAdvance: number; highRisk: number;
@@ -31,18 +32,18 @@ interface DashboardData {
   };
   tasks: {
     total: number; completed: number; pending: number; notStarted: number;
-    completedThisWeek: number; pendingDueSoon: number; unassigned: number;
+    completedThisWeek: number; pendingDueSoon: number; overdue: number; unassigned: number;
     byPriority: { name: string; count: number }[];
   };
   quotes: {
-    total: number; sent: number; approved: number; approvalRate: number;
+    total: number; sent: number; approved: number; approvalRate: number | null; excludedCurrency: number;
     avgTicket: number; pipelineValue: number; avgDiscount: number;
     byMonth: { month: string; sent: number; approved: number }[];
     byChannel: { name: string; count: number }[];
   };
   receivables: {
     totalPending: number; overdueCount: number; overdueAmount: number;
-    overdueRate: number;
+    overdueRate: number | null;
     aging: { bucket: string; amount: number }[];
     topDebtors: { id: string; concept: string; amount: number }[];
   };
@@ -53,13 +54,13 @@ interface DashboardData {
     byMonth: { month: string; amount: number }[];
   };
   expenses: {
-    total: number; expenseVsIncome: number;
+    total: number; expenseVsIncome: number | null;
     byCategory: { name: string; amount: number }[];
     bySupplier: { name: string; amount: number }[];
     byMonth: { month: string; amount: number }[];
   };
   profitability: {
-    netIncome: number; margin: number;
+    netIncome: number; margin: number | null;
     incomeVsExpenses: { month: string; income: number; expense: number }[];
     weeklyCashFlow: { week: string; income: number; expense: number; net: number }[];
   };
@@ -68,7 +69,7 @@ interface DashboardData {
     byChannel: { name: string; count: number }[];
   };
   contacts: {
-    total: number; active: number; newThisPeriod: number; retentionRate: number;
+    total: number; active: number; newThisPeriod: number; activityRate: number | null;
     bySource: { name: string; count: number }[];
   };
 }
@@ -86,19 +87,19 @@ export function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/dashboard?period=${period}`);
+      const res = await fetch(`/api/dashboard?period=${period}`, { signal });
       if (!res.ok) throw new Error("Error al cargar datos");
       const json = (await res.json()) as DashboardData;
-      setData(json);
-    } catch (e) { setError(e instanceof Error ? e.message : "Error desconocido"); }
-    finally { setLoading(false); }
+      if (!signal?.aborted) setData(json);
+    } catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : "Error desconocido"); }
+    finally { if (!signal?.aborted) setLoading(false); }
   }, [period]);
 
-  useEffect(() => { void fetchData(); }, [fetchData]);
+  useEffect(() => { const controller = new AbortController(); void fetchData(controller.signal); return () => controller.abort(); }, [fetchData]);
 
   if (loading) {
     return (
@@ -142,16 +143,17 @@ export function DashboardClient() {
       </header>
 
       <div className="flex-1 space-y-6 p-4 sm:p-6">
+        <p className="text-xs text-muted-foreground">{data.period}: {data.range.from.slice(0, 10)} a {data.range.to.slice(0, 10)} (UTC). Importes en MXN. Pagos, gastos, cotizaciones creadas y actividad de bandeja usan el período elegido. Cartera, proyectos, tareas y contactos muestran el estado actual.</p>
         {/* ── TOP KPIs ─────────────────────────── */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <KpiCard title="Ingresos" value={formatCurrency(data.payments.grossIncome)} icon={<DollarSign />} />
           <KpiCard title="Gastos" value={formatCurrency(data.expenses.total)} icon={<Wallet />} />
-          <KpiCard title="Utilidad Neta" value={formatCurrency(data.profitability.netIncome)} icon={<TrendingUp />}
-            trend={data.profitability.netIncome > 0 ? "up" : "down"} trendValue={`${data.profitability.margin.toFixed(1)}% margen`} />
+          <KpiCard title="Resultado de caja" value={formatCurrency(data.profitability.netIncome)} icon={<TrendingUp />}
+            trend={data.profitability.netIncome === 0 ? "neutral" : data.profitability.netIncome > 0 ? "up" : "down"} trendValue={`${formatPercent(data.profitability.margin)} margen`} />
           <KpiCard title="Por Cobrar" value={formatCurrency(data.receivables.totalPending)} icon={<Clock />}
             subtitle={`${data.receivables.overdueCount} vencidos`} />
-          <KpiCard title="Cotizaciones" value={data.quotes.approved} icon={<FileText />}
-            subtitle={`${data.quotes.approvalRate.toFixed(0)}% aprobación`} />
+          <KpiCard title="Cotizaciones aprobadas" value={data.quotes.approved} icon={<FileText />}
+            subtitle={`${formatPercent(data.quotes.approvalRate)} aprobación`} />
           <KpiCard title="Proyectos" value={data.projects.active} icon={<FolderKanban />}
             subtitle={`${data.projects.archived} archivados`} />
         </div>

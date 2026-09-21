@@ -53,6 +53,6 @@ export function formatNumber(n: number): string {
 }
 
 /** Formatea porcentaje */
-export function formatPercent(n: number): string {
-  return `${n.toFixed(1)}%`;
+export function formatPercent(n: number | null): string {
+  return n === null ? "N/D" : `${n.toFixed(1)}%`;
 }

@@ -1076,6 +1076,15 @@ export const quote = pgTable(
   ]
 );
 
+export const whatsappZernio = pgTable("whatsapp_zernio", {
+  organizationId: varchar("organization_id", { length: 255 }).primaryKey().references(() => organization.id, { onDelete: "cascade" }),
+  accountId: varchar("account_id", { length: 255 }).notNull().unique(),
+  cipher: text("cipher").notNull(),
+  iv: text("iv").notNull(),
+  tag: text("tag").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const quoteItem = pgTable(
   "quote_item",
   {

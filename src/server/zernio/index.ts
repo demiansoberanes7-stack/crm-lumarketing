@@ -183,7 +183,7 @@ export async function verifyZernioToken(token: string): Promise<void> {
  * interpretar — incluido `isAuthError`, que distingue una llave muerta de un
  * hipo transitorio y costó un incidente aprender.
  */
-async function zernioFetch(
+export async function zernioFetch(
   path: string,
   opts: {
     method?: "GET" | "POST";
@@ -202,6 +202,7 @@ async function zernioFetch(
         ...(opts.headers ?? {}),
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: AbortSignal.timeout(20000),
     });
   } catch (cause) {
     throw new MetaApiError("No se pudo contactar la API de Zernio", {

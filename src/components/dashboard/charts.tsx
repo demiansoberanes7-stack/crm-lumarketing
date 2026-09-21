@@ -18,6 +18,7 @@ import {
   ResponsiveContainer,
   RadialBarChart,
   RadialBar,
+  PolarAngleAxis,
 } from "recharts";
 
 const COLORS = [
@@ -42,7 +43,7 @@ interface ChartProps {
 }
 
 /** Bar chart vertical */
-export function BarChartCard({ data, xKey, yKey, height = 250 }: ChartProps & { xKey: string; yKey: string }) {
+export function BarChartCard({ data, xKey, yKey, yKeys, height = 250 }: ChartProps & { xKey: string; yKey: string; yKeys?: string[] }) {
   const colors = useColors();
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -51,7 +52,8 @@ export function BarChartCard({ data, xKey, yKey, height = 250 }: ChartProps & { 
         <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} />
         <Tooltip />
-        <Bar dataKey={yKey} fill={colors[0]} radius={[4, 4, 0, 0]} />
+        {yKeys && <Legend />}
+        {(yKeys ?? [yKey]).map((key, i) => <Bar key={key} dataKey={key} fill={colors[i % colors.length]} radius={[4, 4, 0, 0]} />)}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -141,11 +143,12 @@ export function AreaChartCard({ data, xKey, yKeys, height = 250 }: ChartProps & 
 
 /** Gauge chart (semicircle) */
 export function GaugeChart({ value, max = 100, label, height = 200 }: { value: number; max?: number; label?: string; height?: number }) {
-  const pct = Math.min((value / max) * 100, 100);
+  const pct = Math.max(0, Math.min((value / max) * 100, 100));
   const data = [{ value: pct, fill: pct > 70 ? "#10b981" : pct > 40 ? "#f59e0b" : "#ef4444" }];
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RadialBarChart cx="50%" cy="100%" innerRadius="60%" outerRadius="100%" startAngle={180} endAngle={0} data={data}>
+        <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
         <RadialBar background dataKey="value" cornerRadius={4} />
         <text x="50%" y="85%" textAnchor="middle" className="fill-foreground text-2xl font-bold">
           {`${value.toFixed(0)}%`}
@@ -182,7 +185,7 @@ export function StackedBarChart({ data, xKey, yKeys, height = 250 }: ChartProps 
 /** Funnel chart (simplified as horizontal bars) */
 export function FunnelChart({ data, height = 200 }: { data: { stage: string; value: number }[]; height?: number }) {
   const colors = useColors();
-  const max = Math.max(...data.map((d) => d.value));
+  const max = Math.max(1, ...data.map((d) => d.value));
   return (
     <div className="space-y-2" style={{ height }}>
       {data.map((d, i) => (

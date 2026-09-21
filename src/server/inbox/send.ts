@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
 import { whatsappProvider } from "@/server/whatsapp/provider";
+import { getWhatsappZernio, zernioWhatsappEnabled, type WhatsappZernioCredentials } from "@/server/whatsapp/zernio-credentials";
+import { sendWhatsappZernio } from "@/server/whatsapp/zernio-send";
 import { getWahaCredentialsFull } from "@/server/waha/credentials";
 import { sendText as wahaText, sendFile as wahaFile } from "@/server/waha/client";
 import { getDb, schema } from "@/lib/db";
@@ -84,6 +86,7 @@ type SendTarget = {
   /** Presente solo en conversaciones de TikTok. */
   tiktok?: TikTokCredentials;
   waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
+  zernio?: WhatsappZernioCredentials;
 };
 
 /**
@@ -230,9 +233,10 @@ async function prepareSend(
   // El nucleo no decide la politica: la consulta. WhatsApp exige plantilla
   // fuera de ventana; Instagram etiqueta y sigue; otro canal podria no tener
   // ventana en absoluto.
+  const provider = await whatsappProvider(organizationId);
   const caps = capabilitiesFor(row.conversation.channel as Channel);
   if (
-    caps.windowMs !== null &&
+    provider !== "waha" && caps.windowMs !== null &&
     caps.outsideWindow === "template" &&
     !isWindowOpen(row.conversation.lastInboundAt)
   ) {
@@ -242,7 +246,12 @@ async function prepareSend(
     );
   }
 
-  if (await whatsappProvider(organizationId) === "waha") {
+  if (provider === "zernio") {
+    const zernio = zernioWhatsappEnabled() ? await getWhatsappZernio(organizationId) : null;
+    if (!zernio) throw new SendError("not_connected", "Configura WhatsApp Zernio en Ajustes");
+    return { conversation: row.conversation, credentials: null, destinatario: { to: row.contact.waIdentity }, recipient: row.contact.waIdentity, zernio };
+  }
+  if (provider === "waha") {
     const waha = await getWahaCredentialsFull(organizationId);
     if (!waha) throw new SendError("not_connected", "Configura WAHA en Ajustes");
     if (!row.contact.phone) throw new SendError("meta_error", "WAHA necesita un contacto con teléfono; esta identidad de Meta no es compatible.");
@@ -361,9 +370,11 @@ export async function sendText(input: {
   const { credentials } = target;
 
   // Pre-generate message ID for Zernio idempotent sends (Instagram, TikTok).
-  const preGenId = (target.instagram || target.tiktok) ? newId("message") : undefined;
+  const preGenId = (target.instagram || target.tiktok || target.zernio) ? newId("message") : undefined;
 
-  const waMessageId = target.waha
+  const waMessageId = target.zernio
+    ? await callWhatsappZernio(target, { message: input.text }, preGenId!)
+    : target.waha
     ? (await wahaText(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, input.text)).key.id
     : target.instagram
     ? await callInstagramSend(target, input.text, preGenId)
@@ -450,6 +461,11 @@ export async function sendMediaMessage(input: {
     .limit(1);
 
   try {
+    if (target.zernio) {
+      const preGenId = newId("message");
+      const id = await callWhatsappZernio(target, { message: input.caption ?? "", attachmentType: kind === "document" ? "file" : kind }, preGenId, input.file);
+      return { messageId: await persistOutbound({ organizationId: input.organizationId, conversationId: input.conversationId, waMessageId: id, type: kind, text: null, status: "pending", origin: "operator", mediaAssetId: assetId, media: asset!, preGeneratedId: preGenId }) };
+    }
     if (target.waha) {
       const sent = await wahaFile(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, { mimetype: input.file.mimeType, data: input.file.data.toString("base64"), filename: input.file.fileName, caption: input.caption });
       return { messageId: await persistOutbound({ organizationId: input.organizationId, conversationId: input.conversationId, waMessageId: sent.key.id, type: kind, text: null, status: "sent", origin: "operator", mediaAssetId: assetId, media: asset! }) };
@@ -543,7 +559,7 @@ export async function sendStructured(
   );
   // Ubicaciones y contactos son mensajes de WhatsApp: en los demás canales no
   // hay credenciales de WhatsApp que usar y Graph los rechazaría.
-  if (!target.credentials) {
+  if (!target.credentials && !target.zernio) {
     throw new SendError(
       "meta_error",
       "Este canal no admite ubicaciones ni contactos; manda el texto"
@@ -561,7 +577,7 @@ export async function sendStructured(
           })),
         };
 
-  const waMessageId = await callGraphSend(target.credentials, {
+  const waMessageId = target.zernio ? await callWhatsappZernio(target, input.kind === "location" ? { location: input.location } : { contacts: input.contacts.map((c) => ({ name: { formatted_name: c.name, first_name: c.name }, phones: [{ phone: c.phone, type: "CELL" }] })) }, newId("message")) : await callGraphSend(target.credentials!, {
     messaging_product: "whatsapp",
     ...target.destinatario,
     ...payload,
@@ -596,6 +612,14 @@ export async function sendStructured(
     media: asset!,
   });
   return { messageId };
+}
+
+async function callWhatsappZernio(target: SendTarget, body: Record<string, unknown>, key: string, file?: { data: Buffer; mimeType: string; fileName?: string }) {
+  try { return await sendWhatsappZernio(target.zernio!, target.conversation.channelThreadRef, body, key, file); }
+  catch (err) {
+    if (err instanceof MetaApiError) throw new SendError(err.isAuthError ? "reconnect_required" : err.status === 0 || err.status >= 500 ? "meta_unavailable" : "meta_error", err.isAuthError ? "Reconecta la API key de Zernio en Ajustes" : err.message);
+    throw err;
+  }
 }
 
 /** Llama a Graph /messages y traduce errores de Meta a SendError. */
