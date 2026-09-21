@@ -3,52 +3,9 @@ import { parseBody, withOwner } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { newId } from "@/lib/db/ids";
+import { AVAILABLE_EVENTS, EVENT_LABELS } from "@/lib/webhook-events";
 
 export const dynamic = "force-dynamic";
-
-export const AVAILABLE_EVENTS = [
-  "contact.created",
-  "lead.created",
-  "lead.stage_changed",
-  "lead.amount_changed",
-  "lead.priority_changed",
-  "conversation.created",
-  "message.inbound",
-  "message.outbound",
-  "quote.created",
-  "quote.sent",
-  "quote.accepted",
-  "quote.rejected",
-  "payment.created",
-  "expense.created",
-  "booking.created",
-  "booking.updated",
-  "project.created",
-  "project.stage_changed",
-] as const;
-
-export type AvailableEvent = (typeof AVAILABLE_EVENTS)[number];
-
-export const EVENT_LABELS: Record<AvailableEvent, string> = {
-  "contact.created": "Contacto creado",
-  "lead.created": "Lead creado",
-  "lead.stage_changed": "Cambio de etapa en pipeline",
-  "lead.amount_changed": "Cambio de monto en pipeline",
-  "lead.priority_changed": "Cambio de prioridad",
-  "conversation.created": "Conversación iniciada",
-  "message.inbound": "Mensaje recibido",
-  "message.outbound": "Mensaje enviado",
-  "quote.created": "Cotización creada",
-  "quote.sent": "Cotización enviada",
-  "quote.accepted": "Cotización aceptada",
-  "quote.rejected": "Cotización rechazada",
-  "payment.created": "Pago registrado",
-  "expense.created": "Gasto registrado",
-  "booking.created": "Cita creada",
-  "booking.updated": "Cita actualizada",
-  "project.created": "Proyecto creado",
-  "project.stage_changed": "Cambio de etapa en proyecto",
-};
 
 /** GET — listar webhooks de la organización */
 export const GET = withOwner(async (session) => {
