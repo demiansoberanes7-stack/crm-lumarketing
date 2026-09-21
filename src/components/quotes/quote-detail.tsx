@@ -27,6 +27,7 @@ interface QuoteData {
   contactId: string | null;
   message: string | null;
   discountAmount: number;
+  paymentMethod: Record<string, unknown> | null;
 }
 
 function getStoredName(quoteId: string, fallback: string): string {

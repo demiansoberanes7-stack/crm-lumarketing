@@ -31,6 +31,7 @@ const postSchema = z.object({
   taxRate: z.number().int().min(0).max(100).optional(),
   validDays: z.number().int().min(1).max(365).optional(),
   notes: z.string().optional(),
+  paymentConditions: z.string().max(2000).optional(),
   paymentMethod: z.record(z.unknown()).nullable().optional(),
 });
 
@@ -55,6 +56,7 @@ export const POST = withAuth(async (session, req: Request) => {
       taxRate: body.data.taxRate,
       validDays: body.data.validDays,
       notes: body.data.notes,
+      paymentConditions: body.data.paymentConditions,
       paymentMethod: body.data.paymentMethod ?? undefined,
     },
     session.userId

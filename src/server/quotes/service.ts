@@ -34,6 +34,7 @@ export type QuoteInput = {
   taxRate?: number;
   validDays?: number;
   notes?: string;
+  paymentConditions?: string;
   paymentMethod?: Record<string, unknown>;
 };
 
@@ -119,7 +120,9 @@ export async function createQuote(
     taxRate: input.taxRate ?? 16,
     taxAmount: totals.taxAmount,
     total: totals.total,
-    paymentMethod: input.paymentMethod ?? null,
+    paymentMethod: input.paymentConditions
+      ? { ...(input.paymentMethod ?? {}), conditions: input.paymentConditions }
+      : input.paymentMethod ?? null,
     message: input.notes ?? null,
     version: 1,
     createdBy: createdBy ?? null,
@@ -200,7 +203,9 @@ export async function updateQuote(
       taxRate: input.taxRate ?? 16,
       taxAmount: totals.taxAmount,
       total: totals.total,
-      paymentMethod: input.paymentMethod ?? null,
+      paymentMethod: input.paymentConditions
+        ? { ...(quote.paymentMethod as Record<string, unknown> ?? {}), ...(input.paymentMethod ?? {}), conditions: input.paymentConditions }
+        : input.paymentMethod ?? quote.paymentMethod ?? null,
       message: input.notes ?? quote.message,
       validUntil: input.validDays ? new Date(Date.now() + input.validDays * 86400000) : quote.validUntil,
       updatedAt: new Date(),

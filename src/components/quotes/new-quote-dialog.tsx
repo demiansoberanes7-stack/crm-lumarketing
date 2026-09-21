@@ -28,7 +28,7 @@ export function NewQuoteDialog({
 }: {
   onClose: () => void;
   onCreated: () => void;
-  initial?: { id: string; items: QuoteItem[]; contactId: string | null; discountType: string | null; discountValue: number | null; taxRate: number; validUntil: string | null; message: string | null };
+  initial?: { id: string; items: QuoteItem[]; contactId: string | null; discountType: string | null; discountValue: number | null; taxRate: number; validUntil: string | null; message: string | null; paymentMethod: Record<string, unknown> | null };
 }) {
   const [items, setItems] = useState<QuoteItem[]>(initial ? initial.items.map((item) => ({ ...item, unitPrice: item.unitPrice / 100 })) : [{ ...EMPTY_ITEM }]);
   const [discountType, setDiscountType] = useState(initial?.discountType ?? "none");
@@ -36,6 +36,11 @@ export function NewQuoteDialog({
   const [taxRate, setTaxRate] = useState(String(initial?.taxRate ?? 16));
   const [validDays, setValidDays] = useState("30");
   const [notes, setNotes] = useState(initial?.message ?? "");
+  const [paymentConditions, setPaymentConditions] = useState(() => {
+    if (!initial?.paymentMethod) return "";
+    const pm = initial.paymentMethod as Record<string, unknown>;
+    return pm.conditions ? String(pm.conditions) : "";
+  });
   const [contactId, setContactId] = useState<string | null>(initial?.contactId ?? null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -101,6 +106,7 @@ export function NewQuoteDialog({
         taxRate: Number(taxRate),
         validDays: Number(validDays) || 30,
         notes: notes || undefined,
+        paymentConditions: paymentConditions || undefined,
       }),
     }).catch(() => null);
     setSaving(false);
@@ -258,6 +264,18 @@ export function NewQuoteDialog({
               onChange={(e) => setNotes(e.target.value)}
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Condiciones de pago</Label>
+            <textarea
+              rows={2}
+              value={paymentConditions}
+              onChange={(e) => setPaymentConditions(e.target.value)}
+              placeholder="Ej: 50% anticipo, 50% contra entrega. Pago por transferencia bancaria."
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+            <p className="text-xs text-muted-foreground">Aparece en el PDF de la cotización.</p>
           </div>
 
           <div className="rounded-md bg-secondary p-3 text-sm">
