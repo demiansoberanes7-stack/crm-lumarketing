@@ -67,7 +67,7 @@ export function WahaClient() {
       {connection.restrictions ? <details><summary>Restricciones informadas por WhatsApp</summary><pre className="overflow-auto text-xs">{JSON.stringify(connection.restrictions as Record<string, unknown>, null, 2)}</pre></details> : null}
       <div className="flex gap-3"><button disabled={busy} className="rounded border p-2" onClick={() => { if (confirm("¿Cerrar sesión en WhatsApp? Necesitarás vincularlo de nuevo.")) void request("POST", { action: "logout" }); }}>Cerrar sesión WhatsApp</button><button disabled={busy} className="rounded border p-2" onClick={() => { if (confirm("¿Eliminar la conexión guardada del CRM? El historial se conserva.")) void request("DELETE"); }}>Desconectar del CRM</button></div>
     </section>}
-    {connection && <WahaAdvanced key={`${connection.baseUrl}/${connection.sessionName}/${connection.settings !== null}`} initial={connection.settings} engine={connection.engine} busy={busy} onSave={(settings) => request("POST", { action: "configure", settings })} />}
+    <WahaAdvanced key={`${connection?.baseUrl ?? "none"}/${connection?.sessionName ?? "default"}/${connection?.settings !== null}`} initial={connection?.settings ?? null} engine={connection?.engine ?? null} busy={busy || !connection} onSave={(settings) => request("POST", { action: "configure", settings })} />
     {notice && <p role="status" className="rounded border p-3">{notice}</p>}
   </div>;
 }
