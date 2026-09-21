@@ -42,7 +42,6 @@ export async function quotePdf(organizationId: string, id: string) {
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
 
   doc.setTitle(`Cotización ${quote.quoteNumber}`);
   doc.setAuthor(bs.companyName || "LUMARK");
@@ -80,10 +79,6 @@ export async function quotePdf(organizationId: string, id: string) {
   y -= 6;
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, color: GOLD, thickness: 1.5 });
   y -= 20;
-
-  // ─── QUOTE TITLE ───
-  page.drawText("COTIZACIÓN", { x: MARGIN, y, size: 16, font: bold, color: DARK });
-  y -= 24;
 
   // ─── QUOTE INFO + CLIENT INFO (two columns) ───
   const leftX = MARGIN;
@@ -267,14 +262,18 @@ export async function quotePdf(organizationId: string, id: string) {
     y -= 10;
   }
 
-  // ─── SIGNATURE LINE ───
-  checkPage(70);
+  // ─── COMPANY CONTACT INFO (replaces signature line) ───
+  checkPage(50);
   y -= 10;
-  page.drawText("Firma del cliente", { x: MARGIN + 80, y, size: 9, font: italic, color: GRAY });
-  y -= 4;
-  page.drawLine({ start: { x: MARGIN + 20, y }, end: { x: MARGIN + 200, y }, color: GRAY, thickness: 0.8 });
-  y -= 14;
-  page.drawText("Nombre y fecha", { x: MARGIN + 80, y, size: 8, font: italic, color: GRAY });
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, color: LIGHT_GRAY, thickness: 0.5 });
+  y -= 16;
+  const contactParts: string[] = [];
+  if (bs.phone) contactParts.push(`Tel. ${bs.phone}`);
+  if (bs.email) contactParts.push(bs.email);
+  if (bs.address) contactParts.push(bs.address);
+  if (contactParts.length) {
+    page.drawText(clean(contactParts.join("  |  ")).slice(0, 120), { x: MARGIN, y, size: 8, font: regular, color: GRAY });
+  }
 
   // ─── FOOTER ───
   const pages = doc.getPages();
@@ -286,13 +285,6 @@ export async function quotePdf(organizationId: string, id: string) {
       y: 28,
       size: 8,
       font: regular,
-      color: GRAY,
-    });
-    p.drawText("Este documento no es un comprobante fiscal.", {
-      x: MARGIN,
-      y: 18,
-      size: 7,
-      font: italic,
       color: GRAY,
     });
   }
