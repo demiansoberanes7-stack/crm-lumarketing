@@ -217,8 +217,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
           <p><strong>Nombre:</strong> sin espacios ni caracteres especiales (usa guiones bajos). Ej: <code>seguimiento_cotizacion</code></p>
           <p><strong>Idioma:</strong> <code>es_MX</code> para español de México.</p>
           <p><strong>Categoría:</strong> UTILITY = seguimiento/transacciones (más barato). MARKETING = promociones.</p>
-          <p><strong>Variables:</strong> usa <code>{"{{1}}"}</code> para el primer dato dinámico, <code>{"{{2}}"}</code> para el segundo, etc. Ej: "Hola {"{{1}}"}, tu cita es el {"{{2}}"}."
-          </p>
+          <p><strong>Variables:</strong> usa <code>{"{{1}}"}</code> para el primer dato dinámico, <code>{"{{2}}"}</code> para el segundo, etc. Ej: &ldquo;Hola {"{{1}}"}, tu cita es el {"{{2}}"}.&rdquo;          </p>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
