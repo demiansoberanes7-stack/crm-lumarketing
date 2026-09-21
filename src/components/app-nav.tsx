@@ -15,7 +15,6 @@ import {
   LayoutDashboard,
   LogOut,
   Settings,
-  Sparkles,
   Users,
   X,
 } from "lucide-react";
@@ -44,7 +43,6 @@ const NAV: NavItem[] = [
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
   { href: "/tareas", label: "Tareas", icon: ClipboardCheck },
-  { href: "/agent", label: "Agente", icon: Sparkles },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ];
 
