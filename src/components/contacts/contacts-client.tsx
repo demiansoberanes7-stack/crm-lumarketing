@@ -300,9 +300,12 @@ function EditDialog({
 }: {
   contact: ContactDto;
   onClose: () => void;
-  onSave: (patch: { name: string; notes: string }) => Promise<void>;
+  onSave: (patch: Record<string, unknown>) => Promise<void>;
 }) {
   const [name, setName] = useState(contact.name);
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [email, setEmail] = useState((contact.ficha as Record<string, unknown>)?.email as string ?? "");
+  const [interests, setInterests] = useState((contact.ficha as Record<string, unknown>)?.interests as string ?? "");
   const [notes, setNotes] = useState(contact.notes ?? "");
 
   return (
@@ -327,12 +330,47 @@ function EditDialog({
             />
           </div>
           <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="edit-phone">
+              Teléfono
+            </label>
+            <Input
+              id="edit-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="521XXXXXXXXXX"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="edit-email">
+              Correo electrónico
+            </label>
+            <Input
+              id="edit-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="correo@ejemplo.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="edit-interests">
+              Intereses / Servicios de interés
+            </label>
+            <Textarea
+              id="edit-interests"
+              rows={2}
+              value={interests}
+              onChange={(e) => setInterests(e.target.value)}
+              placeholder="Ej: Interesado en productos premium, servicio de entrega..."
+            />
+          </div>
+          <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="edit-notes">
               Notas
             </label>
             <Textarea
               id="edit-notes"
-              rows={4}
+              rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
@@ -344,7 +382,15 @@ function EditDialog({
           </Button>
           <Button
             disabled={!name.trim()}
-            onClick={() => void onSave({ name: name.trim(), notes })}
+            onClick={() => {
+              const patch: Record<string, unknown> = { name: name.trim(), notes };
+              if (phone !== (contact.phone ?? "")) patch.phone = phone || null;
+              const ficha: Record<string, unknown> = {};
+              if (email) ficha.email = email;
+              if (interests) ficha.interests = interests;
+              if (Object.keys(ficha).length > 0) patch.ficha = ficha;
+              void onSave(patch);
+            }}
           >
             Guardar
           </Button>

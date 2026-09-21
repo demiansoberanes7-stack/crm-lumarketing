@@ -14,6 +14,7 @@ const TABS: Tab[] = [
   { href: "/settings/business", label: "Datos de Empresa" },
   { href: "/settings/templates", label: "Plantillas" },
   { href: "/settings/agent", label: "Agente" },
+  { href: "/settings/webhooks", label: "Webhooks" },
   { href: "/settings/team", label: "Equipo" },
 ];
 

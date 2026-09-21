@@ -35,6 +35,7 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
+  phone: z.string().max(20).nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
   archived: z.boolean().optional(),
   /**
@@ -69,6 +70,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
     // Lo escribio una persona: a partir de aqui WhatsApp ya no lo pisa (#51).
     set.nameSource = "manual";
   }
+  if (body.data.phone !== undefined) set.phone = body.data.phone || null;
   if (body.data.notes !== undefined) set.notes = body.data.notes;
   if (body.data.archived !== undefined) {
     set.archivedAt = body.data.archived ? new Date() : null;

@@ -317,8 +317,9 @@ export async function getQuote(organizationId: string, quoteId: string) {
     .where(eq(schema.quoteItem.quoteId, quoteId))
     .orderBy(schema.quoteItem.position);
 
-  const [contact] = quote.contactId ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, quote.contactId))) : [];
-  return { ...quote, items, contactName: contact?.name ?? null };
+  const [contact] = quote.contactId ? await db.select({ name: schema.contact.name, phone: schema.contact.phone, ficha: schema.contact.ficha }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, quote.contactId))) : [];
+  const contactEmail = contact?.ficha && typeof contact.ficha === "object" ? (contact.ficha as Record<string, unknown>).email as string ?? null : null;
+  return { ...quote, items, contactName: contact?.name ?? null, contactPhone: contact?.phone ?? null, contactEmail };
 }
 
 /** Cambiar estado de una cotización (accepted / rejected) */
