@@ -62,10 +62,10 @@ CRM LUMARK es un sistema de gestion de relaciones con clientes (CRM) open source
 | Metrica | Valor |
 |---------|-------|
 | Tablas de base de datos | 47+ |
-| Migraciones | 10 (0000-0009) |
+| Migraciones | 11 (0000-0010) |
 | Rutas API | 80+ |
 | Componentes UI | 60+ |
-| Unit tests | 450 |
+| Unit tests | 455 |
 | Scripts E2E | 17 |
 | Lineas de codigo (estimado) | ~25,000+ |
 | Canales soportados | 4 |
@@ -560,6 +560,11 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 | 0007 | `0007_agent_ai_token_encrypted.sql` | Token cifrado (cipher, iv, tag) en agent_profile |
 | 0008 | `0008_tiktok_credentials.sql` | Tabla tiktok_credentials con token cifrado |
 | 0009 | `0009_one_running_run_index.sql` | Unique index: una ejecucion corriendo por organizacion |
+| 0010 | `0010_agent_pipeline_keywords.sql` | Palabras clave configurables del pipeline en agent_profile |
+
+Las migraciones 0009 y 0010 estan registradas en `drizzle/meta/_journal.json`;
+el migrador necesita ese registro ademas de los archivos SQL. Se verifico su
+aplicacion en una base local nueva y una segunda ejecucion sin cambios pendientes.
 
 ---
 
@@ -1001,6 +1006,44 @@ Configuracion semanal (weeklyHours)
 
 ## Zernio
 
+### Editar, desconectar y cambiar la cuenta de Instagram
+
+En **Configuracion → Instagram** (`/settings/instagram`):
+
+1. **Editar conexion de Instagram** permite cambiar el `accountId`, la API key
+   y el secreto del webhook con **Probar y guardar**. Se requiere volver a
+   introducir la API key; el CRM solo muestra los ultimos cuatro caracteres.
+2. **Desconectar Instagram** desvincula la cuenta de la organizacion actual
+   y limpia los campos del formulario. Tambien funciona si el token esta vencido.
+3. Para conectar otro Instagram ya vinculado en Zernio, introduce su `accountId`,
+   la API key y, si corresponde, el secreto del webhook; pulsa **Probar y guardar**.
+
+La desconexion elimina solo las credenciales de Instagram del CRM. Conserva
+contactos y conversaciones y no revoca la cuenta en Zernio. Los nuevos eventos
+se enrutan por el `account.id` configurado; conservar el historial no transfiere
+los hilos anteriores a la nueva cuenta de Instagram.
+
+`DELETE /api/settings/instagram` requiere sesion, respeta la bandera del canal,
+limita el borrado a la organizacion autenticada y registra el diagnostico
+`disconnected`. Repetirlo sin conexion devuelve igualmente `{ "ok": true }`.
+Si el servidor o la red fallan, la interfaz muestra el error y conserva los
+datos para reintentar; no anuncia una desconexion exitosa.
+
+Verificacion: `tests/unit/instagram-disconnect.test.ts` cubre aislamiento por
+organizacion, autenticacion, canal apagado, repeticion y fallo de BD.
+`scripts/e2e-instagram-disconnect.mjs` prueba en Playwright la app real con BD
+local y Zernio simulado: conectar A, errores HTTP/red, desconectar con estado
+vencido, conectar B, recargar y comprobar que el historial sigue disponible.
+
+```bash
+# App local con CHANNELS=whatsapp,instagram, WA_MOCK_ENABLED=true,
+# ZERNIO_BASE_URL apuntando a /api/dev/zernio-mock y BD de pruebas migrada.
+APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
+  node scripts/e2e-instagram-disconnect.mjs
+```
+
+### Transporte
+
 - Transporte unificado para Instagram, Messenger, TikTok
 - HMAC-SHA256 para verificacion de firmas
 - Un solo webhook para todas las plataformas
@@ -1125,7 +1168,7 @@ Configuracion semanal (weeklyHours)
 |------|--------|-------------|
 | `/api/settings/whatsapp` | GET/PUT | Config WhatsApp |
 | `/api/settings/whatsapp/waha` | GET/PUT | Config WAHA |
-| `/api/settings/instagram` | GET/PUT | Config Instagram |
+| `/api/settings/instagram` | GET/PUT/DELETE | Consultar, editar o desconectar Instagram del CRM |
 | `/api/settings/messenger` | GET/PUT | Config Messenger |
 | `/api/settings/tiktok` | GET/PUT | Config TikTok |
 | `/api/settings/webhook` | GET | URLs de webhooks |
@@ -1575,7 +1618,7 @@ if (!signature) return true; // URL token ya valido la fuente
 
 ## Unit Tests (Vitest)
 
-450 tests en 53 archivos cubriendo:
+455 tests en 54 archivos cubriendo:
 
 | Modulo | Tests |
 |--------|-------|
@@ -1740,7 +1783,7 @@ node scripts/migrate.mjs
 1. Modificar `src/lib/db/schema.ts`
 2. Ejecutar `pnpm db:generate`
 3. El nuevo archivo SQL aparecera en `drizzle/`
-4. Nombrar secuencialmente: `0009_descripcion.sql`
+4. Nombrar secuencialmente y registrar en `drizzle/meta/_journal.json`; la siguiente disponible es `0011_descripcion.sql`
 5. Las migraciones se aplican automaticamente al arrancar el contenedor
 
 ## Monitoreo

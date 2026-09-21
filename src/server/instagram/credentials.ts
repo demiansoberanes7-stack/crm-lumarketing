@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { scoped } from "@/lib/db/tenant";
 import { newId } from "@/lib/db/ids";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 
@@ -129,4 +130,13 @@ export async function markInstagramReconnectRequired(
 
 export function tokenLast4(token: string): string {
   return token.slice(-4);
+}
+
+/** Elimina las credenciales de Instagram de una organización. */
+export async function deleteInstagramCredentials(
+  organizationId: string
+): Promise<void> {
+  await getDb()
+    .delete(schema.instagramCredentials)
+    .where(scoped(schema.instagramCredentials.organizationId, organizationId));
 }

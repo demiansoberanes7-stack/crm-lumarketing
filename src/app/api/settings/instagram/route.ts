@@ -3,6 +3,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import {
   getInstagramCredentialsByOrg,
   saveInstagramCredentials,
+  deleteInstagramCredentials,
   tokenLast4,
 } from "@/server/instagram/credentials";
 import {
@@ -141,3 +142,11 @@ async function verify(data: z.infer<typeof putSchema>): Promise<Check> {
 
   return { ok: true, username: null };
 }
+
+/** Desconectar Instagram: elimina las credenciales de la organización. */
+export const DELETE = withAuth(async (session) => {
+  if (!isChannelEnabled("instagram")) return channelDisabledResponse();
+  await deleteInstagramCredentials(session.organizationId);
+  await recordDiagnostic({ organizationId: session.organizationId, source: "instagram", code: "disconnected", severity: "info" });
+  return Response.json({ ok: true });
+});

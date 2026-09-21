@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Copy, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Info, Unlink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +66,7 @@ export function InstagramClient() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [copied, setCopied] = useState<"url" | "token" | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const refetch = useCallback(async () => {
     const [c, w] = await Promise.all([
@@ -76,8 +77,8 @@ export function InstagramClient() {
       setConnection(c.connection);
       if (c.connection) {
         setSource(c.connection.source);
-        if (c.connection.igUserId) setIgUserId(c.connection.igUserId);
-        if (c.connection.accountRef) setAccountRef(c.connection.accountRef);
+        setIgUserId(c.connection.igUserId ?? "");
+        setAccountRef(c.connection.accountRef ?? "");
       }
     }
     if (w) setWebhook(w);
@@ -89,6 +90,7 @@ export function InstagramClient() {
   }, [refetch]);
 
   async function save() {
+    if (saving || disconnecting) return;
     setSaving(true);
     setError(null);
     setSaved(null);
@@ -103,19 +105,20 @@ export function InstagramClient() {
         webhookSecret: webhookSecret.trim() || null,
       }),
     }).catch(() => null);
-    setSaving(false);
     if (!res?.ok) {
       const data = (await res?.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
       setError(data?.error?.message ?? "No se pudo conectar Instagram");
+      setSaving(false);
       return;
     }
-    const data = (await res.json()) as { username?: string | null };
+    const data = (await res.json().catch(() => null)) as { username?: string | null } | null;
     setToken("");
     setWebhookSecret("");
-    setSaved(data.username ? `Instagram conectado: @${data.username}` : "Conexión guardada");
-    void refetch();
+    setSaved(data?.username ? `Instagram conectado: @${data.username}` : "Conexión guardada");
+    await refetch();
+    setSaving(false);
   }
 
   async function copy(text: string, what: "url" | "token") {
@@ -126,6 +129,28 @@ export function InstagramClient() {
     } catch {
       // sin portapapeles
     }
+  }
+
+  async function disconnect() {
+    if (saving || disconnecting) return;
+    setDisconnecting(true);
+    setError(null);
+    setSaved(null);
+    const res = await fetch("/api/settings/instagram", { method: "DELETE" }).catch(() => null);
+    setDisconnecting(false);
+    if (!res?.ok) {
+      const data = (await res?.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setError(data?.error?.message ?? "No se pudo desconectar Instagram. Intenta de nuevo.");
+      return;
+    }
+    setConnection(null);
+    setToken("");
+    setAccountRef("");
+    setIgUserId("");
+    setWebhookSecret("");
+    setSaved("Instagram desvinculado del CRM. Ya puedes conectar otra cuenta de Zernio.");
   }
 
   if (!loaded) return <p className="text-sm text-muted-foreground">Cargando…</p>;
@@ -175,7 +200,7 @@ export function InstagramClient() {
       <Card>
         <CardHeader>
           <CardTitle>
-            {connection ? "Reconectar Instagram" : "Conectar Instagram"}
+            {connection ? "Editar conexión de Instagram" : "Conectar Instagram"}
           </CardTitle>
           <CardDescription>
             Los mensajes de Instagram entran a la misma bandeja que WhatsApp y
@@ -263,12 +288,29 @@ export function InstagramClient() {
             )}
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {saved && <p className="text-sm text-success-text">{saved} ✓</p>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {saved && <p role="status" className="text-sm text-success-text">{saved} ✓</p>}
 
-          <Button disabled={saving || !canSave} onClick={() => void save()}>
+          <Button disabled={saving || disconnecting || !canSave} onClick={() => void save()}>
             {saving ? "Probando…" : "Probar y guardar"}
           </Button>
+          {connection && (
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm text-muted-foreground">
+                Desvincula esta cuenta del CRM para conectar otro Instagram que tengas en Zernio.
+                Se conserva el historial; la cuenta sigue conectada en Zernio.
+              </p>
+              <Button
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10"
+                disabled={saving || disconnecting}
+                onClick={() => void disconnect()}
+              >
+                <Unlink className="mr-1.5 h-3.5 w-3.5" />
+                {disconnecting ? "Desconectando…" : "Desconectar Instagram"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
