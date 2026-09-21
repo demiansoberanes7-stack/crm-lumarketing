@@ -14,6 +14,7 @@ const GRAY = rgb(0.45, 0.45, 0.45);
 const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
 const HEADER_BG = rgb(0.28, 0.28, 0.28);
 const ROW_ALT = rgb(0.96, 0.96, 0.96);
+const RED = rgb(0.75, 0.2, 0.2);
 
 const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
 
@@ -117,10 +118,21 @@ export async function quotePdf(organizationId: string, id: string) {
   y -= 20;
 
   // ─── CLIENT INFO ───
-  y -= 20;
+  y -= 16;
   if (quote.contactName) {
     page.drawText(clean(quote.contactName), { x: MARGIN, y, size: 12, font: bold, color: DARK });
     y -= 16;
+  }
+  if (bs.rfc) {
+    page.drawText(`RFC: ${clean(bs.rfc)}`, { x: MARGIN, y, size: 9, font: regular, color: GRAY });
+    y -= 14;
+  }
+  if (bs.address) {
+    const addrLines = wrapText(bs.address, regular, 9, CONTENT_W / 2);
+    for (const line of addrLines) {
+      page.drawText(clean(line), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
+      y -= 13;
+    }
   }
   if (bs.email) {
     page.drawText(clean(bs.email), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
@@ -207,12 +219,12 @@ export async function quotePdf(organizationId: string, id: string) {
   page.drawText(money(quote.subtotal), { x: totalsValueX, y, size: 10, font: bold, color: DARK });
   y -= 20;
 
-  // Discount (if any)
+  // Discount (only if > 0)
   if (quote.discountAmount > 0) {
     const discountPct = quote.discountValue ?? 0;
     const label = quote.discountType === "percentage" ? `DESCUENTO ${discountPct}%:` : "DESCUENTO:";
-    page.drawText(label, { x: totalsLabelX, y, size: 10, font: bold, color: DARK });
-    page.drawText(money(quote.subtotal - quote.discountAmount), { x: totalsValueX, y, size: 10, font: bold, color: DARK });
+    page.drawText(label, { x: totalsLabelX, y, size: 10, font: bold, color: RED });
+    page.drawText(`-${money(quote.discountAmount)}`, { x: totalsValueX, y, size: 10, font: bold, color: RED });
     y -= 20;
   }
 

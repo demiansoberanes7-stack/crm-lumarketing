@@ -185,6 +185,12 @@ export function NewQuoteDialog({
                             step="0.01"
                             value={item.unitPrice || ""}
                             onChange={(e) => updateItem(i, "unitPrice", Number(e.target.value))}
+                            onBlur={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val)) {
+                                updateItem(i, "unitPrice", Number(val.toFixed(2)));
+                              }
+                            }}
                           />
                         </div>
                       </div>

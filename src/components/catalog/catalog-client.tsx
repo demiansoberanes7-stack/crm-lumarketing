@@ -149,6 +149,12 @@ export function CatalogClient() {
                   step="0.01"
                   value={newPrice}
                   onChange={(e) => setNewPrice(e.target.value)}
+                  onBlur={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setNewPrice(val.toFixed(2));
+                    }
+                  }}
                 />
               </div>
               <div className="space-y-1.5">

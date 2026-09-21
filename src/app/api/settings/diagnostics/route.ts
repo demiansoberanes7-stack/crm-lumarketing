@@ -19,16 +19,17 @@ export const GET = withOwner(async (session, req: Request) => {
     ${source ? sql`AND source=${source}` : sql``} ${severity ? sql`AND severity=${severity}` : sql``}
     ${before ? sql`AND created_at < ${before}::timestamp` : sql``}
     ORDER BY created_at DESC, id DESC LIMIT 51`);
-  const [meta, waha, email, instagram, messenger] = await Promise.all([
+  const [meta, waha, email, instagram, messenger, tiktok] = await Promise.all([
     db.select({ status: schema.metaCredentials.status }).from(schema.metaCredentials).where(scoped(schema.metaCredentials.organizationId, session.organizationId)).limit(1),
     db.select({ status: schema.wahaCredentials.status }).from(schema.wahaCredentials).where(scoped(schema.wahaCredentials.organizationId, session.organizationId)).limit(1),
     db.execute(sql`SELECT count(*)::int AS count FROM email_account WHERE organization_id=${session.organizationId}`),
     db.select({ status: schema.instagramCredentials.status }).from(schema.instagramCredentials).where(scoped(schema.instagramCredentials.organizationId, session.organizationId)).limit(1),
     db.select({ status: schema.messengerCredentials.status }).from(schema.messengerCredentials).where(scoped(schema.messengerCredentials.organizationId, session.organizationId)).limit(1),
+    db.select({ status: schema.tiktokCredentials.status }).from(schema.tiktokCredentials).where(scoped(schema.tiktokCredentials.organizationId, session.organizationId)).limit(1),
   ]);
   // Credential status is explicitly not a live connection test.
   return Response.json({ events: events.slice(0, 50), nextCursor: events.length > 50 ? events[49]?.created_at : null,
-    status: { database: "Disponible", provider: await whatsappProvider(session.organizationId), channels: [...enabledChannels()], meta: meta[0]?.status ?? "not_configured", waha: waha[0]?.status ?? "not_configured", instagram: instagram[0]?.status ?? "not_configured", messenger: messenger[0]?.status ?? "not_configured", emailAccounts: email[0]?.count ?? 0 }, retentionDays: 30 });
+    status: { database: "Disponible", provider: await whatsappProvider(session.organizationId), channels: [...enabledChannels()], meta: meta[0]?.status ?? "not_configured", waha: waha[0]?.status ?? "not_configured", instagram: instagram[0]?.status ?? "not_configured", messenger: messenger[0]?.status ?? "not_configured", tiktok: tiktok[0]?.status ?? "not_configured", emailAccounts: email[0]?.count ?? 0 }, retentionDays: 30 });
 });
 
 export const PATCH = withOwner(async (session, req: Request) => {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
-import { getQuote, updateQuote } from "@/server/quotes/service";
+import { getQuote, updateQuote, archiveQuote, unarchiveQuote, deleteQuote } from "@/server/quotes/service";
 
 export const dynamic = "force-dynamic";
 
@@ -60,5 +60,31 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
     return Response.json({ ok: true });
   } catch (err) {
     return apiError(400, "update_failed", String(err));
+  }
+});
+
+const actionSchema = z.object({ action: z.enum(["archive", "unarchive", "delete"]) });
+
+/** POST — archive / unarchive / delete a quote */
+export const POST = withAuth(async (session, req: Request, { params }) => {
+  const { id } = await params;
+  const body = await parseBody(req, actionSchema);
+  if (!body.ok) return body.response;
+
+  try {
+    switch (body.data.action) {
+      case "archive":
+        await archiveQuote(session.organizationId, id);
+        break;
+      case "unarchive":
+        await unarchiveQuote(session.organizationId, id);
+        break;
+      case "delete":
+        await deleteQuote(session.organizationId, id);
+        break;
+    }
+    return Response.json({ ok: true });
+  } catch (err) {
+    return apiError(400, "action_failed", String(err));
   }
 });

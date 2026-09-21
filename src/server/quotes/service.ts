@@ -362,12 +362,17 @@ export async function changeQuoteStatus(
 /** Listar cotizaciones de una organización */
 export async function listQuotes(
   organizationId: string,
-  opts?: { status?: string; limit?: number; offset?: number }
+  opts?: { status?: string; limit?: number; offset?: number; archived?: boolean }
 ) {
   const db = getDb();
   const conditions = [scoped(schema.quote.organizationId, organizationId)];
   if (opts?.status) {
     conditions.push(eq(schema.quote.status, opts.status));
+  }
+  if (opts?.archived) {
+    conditions.push(sql`${schema.quote.archivedAt} IS NOT NULL`);
+  } else {
+    conditions.push(sql`${schema.quote.archivedAt} IS NULL`);
   }
 
   const rows = await db
@@ -379,4 +384,82 @@ export async function listQuotes(
     .offset(opts?.offset ?? 0);
 
   return rows;
+}
+
+/** Archivar una cotización */
+export async function archiveQuote(
+  organizationId: string,
+  quoteId: string
+): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.quote)
+    .where(
+      scoped(
+        schema.quote.organizationId,
+        organizationId,
+        eq(schema.quote.id, quoteId)
+      )
+    )
+    .limit(1);
+
+  if (!rows[0]) throw new Error("Cotización no encontrada");
+
+  await db
+    .update(schema.quote)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(eq(schema.quote.id, quoteId));
+}
+
+/** Restaurar una cotización archivada */
+export async function unarchiveQuote(
+  organizationId: string,
+  quoteId: string
+): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.quote)
+    .where(
+      scoped(
+        schema.quote.organizationId,
+        organizationId,
+        eq(schema.quote.id, quoteId)
+      )
+    )
+    .limit(1);
+
+  if (!rows[0]) throw new Error("Cotización no encontrada");
+
+  await db
+    .update(schema.quote)
+    .set({ archivedAt: null, updatedAt: new Date() })
+    .where(eq(schema.quote.id, quoteId));
+}
+
+/** Eliminar una cotización (solo archivadas) */
+export async function deleteQuote(
+  organizationId: string,
+  quoteId: string
+): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.quote)
+    .where(
+      scoped(
+        schema.quote.organizationId,
+        organizationId,
+        eq(schema.quote.id, quoteId)
+      )
+    )
+    .limit(1);
+
+  if (!rows[0]) throw new Error("Cotización no encontrada");
+  if (!rows[0].archivedAt) throw new Error("Solo se pueden eliminar cotizaciones archivadas");
+
+  await db.delete(schema.quoteItem).where(eq(schema.quoteItem.quoteId, quoteId));
+  await db.delete(schema.quoteEvent).where(eq(schema.quoteEvent.quoteId, quoteId));
+  await db.delete(schema.quote).where(eq(schema.quote.id, quoteId));
 }

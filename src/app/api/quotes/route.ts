@@ -10,8 +10,9 @@ export const GET = withAuth(async (session, req: Request) => {
   const status = url.searchParams.get("status") ?? undefined;
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50") || 50, 100);
   const offset = parseInt(url.searchParams.get("offset") ?? "0") || 0;
+  const archived = url.searchParams.get("archived") === "1";
 
-  const quotes = await listQuotes(session.organizationId, { status, limit, offset });
+  const quotes = await listQuotes(session.organizationId, { status, limit, offset, archived });
   return Response.json({ quotes });
 });
 

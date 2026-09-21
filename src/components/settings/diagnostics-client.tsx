@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 type Event = { id: string; source: string; severity: string; code: string; message: string; metadata: Record<string, unknown>; resolved_at: string | null; created_at: string };
-type Data = { events: Event[]; nextCursor: string | null; status: { database: string; provider: string; meta: string; waha: string; instagram: string; messenger: string; emailAccounts: number } };
+type Data = { events: Event[]; nextCursor: string | null; status: { database: string; provider: string; meta: string; waha: string; instagram: string; messenger: string; tiktok: string; emailAccounts: number } };
 const labels: Record<string, string> = { connected: "Credenciales guardadas", reconnect_required: "Requiere reconexión", not_configured: "Sin configurar" };
 export function DiagnosticsClient() {
   const [data, setData] = useState<Data | null>(null);
@@ -35,12 +35,12 @@ export function DiagnosticsClient() {
     <header><h3 className="text-xl font-semibold">Diagnóstico y errores</h3><p className="text-sm text-text-2">Eventos operativos de los últimos 30 días. Acceso exclusivo del propietario.</p></header>
     {data && <section className="grid gap-3 sm:grid-cols-3" aria-label="Estado del sistema">
       <div className="rounded border p-4"><strong>PostgreSQL</strong><p>{data.status.database}</p></div>
-      {([ ["meta", "WhatsApp Cloud API", "/settings/whatsapp"], ["waha", "WAHA", "/settings/waha"], ["instagram", "Instagram", "/settings/instagram"], ["messenger", "Messenger", "/settings/messenger"] ] as const).map(([key, label, href]) => <Link key={key} href={href} className="rounded border p-4"><strong>{label}</strong><p>{labels[data.status[key]] ?? data.status[key]}</p>{data.status.provider === key && <span className="text-xs">Proveedor seleccionado</span>}</Link>)}
+      {([ ["meta", "WhatsApp Cloud API", "/settings/whatsapp"], ["waha", "WAHA", "/settings/waha"], ["instagram", "Instagram", "/settings/instagram"], ["messenger", "Messenger", "/settings/messenger"], ["tiktok", "TikTok", "/settings/tiktok"] ] as const).map(([key, label, href]) => <Link key={key} href={href} className="rounded border p-4"><strong>{label}</strong><p>{labels[data.status[key]] ?? data.status[key]}</p>{data.status.provider === key && <span className="text-xs">Proveedor seleccionado</span>}</Link>)}
       <Link href="/settings/email" className="rounded border p-4"><strong>Buzón</strong><p>{data.status.emailAccounts} cuentas configuradas</p></Link>
     </section>}
     <p className="text-sm text-text-2">Los estados de credenciales no equivalen a una prueba en vivo. Abre cada integración para probarla. Los errores de arranque o de una base inaccesible se consultan en EasyPanel.</p>
     <div className="flex flex-wrap gap-3">
-      <label>Origen <select className="rounded border bg-background p-2" value={source} onChange={(e) => setSource(e.target.value)}><option value="">Todos</option>{["api", "meta", "waha", "instagram", "messenger", "email", "ai", "media"].map((s) => <option key={s}>{s}</option>)}</select></label>
+      <label>Origen <select className="rounded border bg-background p-2" value={source} onChange={(e) => setSource(e.target.value)}><option value="">Todos</option>{["api", "meta", "waha", "instagram", "messenger", "tiktok", "email", "ai", "media"].map((s) => <option key={s}>{s}</option>)}</select></label>
       <label>Nivel <select className="rounded border bg-background p-2" value={severity} onChange={(e) => setSeverity(e.target.value)}><option value="">Todos</option><option value="error">Error</option><option value="warning">Advertencia</option><option value="info">Información</option></select></label>
       <button className="rounded border px-3" disabled={busy} onClick={() => void load()}>{busy ? "Cargando…" : "Actualizar"}</button>
     </div>
