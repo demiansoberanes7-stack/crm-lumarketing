@@ -9,6 +9,8 @@ export type BusinessSettings = {
   address: string;
   phone: string;
   email: string;
+  logoUrl: string;
+  website: string;
 };
 
 export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
@@ -17,6 +19,8 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
   address: "",
   phone: "",
   email: "",
+  logoUrl: "",
+  website: "",
 };
 
 export function normalizeBusinessSettings(
@@ -28,5 +32,7 @@ export function normalizeBusinessSettings(
     address: input?.address?.trim().slice(0, 500) ?? DEFAULT_BUSINESS_SETTINGS.address,
     phone: input?.phone?.trim().slice(0, 30) ?? DEFAULT_BUSINESS_SETTINGS.phone,
     email: input?.email?.trim().slice(0, 254) ?? DEFAULT_BUSINESS_SETTINGS.email,
+    logoUrl: input?.logoUrl?.trim().slice(0, 1024) ?? DEFAULT_BUSINESS_SETTINGS.logoUrl,
+    website: input?.website?.trim().slice(0, 254) ?? DEFAULT_BUSINESS_SETTINGS.website,
   };
 }

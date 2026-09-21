@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   FlaskConical,
+  MessageSquare,
   Play,
+  Send,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -62,6 +64,7 @@ export function LabClient() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"evaluacion" | "chat">("evaluacion");
 
   const refetchRuns = useCallback(async () => {
     const res = await fetch("/api/lab/runs").catch(() => null);
@@ -119,7 +122,7 @@ export function LabClient() {
   if (!aiConfigured) {
     return (
       <div className="flex h-full flex-col">
-        <Header running={false} launching={false} onLaunch={() => {}} disabled />
+        <Header running={false} launching={false} onLaunch={() => {}} disabled activeTab="evaluacion" onTabChange={() => {}} />
         <div className="m-6 rounded-lg border border-brand-soft bg-brand-tint p-8 text-center">
           <Sparkles className="mx-auto mb-2 h-8 w-8 text-primary" />
           <p className="font-medium">
@@ -144,42 +147,50 @@ export function LabClient() {
         launching={launching}
         onLaunch={() => void launch()}
         disabled={false}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
       {error && <p className="px-4 pt-3 text-sm text-destructive sm:px-6">{error}</p>}
 
-      {running && progress && (
-        <div className="mx-6 mt-4 rounded-lg border bg-card p-4">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="font-medium">Evaluando personas…</span>
-            <span className="text-muted-foreground">
-              {progress.done} / {progress.total}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-secondary">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${(progress.done / progress.total) * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
+      {activeTab === "chat" ? (
+        <LabChat aiConfigured={aiConfigured} />
+      ) : (
+        <>
+          {running && progress && (
+            <div className="mx-6 mt-4 rounded-lg border bg-card p-4">
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="font-medium">Evaluando personas…</span>
+                <span className="text-muted-foreground">
+                  {progress.done} / {progress.total}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
 
-      <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-[280px_1fr]">
-        <HistoryList
-          runs={runs}
-          selectedRunId={selectedRunId}
-          onSelect={setSelectedRunId}
-        />
-        {detail ? (
-          <Report detail={detail} onApplied={() => void refetchDetail(detail.run.id)} />
-        ) : (
-          <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-            {runs.length === 0
-              ? "Corre tu primera evaluación: 6 clientes simulados conversarán con tu agente y un juez calificará cada conversación."
-              : "Elige una corrida del historial."}
+          <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-[280px_1fr]">
+            <HistoryList
+              runs={runs}
+              selectedRunId={selectedRunId}
+              onSelect={setSelectedRunId}
+            />
+            {detail ? (
+              <Report detail={detail} onApplied={() => void refetchDetail(detail.run.id)} />
+            ) : (
+              <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+                {runs.length === 0
+                  ? "Corre tu primera evaluación: 6 clientes simulados conversarán con tu agente y un juez calificará cada conversación."
+                  : "Elige una corrida del historial."}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -189,26 +200,58 @@ function Header({
   launching,
   onLaunch,
   disabled,
+  activeTab,
+  onTabChange,
 }: {
   running: boolean;
   launching: boolean;
   onLaunch: () => void;
   disabled: boolean;
+  activeTab: "evaluacion" | "chat";
+  onTabChange: (tab: "evaluacion" | "chat") => void;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-6 sm:py-4">
-      <div>
-        <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight">
-          <FlaskConical className="h-4 w-4 text-primary" /> Laboratorio
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Sandbox interno — no envía mensajes reales
-        </p>
+    <header className="border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight">
+            <FlaskConical className="h-4 w-4 text-primary" /> Laboratorio
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Sandbox interno — no envía mensajes reales
+          </p>
+        </div>
+        {activeTab === "evaluacion" && (
+          <Button onClick={onLaunch} disabled={disabled || running || launching}>
+            <Play className="h-4 w-4" />
+            {running ? "Corrida en curso…" : "Correr evaluación"}
+          </Button>
+        )}
       </div>
-      <Button onClick={onLaunch} disabled={disabled || running || launching}>
-        <Play className="h-4 w-4" />
-        {running ? "Corrida en curso…" : "Correr evaluación"}
-      </Button>
+      <div className="mt-3 flex gap-1">
+        <button
+          onClick={() => onTabChange("evaluacion")}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === "evaluacion"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          <FlaskConical className="mr-1 inline h-3.5 w-3.5" />
+          Evaluación
+        </button>
+        <button
+          onClick={() => onTabChange("chat")}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === "chat"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-accent"
+          }`}
+        >
+          <MessageSquare className="mr-1 inline h-3.5 w-3.5" />
+          Chat de prueba
+        </button>
+      </div>
     </header>
   );
 }
@@ -477,6 +520,152 @@ function HallazgoCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+type ChatMessage = { role: "user" | "agent"; text: string; timestamp?: string };
+
+function LabChat({ aiConfigured }: { aiConfigured: boolean }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [messages]);
+
+  if (!aiConfigured) {
+    return (
+      <div className="m-6 rounded-lg border border-brand-soft bg-brand-tint p-8 text-center">
+        <Sparkles className="mx-auto mb-2 h-8 w-8 text-primary" />
+        <p className="font-medium">Configura tu proveedor de IA para usar el chat</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Agrega <code className="rounded bg-secondary px-1">OPENROUTER_API_TOKEN</code> a la instancia.
+        </p>
+      </div>
+    );
+  }
+
+  async function send() {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput("");
+    setSending(true);
+    setError(null);
+
+    // Add user message immediately
+    setMessages((prev) => [...prev, { role: "user", text }]);
+
+    const res = await fetch("/api/lab/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: text, conversationId: conversationId ?? undefined }),
+    }).catch(() => null);
+
+    setSending(false);
+
+    if (!res?.ok) {
+      const data = (await res?.json().catch(() => null)) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "Error al enviar");
+      setMessages((prev) => [...prev, { role: "agent", text: "(error al obtener respuesta)" }]);
+      return;
+    }
+
+    const data = (await res.json()) as {
+      conversationId: string;
+      messages: ChatMessage[];
+    };
+
+    setConversationId(data.conversationId);
+    // Replace messages with full history from server
+    setMessages(
+      data.messages.map((m) => ({
+        role: m.role,
+        text: m.text,
+        timestamp: m.timestamp,
+      }))
+    );
+  }
+
+  function newChat() {
+    setMessages([]);
+    setConversationId(null);
+    setError(null);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col p-4 sm:p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Escribe preguntas al agente para probar cómo responde. La conversación es de prueba y no envía mensajes reales.
+        </p>
+        <Button size="sm" variant="outline" onClick={newChat}>
+          Nueva conversación
+        </Button>
+      </div>
+
+      {/* Chat messages */}
+      <div
+        ref={scrollRef}
+        className="mb-4 flex-1 overflow-y-auto rounded-lg border bg-background p-4"
+        style={{ minHeight: 300, maxHeight: 500 }}
+      >
+        {messages.length === 0 && (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            Escribe un mensaje para empezar a probar el agente…
+          </p>
+        )}
+        <div className="space-y-3">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                  m.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-foreground"
+                }`}
+              >
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {sending && (
+            <div className="flex justify-start">
+              <div className="rounded-lg bg-secondary px-3 py-2 text-sm text-muted-foreground">
+                Pensando…
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+
+      {/* Input */}
+      <div className="flex gap-2">
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          placeholder="Escribe tu pregunta…"
+          disabled={sending}
+        />
+        <Button onClick={() => void send()} disabled={sending || !input.trim()}>
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }

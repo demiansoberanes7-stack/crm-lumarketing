@@ -15,6 +15,8 @@ const putSchema = z.object({
   address: z.string().max(500).optional(),
   phone: z.string().max(30).optional(),
   email: z.string().max(254).optional(),
+  logoUrl: z.string().max(1024).optional(),
+  website: z.string().max(254).optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {

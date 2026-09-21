@@ -77,13 +77,24 @@ export function TemplatesClient() {
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <p className="text-sm text-muted-foreground">
-          Las plantillas permiten reabrir conversaciones con la ventana de 24 h
-          cerrada. Meta las aprueba en horas o días y puede reclasificar la
-          categoría (lo que cambia el costo por conversación). Esta pantalla
-          consulta el estado a Meta cada vez que la abres; Sincronizar fuerza
-          la consulta sin recargar.
-        </p>
+        <div>
+          <p className="text-sm text-muted-foreground">
+            Las plantillas permiten reabrir conversaciones con la ventana de 24 h
+            cerrada. Meta las aprueba en horas o días y puede reclasificar la
+            categoría (lo que cambia el costo por conversación). Esta pantalla
+            consulta el estado a Meta cada vez que la abres; Sincronizar fuerza
+            la consulta sin recargar.
+          </p>
+          <div className="mt-3 rounded-lg border border-brand-soft bg-brand-tint p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">¿Cuándo usar una plantilla?</p>
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              <li>Cuando un cliente no te escribe en 24 h y quieres darle seguimiento</li>
+              <li>Para enviar recordatorios de citas o cotizaciones</li>
+              <li>Para promociones o campañas de marketing</li>
+              <li>Para confirmaciones de pedido o envío</li>
+            </ul>
+          </div>
+        </div>
         <Button variant="outline" size="sm" disabled={syncing} onClick={() => void sync()}>
           <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
           Sincronizar
@@ -92,6 +103,9 @@ export function TemplatesClient() {
       {syncMsg && <p className="text-xs text-muted-foreground">{syncMsg}</p>}
 
       <CreateForm onCreated={() => void refetch()} />
+
+      {/* Quick examples */}
+      <ExamplesSection />
 
       <div className="space-y-2">
         {templates.map((t) => (
@@ -122,6 +136,36 @@ export function TemplatesClient() {
             conversaciones frías.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+const EXAMPLES = [
+  { name: "Seguimiento de cotización", body: "Hola {{1}}, ¿ya revisaste la cotización que te envié? ¿Tienes alguna duda? Estoy disponible para ayudarte." },
+  { name: "Recordatorio de cita", body: "Hola {{1}}, te recuerdo que tienes una cita programada para el {{2}} a las {{3}}. ¿Confirmas asistencia?" },
+  { name: "Agradecimiento", body: "¡Gracias {{1}} por tu compra! Tu pedido #{{2}} está siendo procesado. Te avisaremos cuando esté listo para entrega." },
+  { name: "Promoción", body: "¡Hola {{1}}! Tenemos una oferta especial para ti: {{2}} con {{3}}% de descuento hasta el {{4}}. ¿Te interesa?" },
+];
+
+function ExamplesSection() {
+  // This is purely informational - clicking copies the example to clipboard
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">Ejemplos de plantillas comunes (haz clic para copiar):</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {EXAMPLES.map((ex) => (
+          <button
+            key={ex.name}
+            onClick={() => {
+              navigator.clipboard.writeText(ex.body).catch(() => {});
+            }}
+            className="rounded-lg border border-dashed p-3 text-left text-xs transition-colors hover:bg-accent"
+          >
+            <p className="font-medium text-foreground">{ex.name}</p>
+            <p className="mt-1 text-muted-foreground line-clamp-2">{ex.body}</p>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -169,6 +213,13 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
           <code>{"{{1}}"}</code>, <code>{"{{2}}"}</code>, <code>{"{{3}}"}</code>
           … en orden y sin saltos. Se envía a aprobación de Meta al crearla.
         </CardDescription>
+        <div className="mt-2 rounded-md bg-secondary p-2 text-xs text-muted-foreground">
+          <p><strong>Nombre:</strong> sin espacios ni caracteres especiales (usa guiones bajos). Ej: <code>seguimiento_cotizacion</code></p>
+          <p><strong>Idioma:</strong> <code>es_MX</code> para español de México.</p>
+          <p><strong>Categoría:</strong> UTILITY = seguimiento/transacciones (más barato). MARKETING = promociones.</p>
+          <p><strong>Variables:</strong> usa <code>{"{{1}}"}</code> para el primer dato dinámico, <code>{"{{2}}"}</code> para el segundo, etc. Ej: "Hola {"{{1}}"}, tu cita es el {"{{2}}"}."
+          </p>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-3">
@@ -232,6 +283,15 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
           )}
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
+
+        {/* Preview */}
+        {body.trim() && !bodyError && (
+          <div className="rounded-lg border bg-secondary p-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Vista previa:</p>
+            <p className="whitespace-pre-wrap text-sm">{body}</p>
+          </div>
+        )}
+
         <Button
           disabled={saving || !name.trim() || !body.trim() || bodyError !== null}
           onClick={() => void create()}

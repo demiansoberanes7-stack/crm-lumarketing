@@ -1,4 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 import { getQuote } from "./service";
 import { getBusinessSettings } from "@/server/business-settings";
 import { money } from "@/server/documents/pdf";
@@ -7,10 +9,13 @@ const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const MARGIN = 50;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const GOLD = rgb(0.72, 0.59, 0.24);
 const DARK = rgb(0.13, 0.13, 0.13);
 const GRAY = rgb(0.45, 0.45, 0.45);
 const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
+const HEADER_BG = rgb(0.28, 0.28, 0.28);
+const ROW_ALT = rgb(0.96, 0.96, 0.96);
+
+const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
 
 function clean(s: string): string {
   return s.replace(/[\r\n\t]/g, " ").replace(/[^\u0020-\u00ff]/g, "?");
@@ -31,6 +36,24 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
   }
   if (current) lines.push(current);
   return lines.length ? lines : [""];
+}
+
+function tryLoadLogo(logoUrl: string | undefined, organizationId: string): { data: Uint8Array; mime: string } | null {
+  if (!logoUrl) return null;
+  // Extract filename from URL path: /api/media/public/{orgId}/{filename}
+  const match = logoUrl.match(/\/([^/]+)$/);
+  if (!match) return null;
+  const filename = match[1]!;
+  const filePath = join(MEDIA_DIR, organizationId, filename);
+  if (!existsSync(filePath)) return null;
+  try {
+    const data = readFileSync(filePath);
+    const ext = filename.split(".").pop()?.toLowerCase();
+    const mime = ext === "png" ? "image/png" : ext === "svg" ? "image/svg+xml" : "image/jpeg";
+    return { data: new Uint8Array(data), mime };
+  } catch {
+    return null;
+  }
 }
 
 export async function quotePdf(organizationId: string, id: string) {
@@ -56,85 +79,81 @@ export async function quotePdf(organizationId: string, id: string) {
     }
   };
 
-  // ─── HEADER: Company name + gold line ───
   const companyName = bs.companyName || "LUMARK";
-  page.drawText(clean(companyName).slice(0, 60), { x: MARGIN, y, size: 20, font: bold, color: GOLD });
-  y -= 22;
 
-  // Company details (small text under name)
-  const details: string[] = [];
-  if (bs.rfc) details.push(`RFC: ${bs.rfc}`);
-  if (bs.phone) details.push(`Tel: ${bs.phone}`);
-  if (bs.email) details.push(bs.email);
-  if (details.length) {
-    page.drawText(clean(details.join("  |  ")).slice(0, 100), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
-    y -= 14;
-  }
-  if (bs.address) {
-    page.drawText(clean(bs.address).slice(0, 100), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
-    y -= 14;
+  // ─── HEADER: Logo (left) + Date (right) ───
+  const logoData = tryLoadLogo(bs.logoUrl, organizationId);
+  if (logoData && logoData.mime === "image/png") {
+    try {
+      const img = await doc.embedPng(logoData.data);
+      const maxH = 50;
+      const scale = maxH / img.height;
+      const w = img.width * scale;
+      const h = img.height * scale;
+      page.drawImage(img, { x: MARGIN, y: y - h + 10, width: w, height: h });
+    } catch {
+      // If PNG fails, fall through to text
+    }
+  } else if (logoData && (logoData.mime === "image/jpeg" || logoData.mime === "image/jpg")) {
+    try {
+      const img = await doc.embedJpg(logoData.data);
+      const maxH = 50;
+      const scale = maxH / img.height;
+      const w = img.width * scale;
+      const h = img.height * scale;
+      page.drawImage(img, { x: MARGIN, y: y - h + 10, width: w, height: h });
+    } catch {
+      // Fall through to text
+    }
+  } else {
+    // No logo: draw company name as text
+    page.drawText(clean(companyName).slice(0, 60), { x: MARGIN, y, size: 22, font: bold, color: DARK });
   }
 
-  // Gold separator
-  y -= 6;
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, color: GOLD, thickness: 1.5 });
+  // Date on the right
+  const dateStr = quote.createdAt.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+  page.drawText(clean(dateStr), { x: PAGE_W - MARGIN - 150, y, size: 11, font: regular, color: GRAY });
+
   y -= 20;
 
-  // ─── QUOTE INFO + CLIENT INFO (two columns) ───
-  const leftX = MARGIN;
-  const rightX = MARGIN + CONTENT_W / 2 + 20;
-
-  // Left column: quote details
-  const quoteInfo: Array<[string, string]> = [
-    ["Folio:", quote.quoteNumber],
-    ["Fecha:", quote.createdAt.toLocaleDateString("es-MX")],
-    ["Vigencia:", quote.validUntil ? `Hasta ${quote.validUntil.toLocaleDateString("es-MX")}` : "Sin fecha"],
-    ["Moneda:", quote.currency],
-  ];
-  let infoY = y;
-  for (const [label, value] of quoteInfo) {
-    page.drawText(clean(label), { x: leftX, y: infoY, size: 9, font: bold, color: GRAY });
-    page.drawText(clean(value), { x: leftX + 65, y: infoY, size: 9, font: regular, color: DARK });
-    infoY -= 14;
+  // ─── CLIENT INFO ───
+  y -= 20;
+  if (quote.contactName) {
+    page.drawText(clean(quote.contactName), { x: MARGIN, y, size: 12, font: bold, color: DARK });
+    y -= 16;
+  }
+  if (bs.email) {
+    page.drawText(clean(bs.email), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
+    y -= 14;
+  }
+  if (bs.phone) {
+    page.drawText(clean(bs.phone), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
+    y -= 14;
   }
 
-  // Right column: client details
-  const clientInfo: Array<[string, string]> = [
-    ["Cliente:", quote.contactName ?? "Sin contacto"],
-    ["Estatus:", quote.status.toUpperCase()],
-  ];
-  infoY = y;
-  for (const [label, value] of clientInfo) {
-    page.drawText(clean(label), { x: rightX, y: infoY, size: 9, font: bold, color: GRAY });
-    page.drawText(clean(value), { x: rightX + 58, y: infoY, size: 9, font: regular, color: DARK });
-    infoY -= 14;
-  }
+  y -= 20;
 
-  y = Math.min(y, infoY) - 20;
+  // ─── ITEMS TABLE (dark header) ───
+  const colDesc = MARGIN;
+  const colQty = MARGIN + 340;
+  const colUnit = MARGIN + 400;
+  const colTotal = MARGIN + 470;
 
-  // ─── ITEMS TABLE ───
-  const colNo = MARGIN;
-  const colDesc = MARGIN + 30;
-  const colQty = MARGIN + 310;
-  const colUnit = MARGIN + 365;
-  const colAmount = MARGIN + 440;
-
-  // Table header background
-  const headerH = 20;
+  // Dark header row
+  const headerH = 22;
   page.drawRectangle({
     x: MARGIN,
     y: y - 4,
     width: CONTENT_W,
     height: headerH,
-    color: rgb(0.95, 0.93, 0.88),
+    color: HEADER_BG,
   });
 
   const headerY = y + 2;
-  page.drawText("#", { x: colNo, y: headerY, size: 8, font: bold, color: GRAY });
-  page.drawText("CONCEPTO", { x: colDesc, y: headerY, size: 8, font: bold, color: GRAY });
-  page.drawText("CANT.", { x: colQty, y: headerY, size: 8, font: bold, color: GRAY });
-  page.drawText("P. UNIT.", { x: colUnit, y: headerY, size: 8, font: bold, color: GRAY });
-  page.drawText("IMPORTE", { x: colAmount, y: headerY, size: 8, font: bold, color: GRAY });
+  page.drawText("Descripción", { x: colDesc + 8, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("Cantidad", { x: colQty, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("Und", { x: colUnit, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("Total", { x: colTotal, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
 
   y -= headerH + 4;
 
@@ -143,91 +162,86 @@ export async function quotePdf(organizationId: string, id: string) {
     const item = quote.items[i]!;
     const amount = item.quantity * item.unitPrice;
     const rowText = item.description
-      ? wrapText(`${item.name} — ${item.description}`, regular, 9, CONTENT_W - 100)
-      : wrapText(item.name, regular, 9, CONTENT_W - 100);
-    const rowH = Math.max(rowText.length * 12 + 8, 24);
+      ? wrapText(`${item.name} — ${item.description}`, regular, 9, CONTENT_W - 180)
+      : wrapText(item.name, regular, 9, CONTENT_W - 180);
+    const rowH = Math.max(rowText.length * 13 + 10, 28);
 
     checkPage(rowH + 10);
 
-    // Alternating row background
+    // Alternating row
     if (i % 2 === 0) {
       page.drawRectangle({
         x: MARGIN,
-        y: y - rowH + 14,
+        y: y - rowH + 12,
         width: CONTENT_W,
         height: rowH,
-        color: rgb(0.97, 0.97, 0.97),
+        color: ROW_ALT,
       });
     }
 
-    // Row border
-    page.drawLine({
-      start: { x: MARGIN, y: y - rowH + 10 },
-      end: { x: PAGE_W - MARGIN, y: y - rowH + 10 },
-      color: LIGHT_GRAY,
-      thickness: 0.5,
-    });
-
-    // Row number
-    page.drawText(String(i + 1), { x: colNo, y, size: 9, font: regular, color: GRAY });
-
-    // Row text (may wrap)
+    // Description (may wrap)
     let textY = y;
     for (const line of rowText) {
-      page.drawText(clean(line), { x: colDesc, y: textY, size: 9, font: regular, color: DARK });
-      textY -= 12;
+      page.drawText(clean(line), { x: colDesc + 8, y: textY, size: 9, font: regular, color: DARK });
+      textY -= 13;
     }
 
-    // Qty, unit price, amount (right-aligned)
-    page.drawText(String(item.quantity), { x: colQty, y, size: 9, font: regular, color: DARK });
-    page.drawText(money(item.unitPrice), { x: colUnit, y, size: 9, font: regular, color: DARK });
-    page.drawText(money(amount), { x: colAmount, y, size: 9, font: bold, color: DARK });
+    // Qty, Unit, Total
+    page.drawText(String(item.quantity), { x: colQty + 8, y, size: 9, font: regular, color: DARK });
+    page.drawText(String(item.quantity), { x: colUnit + 8, y, size: 9, font: regular, color: DARK });
+    page.drawText(money(amount), { x: colTotal - 20, y, size: 9, font: regular, color: DARK });
 
     y -= rowH;
   }
 
-  // Bottom border of table
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, color: GOLD, thickness: 1 });
+  y -= 10;
+
+  // ─── TOTALS (right-aligned, dark box for total) ───
+  const totalsLabelX = MARGIN + 340;
+  const totalsValueX = MARGIN + 450;
+
+  checkPage(90);
+
+  // Subtotal
+  page.drawText("SUBTOTAL:", { x: totalsLabelX, y, size: 10, font: bold, color: DARK });
+  page.drawText(money(quote.subtotal), { x: totalsValueX, y, size: 10, font: bold, color: DARK });
   y -= 20;
 
-  // ─── TOTALS (right-aligned block) ───
-  const totalsX = MARGIN + 340;
-  const totalsLabelX = MARGIN + 400;
-  const totalsValueX = MARGIN + 470;
-
-  checkPage(80);
-
-  const totals: Array<{ label: string; value: string; bold?: boolean; color?: typeof DARK }> = [
-    { label: "Subtotal:", value: money(quote.subtotal) },
-  ];
+  // Discount (if any)
   if (quote.discountAmount > 0) {
-    totals.push({ label: "Descuento:", value: `-${money(quote.discountAmount)}`, color: rgb(0.8, 0.2, 0.2) });
+    const discountPct = quote.discountValue ?? 0;
+    const label = quote.discountType === "percentage" ? `DESCUENTO ${discountPct}%:` : "DESCUENTO:";
+    page.drawText(label, { x: totalsLabelX, y, size: 10, font: bold, color: DARK });
+    page.drawText(money(quote.subtotal - quote.discountAmount), { x: totalsValueX, y, size: 10, font: bold, color: DARK });
+    y -= 20;
   }
-  totals.push({ label: `IVA (${quote.taxRate}%):`, value: money(quote.taxAmount) });
-  totals.push({ label: "TOTAL:", value: money(quote.total), bold: true, color: GOLD });
 
-  // Totals box
-  const totalsBoxH = totals.length * 16 + 16;
+  // Total (dark background box)
+  y -= 4;
+  const totalBoxH = 26;
   page.drawRectangle({
-    x: totalsX,
-    y: y - totalsBoxH + 14,
-    width: PAGE_W - MARGIN - totalsX,
-    height: totalsBoxH,
-    color: rgb(0.97, 0.96, 0.93),
-    borderColor: GOLD,
-    borderWidth: 0.5,
+    x: totalsLabelX - 8,
+    y: y - totalBoxH + 14,
+    width: PAGE_W - MARGIN - totalsLabelX + 16,
+    height: totalBoxH,
+    color: HEADER_BG,
   });
+  page.drawText("TOTAL:", { x: totalsLabelX, y: y - 4, size: 11, font: bold, color: rgb(1, 1, 1) });
+  page.drawText(money(quote.total), { x: totalsValueX, y: y - 4, size: 11, font: bold, color: rgb(1, 1, 1) });
+  y -= totalBoxH + 10;
 
-  let ty = y;
-  for (const t of totals) {
-    const font = t.bold ? bold : regular;
-    const color = t.color ?? DARK;
-    page.drawText(clean(t.label), { x: totalsLabelX, y: ty, size: 9, font, color: GRAY });
-    page.drawText(clean(t.value), { x: totalsValueX, y: ty, size: 9, font, color });
-    ty -= 16;
+  // ─── NOTE ───
+  if (quote.message) {
+    checkPage(50);
+    y -= 10;
+    page.drawText("Nota:", { x: MARGIN, y, size: 10, font: bold, color: DARK });
+    y -= 16;
+    const noteLines = wrapText(quote.message, regular, 9, CONTENT_W);
+    for (const line of noteLines) {
+      page.drawText(clean(line), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
+      y -= 13;
+    }
   }
-
-  y -= totalsBoxH + 20;
 
   // ─── PAYMENT CONDITIONS ───
   const paymentMethod = quote.paymentMethod as Record<string, unknown> | null;
@@ -239,50 +253,39 @@ export async function quotePdf(organizationId: string, id: string) {
 
   if (paymentText) {
     checkPage(40);
-    page.drawText("CONDICIONES DE PAGO", { x: MARGIN, y, size: 10, font: bold, color: GOLD });
-    y -= 16;
+    y -= 10;
     const payLines = wrapText(paymentText, regular, 9, CONTENT_W);
     for (const line of payLines) {
-      page.drawText(clean(line), { x: MARGIN, y, size: 9, font: regular, color: DARK });
+      page.drawText(clean(line), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
       y -= 13;
     }
-    y -= 10;
   }
 
-  // ─── NOTES ───
-  if (quote.message) {
-    checkPage(40);
-    page.drawText("NOTAS", { x: MARGIN, y, size: 10, font: bold, color: GOLD });
-    y -= 16;
-    const noteLines = wrapText(quote.message, regular, 9, CONTENT_W);
-    for (const line of noteLines) {
-      page.drawText(clean(line), { x: MARGIN, y, size: 9, font: regular, color: DARK });
-      y -= 13;
-    }
-    y -= 10;
-  }
-
-  // ─── COMPANY CONTACT INFO (replaces signature line) ───
-  checkPage(50);
-  y -= 10;
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, color: LIGHT_GRAY, thickness: 0.5 });
-  y -= 16;
-  const contactParts: string[] = [];
-  if (bs.phone) contactParts.push(`Tel. ${bs.phone}`);
-  if (bs.email) contactParts.push(bs.email);
-  if (bs.address) contactParts.push(bs.address);
-  if (contactParts.length) {
-    page.drawText(clean(contactParts.join("  |  ")).slice(0, 120), { x: MARGIN, y, size: 8, font: regular, color: GRAY });
-  }
-
-  // ─── FOOTER ───
+  // ─── FOOTER (phone | email | website) ───
   const pages = doc.getPages();
+  const footerY = 30;
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i]!;
-    p.drawLine({ start: { x: MARGIN, y: 40 }, end: { x: PAGE_W - MARGIN, y: 40 }, color: GOLD, thickness: 0.5 });
-    p.drawText(`${companyName} | ${quote.quoteNumber} | Página ${i + 1} de ${pages.length}`, {
-      x: MARGIN,
-      y: 28,
+    // Footer separator line
+    p.drawLine({ start: { x: MARGIN, y: footerY + 12 }, end: { x: PAGE_W - MARGIN, y: footerY + 12 }, color: LIGHT_GRAY, thickness: 0.5 });
+
+    const parts: string[] = [];
+    if (bs.phone) parts.push(bs.phone);
+    if (bs.email) parts.push(bs.email);
+    if (bs.website) parts.push(bs.website);
+    if (parts.length) {
+      p.drawText(clean(parts.join("   |   ")).slice(0, 120), {
+        x: MARGIN,
+        y: footerY,
+        size: 8,
+        font: regular,
+        color: GRAY,
+      });
+    }
+    // Page number
+    p.drawText(`${i + 1} / ${pages.length}`, {
+      x: PAGE_W - MARGIN - 30,
+      y: footerY,
       size: 8,
       font: regular,
       color: GRAY,
