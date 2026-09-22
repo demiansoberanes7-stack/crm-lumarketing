@@ -34,7 +34,7 @@ const HELP = {
   items: [
     "La cuenta de TikTok se vincula en el panel de Zernio, no desde LUMARK. Copia de ahí el accountId de la cuenta conectada.",
     "La API key se crea en Zernio → Settings → API Keys y se muestra una sola vez (empieza con sk_).",
-    "El mismo webhook de Zernio entrega Instagram, Messenger y TikTok si esas cuentas están conectadas; LUMARK filtra por plataforma.",
+    "El mismo webhook de Zernio entrega Instagram, Messenger y TikTok si esas cuentas están conectadas; LUMARK filtra por plataforma. La URL de webhook es compartida con Instagram.",
     "El secreto del webhook es opcional pero recomendado: con él se verifica la firma de cada entrega.",
     "TikTok DMs solo permiten responder a mensajes recibidos (no cold outreach). Soporta texto e imágenes (máx 3 MB).",
   ],
@@ -228,7 +228,8 @@ export function TikTokClient() {
             <CardDescription>
               En Zernio, da de alta este endpoint con el evento{" "}
               <code>message.received</code> y, si usas secreto, el mismo que
-              pegaste arriba.
+              pegaste arriba. Esta URL es compartida con Instagram (Zernio
+              entrega todas las plataformas por un solo webhook).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

@@ -70,7 +70,13 @@ export const PUT = withAuth(async (session, req: Request) => {
     );
   }
 
-  const check = await verify(data);
+  let check: Check;
+  try {
+    check = await verify(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error de conexion con la plataforma";
+    return apiError(503, "platform_unavailable", message);
+  }
   if (!check.ok) return apiError(check.status, check.code, check.message);
 
   await saveMessengerCredentials({

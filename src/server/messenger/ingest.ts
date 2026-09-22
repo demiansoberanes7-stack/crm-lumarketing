@@ -218,56 +218,60 @@ async function ingestAll(
   source: "zernio" | "meta"
 ): Promise<void> {
   for (const evt of events) {
-    const creds =
-      source === "meta"
-        ? await getMessengerCredentialsByPageId(evt.routeKey)
-        : await getMessengerCredentialsByAccountRef(evt.routeKey);
+    try {
+      const creds =
+        source === "meta"
+          ? await getMessengerCredentialsByPageId(evt.routeKey)
+          : await getMessengerCredentialsByAccountRef(evt.routeKey);
 
-    if (!creds) {
-      console.warn(
-        `[messenger] evento para una cuenta desconocida (${evt.routeKey}): ` +
-          "guarda la conexión en Configuración → Messenger para recibir mensajes"
-      );
-      continue;
+      if (!creds) {
+        console.warn(
+          `[messenger] evento para una cuenta desconocida (${evt.routeKey}): ` +
+            "guarda la conexión en Configuración → Messenger para recibir mensajes"
+        );
+        continue;
+      }
+      if (creds.source !== source) {
+        // Defensa en profundidad: si esta instancia no habla con esa fuente, un
+        // payload con su forma no puede ser legítimo aunque llegue por la URL
+        // correcta. Sin esto, la única barrera de la forma ajena es la URL.
+        console.warn(
+          `[messenger] payload de ${source} en una instancia configurada como ` +
+            `'${creds.source}': descartado`
+        );
+        continue;
+      }
+
+      const identity = `${FB_PREFIX}${evt.psid}`;
+      // El nombre se resuelve UNA vez, la primera que se ve al PSID: después el
+      // contacto ya existe y el nombre que tenga (o el que editó el operador)
+      // manda. Consultarlo en cada mensaje sería un viaje al proveedor por
+      // renglón.
+      const profileName =
+        evt.profileName ??
+        ((await contactExists(creds.organizationId, identity))
+          ? null
+          : await fetchMessengerProfileName(creds, evt.psid));
+
+      await ingestInboundMessage({
+        organizationId: creds.organizationId,
+        identity: {
+          identity,
+          channel: "messenger",
+          phone: null,
+          waUserId: null,
+          profileName,
+        },
+        // Prefijado para que no colisione jamás con un id de WhatsApp ni de
+        // Instagram en el índice único de mensajes.
+        waMessageId: `fb_${evt.messageId}`,
+        type: evt.type,
+        text: evt.text,
+        timestamp: evt.timestamp,
+        threadRef: evt.threadRef,
+      });
+    } catch (err) {
+      console.error("[messenger] error procesando evento individual:", err);
     }
-    if (creds.source !== source) {
-      // Defensa en profundidad: si esta instancia no habla con esa fuente, un
-      // payload con su forma no puede ser legítimo aunque llegue por la URL
-      // correcta. Sin esto, la única barrera de la forma ajena es la URL.
-      console.warn(
-        `[messenger] payload de ${source} en una instancia configurada como ` +
-          `'${creds.source}': descartado`
-      );
-      continue;
-    }
-
-    const identity = `${FB_PREFIX}${evt.psid}`;
-    // El nombre se resuelve UNA vez, la primera que se ve al PSID: después el
-    // contacto ya existe y el nombre que tenga (o el que editó el operador)
-    // manda. Consultarlo en cada mensaje sería un viaje al proveedor por
-    // renglón.
-    const profileName =
-      evt.profileName ??
-      ((await contactExists(creds.organizationId, identity))
-        ? null
-        : await fetchMessengerProfileName(creds, evt.psid));
-
-    await ingestInboundMessage({
-      organizationId: creds.organizationId,
-      identity: {
-        identity,
-        channel: "messenger",
-        phone: null,
-        waUserId: null,
-        profileName,
-      },
-      // Prefijado para que no colisione jamás con un id de WhatsApp ni de
-      // Instagram en el índice único de mensajes.
-      waMessageId: `fb_${evt.messageId}`,
-      type: evt.type,
-      text: evt.text,
-      timestamp: evt.timestamp,
-      threadRef: evt.threadRef,
-    });
   }
 }

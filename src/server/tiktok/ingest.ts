@@ -1,5 +1,6 @@
 import { TT_PREFIX } from "@/server/inbox/identity";
 import { ingestInboundMessage } from "@/server/inbox/ingest";
+import { applyStatusUpdate } from "@/server/inbox/status";
 import {
   getTikTokCredentialsByAccountRef,
 } from "@/server/tiktok/credentials";
@@ -19,12 +20,17 @@ import {
  * a mensajes recibidos (no cold outreach).
  */
 
+const STATUS_MAP: Record<string, string> = {
+  "message.sent": "sent",
+  "message.delivered": "delivered",
+  "message.read": "read",
+  "message.failed": "failed",
+};
+
 export async function processZernioTikTokEvent(payload: unknown): Promise<void> {
   const evt = payload as ZernioEvent;
 
   if (evt.account?.platform !== "tiktok") return;
-  if (evt.event !== "message.received") return;
-  if (evt.message?.direction && evt.message.direction !== "incoming") return;
 
   const accountRef = evt.account?.id;
   if (!accountRef) return;
@@ -44,14 +50,32 @@ export async function processZernioTikTokEvent(payload: unknown): Promise<void> 
     return;
   }
 
-  const senderId = evt.message?.sender?.id;
+  const msg = evt.message;
+  const platformMessageId = msg?.platformMessageId ?? msg?.id;
+
+  // Acuses de entrega para mensajes salientes (message.sent/delivered/read/failed)
+  const status = STATUS_MAP[evt.event ?? ""];
+  if (status && msg?.direction === "outgoing" && platformMessageId) {
+    await applyStatusUpdate(creds.organizationId, {
+      id: platformMessageId,
+      status,
+      timestamp: String(Math.floor(Date.parse(msg.sentAt ?? "") / 1000) || Math.floor(Date.now() / 1000)),
+    });
+    return;
+  }
+
+  // Solo procesamos mensajes entrantes
+  if (evt.event !== "message.received") return;
+  if (msg?.direction && msg.direction !== "incoming") return;
+
+  const senderId = msg?.sender?.id;
   if (!senderId) {
     console.warn(`[tiktok] evento ${evt.id ?? "?"} sin sender.id: descartado`);
     return;
   }
 
-  const text = evt.message?.text ?? null;
-  const zernioMessageId = evt.message?.id;
+  const text = msg?.text ?? null;
+  const zernioMessageId = msg?.id;
   if (!zernioMessageId) {
     console.warn(`[tiktok] evento ${evt.id ?? "?"} sin id de mensaje: descartado`);
     return;
@@ -65,15 +89,15 @@ export async function processZernioTikTokEvent(payload: unknown): Promise<void> 
       phone: null,
       waUserId: null,
       profileName:
-        evt.message?.sender?.name ??
-        (evt.message?.sender?.username
-          ? `@${evt.message.sender.username}`
+        msg?.sender?.name ??
+        (msg?.sender?.username
+          ? `@${msg.sender.username}`
           : null),
     },
     waMessageId: `tt_${zernioMessageId}`,
     type: "text",
     text,
-    timestamp: zernioSentAtSeconds(evt.message?.sentAt),
-    threadRef: evt.message?.conversationId ?? null,
+    timestamp: zernioSentAtSeconds(msg?.sentAt),
+    threadRef: msg?.conversationId ?? null,
   });
 }
