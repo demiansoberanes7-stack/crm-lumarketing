@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type Tab = { href: string; label: string };
 
 const TABS: Tab[] = [
-  { href: "/settings/whatsapp", label: "WhatsApp" },
+  { href: "/settings/whatsapp", label: "Meta Business" },
   { href: "/settings/waha", label: "WAHA" },
   { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },
@@ -18,19 +18,11 @@ const TABS: Tab[] = [
   { href: "/settings/team", label: "Equipo" },
 ];
 
-/** 015 — "Agenda" solo existe si esta instancia encendió la bandera. */
+const ZERNIO_TAB: Tab = { href: "/settings/zernio", label: "Zernio" };
 const AGENDA_TAB: Tab = { href: "/settings/calendar", label: "Agenda" };
-
-/** 016 — Igual con "Anuncios" y la bandera ATRIBUCION. */
 const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
-
-/** 017 — "Messenger" solo si el canal está encendido con CHANNELS. */
 const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
-
-/** 014 — "Instagram" solo si el canal está encendido con CHANNELS. */
 const INSTAGRAM_TAB: Tab = { href: "/settings/instagram", label: "Instagram" };
-
-/** TikTok solo si el canal está encendido con CHANNELS. */
 const TIKTOK_TAB: Tab = { href: "/settings/tiktok", label: "TikTok" };
 
 export function SettingsNav({
@@ -39,6 +31,7 @@ export function SettingsNav({
   messenger = false,
   instagram = false,
   tiktok = false,
+  zernio = false,
   owner = false,
 }: {
   agenda?: boolean;
@@ -46,14 +39,14 @@ export function SettingsNav({
   messenger?: boolean;
   instagram?: boolean;
   tiktok?: boolean;
+  zernio?: boolean;
   owner?: boolean;
 }) {
   const pathname = usePathname();
-  // Qué pestañas existen lo decide el servidor y baja por prop: este es un
-  // componente de cliente y no puede leer variables de entorno.
-  // Messenger va junto a WhatsApp: son las dos conexiones de mensajería.
   const tabs = [
-    ...TABS.slice(0, 2),
+    TABS[0]!,
+    ...(zernio ? [ZERNIO_TAB] : []),
+    TABS[1]!,
     ...(messenger ? [MESSENGER_TAB] : []),
     ...(instagram ? [INSTAGRAM_TAB] : []),
     ...(tiktok ? [TIKTOK_TAB] : []),

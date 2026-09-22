@@ -23,7 +23,7 @@ export function WhatsappZernioClient() {
       if (!res.ok) throw new Error(data.error?.message ?? "No se pudo conectar Zernio");
       setPhone(data.displayPhone);
       if (!testOnly) { if (token) setLast4(token.slice(-4)); setToken(""); setSecret(""); }
-      setNotice(testOnly ? "Número verificado en Zernio" : "Conexión guardada. Selecciona Zernio como proveedor activo arriba y configura el webhook en su panel.");
+      setNotice(testOnly ? "Número verificado en Zernio" : "Conexión guardada. Configura el webhook en el panel de Zernio con la URL de abajo.");
     } catch (err) { setNotice(err instanceof Error ? err.message : "Error de conexión"); }
     finally { setBusy(false); }
   }

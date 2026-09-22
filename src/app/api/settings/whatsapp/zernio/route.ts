@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { withOwner, parseBody, apiError } from "@/lib/api";
 import { getWhatsappZernio, getWhatsappZernioByAccount, saveWhatsappZernio, zernioWhatsappEnabled, zernioWhatsappWebhookUrl } from "@/server/whatsapp/zernio-credentials";
+import { setWhatsappProvider } from "@/server/whatsapp/provider";
 import { zernioFetch } from "@/server/zernio";
 import { MetaApiError } from "@/lib/meta/client";
 
@@ -24,7 +25,10 @@ export const PUT = withOwner(async (session, req: Request) => {
   try {
     const info = await zernioFetch(`/whatsapp/number-info?accountId=${encodeURIComponent(input.accountId)}`, { token }) as { phone?: { display_phone_number?: string; status?: string } };
     if (!info.phone?.display_phone_number || info.phone.status !== "CONNECTED") return apiError(422, "not_connected", "El número no está conectado en Zernio. Revisa la cuenta de WhatsApp en su panel.");
-    if (!input.testOnly) await saveWhatsappZernio({ organizationId: session.organizationId, accountId: input.accountId, token, webhookSecret, displayPhone: info.phone.display_phone_number });
+    if (!input.testOnly) {
+      await saveWhatsappZernio({ organizationId: session.organizationId, accountId: input.accountId, token, webhookSecret, displayPhone: info.phone.display_phone_number });
+      await setWhatsappProvider(session.organizationId, "zernio");
+    }
     return Response.json({ ok: true, displayPhone: info.phone.display_phone_number });
   } catch (err) {
     return apiError(422, "zernio_failed", err instanceof MetaApiError ? `No se pudo verificar el número en Zernio (HTTP ${err.status}). Revisa accountId, API key y permisos de WhatsApp.` : "No se pudo guardar la conexión Zernio");

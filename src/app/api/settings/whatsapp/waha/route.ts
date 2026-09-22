@@ -6,6 +6,7 @@ import { wahaWebhookUrl } from "@/server/waha/webhook-token";
 import { getWahaCredentialsByOrg, getWahaCredentialsFull, saveWahaCredentials, markWahaReconnectRequired } from "@/server/waha/credentials";
 import { getQR, WahaError, wahaRequest } from "@/server/waha/client";
 import { inspectSession, reconcileSession } from "@/server/waha/session";
+import { setWhatsappProvider } from "@/server/whatsapp/provider";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { validateWahaUrl } from "@/server/waha/url";
 import { publicWahaSettings, wahaSettingsSchema } from "@/lib/waha-settings";
@@ -49,6 +50,7 @@ export const PUT = withOwner(async (session, req: Request) => {
       if (!Array.isArray(sessions)) throw new WahaError("La URL no devolvió una API WAHA válida");
     }
     await saveWahaCredentials({ organizationId: session.organizationId, ...creds });
+    await setWhatsappProvider(session.organizationId, "waha");
     await recordDiagnostic({ organizationId: session.organizationId, source: "waha", code: "connection_saved", severity: "info" });
     return Response.json({ ok: true });
   } catch (err) {

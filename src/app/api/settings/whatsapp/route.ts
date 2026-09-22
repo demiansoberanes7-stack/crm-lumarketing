@@ -6,6 +6,7 @@ import {
   tokenLast4,
 } from "@/server/whatsapp/credentials";
 import { subscribeAppToWaba, testConnection } from "@/server/whatsapp/connect";
+import { setWhatsappProvider } from "@/server/whatsapp/provider";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export const PUT = withAuth(async (session, req: Request) => {
 
   // Best-effort: necesaria en modo directo; el modo agencia usa su override.
   await subscribeAppToWaba(body.data.wabaId, body.data.token, session.organizationId);
-
+  await setWhatsappProvider(session.organizationId, "meta");
   await recordDiagnostic({ organizationId: session.organizationId, source: "meta", code: "connection_saved", severity: "info" });
 
   return Response.json({
