@@ -1315,6 +1315,10 @@ export const caltodoTask = pgTable(
     id: varchar("id", { length: 255 }).primaryKey(),
     organizationId: varchar("organization_id", { length: 255 }).notNull(),
     userId: varchar("user_id", { length: 255 }).notNull(),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
     title: varchar("title", { length: 200 }).notNull(),
     details: text("details"),
     urgent: boolean("urgent").notNull().default(false),
@@ -1330,6 +1334,7 @@ export const caltodoTask = pgTable(
   (t) => [
     index("caltodo_task_org_idx").on(t.organizationId, t.userId),
     index("caltodo_task_completed_idx").on(t.completed),
+    index("caltodo_task_contact_idx").on(t.contactId),
   ]
 );
 

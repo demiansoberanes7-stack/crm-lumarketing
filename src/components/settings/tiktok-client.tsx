@@ -199,8 +199,21 @@ export function TikTokClient() {
             </div>
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {saved && <p className="text-sm text-success-text">{saved} ✓</p>}
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-medium">Error al conectar TikTok</p>
+                <p className="opacity-80">{error}</p>
+              </div>
+            </div>
+          )}
+          {saved && (
+            <div className="flex items-center gap-2 rounded-lg border border-success bg-success/10 p-3 text-sm text-success-text">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <p className="font-medium">{saved} ✓</p>
+            </div>
+          )}
 
           <Button disabled={saving || !canSave} onClick={() => void save()}>
             {saving ? "Probando…" : "Probar y guardar"}

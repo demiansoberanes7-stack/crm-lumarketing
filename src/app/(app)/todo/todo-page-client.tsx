@@ -34,7 +34,7 @@ export function TodoPageClient({ initialTasks, initialSettings }: { initialTasks
 
   return (
     <div className="min-w-0 space-y-5 p-4 sm:p-6">
-      <header><h1 className="text-2xl font-bold tracking-tight">Calendario</h1>
+      <header><h1 className="text-2xl font-bold tracking-tight">Pendientes</h1>
       <p className="mt-1 text-sm text-text-2">Organiza tus tareas personales y planifica tu jornada.</p></header>
       <div role="tablist" aria-label="Vistas del calendario" className="flex gap-1 overflow-x-auto border-b">
         {TABS.map((t) => (

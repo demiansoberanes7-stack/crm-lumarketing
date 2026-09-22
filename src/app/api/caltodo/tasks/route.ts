@@ -16,6 +16,7 @@ const createSchema = z.object({
   details: z.string().max(5000).optional(),
   urgent: z.boolean().optional(),
   duration: z.number().int().min(15).max(480).optional(),
+  contactId: z.string().max(255).nullable().optional(),
 });
 
 export const POST = withAuth(async (session, req: Request) => {
@@ -43,6 +44,7 @@ const patchSchema = z.object({
   urgent: z.boolean().optional(),
   duration: z.number().int().min(15).max(480).optional(),
   completed: z.boolean().optional(),
+  contactId: z.string().max(255).nullable().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request) => {

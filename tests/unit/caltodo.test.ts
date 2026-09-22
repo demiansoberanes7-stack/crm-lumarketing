@@ -5,7 +5,7 @@ import { findNextFreeSlot, rescheduleAll } from "@/server/caltodo/scheduler";
 const settings = DEFAULT_TODO_SETTINGS;
 const task = (id: string, start: string, end: string, priority = 0): CalTodoItem => ({
   id, title: id, details: null, urgent: false, duration: 60, scheduledStart: start,
-  scheduledEnd: end, completed: false, completedAt: null, priority,
+  scheduledEnd: end, completed: false, completedAt: null, priority, contactId: null,
 });
 
 describe("CalTodo scheduling and settings regressions", () => {

@@ -27,6 +27,7 @@ export type CalTodoItem = {
   duration: number | null; scheduledStart: Date | string | null;
   scheduledEnd: Date | string | null; completed: boolean;
   completedAt: Date | string | null; priority: number;
+  contactId: string | null;
 };
 
 /** Calendar coordinates in the selected zone, independent of browser/server TZ. */

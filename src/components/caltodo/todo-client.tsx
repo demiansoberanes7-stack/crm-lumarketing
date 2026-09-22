@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, GripVertical, ChevronDown, ChevronUp, RotateCcw, Clock, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2 } from "lucide-react";
+import { Plus, GripVertical, ChevronDown, ChevronUp, RotateCcw, Clock, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2, User } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { zonedDisplayDate, type CalTodoItem, type CalTodoPreferences } from "@/lib/caltodo";
 import { todoRequest } from "./request";
+import type { ContactDto } from "@/lib/types";
 
 type CalTodoTask = CalTodoItem;
 type CalTodoSettings = CalTodoPreferences | null;
@@ -26,12 +27,21 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
   const [newDetails, setNewDetails] = useState("");
   const [newUrgent, setNewUrgent] = useState(false);
   const [newDuration, setNewDuration] = useState("default");
+  const [newContactId, setNewContactId] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [completedOpen, setCompletedOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   useEffect(() => { titleRef.current?.focus(); }, []);
+  
+  useEffect(() => {
+    fetch("/api/contacts")
+      .then((res) => res.json())
+      .then((data: { contacts: ContactDto[] }) => setContacts(data.contacts))
+      .catch(() => {});
+  }, []);
 
   const timezone = settings?.timezone ?? "America/Mexico_City";
   const dateLabel = (date: Date | string) => format(zonedDisplayDate(date, timezone), "EEE dd.MM HH:mm", { locale: es });
@@ -41,7 +51,7 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
     catch (err) { setError(err instanceof Error ? err.message : "No se pudo completar la operación"); }
     finally { setBusy(false); }
   }
-  function resetForm() { setEditingId(null); setNewTitle(""); setNewDetails(""); setNewUrgent(false); setNewDuration("default"); }
+  function resetForm() { setEditingId(null); setNewTitle(""); setNewDetails(""); setNewUrgent(false); setNewDuration("default"); setNewContactId(null); }
 
   const incomplete = tasks.filter((t) => !t.completed).sort((a, b) => a.priority - b.priority);
   const completed = tasks.filter((t) => t.completed).sort((a, b) => {
@@ -53,7 +63,7 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
   async function createTask() {
     if (!newTitle.trim()) return;
     await run(async () => {
-      await todoRequest(editingId ? `/api/caltodo/tasks?id=${editingId}` : "/api/caltodo/tasks", { method: editingId ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: newTitle, details: newDetails, urgent: newUrgent, duration: newDuration !== "default" ? Number(newDuration) : settings?.defaultDuration ?? 60 }) });
+      await todoRequest(editingId ? `/api/caltodo/tasks?id=${editingId}` : "/api/caltodo/tasks", { method: editingId ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: newTitle, details: newDetails, urgent: newUrgent, duration: newDuration !== "default" ? Number(newDuration) : settings?.defaultDuration ?? 60, contactId: newContactId }) });
       resetForm(); await refresh();
     });
   }
@@ -116,6 +126,13 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                     {DURATIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
                   </select>
                 </div>
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-text-2" />
+                  <select aria-label="Contacto asociado" value={newContactId ?? ""} onChange={(e) => setNewContactId(e.target.value || null)} className="rounded border bg-background p-1.5 text-sm">
+                    <option value="">Sin contacto</option>
+                    {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
               </div>
               <Button type="submit" disabled={!newTitle.trim() || busy}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
@@ -154,13 +171,19 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                               <input aria-label={`Completar ${task.title}`} type="checkbox" checked={false} onChange={() => void toggleComplete(task.id, true)} className="mt-1 h-4 w-4 accent-brand" />
                               <div className="flex-1 min-w-0">
                                 <span className="break-words font-medium">{task.title}</span>
+                                {task.contactId && (
+                                  <Badge variant="outline" className="ml-2 text-xs">
+                                    <User className="h-3 w-3 mr-1" />
+                                    {contacts.find((c) => c.id === task.contactId)?.name ?? "Contacto"}
+                                  </Badge>
+                                )}
                                 {task.details && <p className="text-sm text-text-2 mt-1 line-clamp-2">{task.details}</p>}
                               </div>
                               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                                 {task.urgent && <Badge variant="destructive" className="text-xs">Urgente</Badge>}
                                 {task.duration && <Badge variant="outline" className="gap-1 text-xs">{task.duration >= 60 ? `${task.duration / 60}h` : `${task.duration}m`}</Badge>}
                                 {task.scheduledStart && <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{dateLabel(task.scheduledStart)}</Badge>}
-                                <Button variant="ghost" size="icon" aria-label={`Editar ${task.title}`} disabled={busy} onClick={() => { setEditingId(task.id); setNewTitle(task.title); setNewDetails(task.details ?? ""); setNewUrgent(task.urgent); setNewDuration(task.duration ? String(task.duration) : "default"); titleRef.current?.focus(); }}><Pencil className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" aria-label={`Editar ${task.title}`} disabled={busy} onClick={() => { setEditingId(task.id); setNewTitle(task.title); setNewDetails(task.details ?? ""); setNewUrgent(task.urgent); setNewDuration(task.duration ? String(task.duration) : "default"); setNewContactId(task.contactId); titleRef.current?.focus(); }}><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" aria-label={`Eliminar ${task.title}`} disabled={busy} onClick={() => void removeTask(task)}><Trash2 className="h-4 w-4" /></Button>
                               </div>
                             </div>
