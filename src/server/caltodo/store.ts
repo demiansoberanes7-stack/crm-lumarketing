@@ -14,12 +14,8 @@ export async function getCalTodoSettings(userId: string, organizationId: string)
 }
 
 export async function upsertCalTodoSettings(userId: string, organizationId: string, data: Partial<Pick<CalTodoSettings, "workStartHour" | "workEndHour" | "timezone" | "defaultDuration">>) {
-  const existing = await getCalTodoSettings(userId, organizationId);
-  if (existing) {
-    await getDb().update(schema.caltodoSettings).set(data).where(eq(schema.caltodoSettings.id, existing.id));
-  } else {
-    await getDb().insert(schema.caltodoSettings).values({ id: nanoid(), organizationId, userId, ...data });
-  }
+  await getDb().insert(schema.caltodoSettings).values({ id: nanoid(), organizationId, userId, ...data })
+    .onConflictDoUpdate({ target: [schema.caltodoSettings.organizationId, schema.caltodoSettings.userId], set: data });
 }
 
 export async function getCalTodoTasks(userId: string, organizationId: string): Promise<CalTodoTask[]> {
@@ -28,7 +24,7 @@ export async function getCalTodoTasks(userId: string, organizationId: string): P
     .orderBy(asc(schema.caltodoTask.priority));
 }
 
-export async function createCalTodoTask(userId: string, organizationId: string, data: { title: string; details?: string; urgent?: boolean; duration?: number }) {
+export async function createCalTodoTask(userId: string, organizationId: string, data: { title: string; details?: string; urgent?: boolean; duration?: number; priority?: number }) {
   const [row] = await getDb().insert(schema.caltodoTask).values({
     id: nanoid(),
     organizationId,
@@ -37,29 +33,32 @@ export async function createCalTodoTask(userId: string, organizationId: string, 
     details: data.details ?? null,
     urgent: data.urgent ?? false,
     duration: data.duration ?? null,
+    priority: data.priority ?? 0,
   }).returning();
   return row;
 }
 
-export async function updateCalTodoTask(taskId: string, organizationId: string, data: Partial<Pick<CalTodoTask, "completed" | "title" | "details" | "urgent" | "duration" | "scheduledStart" | "scheduledEnd" | "priority">>) {
+export async function updateCalTodoTask(taskId: string, organizationId: string, data: Partial<Pick<CalTodoTask, "completed" | "title" | "details" | "urgent" | "duration" | "scheduledStart" | "scheduledEnd" | "priority">>, userId: string) {
   const updates: Record<string, unknown> = { ...data, updatedAt: new Date() };
   if (data.completed === true) updates.completedAt = new Date();
   if (data.completed === false) updates.completedAt = null;
   const [row] = await getDb().update(schema.caltodoTask).set(updates)
-    .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId)))
+    .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId)))
     .returning();
   return row;
 }
 
-export async function deleteCalTodoTask(taskId: string, organizationId: string) {
-  await getDb().delete(schema.caltodoTask)
-    .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId)));
+export async function deleteCalTodoTask(taskId: string, organizationId: string, userId: string) {
+  const deleted = await getDb().delete(schema.caltodoTask)
+    .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId))).returning({ id: schema.caltodoTask.id });
+  return deleted.length > 0;
 }
 
-export async function reorderCalTodoTasks(taskIds: string[], organizationId: string) {
-  const updates = taskIds.map((id, i) =>
-    getDb().update(schema.caltodoTask).set({ priority: i, updatedAt: new Date() })
-      .where(and(eq(schema.caltodoTask.id, id), scoped(schema.caltodoTask.organizationId, organizationId)))
-  );
-  await Promise.all(updates);
+export async function reorderCalTodoTasks(taskIds: string[], organizationId: string, userId: string) {
+  await getDb().transaction(async (tx) => {
+    for (const [i, id] of taskIds.entries()) {
+      await tx.update(schema.caltodoTask).set({ priority: i, updatedAt: new Date() })
+        .where(and(eq(schema.caltodoTask.id, id), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId)));
+    }
+  });
 }

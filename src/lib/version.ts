@@ -37,7 +37,7 @@ export const BUILD_COMMIT = (process.env.NEXT_PUBLIC_BUILD_COMMIT ?? "").slice(0
  * únicamente lleva las variables `NEXT_PUBLIC_`.
  */
 export function resolveBuildCommit(): string {
-  return BUILD_COMMIT || (process.env.SOURCE_COMMIT ?? "").slice(0, 7);
+  return BUILD_COMMIT || (process.env.SOURCE_COMMIT || process.env.GIT_SHA || "").slice(0, 7);
 }
 
 /**

@@ -1337,12 +1337,12 @@ export const caltodoSettings = pgTable(
   "caltodo_settings",
   {
     id: varchar("id", { length: 255 }).primaryKey(),
-    organizationId: varchar("organization_id", { length: 255 }).notNull().unique(),
-    userId: varchar("user_id", { length: 255 }).notNull().unique(),
+    organizationId: varchar("organization_id", { length: 255 }).notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
     workStartHour: integer("work_start_hour").notNull().default(9),
     workEndHour: integer("work_end_hour").notNull().default(17),
     timezone: varchar("timezone", { length: 64 }).notNull().default("America/Mexico_City"),
     defaultDuration: integer("default_duration").notNull().default(60),
   },
-  (t) => [index("caltodo_settings_org_user_idx").on(t.organizationId, t.userId)]
+  (t) => [uniqueIndex("caltodo_settings_org_user_unique").on(t.organizationId, t.userId)]
 );

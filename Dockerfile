@@ -22,7 +22,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Commit del que sale la imagen, para que la app pueda decir qué está corriendo.
 ARG SOURCE_COMMIT=""
+ARG GIT_SHA=""
 ENV SOURCE_COMMIT=$SOURCE_COMMIT
+ENV GIT_SHA=$GIT_SHA
 RUN pnpm build
 # migrate.mjs autocontenido (drizzle-orm + postgres bundleados)
 RUN pnpm exec esbuild scripts/migrate.mjs --bundle --platform=node \

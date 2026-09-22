@@ -43,7 +43,8 @@ export function WahaClient() {
       if (method === "PUT") setApiKey("");
       await load();
       setNotice(data.sessionStatus ? `Estado: ${data.sessionStatus}` : "Operación completada");
-    } catch (e) { setNotice(e instanceof Error ? e.message : "Error de conexión"); }
+      return true;
+    } catch (e) { setNotice(e instanceof Error ? e.message : "Error de conexión"); return false; }
     finally { setBusy(false); }
   }
   return <div className="max-w-3xl space-y-5">
@@ -68,6 +69,7 @@ export function WahaClient() {
       <div className="flex gap-3"><button disabled={busy} className="rounded border p-2" onClick={() => { if (confirm("¿Cerrar sesión en WhatsApp? Necesitarás vincularlo de nuevo.")) void request("POST", { action: "logout" }); }}>Cerrar sesión WhatsApp</button><button disabled={busy} className="rounded border p-2" onClick={() => { if (confirm("¿Eliminar la conexión guardada del CRM? El historial se conserva.")) void request("DELETE"); }}>Desconectar del CRM</button></div>
     </section>}
     <WahaAdvanced key={`${connection?.baseUrl ?? "none"}/${connection?.sessionName ?? "default"}/${connection?.settings !== null}`} initial={connection?.settings ?? null} engine={connection?.engine ?? null} busy={busy || !connection} onSave={(settings) => request("POST", { action: "configure", settings })} />
+    {!connection && <p className="text-sm text-text-2">Guarda primero el servidor WAHA para aplicar la configuración de sesión.</p>}
     {notice && <p role="status" className="rounded border p-3">{notice}</p>}
   </div>;
 }

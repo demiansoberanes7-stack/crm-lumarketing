@@ -19,7 +19,7 @@ const nextConfig: NextConfig = {
   // app enseña solo la versión.
   env: {
     NEXT_PUBLIC_APP_VERSION: version,
-    NEXT_PUBLIC_BUILD_COMMIT: process.env.SOURCE_COMMIT ?? "",
+    NEXT_PUBLIC_BUILD_COMMIT: process.env.SOURCE_COMMIT || process.env.GIT_SHA || "",
   },
 };
 

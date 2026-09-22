@@ -99,6 +99,13 @@
       "when": 1790400000000,
       "tag": "0013_caltodo",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790500000000,
+      "tag": "0014_caltodo_user_settings",
+      "breakpoints": true
     }
   ]
 }
