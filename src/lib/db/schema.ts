@@ -1304,3 +1304,45 @@ export const emailMessage = pgTable(
     index("email_message_contact_idx").on(t.contactId),
   ]
 );
+
+/* ============================================================
+ * CalTodo — tareas personales con vista de calendario
+ * ============================================================ */
+
+export const caltodoTask = pgTable(
+  "caltodo_task",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 }).notNull(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    details: text("details"),
+    urgent: boolean("urgent").notNull().default(false),
+    duration: integer("duration"),
+    scheduledStart: timestamp("scheduled_start"),
+    scheduledEnd: timestamp("scheduled_end"),
+    completed: boolean("completed").notNull().default(false),
+    completedAt: timestamp("completed_at"),
+    priority: integer("priority").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("caltodo_task_org_idx").on(t.organizationId, t.userId),
+    index("caltodo_task_completed_idx").on(t.completed),
+  ]
+);
+
+export const caltodoSettings = pgTable(
+  "caltodo_settings",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 }).notNull().unique(),
+    userId: varchar("user_id", { length: 255 }).notNull().unique(),
+    workStartHour: integer("work_start_hour").notNull().default(9),
+    workEndHour: integer("work_end_hour").notNull().default(17),
+    timezone: varchar("timezone", { length: 64 }).notNull().default("America/Mexico_City"),
+    defaultDuration: integer("default_duration").notNull().default(60),
+  },
+  (t) => [index("caltodo_settings_org_user_idx").on(t.organizationId, t.userId)]
+);

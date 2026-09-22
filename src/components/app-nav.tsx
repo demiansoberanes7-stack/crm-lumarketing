@@ -13,6 +13,7 @@ import {
   Inbox,
   Kanban,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   Settings,
   Users,
@@ -43,6 +44,7 @@ const NAV: NavItem[] = [
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
   { href: "/tareas", label: "Tareas", icon: ClipboardCheck },
+  { href: "/todo", label: "Calendario", icon: ListTodo },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ];
 
