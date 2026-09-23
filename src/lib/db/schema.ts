@@ -591,7 +591,11 @@ export const booking = pgTable(
       .default("manual"),
     contactId: varchar("contact_id", { length: 255 }).references(
       () => contact.id,
-      { onDelete: "cascade" }
+      { onDelete: "set null" }
+    ),
+    projectId: varchar("project_id", { length: 255 }).references(
+      () => project.id,
+      { onDelete: "set null" }
     ),
     conversationId: varchar("conversation_id", { length: 255 }).references(
       () => conversation.id,
@@ -1317,6 +1321,10 @@ export const caltodoTask = pgTable(
     userId: varchar("user_id", { length: 255 }).notNull(),
     contactId: varchar("contact_id", { length: 255 }).references(
       () => contact.id,
+      { onDelete: "set null" }
+    ),
+    projectId: varchar("project_id", { length: 255 }).references(
+      () => project.id,
       { onDelete: "set null" }
     ),
     title: varchar("title", { length: 200 }).notNull(),

@@ -24,12 +24,13 @@ export async function getCalTodoTasks(userId: string, organizationId: string): P
     .orderBy(asc(schema.caltodoTask.priority));
 }
 
-export async function createCalTodoTask(userId: string, organizationId: string, data: { title: string; details?: string; urgent?: boolean; duration?: number; priority?: number; contactId?: string | null }) {
+export async function createCalTodoTask(userId: string, organizationId: string, data: { title: string; details?: string; urgent?: boolean; duration?: number; priority?: number; contactId?: string | null; projectId?: string | null }) {
   const [row] = await getDb().insert(schema.caltodoTask).values({
     id: nanoid(),
     organizationId,
     userId,
     contactId: data.contactId ?? null,
+    projectId: data.projectId ?? null,
     title: data.title,
     details: data.details ?? null,
     urgent: data.urgent ?? false,
@@ -39,7 +40,7 @@ export async function createCalTodoTask(userId: string, organizationId: string, 
   return row;
 }
 
-export async function updateCalTodoTask(taskId: string, organizationId: string, data: Partial<Pick<CalTodoTask, "completed" | "title" | "details" | "urgent" | "duration" | "scheduledStart" | "scheduledEnd" | "priority" | "contactId">>, userId: string) {
+export async function updateCalTodoTask(taskId: string, organizationId: string, data: Partial<Pick<CalTodoTask, "completed" | "title" | "details" | "urgent" | "duration" | "scheduledStart" | "scheduledEnd" | "priority" | "contactId" | "projectId">>, userId: string) {
   const updates: Record<string, unknown> = { ...data, updatedAt: new Date() };
   if (data.completed === true) updates.completedAt = new Date();
   if (data.completed === false) updates.completedAt = null;

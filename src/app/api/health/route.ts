@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { APP_VERSION, resolveBuildCommit } from "@/lib/version";
-import { enabledChannels } from "@/server/channels/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +12,6 @@ export async function GET() {
       ok: true,
       version: APP_VERSION,
       ...(commit ? { commit } : {}),
-      channels: [...enabledChannels()],
     });
   } catch {
     return Response.json(

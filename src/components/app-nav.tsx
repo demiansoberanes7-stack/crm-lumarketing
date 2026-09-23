@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  CalendarDays,
   DollarSign,
   FileText,
   FlaskConical,
@@ -46,13 +45,6 @@ const NAV: NavItem[] = [
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ];
 
-/** 015 — "Citas" solo existe si esta instancia encendió la agenda. */
-const AGENDA_ITEM: NavItem = {
-  href: "/bookings",
-  label: "Citas",
-  icon: CalendarDays,
-};
-
 /**
  * Un renglón del menú, como el `side-item` del mockup de la landing: texto
  * semibold, esquinas de 9px y, activo, lavado del acento con tinta azul.
@@ -72,7 +64,6 @@ export function AppNav({
   role,
   theme,
   commit,
-  agenda = false,
   open = false,
   onClose,
 }: {
@@ -85,12 +76,6 @@ export function AppNav({
    * plataforma cuando quien construyó no lo pasó como build-arg.
    */
   commit?: string;
-  /**
-   * 015 — ¿hay agenda en esta instancia? Viene del servidor por prop y no se
-   * deduce de los datos: una instancia con la agenda encendida pero sin citas
-   * todavía debe ver la entrada igual.
-   */
-  agenda?: boolean;
   /** Solo aplica por debajo de `lg`: en escritorio el lateral es fijo. */
   open?: boolean;
   onClose?: () => void;
@@ -119,11 +104,7 @@ export function AppNav({
 
   const sha = commit || BUILD_COMMIT;
   const settingsActive = pathname.startsWith("/settings");
-  // Citas va después de Pipeline: es el paso siguiente de un trato, no una
-  // sección aparte.
-  const items = agenda
-    ? [...NAV.slice(0, 2), AGENDA_ITEM, ...NAV.slice(2)]
-    : NAV;
+  const items = NAV;
 
   return (
     <aside
