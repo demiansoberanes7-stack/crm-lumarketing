@@ -28,22 +28,26 @@ export type MessengerCredentials = {
 
 type Row = typeof schema.messengerCredentials.$inferSelect;
 
-function toCredentials(row: Row): MessengerCredentials {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    source: row.source as "zernio" | "meta",
-    pageId: row.pageId,
-    pageName: row.pageName,
-    accountRef: row.accountRef,
-    webhookSecret: row.webhookSecret,
-    status: row.status as "connected" | "reconnect_required",
-    token: decryptSecret({
-      cipher: row.tokenCipher,
-      iv: row.tokenIv,
-      tag: row.tokenTag,
-    }),
-  };
+function toCredentials(row: Row): MessengerCredentials | null {
+  try {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      source: row.source as "zernio" | "meta",
+      pageId: row.pageId,
+      pageName: row.pageName,
+      accountRef: row.accountRef,
+      webhookSecret: row.webhookSecret,
+      status: row.status as "connected" | "reconnect_required",
+      token: decryptSecret({
+        cipher: row.tokenCipher,
+        iv: row.tokenIv,
+        tag: row.tokenTag,
+      }),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function getMessengerCredentialsByOrg(

@@ -26,22 +26,26 @@ export type InstagramCredentials = {
 
 type Row = typeof schema.instagramCredentials.$inferSelect;
 
-function toCredentials(row: Row): InstagramCredentials {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    source: row.source as "zernio" | "meta",
-    igUserId: row.igUserId,
-    accountRef: row.accountRef,
-    username: row.username,
-    webhookSecret: row.webhookSecret,
-    status: row.status as "connected" | "reconnect_required",
-    token: decryptSecret({
-      cipher: row.tokenCipher,
-      iv: row.tokenIv,
-      tag: row.tokenTag,
-    }),
-  };
+function toCredentials(row: Row): InstagramCredentials | null {
+  try {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      source: row.source as "zernio" | "meta",
+      igUserId: row.igUserId,
+      accountRef: row.accountRef,
+      username: row.username,
+      webhookSecret: row.webhookSecret,
+      status: row.status as "connected" | "reconnect_required",
+      token: decryptSecret({
+        cipher: row.tokenCipher,
+        iv: row.tokenIv,
+        tag: row.tokenTag,
+      }),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function getInstagramCredentialsByOrg(

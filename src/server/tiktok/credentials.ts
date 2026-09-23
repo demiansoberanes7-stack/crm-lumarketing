@@ -24,22 +24,26 @@ export type TikTokCredentials = {
 
 type Row = typeof schema.tiktokCredentials.$inferSelect;
 
-function toCredentials(row: Row): TikTokCredentials {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    source: row.source as "zernio",
-    tiktokUserId: row.tiktokUserId,
-    username: row.username,
-    accountRef: row.accountRef,
-    webhookSecret: row.webhookSecret,
-    status: row.status as "connected" | "reconnect_required",
-    token: decryptSecret({
-      cipher: row.tokenCipher,
-      iv: row.tokenIv,
-      tag: row.tokenTag,
-    }),
-  };
+function toCredentials(row: Row): TikTokCredentials | null {
+  try {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      source: row.source as "zernio",
+      tiktokUserId: row.tiktokUserId,
+      username: row.username,
+      accountRef: row.accountRef,
+      webhookSecret: row.webhookSecret,
+      status: row.status as "connected" | "reconnect_required",
+      token: decryptSecret({
+        cipher: row.tokenCipher,
+        iv: row.tokenIv,
+        tag: row.tokenTag,
+      }),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function getTikTokCredentialsByOrg(

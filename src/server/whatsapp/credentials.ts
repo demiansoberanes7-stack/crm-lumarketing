@@ -17,21 +17,25 @@ export type Credentials = {
 
 type Row = typeof schema.metaCredentials.$inferSelect;
 
-function toCredentials(row: Row): Credentials {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    wabaId: row.wabaId,
-    phoneNumberId: row.phoneNumberId,
-    displayPhoneNumber: row.displayPhoneNumber,
-    verifiedName: row.verifiedName,
-    status: row.status as "connected" | "reconnect_required",
-    token: decryptSecret({
-      cipher: row.tokenCipher,
-      iv: row.tokenIv,
-      tag: row.tokenTag,
-    }),
-  };
+function toCredentials(row: Row): Credentials | null {
+  try {
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      wabaId: row.wabaId,
+      phoneNumberId: row.phoneNumberId,
+      displayPhoneNumber: row.displayPhoneNumber,
+      verifiedName: row.verifiedName,
+      status: row.status as "connected" | "reconnect_required",
+      token: decryptSecret({
+        cipher: row.tokenCipher,
+        iv: row.tokenIv,
+        tag: row.tokenTag,
+      }),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Resuelve la conexión por phone_number_id (enrutamiento del webhook). */
