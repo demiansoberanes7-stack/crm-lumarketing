@@ -3,7 +3,6 @@ import { agendaEnabled } from "@/server/agenda/flag";
 import { atribucionEnabled } from "@/server/attribution/flag";
 import { isChannelEnabled } from "@/server/channels/enabled";
 import { requireSession } from "@/lib/auth/session";
-import { zernioWhatsappEnabled } from "@/server/whatsapp/zernio-credentials";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +23,6 @@ export default async function SettingsLayout({
           messenger={isChannelEnabled("messenger")}
           instagram={isChannelEnabled("instagram")}
           tiktok={isChannelEnabled("tiktok")}
-          zernio={zernioWhatsappEnabled()}
         />
         <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </div>

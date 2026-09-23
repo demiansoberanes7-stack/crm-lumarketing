@@ -118,7 +118,9 @@ export function MessengerClient() {
       const data = (await res?.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      setError(data?.error?.message ?? "No se pudo conectar la página");
+      setError(data?.error?.message ?? (res
+        ? `El servidor del CRM devolvió una respuesta inesperada (HTTP ${res.status}). Recarga la página e intenta de nuevo.`
+        : "No se pudo contactar con el CRM. Comprueba tu conexión e intenta de nuevo."));
       return;
     }
     const data = (await res.json()) as { pageName?: string | null };

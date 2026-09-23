@@ -41,6 +41,13 @@ export async function GET(req: Request, ctx: Ctx) {
   if (route === "inbox/conversations") {
     return Response.json({ data: [], hasMore: false });
   }
+  if (route === "whatsapp/number-info") {
+    const accountId = new URL(req.url).searchParams.get("accountId");
+    return Response.json({ phone: {
+      display_phone_number: "+52 55 0000 0000",
+      status: accountId?.endsWith("-disconnected") ? "DISCONNECTED" : "CONNECTED",
+    } });
+  }
   return Response.json({});
 }
 

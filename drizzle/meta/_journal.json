@@ -120,6 +120,13 @@
       "when": 1790700000000,
       "tag": "0016_caltodo_project",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790800000000,
+      "tag": "0017_booking_preserve_contact_history",
+      "breakpoints": true
     }
   ]
 }

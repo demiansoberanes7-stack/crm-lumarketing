@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type Tab = { href: string; label: string };
 
 const TABS: Tab[] = [
-  { href: "/settings/whatsapp", label: "Meta Business" },
+  { href: "/settings/whatsapp", label: "WhatsApp · Zernio" },
   { href: "/settings/waha", label: "WAHA" },
   { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },
@@ -18,8 +18,8 @@ const TABS: Tab[] = [
   { href: "/settings/team", label: "Equipo" },
 ];
 
-const ZERNIO_TAB: Tab = { href: "/settings/zernio", label: "Zernio" };
 const AGENDA_TAB: Tab = { href: "/settings/calendar", label: "Agenda" };
+const GOOGLE_TAB: Tab = { href: "/settings/google", label: "Google Calendar" };
 const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
 const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
 const INSTAGRAM_TAB: Tab = { href: "/settings/instagram", label: "Instagram" };
@@ -31,7 +31,6 @@ export function SettingsNav({
   messenger = false,
   instagram = false,
   tiktok = false,
-  zernio = false,
   owner = false,
 }: {
   agenda?: boolean;
@@ -39,20 +38,18 @@ export function SettingsNav({
   messenger?: boolean;
   instagram?: boolean;
   tiktok?: boolean;
-  zernio?: boolean;
   owner?: boolean;
 }) {
   const pathname = usePathname();
   const tabs = [
     TABS[0]!,
-    ...(zernio ? [ZERNIO_TAB] : []),
     TABS[1]!,
     ...(messenger ? [MESSENGER_TAB] : []),
     ...(instagram ? [INSTAGRAM_TAB] : []),
     ...(tiktok ? [TIKTOK_TAB] : []),
     ...TABS.slice(2),
     ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
-    ...(agenda ? [AGENDA_TAB] : []),
+    ...(agenda ? [GOOGLE_TAB, AGENDA_TAB] : []),
     ...(atribucion ? [ADS_TAB] : []),
   ];
   return (

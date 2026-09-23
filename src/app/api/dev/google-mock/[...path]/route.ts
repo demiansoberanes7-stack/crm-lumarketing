@@ -91,6 +91,11 @@ export async function GET(req: Request, ctx: Ctx) {
     return Response.json({ id: path[1], summary: "Calendario de prueba" });
   }
 
+  // La prueba actual usa events.list con el permiso calendar.events.
+  if (path[0] === "calendars" && path[2] === "events" && path.length === 3) {
+    return Response.json({ items: googleMockSnapshot().events });
+  }
+
   // GET /calendars/{id}/events/{eventId}
   const event = eventFrom(path);
   if (!event) return new Response(null, { status: 404 });

@@ -1,5 +1,35 @@
-import { describe, expect, it } from "vitest";
-import { MetaApiError, normalizeMx, normalizeRecipient } from "@/lib/meta/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { graphRequest, MetaApiError, normalizeMx, normalizeRecipient } from "@/lib/meta/client";
+
+vi.mock("@/lib/env", () => ({ getEnv: () => ({ META_GRAPH_BASE_URL: "http://meta.test", META_GRAPH_API_VERSION: "v23.0" }) }));
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+describe("graphRequest deadline", () => {
+  it.each(["headers", "body"])("aborts stalled %s with a recoverable error and no duplicate send", async (phase) => {
+    const controller = new AbortController();
+    const deadline = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    const stalled = () => new Promise<never>((_, reject) => {
+      controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
+    });
+    const fetchMock = vi.fn(async () => phase === "headers" ? stalled() : { text: stalled });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = graphRequest("messages", { method: "POST", token: "local-test-token", body: { text: "hola" } });
+    const result = expect(request).rejects.toMatchObject({ name: "MetaApiError", status: 0, isAuthError: false, message: "La API de Meta tardó demasiado en responder" });
+    await Promise.resolve(); // Allow the body reader to attach its abort listener.
+    controller.abort(new DOMException("deadline", "TimeoutError"));
+    await result;
+    expect(deadline).toHaveBeenCalledWith(20_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal: controller.signal, method: "POST" }));
+  });
+
+  it("keeps successful JSON and provider HTTP errors intact", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(Response.json({ id: "msg" }))
+      .mockResolvedValueOnce(Response.json({ error: { message: "Expired", code: 190 } }, { status: 401 })));
+    await expect(graphRequest("messages", { token: "test" })).resolves.toEqual({ id: "msg" });
+    await expect(graphRequest("messages", { token: "test" })).rejects.toMatchObject({ status: 401, code: 190, isAuthError: true });
+  });
+});
 
 describe("normalizeRecipient", () => {
   it("México móvil legado: 521 + 10 dígitos → 52 + 10 dígitos", () => {

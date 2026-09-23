@@ -47,8 +47,11 @@ export async function graphRequest<T>(
   const env = getEnv();
   const url = `${env.META_GRAPH_BASE_URL}/${env.META_GRAPH_API_VERSION}/${path}`;
   let res: Response;
+  let text: string;
+  const signal = AbortSignal.timeout(20_000);
   try {
     res = await fetch(url, {
+      signal,
       method: opts.method ?? "GET",
       headers: {
         Authorization: `Bearer ${opts.token}`,
@@ -58,14 +61,15 @@ export async function graphRequest<T>(
       },
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     });
+    // The deadline also covers a provider that sends headers but stalls its body.
+    text = await res.text();
   } catch (cause) {
-    throw new MetaApiError("No se pudo contactar la API de Meta", {
+    throw new MetaApiError(signal.aborted ? "La API de Meta tardó demasiado en responder" : "No se pudo contactar la API de Meta", {
       status: 0,
       details: cause,
     });
   }
 
-  const text = await res.text();
   let json: unknown = null;
   try {
     json = text ? JSON.parse(text) : null;
