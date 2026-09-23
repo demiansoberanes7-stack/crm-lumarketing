@@ -79,15 +79,20 @@ export const PUT = withAuth(async (session, req: Request) => {
   }
   if (!check.ok) return apiError(check.status, check.code, check.message);
 
-  await saveMessengerCredentials({
-    organizationId: session.organizationId,
-    source: data.source,
-    pageId: data.pageId ?? null,
-    pageName: check.pageName,
-    accountRef: data.accountRef ?? null,
-    token: data.token,
-    webhookSecret: data.webhookSecret ?? null,
-  });
+  try {
+    await saveMessengerCredentials({
+      organizationId: session.organizationId,
+      source: data.source,
+      pageId: data.pageId ?? null,
+      pageName: check.pageName,
+      accountRef: data.accountRef ?? null,
+      token: data.token,
+      webhookSecret: data.webhookSecret ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido al guardar";
+    return apiError(500, "save_failed", `No se pudieron guardar las credenciales: ${message}`);
+  }
 
   return Response.json({ ok: true, pageName: check.pageName });
 });

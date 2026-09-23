@@ -53,14 +53,19 @@ export const PUT = withAuth(async (session, req: Request) => {
     return apiError(check.status, check.code, check.message);
   }
 
-  await saveTikTokCredentials({
-    organizationId: session.organizationId,
-    tiktokUserId: data.tiktokUserId ?? null,
-    username: check.username ?? data.username ?? null,
-    accountRef: data.accountRef,
-    token: data.token,
-    webhookSecret: data.webhookSecret ?? null,
-  });
+  try {
+    await saveTikTokCredentials({
+      organizationId: session.organizationId,
+      tiktokUserId: data.tiktokUserId ?? null,
+      username: check.username ?? data.username ?? null,
+      accountRef: data.accountRef,
+      token: data.token,
+      webhookSecret: data.webhookSecret ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido al guardar";
+    return apiError(500, "save_failed", `No se pudieron guardar las credenciales de TikTok: ${message}`);
+  }
 
   await recordDiagnostic({
     organizationId: session.organizationId,
