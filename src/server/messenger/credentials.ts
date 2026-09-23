@@ -96,7 +96,6 @@ export async function saveMessengerCredentials(input: {
 }): Promise<void> {
   const db = getDb();
   const enc = encryptSecret(input.token);
-  const existing = await getMessengerCredentialsByOrg(input.organizationId);
 
   const values = {
     organizationId: input.organizationId,
@@ -112,16 +111,13 @@ export async function saveMessengerCredentials(input: {
     updatedAt: new Date(),
   };
 
-  if (existing) {
-    await db
-      .update(schema.messengerCredentials)
-      .set(values)
-      .where(eq(schema.messengerCredentials.id, existing.id));
-    return;
-  }
   await db
     .insert(schema.messengerCredentials)
-    .values({ id: newId("credentials"), ...values });
+    .values({ id: newId("credentials"), ...values })
+    .onConflictDoUpdate({
+      target: [schema.messengerCredentials.organizationId],
+      set: values,
+    });
 }
 
 /** El token murió: se pausan los envíos y la UI pide reconectar. */

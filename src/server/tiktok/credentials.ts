@@ -79,7 +79,6 @@ export async function saveTikTokCredentials(input: {
 }): Promise<void> {
   const db = getDb();
   const enc = encryptSecret(input.token);
-  const existing = await getTikTokCredentialsByOrg(input.organizationId);
 
   const values = {
     organizationId: input.organizationId,
@@ -95,16 +94,13 @@ export async function saveTikTokCredentials(input: {
     updatedAt: new Date(),
   };
 
-  if (existing) {
-    await db
-      .update(schema.tiktokCredentials)
-      .set(values)
-      .where(eq(schema.tiktokCredentials.id, existing.id));
-    return;
-  }
   await db
     .insert(schema.tiktokCredentials)
-    .values({ id: newId("credentials"), ...values });
+    .values({ id: newId("credentials"), ...values })
+    .onConflictDoUpdate({
+      target: [schema.tiktokCredentials.organizationId],
+      set: values,
+    });
 }
 
 /** El token murió: se pausan los envíos y la UI pide reconectar. */
