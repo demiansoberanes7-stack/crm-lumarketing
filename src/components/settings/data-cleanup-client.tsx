@@ -227,16 +227,14 @@ export function DataCleanupClient() {
         >
           {loading ? "Consultando..." : "Vista Previa"}
         </Button>
-        {preview && (
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleting || totalRecords === 0}
-          >
-            <Trash2 className="mr-1.5 h-4 w-4" />
-            {deleting ? "Eliminando..." : `Eliminar ${totalRecords.toLocaleString()} registro${totalRecords !== 1 ? "s" : ""}`}
-          </Button>
-        )}
+        <Button
+          variant="destructive"
+          onClick={handleDelete}
+          disabled={deleting || !startDate || !endDate || selectedTables.size === 0}
+        >
+          <Trash2 className="mr-1.5 h-4 w-4" />
+          {deleting ? "Eliminando..." : "Eliminar Datos"}
+        </Button>
       </div>
 
       {preview && (

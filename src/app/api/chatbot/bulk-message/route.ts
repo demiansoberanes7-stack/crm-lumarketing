@@ -92,6 +92,13 @@ export const POST = withAuth(async (session, req: Request) => {
       if (file) {
         const buffer = Buffer.from(await file.arrayBuffer());
         validateOutgoing(file.type, buffer.byteLength);
+        if (message.trim()) {
+          await sendText({
+            conversationId: conversation.id,
+            organizationId: session.organizationId,
+            text: message,
+          });
+        }
         await sendMediaMessage({
           conversationId: conversation.id,
           organizationId: session.organizationId,
