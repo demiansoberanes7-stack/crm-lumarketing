@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 const chatSchema = z.object({
   message: z.string().min(1).max(2000),
+  conversationId: z.string().optional(),
 });
 
 /** Simple in-memory chat history per session (resets on deploy) */
@@ -19,77 +20,81 @@ async function getCrmContext(organizationId: string): Promise<string> {
   const db = getDb();
   const parts: string[] = [];
 
-  // Contactos
-  const [contactCount] = await db
-    .select({ total: count() })
-    .from(schema.contact)
-    .where(scoped(schema.contact.organizationId, organizationId));
-  parts.push(`Contactos totales: ${contactCount?.total ?? 0}`);
+  try {
+    const [contactCount] = await db
+      .select({ total: count() })
+      .from(schema.contact)
+      .where(scoped(schema.contact.organizationId, organizationId));
+    parts.push(`Contactos totales: ${contactCount?.total ?? 0}`);
+  } catch { /* skip on error */ }
 
-  // Leads por etapa
-  const leadsByStage = await db
-    .select({
-      stage: schema.pipelineStage.name,
-      total: count(),
-    })
-    .from(schema.lead)
-    .innerJoin(schema.pipelineStage, eq(schema.lead.stageId, schema.pipelineStage.id))
-    .where(scoped(schema.lead.organizationId, organizationId))
-    .groupBy(schema.pipelineStage.name);
-  if (leadsByStage.length > 0) {
-    parts.push(`Leads por etapa: ${leadsByStage.map((r) => `${r.stage}(${r.total})`).join(", ")}`);
-  }
+  try {
+    const leadsByStage = await db
+      .select({ stage: schema.pipelineStage.name, total: count() })
+      .from(schema.lead)
+      .innerJoin(schema.pipelineStage, eq(schema.lead.stageId, schema.pipelineStage.id))
+      .where(scoped(schema.lead.organizationId, organizationId))
+      .groupBy(schema.pipelineStage.name);
+    if (leadsByStage.length > 0) {
+      parts.push(`Leads por etapa: ${leadsByStage.map((r) => `${r.stage}(${r.total})`).join(", ")}`);
+    }
+  } catch { /* skip on error */ }
 
-  // Proyectos
-  const [projectCount] = await db
-    .select({ total: count() })
-    .from(schema.project)
-    .where(scoped(schema.project.organizationId, organizationId));
-  const [archivedCount] = await db
-    .select({ total: count() })
-    .from(schema.project)
-    .where(scoped(schema.project.organizationId, organizationId, sql`"${schema.project.archivedAt.name}" is not null`));
-  parts.push(`Proyectos: ${projectCount?.total ?? 0} activos, ${archivedCount?.total ?? 0} archivados`);
+  try {
+    const [projectCount] = await db
+      .select({ total: count() })
+      .from(schema.project)
+      .where(scoped(schema.project.organizationId, organizationId));
+    const [archivedCount] = await db
+      .select({ total: count() })
+      .from(schema.project)
+      .where(scoped(schema.project.organizationId, organizationId, sql`"archived_at" is not null`));
+    parts.push(`Proyectos: ${projectCount?.total ?? 0} activos, ${archivedCount?.total ?? 0} archivados`);
+  } catch { /* skip on error */ }
 
-  // Cotizaciones
-  const [quoteCount] = await db
-    .select({ total: count() })
-    .from(schema.quote)
-    .where(scoped(schema.quote.organizationId, organizationId));
-  const [quoteTotal] = await db
-    .select({ total: sql<number>`coalesce(sum("${schema.quote.total.name}"), 0)` })
-    .from(schema.quote)
-    .where(scoped(schema.quote.organizationId, organizationId));
-  parts.push(`Cotizaciones: ${quoteCount?.total ?? 0}, monto total: $${((quoteTotal?.total ?? 0) / 100).toLocaleString("es-MX")}`);
+  try {
+    const [quoteCount] = await db
+      .select({ total: count() })
+      .from(schema.quote)
+      .where(scoped(schema.quote.organizationId, organizationId));
+    const [quoteTotal] = await db
+      .select({ total: sql<number>`coalesce(sum("total"), 0)` })
+      .from(schema.quote)
+      .where(scoped(schema.quote.organizationId, organizationId));
+    parts.push(`Cotizaciones: ${quoteCount?.total ?? 0}, monto total: $${((quoteTotal?.total ?? 0) / 100).toLocaleString("es-MX")}`);
+  } catch { /* skip on error */ }
 
-  // Pagos recientes (30 dias)
-  const [paymentCount] = await db
-    .select({ total: count() })
-    .from(schema.payment)
-    .where(scoped(schema.payment.organizationId, organizationId));
-  const [paymentTotal] = await db
-    .select({ total: sql<number>`coalesce(sum("${schema.payment.monto.name}"), 0)` })
-    .from(schema.payment)
-    .where(scoped(schema.payment.organizationId, organizationId));
-  parts.push(`Pagos: ${paymentCount?.total ?? 0}, total: $${((paymentTotal?.total ?? 0) / 100).toLocaleString("es-MX")}`);
+  try {
+    const [paymentCount] = await db
+      .select({ total: count() })
+      .from(schema.payment)
+      .where(scoped(schema.payment.organizationId, organizationId));
+    const [paymentTotal] = await db
+      .select({ total: sql<number>`coalesce(sum("monto"), 0)` })
+      .from(schema.payment)
+      .where(scoped(schema.payment.organizationId, organizationId));
+    parts.push(`Pagos: ${paymentCount?.total ?? 0}, total: $${((paymentTotal?.total ?? 0) / 100).toLocaleString("es-MX")}`);
+  } catch { /* skip on error */ }
 
-  // Gastos
-  const [expenseCount] = await db
-    .select({ total: count() })
-    .from(schema.expense)
-    .where(scoped(schema.expense.organizationId, organizationId));
-  const [expenseTotal] = await db
-    .select({ total: sql<number>`coalesce(sum("${schema.expense.monto.name}"), 0)` })
-    .from(schema.expense)
-    .where(scoped(schema.expense.organizationId, organizationId));
-  parts.push(`Gastos: ${expenseCount?.total ?? 0}, total: $${((expenseTotal?.total ?? 0) / 100).toLocaleString("es-MX")}`);
+  try {
+    const [expenseCount] = await db
+      .select({ total: count() })
+      .from(schema.expense)
+      .where(scoped(schema.expense.organizationId, organizationId));
+    const [expenseTotal] = await db
+      .select({ total: sql<number>`coalesce(sum("monto"), 0)` })
+      .from(schema.expense)
+      .where(scoped(schema.expense.organizationId, organizationId));
+    parts.push(`Gastos: ${expenseCount?.total ?? 0}, total: $${((expenseTotal?.total ?? 0) / 100).toLocaleString("es-MX")}`);
+  } catch { /* skip on error */ }
 
-  // Tareas pendientes
-  const [taskCount] = await db
-    .select({ total: count() })
-    .from(schema.caltodoTask)
-    .where(scoped(schema.caltodoTask.organizationId, organizationId));
-  parts.push(`Tareas pendientes: ${taskCount?.total ?? 0}`);
+  try {
+    const [taskCount] = await db
+      .select({ total: count() })
+      .from(schema.caltodoTask)
+      .where(scoped(schema.caltodoTask.organizationId, organizationId));
+    parts.push(`Tareas pendientes: ${taskCount?.total ?? 0}`);
+  } catch { /* skip on error */ }
 
   return parts.join("\n");
 }
@@ -113,8 +118,12 @@ export const POST = withAuth(async (session, req: Request) => {
   const sessionId = session.organizationId;
   const history = chatHistory.get(sessionId) ?? [];
 
-  // Fetch CRM data context
-  const crmData = await getCrmContext(session.organizationId);
+  let crmData = "Sin datos disponibles.";
+  try {
+    crmData = await getCrmContext(session.organizationId);
+  } catch {
+    // Fallback: chat without CRM data
+  }
 
   const systemMessage: ChatMessage = {
     role: "system",
@@ -150,6 +159,7 @@ Puedes responder preguntas sobre contactos, leads, pipeline, proyectos, cotizaci
   chatHistory.set(sessionId, history);
 
   return Response.json({
+    conversationId: sessionId,
     response: agentReply,
     messages: [
       ...history.filter((m) => m.role !== "system").map((m) => ({
