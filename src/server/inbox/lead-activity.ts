@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { recordLeadCreated } from "@/server/leads/stage-history";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 import type { StageChangeSource } from "@/lib/types";
 
 /**
@@ -112,6 +113,11 @@ export async function createLeadForContact(input: {
     occurredAt: input.at,
     actorUserId: input.actorUserId ?? null,
     source: input.source ?? "sistema",
+  });
+
+  publishWebhook(input.organizationId, "lead.created", {
+    lead: { id: creado.id, stageId: creado.stageId },
+    contactId: input.contactId,
   });
 
   return creado;

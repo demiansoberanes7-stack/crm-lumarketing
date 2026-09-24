@@ -8,6 +8,7 @@ import { normalizeMx } from "@/lib/meta/client";
 import { digitsOnly, normalizeText } from "@/lib/search";
 import { serializeContact } from "@/server/contacts";
 import { createLeadForContact } from "@/server/inbox/lead-activity";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 
 export const dynamic = "force-dynamic";
 
@@ -175,6 +176,11 @@ export const POST = withAuth(async (session, req: Request) => {
       "El tablero no tiene etapas abiertas donde colocar al prospecto"
     );
   }
+
+  publishWebhook(session.organizationId, "contact.created", {
+    contact: { id: existingContact.id, name: existingContact.name, phone: existingContact.phone },
+    lead: { id: lead.id },
+  });
 
   return Response.json(
     { contact: serializeContact(existingContact), lead: { id: lead.id } },

@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { labelInTz } from "@/lib/time/slots";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { CONNECTOR_META, type ConnectorId } from "@/lib/agenda-connectors";
 import {
   computeAvailability,
@@ -241,6 +242,11 @@ export async function createSessionBooking(input: {
     data: { bookingId: delivered.id },
   });
 
+  publishWebhook(input.organizationId, "booking.created", {
+    bookingId: delivered.id,
+    contactId: input.contactId ?? null,
+  });
+
   return {
     booking: delivered,
     meetingLink: delivered.meetingLink,
@@ -276,6 +282,10 @@ export async function createBlock(input: {
     publish(input.organizationId, {
       type: "booking.updated",
       data: { bookingId: block.id },
+    });
+    publishWebhook(input.organizationId, "booking.created", {
+      bookingId: block.id,
+      contactId: null,
     });
     return block;
   } catch (err) {
@@ -339,6 +349,12 @@ export async function rescheduleBooking(input: {
     type: "booking.updated",
     data: { bookingId: next.id },
   });
+
+  publishWebhook(input.organizationId, "booking.updated", {
+    bookingId: next.id,
+    contactId: next.contactId ?? null,
+  });
+
   return {
     booking: next,
     meetingLink: next.meetingLink,

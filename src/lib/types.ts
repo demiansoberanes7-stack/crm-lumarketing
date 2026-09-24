@@ -144,6 +144,40 @@ export type SourceDto = {
 };
 
 /* ============================================================
+ * Proveedores
+ * ============================================================ */
+
+export const SUPPLIER_CATEGORIES = [
+  { value: "servicios", label: "Servicios" },
+  { value: "materiales", label: "Materiales" },
+  { value: "tecnologia", label: "Tecnologia" },
+  { value: "logistica", label: "Logistica" },
+  { value: "profesionales", label: "Profesionales" },
+  { value: "otro", label: "Otro" },
+] as const;
+
+export type SupplierCategory = (typeof SUPPLIER_CATEGORIES)[number]["value"];
+
+export type SupplierDto = {
+  id: string;
+  name: string;
+  tradeName: string | null;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  rfc: string | null;
+  address: string | null;
+  website: string | null;
+  category: string | null;
+  paymentTerms: string | null;
+  rating: number | null;
+  notes: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/* ============================================================
  * Prioridad del lead
  * ============================================================ */
 

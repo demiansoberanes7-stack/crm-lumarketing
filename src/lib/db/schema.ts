@@ -1359,3 +1359,36 @@ export const caltodoSettings = pgTable(
   },
   (t) => [uniqueIndex("caltodo_settings_org_user_unique").on(t.organizationId, t.userId)]
 );
+
+/* ============================================================
+ * Proveedores — directorio manual de proveedores del negocio
+ * ============================================================ */
+
+export const supplier = pgTable(
+  "supplier",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    tradeName: varchar("trade_name", { length: 255 }),
+    contactName: varchar("contact_name", { length: 255 }),
+    phone: varchar("phone", { length: 30 }),
+    email: varchar("email", { length: 254 }),
+    rfc: varchar("rfc", { length: 20 }),
+    address: varchar("address", { length: 500 }),
+    website: varchar("website", { length: 254 }),
+    category: varchar("category", { length: 50 }),
+    paymentTerms: varchar("payment_terms", { length: 100 }),
+    rating: integer("rating"),
+    notes: text("notes"),
+    archivedAt: timestamp("archived_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("supplier_org_idx").on(t.organizationId),
+    index("supplier_org_name_idx").on(t.organizationId, t.name),
+  ]
+);

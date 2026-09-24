@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { normalizeMx } from "@/lib/meta/client";
 import { publish } from "@/server/events/bus";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { getCredentialsByPhoneNumberId } from "@/server/whatsapp/credentials";
 import { ensureAssetAvailable } from "@/server/whatsapp/media";
 import type { Channel } from "@/lib/channels";
@@ -480,6 +481,12 @@ export async function ingestInboundMessage(input: {
   publish(organizationId, {
     type: "conversation.updated",
     data: { conversation: { id: conversation.id } },
+  });
+
+  publishWebhook(organizationId, "message.inbound", {
+    conversationId: conversation.id,
+    contactId: contact.id,
+    messageId: message.id,
   });
 
   if (!input.suppressAi) await maybeRunAgentTurn(conversation.id);

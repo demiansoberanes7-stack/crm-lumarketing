@@ -10,6 +10,7 @@ import type { Channel } from "@/lib/channels";
 import { graphRequest, MetaApiError, normalizeRecipient } from "@/lib/meta/client";
 import { destinatarioMeta, type Destinatario } from "@/lib/meta/destinatario";
 import { publish } from "@/server/events/bus";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 import {
   getCredentialsByOrg,
   markReconnectRequired,
@@ -354,6 +355,11 @@ async function persistOutbound(input: {
       conversationId: input.conversationId,
       message: serializeMessage(message, input.media ?? null),
     },
+  });
+
+  publishWebhook(input.organizationId, "message.outbound", {
+    conversationId: input.conversationId,
+    messageId: message.id,
   });
 
   return message.id;

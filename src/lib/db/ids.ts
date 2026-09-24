@@ -45,6 +45,7 @@ const prefixes = {
   expense: "exp",
   emailAccount: "emac",
   emailMessage: "emmsg",
+  supplier: "sup",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

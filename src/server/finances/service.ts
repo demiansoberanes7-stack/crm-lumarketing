@@ -8,6 +8,7 @@ import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { createHash } from "node:crypto";
 
 export type BalancePeriod = {
@@ -190,6 +191,14 @@ export async function createPayment(
       .where(eq(schema.charge.id, input.chargeId));
   }
 
+  publishWebhook(organizationId, "payment.created", {
+    paymentId: id,
+    monto: input.monto,
+    metodo: input.metodo,
+    contactId: input.contactId ?? null,
+    chargeId: input.chargeId ?? null,
+  });
+
   return id;
   });
 }
@@ -226,6 +235,14 @@ export async function createExpense(
     comprobanteUrl: input.comprobanteUrl ?? null,
     notas: input.notas ?? null,
     createdBy: createdBy ?? null,
+  });
+
+  publishWebhook(organizationId, "expense.created", {
+    expenseId: id,
+    descripcion: input.descripcion,
+    categoria: input.categoria,
+    monto: input.monto,
+    proveedor: input.proveedor ?? null,
   });
 
   return id;

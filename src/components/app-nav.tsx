@@ -15,6 +15,7 @@ import {
   ListTodo,
   LogOut,
   Settings,
+  Truck,
   Users,
   X,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const NAV: NavItem[] = [
   { href: "/balance", label: "Balance", icon: DollarSign },
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
+  { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ];

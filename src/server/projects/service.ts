@@ -8,6 +8,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
 import { ProjectError } from "./errors";
 import { validateProjectMember } from "./members";
@@ -75,6 +76,12 @@ export async function createProject(
     riesgo: input.riesgo ?? null,
     notas: input.notas ?? null,
     assignedUserId: input.assignedUserId ?? null,
+  });
+
+  publishWebhook(organizationId, "project.created", {
+    projectId: id,
+    name: input.name,
+    contactId: input.contactId ?? null,
   });
 
   return id;
@@ -195,6 +202,14 @@ export async function transitionProject(
     toStageName: targetStage.name,
     actorUserId: actorUserId ?? null,
     source: complete ? "completado" : "dueno",
+  });
+
+  publishWebhook(organizationId, "project.stage_changed", {
+    projectId,
+    fromStageId: project.stageId,
+    toStageId,
+    toStageName: targetStage.name,
+    complete,
   });
 
   return { changed: true };

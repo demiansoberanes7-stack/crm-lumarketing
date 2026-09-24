@@ -8,6 +8,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 
 export type QuoteStatus =
   | "draft"
@@ -152,6 +153,13 @@ export async function createQuote(
     actorId: createdBy ?? null,
   });
 
+  publishWebhook(organizationId, "quote.created", {
+    quoteId: id,
+    quoteNumber: quoteNumber,
+    total: totals.total,
+    contactId: input.contactId ?? null,
+  });
+
   return id;
   });
 }
@@ -289,6 +297,13 @@ export async function sendQuote(
     channel,
   });
 
+  publishWebhook(organizationId, "quote.sent", {
+    quoteId,
+    quoteNumber: quote.quoteNumber,
+    total: quote.total,
+    channel,
+  });
+
   return { total: quote.total };
   });
 }
@@ -356,6 +371,12 @@ export async function changeQuoteStatus(
       organizationId,
       quoteId,
       eventType: newStatus,
+    });
+
+    publishWebhook(organizationId, newStatus === "accepted" ? "quote.accepted" : "quote.rejected", {
+      quoteId,
+      quoteNumber: quote.quoteNumber,
+      status: newStatus,
     });
   });
 }
