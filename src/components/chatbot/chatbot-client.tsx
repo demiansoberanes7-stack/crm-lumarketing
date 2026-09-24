@@ -1,17 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot,
   CheckCircle2,
-  Clock,
-  FileSearch,
+  FileText,
   Mail,
   MessageSquare,
-  Search,
+  Paperclip,
   Send,
-  Users,
   AlertTriangle,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type Tab = "mensajes" | "correos" | "seguimientos" | "datos";
+type Tab = "chat" | "mensajes" | "correos";
 
 interface Contact {
   id: string;
@@ -28,23 +27,18 @@ interface Contact {
   stage: string | null;
 }
 
-interface FollowUp {
-  contactId: string;
-  contactName: string;
-  stage: string;
-  lastActivity: string;
-  daysSinceActivity: number;
-}
+type ChatMessage = { role: "user" | "agent"; text: string; timestamp?: string };
 
 const TABS: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
+  { key: "chat", label: "Chat", icon: Bot },
   { key: "mensajes", label: "Envio Masivo", icon: MessageSquare },
   { key: "correos", label: "Correos Masivos", icon: Mail },
-  { key: "seguimientos", label: "Seguimientos", icon: Clock },
-  { key: "datos", label: "Datos", icon: FileSearch },
 ];
 
+const MAX_FILE_SIZE = 16 * 1024 * 1024;
+
 export function ChatbotClient() {
-  const [tab, setTab] = useState<Tab>("mensajes");
+  const [tab, setTab] = useState<Tab>("chat");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -52,11 +46,21 @@ export function ChatbotClient() {
   const [subject, setSubject] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [loadingFollowUps, setLoadingFollowUps] = useState(false);
-  const [searchField, setSearchField] = useState("");
-  const [searchResults, setSearchResults] = useState<Contact[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
+  }, [chatMessages]);
 
   const fetchContacts = useCallback(async () => {
     const res = await fetch("/api/contacts").catch(() => null);
@@ -65,23 +69,9 @@ export function ChatbotClient() {
     setContacts(data.contacts);
   }, []);
 
-  const fetchFollowUps = useCallback(async () => {
-    setLoadingFollowUps(true);
-    const res = await fetch("/api/pipeline/leads").catch(() => null);
-    if (res?.ok) {
-      const data = (await res.json()) as { leads: FollowUp[] };
-      setFollowUps(data.leads);
-    }
-    setLoadingFollowUps(false);
-  }, []);
-
   useEffect(() => {
     void fetchContacts();
   }, [fetchContacts]);
-
-  useEffect(() => {
-    if (tab === "seguimientos") void fetchFollowUps();
-  }, [tab, fetchFollowUps]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -101,21 +91,45 @@ export function ChatbotClient() {
 
   const deselectAll = () => setSelectedIds(new Set());
 
+  // File handling
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_FILE_SIZE) {
+      setResult({ ok: false, message: "El archivo supera 16MB" });
+      return;
+    }
+    setFile(f);
+    if (f.type.startsWith("image/")) {
+      setFilePreview(URL.createObjectURL(f));
+    } else {
+      setFilePreview(null);
+    }
+  };
+
+  const removeFile = () => {
+    setFile(null);
+    setFilePreview(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
   const handleBulkMessage = async () => {
     if (!message.trim() || selectedIds.size === 0) return;
     setSending(true);
     setResult(null);
     try {
+      const formData = new FormData();
+      formData.append("contactIds", JSON.stringify(Array.from(selectedIds)));
+      formData.append("message", message.trim());
+      if (file) formData.append("file", file);
+
       const res = await fetch("/api/chatbot/bulk-message", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contactIds: Array.from(selectedIds),
-          message: message.trim(),
-        }),
+        body: formData,
       });
       const data = await res.json();
       setResult({ ok: res.ok, message: data.message || (res.ok ? "Mensajes enviados" : "Error al enviar") });
+      if (res.ok) { removeFile(); setMessage(""); }
     } catch {
       setResult({ ok: false, message: "Error de conexion" });
     }
@@ -144,18 +158,47 @@ export function ChatbotClient() {
     setSending(false);
   };
 
-  const handleSearch = async () => {
-    if (!searchField.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(`/api/contacts?q=${encodeURIComponent(searchField.trim())}`).catch(() => null);
-      if (res?.ok) {
-        const data = (await res.json()) as { contacts: Contact[] };
-        setSearchResults(data.contacts);
-      }
-    } catch { /* empty */ }
-    setSearching(false);
-  };
+  // Chat
+  async function sendChat() {
+    const text = chatInput.trim();
+    if (!text || chatSending) return;
+    setChatInput("");
+    setChatSending(true);
+    setChatError(null);
+
+    setChatMessages((prev) => [...prev, { role: "user", text }]);
+
+    const res = await fetch("/api/chatbot/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: text, conversationId: chatConversationId ?? undefined }),
+    }).catch(() => null);
+
+    setChatSending(false);
+
+    if (!res?.ok) {
+      const data = (await res?.json().catch(() => null)) as { error?: { message?: string } } | null;
+      setChatError(data?.error?.message ?? "Error al enviar");
+      setChatMessages((prev) => [...prev, { role: "agent", text: "(error al obtener respuesta)" }]);
+      return;
+    }
+
+    const data = (await res.json()) as {
+      conversationId: string;
+      messages: ChatMessage[];
+    };
+
+    setChatConversationId(data.conversationId);
+    setChatMessages(
+      data.messages.map((m) => ({ role: m.role, text: m.text, timestamp: m.timestamp }))
+    );
+  }
+
+  function newChat() {
+    setChatMessages([]);
+    setChatConversationId(null);
+    setChatError(null);
+  }
 
   const filteredContacts = contacts.filter((c) =>
     query ? c.name.toLowerCase().includes(query.toLowerCase()) : true
@@ -169,7 +212,7 @@ export function ChatbotClient() {
           <h2 className="text-[17px] font-bold tracking-tight">Chatbot</h2>
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Centro de comandos para acciones masivas y seguimientos
+          Centro de comandos: chat con IA, envio masivo y correos
         </p>
       </header>
 
@@ -192,6 +235,77 @@ export function ChatbotClient() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* Chat con IA */}
+        {tab === "chat" && (
+          <div className="flex h-full flex-col">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Habla con el asistente IA. Puede consultar contactos, pipeline, proyectos y mas.
+              </p>
+              <Button size="sm" variant="outline" onClick={newChat}>
+                Nueva conversacion
+              </Button>
+            </div>
+
+            <div
+              ref={chatScrollRef}
+              className="mb-3 flex-1 overflow-y-auto rounded-lg border bg-background p-4"
+              style={{ minHeight: 300, maxHeight: 500 }}
+            >
+              {chatMessages.length === 0 && (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  Escribe un mensaje para empezar...
+                </p>
+              )}
+              <div className="space-y-3">
+                {chatMessages.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                        m.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground"
+                      }`}
+                    >
+                      {m.text}
+                    </div>
+                  </div>
+                ))}
+                {chatSending && (
+                  <div className="flex justify-start">
+                    <div className="rounded-lg bg-secondary px-3 py-2 text-sm text-muted-foreground">
+                      Pensando...
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {chatError && <p className="mb-2 text-sm text-destructive">{chatError}</p>}
+
+            <div className="flex gap-2">
+              <Input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendChat();
+                  }
+                }}
+                placeholder="Escribe tu pregunta..."
+                disabled={chatSending}
+              />
+              <Button onClick={() => void sendChat()} disabled={chatSending || !chatInput.trim()}>
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Envio Masivo de Mensajes */}
         {tab === "mensajes" && (
           <div className="space-y-4">
@@ -252,6 +366,47 @@ export function ChatbotClient() {
                   onChange={(e) => setMessage(e.target.value)}
                   rows={4}
                 />
+
+                {/* File attachment */}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.mp4,.mp3,.ogg,.opus"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {file ? (
+                  <div className="flex items-center gap-2 rounded-md border bg-secondary/50 px-3 py-2">
+                    {filePreview ? (
+                      <img src={filePreview} alt="" className="h-10 w-10 rounded object-cover" />
+                    ) : (
+                      <FileText className="h-8 w-8 text-muted-foreground" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">{file.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {(file.size / 1024).toFixed(0)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={removeFile}
+                      className="rounded p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Paperclip className="mr-1.5 h-3.5 w-3.5" />
+                    Adjuntar archivo
+                  </Button>
+                )}
+
                 <Button
                   onClick={handleBulkMessage}
                   disabled={sending || !message.trim() || selectedIds.size === 0}
@@ -333,109 +488,6 @@ export function ChatbotClient() {
                   <Mail className="mr-1.5 h-4 w-4" />
                   {sending ? "Enviando..." : `Enviar a ${selectedIds.size} contacto${selectedIds.size !== 1 ? "s" : ""}`}
                 </Button>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Seguimientos */}
-        {tab === "seguimientos" && (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Seguimientos Pendientes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingFollowUps ? (
-                  <p className="py-4 text-center text-xs text-muted-foreground">Cargando...</p>
-                ) : followUps.length === 0 ? (
-                  <p className="py-4 text-center text-xs text-muted-foreground">
-                    No hay seguimientos pendientes
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {followUps.map((f) => (
-                      <div
-                        key={f.contactId}
-                        className="flex items-center justify-between rounded-md border px-3 py-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{f.contactName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {f.stage} · {f.daysSinceActivity} dias sin actividad
-                          </p>
-                        </div>
-                        <Badge
-                          variant={f.daysSinceActivity > 7 ? "destructive" : f.daysSinceActivity > 3 ? "warning" : "secondary"}
-                        >
-                          {f.daysSinceActivity > 7 ? "Urgente" : f.daysSinceActivity > 3 ? "Seguir" : "Reciente"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Datos */}
-        {tab === "datos" && (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Buscar en el CRM</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Buscar por nombre o telefono..."
-                    value={searchField}
-                    onChange={(e) => setSearchField(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") void handleSearch(); }}
-                    className="flex-1"
-                  />
-                  <Button onClick={handleSearch} disabled={searching}>
-                    <Search className="mr-1.5 h-4 w-4" />
-                    Buscar
-                  </Button>
-                </div>
-                {searchResults.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      {searchResults.length} resultado{searchResults.length !== 1 ? "s" : ""}
-                    </p>
-                    {searchResults.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                        <div>
-                          <p className="text-sm font-medium">{c.name}</p>
-                          <p className="text-xs text-muted-foreground">{c.phone || "Sin telefono"}</p>
-                        </div>
-                        {c.stage && <Badge variant="outline">{c.stage}</Badge>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Resumen del CRM</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="rounded-md border p-3 text-center">
-                    <Users className="mx-auto h-4 w-4 text-muted-foreground" />
-                    <p className="mt-1 text-lg font-bold">{contacts.length}</p>
-                    <p className="text-[10px] text-muted-foreground">Contactos</p>
-                  </div>
-                  <div className="rounded-md border p-3 text-center">
-                    <MessageSquare className="mx-auto h-4 w-4 text-muted-foreground" />
-                    <p className="mt-1 text-lg font-bold">{followUps.length}</p>
-                    <p className="text-[10px] text-muted-foreground">Seguimientos</p>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </div>
