@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
-import { getProject, archiveProject, unarchiveProject } from "@/server/projects/service";
+import { getProject, archiveProject, unarchiveProject, deleteProject } from "@/server/projects/service";
 import { validateProjectMember } from "@/server/projects/members";
 import { projectErrorResponse } from "@/server/projects/errors";
 
@@ -58,4 +58,15 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
   const [project] = await db.update(schema.project).set({ ...body.data, updatedAt: new Date() }).where(scoped(schema.project.organizationId, session.organizationId, eq(schema.project.id, id))).returning();
   if (!project) return apiError(404, "not_found", "Proyecto no encontrado");
   return Response.json({ project });
+});
+
+/** DELETE — eliminar proyecto archivado */
+export const DELETE = withAuth(async (session, _req: Request, { params }) => {
+  const { id } = await params;
+  try {
+    const result = await deleteProject(session.organizationId, id);
+    return Response.json(result);
+  } catch (error) {
+    return projectErrorResponse(error);
+  }
 });

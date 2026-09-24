@@ -336,3 +336,21 @@ export async function unarchiveProject(organizationId: string, projectId: string
 
   return { archived: false };
 }
+
+/** Eliminar un proyecto archivado (solo si está archivado) */
+export async function deleteProject(organizationId: string, projectId: string) {
+  const project = await getProject(organizationId, projectId);
+  if (!project) throw new ProjectError(404, "Proyecto no encontrado");
+  if (!project.archivedAt) throw new ProjectError(409, "Solo se pueden eliminar proyectos archivados");
+
+  await getDb()
+    .delete(schema.project)
+    .where(
+      and(
+        scoped(schema.project.organizationId, organizationId),
+        eq(schema.project.id, projectId)
+      )
+    );
+
+  return { deleted: true };
+}

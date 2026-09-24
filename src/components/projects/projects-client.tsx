@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Archive, ArchiveRestore, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,6 +60,12 @@ export function ProjectsClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: archive ? "archive" : "unarchive" }),
     });
+    void refetch();
+  };
+
+  const handleDelete = async (projectId: string) => {
+    if (!confirm("¿Eliminar este proyecto archivado? Esta accion no se puede deshacer.")) return;
+    await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
     void refetch();
   };
 
@@ -166,19 +172,32 @@ export function ProjectsClient() {
                       </p>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={(e) => { e.stopPropagation(); handleArchive(p.id, !showArchived); }}
-                    title={showArchived ? "Desarchivar" : "Archivar"}
-                  >
-                    {showArchived ? (
-                      <ArchiveRestore className="h-3.5 w-3.5" />
-                    ) : (
-                      <Archive className="h-3.5 w-3.5" />
+                  <div className="flex items-center gap-1">
+                    {showArchived && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                        title="Eliminar permanentemente"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={(e) => { e.stopPropagation(); handleArchive(p.id, !showArchived); }}
+                      title={showArchived ? "Desarchivar" : "Archivar"}
+                    >
+                      {showArchived ? (
+                        <ArchiveRestore className="h-3.5 w-3.5" />
+                      ) : (
+                        <Archive className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="pt-0 pb-4">
                   <div className="flex items-center gap-3">

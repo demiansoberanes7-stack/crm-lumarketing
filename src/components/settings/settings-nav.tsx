@@ -12,18 +12,17 @@ const TABS: Tab[] = [
   { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },
   { href: "/settings/business", label: "Datos de Empresa" },
-  { href: "/settings/templates", label: "Plantillas" },
   { href: "/settings/agent", label: "Agente" },
   { href: "/settings/webhooks", label: "Webhooks" },
   { href: "/settings/team", label: "Equipo" },
 ];
 
-const AGENDA_TAB: Tab = { href: "/settings/calendar", label: "Agenda" };
 const GOOGLE_TAB: Tab = { href: "/settings/google", label: "Google Calendar" };
 const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
 const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
 const INSTAGRAM_TAB: Tab = { href: "/settings/instagram", label: "Instagram" };
 const TIKTOK_TAB: Tab = { href: "/settings/tiktok", label: "TikTok" };
+const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
 
 export function SettingsNav({
   agenda = false,
@@ -49,8 +48,9 @@ export function SettingsNav({
     ...(tiktok ? [TIKTOK_TAB] : []),
     ...TABS.slice(2),
     ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
-    ...(agenda ? [GOOGLE_TAB, AGENDA_TAB] : []),
+    ...(agenda ? [GOOGLE_TAB] : []),
     ...(atribucion ? [ADS_TAB] : []),
+    ...(owner ? [DATA_CLEANUP_TAB] : []),
   ];
   return (
     <nav className="flex shrink-0 gap-1 overflow-x-auto border-b p-2 sm:w-44 sm:flex-col sm:space-y-1 sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3">

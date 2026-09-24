@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Bot,
   DollarSign,
   FileText,
   FlaskConical,
@@ -158,6 +159,14 @@ export function AppNav({
       </nav>
 
       <div className="flex-1" />
+
+      <Link href="/chatbot" className={navItemClass(pathname.startsWith("/chatbot"))}>
+        <Bot
+          className={cn("h-[17px] w-[17px]", pathname.startsWith("/chatbot") ? "text-brand" : "text-text-3")}
+          strokeWidth={1.8}
+        />
+        Chatbot
+      </Link>
 
       <Link href="/settings" className={navItemClass(settingsActive)}>
         <Settings
