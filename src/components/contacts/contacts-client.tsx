@@ -9,6 +9,7 @@ import {
   MessageSquareText,
   Search,
   Send,
+  Trash2,
   UserPlus,
 } from "lucide-react";
 import type { ContactDto } from "@/lib/types";
@@ -81,6 +82,12 @@ export function ContactsClient() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }).catch(() => null);
+    void refetch();
+  }
+
+  async function deleteContact(id: string, name: string) {
+    if (!confirm(`¿Eliminar contacto "${name}"? Esta accion no se puede deshacer.`)) return;
+    await fetch(`/api/contacts/${id}`, { method: "DELETE" }).catch(() => null);
     void refetch();
   }
 
@@ -227,6 +234,15 @@ export function ContactsClient() {
                     ) : (
                       <Archive className="h-4 w-4" />
                     )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Eliminar"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => void deleteContact(c.id, c.name)}
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </li>

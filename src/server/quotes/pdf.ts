@@ -116,17 +116,6 @@ export async function quotePdf(organizationId: string, id: string) {
   page.drawText("COTIZACIÓN", { x: PAGE_W - MARGIN - 120, y, size: 16, font: bold, color: DARK });
   y -= 18;
 
-  // Company contact info below name
-  const companyParts: string[] = [];
-  if (bs.email) companyParts.push(bs.email);
-  if (bs.phone) companyParts.push(bs.phone);
-  if (bs.rfc) companyParts.push(`RFC: ${bs.rfc}`);
-  if (bs.address) companyParts.push(bs.address);
-  if (companyParts.length) {
-    page.drawText(clean(companyParts.join("  ·  ")).slice(0, 120), { x: MARGIN, y, size: 9, font: regular, color: GRAY });
-    y -= 14;
-  }
-
   // Quote info on the right
   const dateStr = quote.createdAt.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
   page.drawText(`N° ${quote.quoteNumber}`, { x: PAGE_W - MARGIN - 120, y, size: 9, font: regular, color: GRAY });
@@ -295,7 +284,7 @@ export async function quotePdf(organizationId: string, id: string) {
     }
   }
 
-  // ─── FOOTER (phone | email | website) ───
+  // ─── FOOTER (business info + page number) ───
   const pages = doc.getPages();
   const footerY = 30;
   for (let i = 0; i < pages.length; i++) {
@@ -304,8 +293,10 @@ export async function quotePdf(organizationId: string, id: string) {
     p.drawLine({ start: { x: MARGIN, y: footerY + 12 }, end: { x: PAGE_W - MARGIN, y: footerY + 12 }, color: LIGHT_GRAY, thickness: 0.5 });
 
     const parts: string[] = [];
-    if (bs.phone) parts.push(bs.phone);
     if (bs.email) parts.push(bs.email);
+    if (bs.phone) parts.push(bs.phone);
+    if (bs.rfc) parts.push(`RFC: ${bs.rfc}`);
+    if (bs.address) parts.push(bs.address);
     if (bs.website) parts.push(bs.website);
     if (parts.length) {
       p.drawText(clean(parts.join("   |   ")).slice(0, 120), {
