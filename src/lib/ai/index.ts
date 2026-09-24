@@ -28,16 +28,24 @@ export async function resolveAiConfig(_organizationId: string) {
 export async function chatJson<T>(
   schema: z.ZodType<T>,
   messages: ChatMessage[],
-  opts?: { model?: string; judge?: boolean; timeoutMs?: number; organizationId?: string }
+  opts?: {
+    model?: string;
+    judge?: boolean;
+    timeoutMs?: number;
+    organizationId?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  }
 ): Promise<ChatJsonResult<T>> {
   // Resolve env-var config
   let dbToken: string | undefined;
-  if (opts?.organizationId) {
+  if (opts?.organizationId && !opts?.apiKey) {
     const cfg = await resolveAiConfig(opts.organizationId);
     dbToken = cfg.token;
   }
 
-  if (!isAiConfigured(dbToken)) {
+  const token = opts?.apiKey || undefined;
+  if (!isAiConfigured(token ?? dbToken)) {
     return {
       ok: false,
       error: "not_configured",
@@ -72,7 +80,7 @@ export async function chatJson<T>(
             },
           ];
     try {
-      const raw = await callProvider(model, attemptMessages, opts?.timeoutMs, dbToken);
+      const raw = await callProvider(model, attemptMessages, opts?.timeoutMs, token ?? dbToken, opts?.baseUrl);
       const extracted = extractJson(raw);
       if (extracted === null) {
         lastDetail = `sin JSON extraíble (raw=${truncate(raw)})`;
@@ -107,14 +115,16 @@ async function callProvider(
   model: string,
   messages: ChatMessage[],
   timeoutMs = 60_000,
-  fallbackToken?: string
+  fallbackToken?: string,
+  customBaseUrl?: string
 ): Promise<string> {
   const env = getEnv();
   const token = resolveAiToken(fallbackToken);
+  const baseUrl = customBaseUrl?.replace(/\/+$/, "") || env.OPENROUTER_BASE_URL;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${env.OPENROUTER_BASE_URL}/v1/chat/completions`, {
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: {
         // El token jamás se loguea; solo viaja en este header.

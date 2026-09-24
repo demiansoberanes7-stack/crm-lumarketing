@@ -56,6 +56,11 @@ const envSchema = z.object({
   // 008: volumen local de adjuntos (constitución II: sin S3/R2).
   MEDIA_DIR: z.string().default("./.dev-media"),
   NODE_ENV: z.string().default("development"),
+  // Chatbot: API key separada del agente de atencion al cliente.
+  // Si no se configura, el chatbot usa las mismas OPENROUTER_* vars.
+  CHATBOT_API_TOKEN: z.string().optional(),
+  CHATBOT_MODEL: z.string().optional(),
+  CHATBOT_BASE_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
