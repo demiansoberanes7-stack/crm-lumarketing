@@ -43,6 +43,7 @@ export function DataCleanupClient() {
   const [preview, setPreview] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const toggleTable = (key: string) => {
@@ -61,6 +62,7 @@ export function DataCleanupClient() {
     if (!startDate || !endDate) return;
     setLoading(true);
     setResult(null);
+    setError(null);
     try {
       const res = await fetch("/api/admin/data-cleanup/preview", {
         method: "POST",
@@ -74,8 +76,12 @@ export function DataCleanupClient() {
       if (res.ok) {
         const data = (await res.json()) as { counts: Record<string, number> };
         setPreview(data.counts);
+      } else {
+        setError("Error al obtener vista previa");
       }
-    } catch { /* empty */ }
+    } catch {
+      setError("Error de conexion");
+    }
     setLoading(false);
   };
 
@@ -276,6 +282,13 @@ export function DataCleanupClient() {
         }`}>
           {result.ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
           {result.message}
+        </div>
+      )}
+
+      {error && !result && (
+        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <AlertTriangle className="h-4 w-4" />
+          {error}
         </div>
       )}
     </div>
