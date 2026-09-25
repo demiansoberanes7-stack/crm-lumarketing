@@ -127,6 +127,20 @@
       "when": 1790800000000,
       "tag": "0017_booking_preserve_contact_history",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790900000000,
+      "tag": "0018_supplier",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791000000000,
+      "tag": "0019_chatbot_persistence",
+      "breakpoints": true
     }
   ]
 }

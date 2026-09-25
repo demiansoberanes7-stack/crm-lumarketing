@@ -10,6 +10,7 @@ export type TableEntry = {
 };
 
 export const TABLE_MAP: Record<string, TableEntry> = {
+  contacts: { table: schema.contact, orgColumn: schema.contact.organizationId, dateColumn: schema.contact.createdAt },
   messages: { table: schema.message, orgColumn: schema.message.organizationId, dateColumn: schema.message.createdAt },
   conversations: { table: schema.conversation, orgColumn: schema.conversation.organizationId, dateColumn: schema.conversation.createdAt },
   leads: { table: schema.lead, orgColumn: schema.lead.organizationId, dateColumn: schema.lead.createdAt },

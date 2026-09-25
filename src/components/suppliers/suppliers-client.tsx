@@ -67,6 +67,7 @@ function SupplierDialog({
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initial) {
@@ -94,9 +95,10 @@ function SupplierDialog({
   async function save() {
     if (!form.name.trim()) return;
     setSaving(true);
+    setSaveError(null);
     const method = initial ? "PATCH" : "POST";
     const url = initial ? `/api/suppliers/${initial.id}` : "/api/suppliers";
-    await fetch(url, {
+    const res = await fetch(url, {
       method,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -116,8 +118,13 @@ function SupplierDialog({
       }),
     }).catch(() => null);
     setSaving(false);
-    onSaved();
-    onClose();
+    if (res?.ok) {
+      onSaved();
+      onClose();
+    } else {
+      const data = await res?.json().catch(() => null);
+      setSaveError(data?.error?.message ?? "Error al guardar");
+    }
   }
 
   return (
@@ -197,6 +204,11 @@ function SupplierDialog({
             <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notas sobre el proveedor..." rows={3} />
           </div>
         </div>
+        {saveError && (
+          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {saveError}
+          </div>
+        )}
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={save} disabled={saving || !form.name.trim()}>

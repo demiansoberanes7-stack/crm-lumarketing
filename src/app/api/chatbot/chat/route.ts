@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { eq, sql, count } from "drizzle-orm";
+import { eq, sql, count, isNotNull } from "drizzle-orm";
 import { parseBody, withAuth } from "@/lib/api";
 import { getEnv } from "@/lib/env";
 import { getDb, schema } from "@/lib/db";
+import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { chatJson, type ChatMessage } from "@/lib/ai";
 
@@ -12,9 +13,6 @@ const chatSchema = z.object({
   message: z.string().min(1).max(2000),
   conversationId: z.string().optional(),
 });
-
-/** Simple in-memory chat history per session (resets on deploy) */
-const chatHistory = new Map<string, ChatMessage[]>();
 
 async function getCrmContext(organizationId: string): Promise<string> {
   const db = getDb();
@@ -41,15 +39,15 @@ async function getCrmContext(organizationId: string): Promise<string> {
   } catch { /* skip on error */ }
 
   try {
-    const [projectCount] = await db
+    const [activeProjectCount] = await db
       .select({ total: count() })
       .from(schema.project)
-      .where(scoped(schema.project.organizationId, organizationId));
+      .where(scoped(schema.project.organizationId, organizationId, sql`${schema.project.archivedAt} is null`));
     const [archivedCount] = await db
       .select({ total: count() })
       .from(schema.project)
-      .where(scoped(schema.project.organizationId, organizationId, sql`"archived_at" is not null`));
-    parts.push(`Proyectos: ${projectCount?.total ?? 0} activos, ${archivedCount?.total ?? 0} archivados`);
+      .where(scoped(schema.project.organizationId, organizationId, isNotNull(schema.project.archivedAt)));
+    parts.push(`Proyectos: ${activeProjectCount?.total ?? 0} activos, ${archivedCount?.total ?? 0} archivados`);
   } catch { /* skip on error */ }
 
   try {
@@ -92,7 +90,7 @@ async function getCrmContext(organizationId: string): Promise<string> {
     const [taskCount] = await db
       .select({ total: count() })
       .from(schema.caltodoTask)
-      .where(scoped(schema.caltodoTask.organizationId, organizationId));
+      .where(scoped(schema.caltodoTask.organizationId, organizationId, sql`${schema.caltodoTask.completed} = false`));
     parts.push(`Tareas pendientes: ${taskCount?.total ?? 0}`);
   } catch { /* skip on error */ }
 
@@ -115,8 +113,58 @@ export const POST = withAuth(async (session, req: Request) => {
     );
   }
 
-  const sessionId = session.organizationId;
-  const history = chatHistory.get(sessionId) ?? [];
+  const db = getDb();
+
+  // Resolve or create conversation
+  let conversationId = body.data.conversationId;
+  if (!conversationId) {
+    const [conv] = await db
+      .insert(schema.chatbotConversation)
+      .values({
+        id: newId("chatbotConversation"),
+        organizationId: session.organizationId,
+        userId: session.userId,
+      })
+      .returning({ id: schema.chatbotConversation.id });
+    conversationId = conv?.id;
+    if (!conversationId) {
+      return Response.json(
+        { error: { code: "internal", message: "Error al crear conversacion" } },
+        { status: 500 }
+      );
+    }
+  } else {
+    // Verify conversation belongs to this org+user
+    const [existing] = await db
+      .select({ id: schema.chatbotConversation.id })
+      .from(schema.chatbotConversation)
+      .where(
+        scoped(
+          schema.chatbotConversation.organizationId,
+          session.organizationId,
+          eq(schema.chatbotConversation.id, conversationId),
+          eq(schema.chatbotConversation.userId, session.userId)
+        )
+      );
+    if (!existing) {
+      return Response.json(
+        { error: { code: "not_found", message: "Conversacion no encontrada" } },
+        { status: 404 }
+      );
+    }
+  }
+
+  // Load history from DB (last 20 messages)
+  const dbMessages = await db
+    .select({ role: schema.chatbotMessage.role, content: schema.chatbotMessage.content })
+    .from(schema.chatbotMessage)
+    .where(eq(schema.chatbotMessage.conversationId, conversationId))
+    .orderBy(schema.chatbotMessage.createdAt);
+
+  const history: ChatMessage[] = dbMessages.map((m) => ({
+    role: m.role as "user" | "assistant",
+    content: m.content,
+  }));
 
   let crmData = "Sin datos disponibles.";
   try {
@@ -127,11 +175,15 @@ export const POST = withAuth(async (session, req: Request) => {
 
   const systemMessage: ChatMessage = {
     role: "system",
-    content: `Eres un asistente interno del CRM. Tienes acceso a los siguientes datos del negocio:
+    content: `Eres un asistente interno del CRM llamado Lumark. Tienes acceso a los siguientes datos actualizados del negocio en tiempo real:
 
 ${crmData}
 
-Puedes responder preguntas sobre contactos, leads, pipeline, proyectos, cotizaciones, pagos, gastos y tareas. Usa los datos reales arriba para responder. Responde en espanol, se conciso y directo.`,
+REGLAS OBLIGATORIAS:
+- SIEMPRE responde con frases completas en español, nunca con solo un numero o palabra suelta.
+- Usa los datos reales de arriba para responder. Si te preguntan por contactos, menciona el numero exacto.
+- Si no tienes datos de algo, di "No tengo datos registrados de eso".
+- Sé conciso pero amable. Maximo 2-3 oraciones por respuesta.`,
   };
 
   const userMessage: ChatMessage = { role: "user", content: body.data.message };
@@ -154,18 +206,29 @@ Puedes responder preguntas sobre contactos, leads, pipeline, proyectos, cotizaci
   }
 
   const agentReply = result.data.response;
-  history.push(userMessage, { role: "assistant", content: agentReply });
-  if (history.length > 40) history.splice(0, history.length - 40);
-  chatHistory.set(sessionId, history);
+
+  // Persist both messages to DB
+  await db.insert(schema.chatbotMessage).values([
+    { id: newId("chatbotMessage"), conversationId, role: "user", content: body.data.message },
+    { id: newId("chatbotMessage"), conversationId, role: "assistant", content: agentReply },
+  ]);
+
+  // Update conversation timestamp
+  await db
+    .update(schema.chatbotConversation)
+    .set({ updatedAt: new Date() })
+    .where(eq(schema.chatbotConversation.id, conversationId));
 
   return Response.json({
-    conversationId: sessionId,
+    conversationId,
     response: agentReply,
     messages: [
-      ...history.filter((m) => m.role !== "system").map((m) => ({
+      ...history.slice(-20).map((m) => ({
         role: m.role === "assistant" ? "agent" as const : "user" as const,
         text: m.content,
       })),
+      { role: "user" as const, text: body.data.message },
+      { role: "agent" as const, text: agentReply },
     ],
   });
 });

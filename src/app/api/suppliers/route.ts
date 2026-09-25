@@ -1,4 +1,4 @@
-import { desc, ilike, or, eq, sql, and, type SQL } from "drizzle-orm";
+import { desc, ilike, or, eq, and, isNull, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
@@ -21,7 +21,7 @@ export const GET = withAuth(async (session, req: Request) => {
   ];
 
   if (!showArchived) {
-    conditions.push(sql`"${schema.supplier.archivedAt.name}" is null`);
+    conditions.push(isNull(schema.supplier.archivedAt));
   }
 
   if (q) {

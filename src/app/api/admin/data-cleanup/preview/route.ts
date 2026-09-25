@@ -23,6 +23,13 @@ export const POST = withOwner(async (session, req: Request) => {
   const end = new Date(endDate);
   end.setHours(23, 59, 59, 999);
 
+  if (start > end) {
+    return Response.json(
+      { error: { code: "invalid_dates", message: "La fecha de inicio debe ser anterior a la fecha fin" } },
+      { status: 422 }
+    );
+  }
+
   const counts: Record<string, number> = {};
 
   for (const tableKey of tables) {

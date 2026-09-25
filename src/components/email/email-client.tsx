@@ -82,7 +82,8 @@ function formatTime(dateStr: string): string {
   return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
 }
 
-function getPreview(text: string, max = 80): string {
+function getPreview(text: string | null, max = 80): string {
+  if (!text) return "(sin contenido)";
   const clean = text.replace(/\s+/g, " ").trim();
   return clean.length > max ? clean.slice(0, max) + "..." : clean;
 }
@@ -98,12 +99,16 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
   const [messages, setMessages] = useState<EmailMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
   const [showNewAccount, setShowNewAccount] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
   const [showReply, setShowReply] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncCount, setSyncCount] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState("");
   const [replySubject, setReplySubject] = useState("");
   const [replyBody, setReplyBody] = useState("");
+  const [composeTo, setComposeTo] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<{ filename: string; content: string; contentType: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -157,6 +162,17 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
 
   const handleBack = () => { setSelectedMessage(null); setShowReply(false); };
 
+  const handleDeleteMessage = async () => {
+    if (!selectedMessage || !selectedAccount) return;
+    const res = await fetch(`/api/email/messages/${selectedMessage}`, { method: "DELETE" }).catch(() => null);
+    if (res?.ok) {
+      setMessages((prev) => prev.filter((m) => m.id !== selectedMessage));
+      setSelectedMessage(null);
+    } else {
+      setError("No se pudo eliminar el mensaje.");
+    }
+  };
+
   const handleOpenReply = () => {
     const msg = messages.find((m) => m.id === selectedMessage);
     if (!msg) return;
@@ -209,6 +225,32 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
     setReplyTo("");
     setReplySubject("");
     setReplyBody("");
+    setAttachments([]);
+  };
+
+  const handleSendCompose = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccount) return;
+    setSending(true);
+    setError("");
+    const response = await fetch("/api/email/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId: selectedAccount,
+        to: composeTo,
+        subject: composeSubject,
+        text: composeBody,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      }),
+    }).catch(() => null);
+    setSending(false);
+    if (!response?.ok) { setError("No se pudo enviar el correo."); return; }
+    void refetchMessages(selectedAccount);
+    setShowCompose(false);
+    setComposeTo("");
+    setComposeSubject("");
+    setComposeBody("");
     setAttachments([]);
   };
 
@@ -267,7 +309,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
           <div className="p-3">
             <Button
               className="w-full justify-start gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-white hover:bg-blue-700 shadow-sm"
-              onClick={() => { setEditing(undefined); setShowNewAccount(true); }}
+              onClick={() => { setEditing(undefined); setShowCompose(true); }}
             >
               <Pencil className="h-4 w-4" />
               Redactar
@@ -455,7 +497,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                   <Button variant="ghost" size="icon" className="h-8 w-8">
                     <Archive className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDeleteMessage}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
@@ -488,7 +530,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
               {/* Body */}
               <div className="flex-1 overflow-y-auto px-6 pb-6">
                 <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                  {selectedMsg.bodyText}
+                  {selectedMsg.bodyText || "(sin contenido)"}
                 </div>
               </div>
 
@@ -610,6 +652,82 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
           onClose={() => setShowNewAccount(false)}
           onCreated={() => { setShowNewAccount(false); void refetchAccounts(); }}
         />
+      )}
+
+      {/* ═══ COMPOSE MODAL ═══ */}
+      {showCompose && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <button aria-label="Cerrar" onClick={() => setShowCompose(false)} className="absolute inset-0 bg-black/30" />
+          <div className="relative z-10 w-full max-w-2xl rounded-t-2xl border bg-card shadow-2xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-3">
+              <h2 className="text-sm font-semibold">Nuevo mensaje</h2>
+              <button onClick={() => setShowCompose(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSendCompose} className="flex flex-col">
+              <div className="flex items-center gap-2 border-b px-5 py-2.5">
+                <Label className="w-12 text-xs text-muted-foreground">Para</Label>
+                <Input
+                  type="email"
+                  required
+                  value={composeTo}
+                  onChange={(e) => setComposeTo(e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                  className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+                />
+              </div>
+              <div className="flex items-center gap-2 border-b px-5 py-2.5">
+                <Label className="w-12 text-xs text-muted-foreground">Asunto</Label>
+                <Input
+                  required
+                  value={composeSubject}
+                  onChange={(e) => setComposeSubject(e.target.value)}
+                  placeholder="Asunto del correo"
+                  className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+                />
+              </div>
+              <textarea
+                required
+                rows={10}
+                placeholder="Escribe tu mensaje..."
+                value={composeBody}
+                onChange={(e) => setComposeBody(e.target.value)}
+                className="min-h-[200px] resize-none border-0 bg-transparent px-5 py-3 text-sm outline-none placeholder:text-muted-foreground/50"
+              />
+              {attachments.length > 0 && (
+                <div className="border-t px-5 py-2">
+                  <ul className="space-y-1">
+                    {attachments.map((a, i) => (
+                      <li key={i} className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-xs">
+                        <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="flex-1 truncate">{a.filename}</span>
+                        <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t px-5 py-3">
+                <div className="flex items-center gap-1">
+                  <Button type="submit" disabled={sending || !selectedAccount} className="rounded-full bg-blue-600 px-6 text-white hover:bg-blue-700">
+                    <Send className="mr-1.5 h-3.5 w-3.5" />
+                    {sending ? "Enviando..." : "Enviar"}
+                  </Button>
+                  <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple className="hidden" onChange={(e) => void handleFileChange(e)} />
+                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => fileInputRef.current?.click()}>
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                </div>
+                <button type="button" onClick={() => setShowCompose(false)} className="text-xs text-muted-foreground hover:text-foreground">
+                  Descartar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

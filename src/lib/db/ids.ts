@@ -46,6 +46,8 @@ const prefixes = {
   emailAccount: "emac",
   emailMessage: "emmsg",
   supplier: "sup",
+  chatbotConversation: "cbc",
+  chatbotMessage: "cbm",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

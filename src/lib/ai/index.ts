@@ -115,11 +115,12 @@ async function callProvider(
   model: string,
   messages: ChatMessage[],
   timeoutMs = 60_000,
-  fallbackToken?: string,
+  explicitToken?: string,
   customBaseUrl?: string
 ): Promise<string> {
   const env = getEnv();
-  const token = resolveAiToken(fallbackToken);
+  // Explicit per-call token takes priority; env var is fallback only
+  const token = explicitToken?.trim() || resolveAiToken();
   const baseUrl = customBaseUrl?.replace(/\/+$/, "") || env.OPENROUTER_BASE_URL;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

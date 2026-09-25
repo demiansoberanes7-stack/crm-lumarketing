@@ -1,5 +1,6 @@
 import { apiError, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
+import { inArray } from "drizzle-orm";
 import { scoped } from "@/lib/db/tenant";
 import { getOrCreateConversation } from "@/server/inbox/ingest";
 import { SendError, sendText, sendMediaMessage } from "@/server/inbox/send";
@@ -63,13 +64,13 @@ export const POST = withAuth(async (session, req: Request) => {
   }
 
   const db = getDb();
+  // Query only the selected contacts instead of fetching all contacts
   const contacts = await db
     .select({ id: schema.contact.id })
     .from(schema.contact)
     .where(
-      scoped(schema.contact.organizationId, session.organizationId)
-    )
-    .limit(200);
+      scoped(schema.contact.organizationId, session.organizationId, inArray(schema.contact.id, parsedIds))
+    );
 
   const validIds = new Set(contacts.map((c) => c.id));
   const targetIds = parsedIds.filter((id) => validIds.has(id));

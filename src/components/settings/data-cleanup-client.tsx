@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   Database,
+  Info,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const TABLES = [
+  { key: "contacts", label: "Contactos", count: 0 },
   { key: "messages", label: "Mensajes", count: 0 },
   { key: "conversations", label: "Conversaciones", count: 0 },
   { key: "leads", label: "Leads", count: 0 },
@@ -46,6 +48,12 @@ export function DataCleanupClient() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+  const invalidatePreview = () => {
+    setPreview(null);
+    setResult(null);
+    setError(null);
+  };
+
   const toggleTable = (key: string) => {
     setSelectedTables((prev) => {
       const next = new Set(prev);
@@ -53,13 +61,18 @@ export function DataCleanupClient() {
       else next.add(key);
       return next;
     });
+    invalidatePreview();
   };
 
-  const selectAll = () => setSelectedTables(new Set(TABLES.map((t) => t.key)));
-  const deselectAll = () => setSelectedTables(new Set());
+  const selectAll = () => { setSelectedTables(new Set(TABLES.map((t) => t.key))); invalidatePreview(); };
+  const deselectAll = () => { setSelectedTables(new Set()); invalidatePreview(); };
 
   const handlePreview = async () => {
-    if (!startDate || !endDate) return;
+    if (!startDate || !endDate || selectedTables.size === 0) return;
+    if (startDate > endDate) {
+      setError("La fecha de inicio debe ser anterior a la fecha fin");
+      return;
+    }
     setLoading(true);
     setResult(null);
     setError(null);
@@ -77,7 +90,8 @@ export function DataCleanupClient() {
         const data = (await res.json()) as { counts: Record<string, number> };
         setPreview(data.counts);
       } else {
-        setError("Error al obtener vista previa");
+        const data = await res.json().catch(() => null);
+        setError(data?.error?.message ?? "Error al obtener vista previa");
       }
     } catch {
       setError("Error de conexion");
@@ -86,10 +100,15 @@ export function DataCleanupClient() {
   };
 
   const handleDelete = async () => {
-    if (!startDate || !endDate || !preview) return;
-    if (!confirm("¿Eliminar los datos seleccionados? Esta accion no se puede deshacer.")) return;
+    if (!startDate || !endDate || !preview || selectedTables.size === 0) return;
+    const hasContacts = selectedTables.has("contacts");
+    const msg = hasContacts
+      ? "Vas a eliminar CONTACTOS y todos sus datos relacionados (conversaciones, leads, mensajes, cotizaciones, proyectos). Esta accion es PERMANENTE e IRREVERSIBLE. Continuar?"
+      : "¿Eliminar los datos seleccionados? Esta accion no se puede deshacer.";
+    if (!confirm(msg)) return;
     setDeleting(true);
     setResult(null);
+    setError(null);
     try {
       const res = await fetch("/api/admin/data-cleanup", {
         method: "POST",
@@ -101,8 +120,13 @@ export function DataCleanupClient() {
         }),
       });
       const data = await res.json();
-      setResult({ ok: res.ok, message: data.message || (res.ok ? "Datos eliminados" : "Error al eliminar") });
-      if (res.ok) setPreview(null);
+      if (res.ok) {
+        setResult({ ok: true, message: data.message || "Datos eliminados" });
+        setPreview(null);
+      } else {
+        const msg = data.error?.message ?? "Error al eliminar";
+        setResult({ ok: false, message: msg });
+      }
     } catch {
       setResult({ ok: false, message: "Error de conexion" });
     }
@@ -110,6 +134,8 @@ export function DataCleanupClient() {
   };
 
   const totalRecords = preview ? Object.values(preview).reduce((a, b) => a + b, 0) : 0;
+  const canPreview = !loading && startDate && endDate && selectedTables.size > 0;
+  const canDelete = !deleting && startDate && endDate && selectedTables.size > 0 && preview && !loading;
 
   return (
     <div className="space-y-6">
@@ -134,7 +160,7 @@ export function DataCleanupClient() {
               <Input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => { setStartDate(e.target.value); invalidatePreview(); }}
               />
             </div>
             <div className="flex-1 min-w-[200px]">
@@ -142,7 +168,7 @@ export function DataCleanupClient() {
               <Input
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => { setEndDate(e.target.value); invalidatePreview(); }}
               />
             </div>
           </div>
@@ -155,6 +181,7 @@ export function DataCleanupClient() {
                 const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
                 setStartDate(firstDay.toISOString().split("T")[0]!);
                 setEndDate(now.toISOString().split("T")[0]!);
+                invalidatePreview();
               }}
             >
               Este mes
@@ -168,6 +195,7 @@ export function DataCleanupClient() {
                 const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
                 setStartDate(lastMonth.toISOString().split("T")[0]!);
                 setEndDate(lastDay.toISOString().split("T")[0]!);
+                invalidatePreview();
               }}
             >
               Mes anterior
@@ -180,6 +208,7 @@ export function DataCleanupClient() {
                 const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
                 setStartDate(threeMonthsAgo.toISOString().split("T")[0]!);
                 setEndDate(now.toISOString().split("T")[0]!);
+                invalidatePreview();
               }}
             >
               Ultimos 3 meses
@@ -226,21 +255,22 @@ export function DataCleanupClient() {
         </CardContent>
       </Card>
 
-      <div className="flex gap-3">
-        <Button
-          onClick={handlePreview}
-          disabled={loading || !startDate || !endDate || selectedTables.size === 0}
-        >
-          {loading ? "Consultando..." : "Vista Previa"}
-        </Button>
-        <Button
-          variant="destructive"
-          onClick={handleDelete}
-          disabled={deleting || !startDate || !endDate || selectedTables.size === 0}
-        >
-          <Trash2 className="mr-1.5 h-4 w-4" />
-          {deleting ? "Eliminando..." : "Eliminar Datos"}
-        </Button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="flex gap-3">
+          <Button onClick={handlePreview} disabled={!canPreview}>
+            {loading ? "Consultando..." : "Vista Previa"}
+          </Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={!canDelete}>
+            <Trash2 className="mr-1.5 h-4 w-4" />
+            {deleting ? "Eliminando..." : "Eliminar Datos"}
+          </Button>
+        </div>
+        {!preview && !loading && selectedTables.size > 0 && startDate && endDate && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Info className="h-3 w-3" />
+            Ejecuta una vista previa antes de eliminar
+          </p>
+        )}
       </div>
 
       {preview && (
