@@ -8,7 +8,15 @@ import { dashboardRange, type DashboardData } from "./metrics";
 // remain exact regardless of the number of contacts, events or transactions.
 const list = (query: SQL) => sql`coalesce((select jsonb_agg(item) from (${query}) item), '[]'::jsonb)`;
 
+/** 60s in-memory cache per org+period to avoid re-running the heavy CTE on every visit */
+const CACHE_TTL_MS = 60_000;
+const dashboardCache = new Map<string, { data: DashboardData; expiresAt: number }>();
+
 export async function queryDashboard(orgId: string, period: string, now = new Date()): Promise<DashboardData> {
+  const cacheKey = `${orgId}:${period}`;
+  const cached = dashboardCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
   const range = dashboardRange(period, now);
   const from = sql`${range.from.toISOString()}::timestamp`;
   const to = sql`${now.toISOString()}::timestamp`;
@@ -175,6 +183,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
       ) as data from cash
     `);
     if (!row) throw new Error("Dashboard aggregation returned no result");
+    dashboardCache.set(cacheKey, { data: row.data, expiresAt: Date.now() + CACHE_TTL_MS });
     return row.data;
   }, { isolationLevel: "repeatable read", accessMode: "read only" });
 }

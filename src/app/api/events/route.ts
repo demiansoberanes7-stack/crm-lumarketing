@@ -9,7 +9,11 @@ import { subscribe } from "@/server/events/bus";
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_MS = 25_000;
+const MAX_SSE_CONNECTIONS = 5;
 const encoder = new TextEncoder();
+
+/** Active SSE connections per org — to enforce the concurrency limit */
+const activeConnections = new Map<string, number>();
 
 export async function GET(req: Request) {
   let session;
@@ -22,6 +26,15 @@ export async function GET(req: Request) {
     throw err;
   }
   const { organizationId } = session;
+
+  const current = activeConnections.get(organizationId) ?? 0;
+  if (current >= MAX_SSE_CONNECTIONS) {
+    return Response.json(
+      { error: { code: "too_many_connections", message: `Maximo ${MAX_SSE_CONNECTIONS} conexiones SSE por organizacion` } },
+      { status: 429 }
+    );
+  }
+  activeConnections.set(organizationId, current + 1);
 
   let cleanup: (() => void) | null = null;
 
@@ -50,6 +63,9 @@ export async function GET(req: Request) {
       cleanup = () => {
         clearInterval(heartbeat);
         unsubscribe();
+        const c = activeConnections.get(organizationId) ?? 1;
+        if (c <= 1) activeConnections.delete(organizationId);
+        else activeConnections.set(organizationId, c - 1);
         try {
           controller.close();
         } catch {
