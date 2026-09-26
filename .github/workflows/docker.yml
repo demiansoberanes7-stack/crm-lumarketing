@@ -1,0 +1,72 @@
+# ============================================================
+# LUMARK CRM — CI/CD: build + push Docker image a Docker Hub
+# Se dispara al hacer push a la rama main.
+# Compila en los servidores de GitHub (7 GB RAM gratis) para
+# que el VPS (1 GiB) no tenga que compilar nada.
+# ============================================================
+
+name: Build & Push Docker Image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # permite disparar manualmente desde GitHub
+
+# Evita múltiples builds si llegan varios pushes rápidos
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Cambia esto si tu usuario de Docker Hub es diferente
+  DOCKER_IMAGE: demiansoberanes7/lumark-crm
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # build completo en ~5-8 min
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login a Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extraer metadata (tags y labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+
+      - name: Build y push de la imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache de capas para builds incrementales rápidos
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Build args para versionado
+          build-args: |
+            SOURCE_COMMIT=${{ github.sha }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Resumen del build
+        run: |
+          echo "✅ Imagen push a Docker Hub"
+          echo "   Imagen: ${{ env.DOCKER_IMAGE }}"
+          echo "   Tags: ${{ steps.meta.outputs.tags }}"
+          echo "   Commit: ${{ github.sha }}"
