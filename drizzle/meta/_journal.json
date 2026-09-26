@@ -139,7 +139,7 @@
       "idx": 19,
       "version": "7",
       "when": 1791000000000,
-      "tag": "0019_chatbot_persistence",
+      "tag": "0019_drop_chatbot_tables",
       "breakpoints": true
     }
   ]
