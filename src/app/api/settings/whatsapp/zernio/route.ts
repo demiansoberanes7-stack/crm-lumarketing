@@ -8,7 +8,7 @@ import { MetaApiError } from "@/lib/meta/client";
 export const GET = withOwner(async (session) => {
   if (!zernioWhatsappEnabled()) return apiError(404, "disabled", "WhatsApp Zernio desactivado");
   const creds = await getWhatsappZernio(session.organizationId);
-  return Response.json({ connection: creds ? { accountId: creds.accountId, tokenLast4: creds.token.slice(-4), displayPhone: creds.displayPhone, hasWebhookSecret: true } : null, webhookUrl: zernioWhatsappWebhookUrl(session.organizationId) });
+  return Response.json({ connection: creds ? { accountId: creds.accountId, tokenLast4: creds.token.slice(-4), displayPhone: creds.displayPhone, hasWebhookSecret: Boolean(creds.webhookSecret) } : null, webhookUrl: zernioWhatsappWebhookUrl(session.organizationId) });
 });
 export const PUT = withOwner(async (session, req: Request) => {
   if (!zernioWhatsappEnabled()) return apiError(404, "disabled", "WhatsApp Zernio desactivado");

@@ -67,6 +67,7 @@ vi.mock("@/server/leads/stage-history", () => ({
   moveLeadToStage: async () => ({ ok: true }),
 }));
 vi.mock("@/server/events/bus", () => ({ publish: () => {} }));
+vi.mock("@/server/webhooks/dispatcher", () => ({ publishWebhook: async () => {} }));
 
 const selectRows: unknown[][] = [];
 let lastInsert: Record<string, unknown> | null = null;

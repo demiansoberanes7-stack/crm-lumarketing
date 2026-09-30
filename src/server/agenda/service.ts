@@ -244,7 +244,9 @@ export async function createSessionBooking(input: {
 
   publishWebhook(input.organizationId, "booking.created", {
     bookingId: delivered.id,
-    contactId: input.contactId ?? null,
+    // El contacto RESUELTO (por conversación cuando la IA no lo trae): usar
+    // input.contactId crudo dejaba el campo en null justo en el flujo del bot.
+    contactId,
   });
 
   return {

@@ -152,7 +152,7 @@ export async function createPayment(
   },
   createdBy?: string
 ): Promise<string> {
-  return getDb().transaction(async (db) => {
+  const created = await getDb().transaction(async (db) => {
   const id = input.requestId ? `pay_${createHash("sha256").update(`${organizationId}:${input.requestId}`).digest("hex").slice(0, 40)}` : newId("payment");
   if (input.contactId) {
     const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
@@ -171,7 +171,7 @@ export async function createPayment(
     notas: input.notas ?? null,
     createdBy: createdBy ?? null,
   }).onConflictDoNothing().returning({ id: schema.payment.id });
-  if (!inserted) return id;
+  if (!inserted) return { id, inserted: false as const };
 
   // Actualizar saldo de la cuenta por cobrar
   if (input.chargeId) {
@@ -191,16 +191,20 @@ export async function createPayment(
       .where(eq(schema.charge.id, input.chargeId));
   }
 
-  publishWebhook(organizationId, "payment.created", {
-    paymentId: id,
-    monto: input.monto,
-    metodo: input.metodo,
-    contactId: input.contactId ?? null,
-    chargeId: input.chargeId ?? null,
+  return { id, inserted: true as const };
   });
 
-  return id;
-  });
+  if (created.inserted) {
+    publishWebhook(organizationId, "payment.created", {
+      paymentId: created.id,
+      monto: input.monto,
+      metodo: input.metodo,
+      contactId: input.contactId ?? null,
+      chargeId: input.chargeId ?? null,
+    });
+  }
+
+  return created.id;
 }
 
 /** Registrar un gasto */

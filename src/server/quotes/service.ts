@@ -89,7 +89,7 @@ export async function createQuote(
   input: QuoteInput,
   createdBy?: string
 ): Promise<string> {
-  return getDb().transaction(async (db) => {
+  const created = await getDb().transaction(async (db) => {
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':quotes'}))`);
   if (input.contactId) {
     const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
@@ -153,15 +153,17 @@ export async function createQuote(
     actorId: createdBy ?? null,
   });
 
-  publishWebhook(organizationId, "quote.created", {
-    quoteId: id,
-    quoteNumber: quoteNumber,
-    total: totals.total,
-    contactId: input.contactId ?? null,
+  return { id, quoteNumber, total: totals.total, contactId: input.contactId ?? null };
   });
 
-  return id;
+  publishWebhook(organizationId, "quote.created", {
+    quoteId: created.id,
+    quoteNumber: created.quoteNumber,
+    total: created.total,
+    contactId: created.contactId,
   });
+
+  return created.id;
 }
 
 /** Actualizar una cotización (solo si está en draft) */
@@ -245,7 +247,7 @@ export async function sendQuote(
   quoteId: string,
   channel: "whatsapp" | "instagram" | "messenger"
 ): Promise<{ waMessageId?: string; total: number }> {
-  return getDb().transaction(async (db) => {
+  const sent = await getDb().transaction(async (db) => {
 
   const rows = await db
     .select()
@@ -297,15 +299,17 @@ export async function sendQuote(
     channel,
   });
 
+  return { total: quote.total, quoteNumber: quote.quoteNumber };
+  });
+
   publishWebhook(organizationId, "quote.sent", {
     quoteId,
-    quoteNumber: quote.quoteNumber,
-    total: quote.total,
+    quoteNumber: sent.quoteNumber,
+    total: sent.total,
     channel,
   });
 
-  return { total: quote.total };
-  });
+  return { total: sent.total };
 }
 
 /** Obtener una cotización con sus items */
@@ -343,7 +347,7 @@ export async function changeQuoteStatus(
   quoteId: string,
   newStatus: "accepted" | "rejected"
 ): Promise<void> {
-  return getDb().transaction(async (db) => {
+  const done = await getDb().transaction(async (db) => {
     const rows = await db
       .select()
       .from(schema.quote)
@@ -373,12 +377,18 @@ export async function changeQuoteStatus(
       eventType: newStatus,
     });
 
-    publishWebhook(organizationId, newStatus === "accepted" ? "quote.accepted" : "quote.rejected", {
-      quoteId,
-      quoteNumber: quote.quoteNumber,
-      status: newStatus,
-    });
+    return { quoteNumber: quote.quoteNumber };
   });
+
+  publishWebhook(
+    organizationId,
+    newStatus === "accepted" ? "quote.accepted" : "quote.rejected",
+    {
+      quoteId,
+      quoteNumber: done.quoteNumber,
+      status: newStatus,
+    }
+  );
 }
 
 /** Listar cotizaciones de una organización */

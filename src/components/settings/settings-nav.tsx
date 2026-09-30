@@ -46,7 +46,11 @@ export function SettingsNav({
     ...(messenger ? [MESSENGER_TAB] : []),
     ...(instagram ? [INSTAGRAM_TAB] : []),
     ...(tiktok ? [TIKTOK_TAB] : []),
-    ...TABS.slice(2),
+    // Webhooks es territorio del dueño, igual que su panel: la API responde
+    // 403 a cualquier otro rol y enseñarle la pestaña solo lo lleva a un 404.
+    ...(owner
+      ? TABS.slice(2)
+      : TABS.slice(2).filter((t) => t.href !== "/settings/webhooks")),
     ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
     ...(agenda ? [GOOGLE_TAB] : []),
     ...(atribucion ? [ADS_TAB] : []),

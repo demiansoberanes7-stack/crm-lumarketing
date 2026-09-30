@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { parseBody, withOwner, apiError } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { AVAILABLE_EVENTS } from "@/lib/webhook-events";
+import { validateWebhookUrl } from "@/server/webhooks/url";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +14,10 @@ const patchSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   url: z.string().url().max(1024).optional(),
   secret: z.string().max(256).optional(),
-  events: z.array(z.string()).min(1).optional(),
+  events: z
+    .array(z.union([z.enum(AVAILABLE_EVENTS), z.literal("*")]))
+    .min(1)
+    .optional(),
   active: z.boolean().optional(),
 });
 
@@ -21,6 +26,13 @@ export const PATCH = withOwner(async (session, req: Request, { params }: Params)
   const { id } = await params;
   const body = await parseBody(req, patchSchema);
   if (!body.ok) return body.response;
+
+  if (body.data.url !== undefined) {
+    const url = await validateWebhookUrl(body.data.url).catch((err: unknown) => err);
+    if (url instanceof Error) {
+      return apiError(422, "invalid_url", url.message);
+    }
+  }
 
   const db = getDb();
   const set: Record<string, unknown> = { updatedAt: new Date() };
@@ -65,9 +77,27 @@ export const DELETE = withOwner(async (session, _req: Request, { params }: Param
   const { id } = await params;
   const db = getDb();
 
-  // Delete deliveries first
+  // Antes se borraban TODAS las entregas de ese id ANTES de comprobar quién
+  // pidió el borrado y sin `scoped()`: con saber un id ajeno se podía vaciar
+  // la auditoría de otra organización. Ahora primero pertenece, después borra.
+  const found = await db
+    .select({ id: schema.outboundWebhook.id })
+    .from(schema.outboundWebhook)
+    .where(
+      scoped(
+        schema.outboundWebhook.organizationId,
+        session.organizationId,
+        eq(schema.outboundWebhook.id, id)
+      )
+    );
+  if (found.length === 0) return apiError(404, "not_found", "Webhook no encontrado");
+
   await db.delete(schema.outboundDelivery).where(
-    eq(schema.outboundDelivery.webhookId, id)
+    scoped(
+      schema.outboundDelivery.organizationId,
+      session.organizationId,
+      eq(schema.outboundDelivery.webhookId, id)
+    )
   );
 
   const rows = await db

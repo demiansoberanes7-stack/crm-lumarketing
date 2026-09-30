@@ -58,7 +58,7 @@ export async function createProject(
     if (!contact) throw new ProjectError(422, "El contacto no pertenece a tu organización");
   }
   const stages = await getProjectStages(organizationId);
-  return getDb().transaction(async (db) => {
+  const created = await getDb().transaction(async (db) => {
   const id = newId("project");
   const code = await nextProjectCode(db, organizationId);
 
@@ -78,14 +78,16 @@ export async function createProject(
     assignedUserId: input.assignedUserId ?? null,
   });
 
+  return { id };
+  });
+
   publishWebhook(organizationId, "project.created", {
-    projectId: id,
+    projectId: created.id,
     name: input.name,
     contactId: input.contactId ?? null,
   });
 
-  return id;
-  });
+  return created.id;
 }
 
 /** Obtener proyecto con etapa actual */
@@ -157,7 +159,7 @@ export async function transitionProject(
   expectedStageId?: string
 ): Promise<{ changed: boolean }> {
   const allStages = await getProjectStages(organizationId);
-  return getDb().transaction(async (db) => {
+  const result = await getDb().transaction(async (db) => {
   const [project] = await db
     .select()
     .from(schema.project)
@@ -176,7 +178,7 @@ export async function transitionProject(
   if (!targetStage) throw new ProjectError(422, "Etapa no válida para tu organización");
   const stageIndex = allStages.findIndex((s) => s.id === toStageId);
   if (complete && (stageIndex !== allStages.length - 1 || project.stageId !== toStageId)) throw new ProjectError(422, "Completa primero las etapas anteriores");
-  if (project.stageId === toStageId && (project.estado === "cerrado") === complete) return { changed: false };
+  if (project.stageId === toStageId && (project.estado === "cerrado") === complete) return { changed: false, fromStageId: project.stageId, toStageName: targetStage.name };
   const avance = complete ? 100 : Math.round(stageIndex / allStages.length * 100);
 
   // Actualizar proyecto
@@ -204,16 +206,20 @@ export async function transitionProject(
     source: complete ? "completado" : "dueno",
   });
 
-  publishWebhook(organizationId, "project.stage_changed", {
-    projectId,
-    fromStageId: project.stageId,
-    toStageId,
-    toStageName: targetStage.name,
-    complete,
+  return { changed: true, fromStageId: project.stageId, toStageName: targetStage.name };
   });
 
-  return { changed: true };
-  });
+  if (result.changed) {
+    publishWebhook(organizationId, "project.stage_changed", {
+      projectId,
+      fromStageId: result.fromStageId,
+      toStageId,
+      toStageName: result.toStageName,
+      complete,
+    });
+  }
+
+  return { changed: result.changed };
 }
 
 /** Crear tarea para un proyecto */

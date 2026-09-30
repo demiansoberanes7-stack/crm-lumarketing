@@ -4,7 +4,8 @@ import type { WhatsappZernioCredentials } from "./zernio-credentials";
 import { zernioWhatsappEnabled } from "./zernio-credentials";
 
 export function zernioMessageId(result: unknown): string {
-  const id = (result as { data?: { messageId?: string } } | null)?.data?.messageId;
+  const payload = result as { data?: { messageId?: string }; message?: { id?: string }; id?: string } | null;
+  const id = payload?.data?.messageId ?? payload?.message?.id ?? payload?.id;
   if (!id) throw new MetaApiError("Zernio no devolvió el identificador del mensaje", { status: 502 });
   return id;
 }

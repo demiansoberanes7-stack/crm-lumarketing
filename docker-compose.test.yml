@@ -50,6 +50,10 @@ services:
       ALLOW_SIGNUP: "true"
       AGENT_COALESCE_MS: "200"
       CHANNELS: whatsapp,instagram,messenger
+      WHATSAPP_ZERNIO_ENABLED: "true"
+      ZERNIO_BASE_URL: http://localhost:3000/api/dev/zernio-mock
+      # El E2E de webhooks de salida se apunta a sí mismo por http://localhost.
+      WEBHOOK_TRUSTED_HOSTS: localhost,127.0.0.1,preview
       MEDIA_DIR: /data/media
       CI: "true"
     volumes:

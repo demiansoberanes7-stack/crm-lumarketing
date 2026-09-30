@@ -191,7 +191,18 @@ export async function getOrCreateConversation(
     .from(schema.conversation)
     .where(eq(schema.conversation.id, convId))
     .limit(1);
-  if (inserted) return inserted;
+  if (inserted) {
+    // Webhooks de salida, solo cuando la fila es NUEVA. El Laboratorio inserta
+    // sus conversaciones de prueba a mano con `isTest: true` y nunca pasa por
+    // aquí, así que un simulacro jamás sale notificado al exterior.
+    publishWebhook(organizationId, "conversation.created", {
+      conversationId: inserted.id,
+      contactId: inserted.contactId,
+      channel: inserted.channel,
+      isTest: inserted.isTest,
+    });
+    return inserted;
+  }
 
   const rows = await db
     .select()

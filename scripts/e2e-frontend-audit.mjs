@@ -48,12 +48,16 @@ try {
   await page.waitForURL((url) => url.pathname !== "/login");
   await page.locator('aside a[href="/todo"]').waitFor({ state: "visible" });
   check("Inicio de sesión real y Calendario en el menú");
+
+  const zernio = await api("/api/settings/whatsapp/zernio");
+  assert(zernio.ok(), `Se requiere WHATSAPP_ZERNIO_ENABLED=true (GET /api/settings/whatsapp/zernio → ${zernio.status()})`);
+
   if (local) {
     const stale = (await (await api("/api/caltodo/tasks")).json()).tasks;
     for (const task of stale.filter((t) => t.title.startsWith("Auditoría "))) await api(`/api/caltodo/tasks?id=${task.id}`, "DELETE");
   }
 
-  for (const [path, label] of [["whatsapp", "Meta Business"], ["waha", "WAHA"], ["zernio", "Zernio"]]) {
+  for (const [path, label] of [["whatsapp", "WhatsApp · Zernio"], ["waha", "WAHA"]]) {
     const response = await page.goto(`${base}/settings/${path}`);
     check(`${label}: página responde`, response.status() === 200);
     await page.locator(`nav a[href="/settings/${path}"]`).waitFor({ state: "visible" });
@@ -64,13 +68,18 @@ try {
       await page.getByLabel("Usuario del proxy", { exact: true }).waitFor({ state: "visible" });
       check("WAHA: dispositivo, eventos, reintentos y proxy visibles");
     }
-    if (path === "zernio") {
+    if (path === "whatsapp") {
       await page.getByLabel("Account ID de WhatsApp", { exact: true }).waitFor({ state: "visible" });
+      await page.getByLabel("API key de Zernio", { exact: true }).waitFor({ state: "visible" });
       await page.getByLabel("Secreto de firma del webhook", { exact: true }).waitFor({ state: "visible" });
       check("Zernio: formulario propio y configuración del webhook");
     }
     await screenshot(`settings-${path}`);
   }
+
+  await page.goto(`${base}/settings/zernio`);
+  await page.waitForURL((url) => url.pathname === "/settings/whatsapp");
+  check("/settings/zernio redirige a WhatsApp · Zernio");
 
   originalSettings = (await (await api("/api/caltodo/settings")).json()).settings;
   await page.goto(`${base}/todo`);

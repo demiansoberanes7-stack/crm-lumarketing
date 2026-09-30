@@ -4,6 +4,7 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import type { LossReason, StageChangeSource } from "@/lib/types";
 import { reportStageChange } from "@/server/attribution/conversions";
+import { publishWebhook } from "@/server/webhooks/dispatcher";
 
 /**
  * La ÚNICA puerta que escribe `lead.stage_id`.
@@ -153,7 +154,15 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       });
     }
 
-    return { ok: true as const, lead: leadRow, changed };
+    return {
+      ok: true as const,
+      lead: leadRow,
+      changed,
+      fromStageId: current.stage?.id ?? null,
+      fromStageName: current.stage?.name ?? null,
+      toStageId: target.id,
+      toStageName: target.name,
+    };
   });
 
   // 016 — Atribución: si esta instancia la tiene encendida, entrar a la etapa
@@ -167,6 +176,20 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       contactId: result.lead.contactId,
       toStageId: result.lead.stageId,
       toStageKind,
+    });
+  }
+
+  // Webhooks de salida: el sistema externo del dueño se entera del movimiento
+  // por aquí. Best-effort y ya fuera de la transacción, igual que arriba.
+  if (result.ok && result.changed) {
+    publishWebhook(input.organizationId, "lead.stage_changed", {
+      leadId: result.lead.id,
+      contactId: result.lead.contactId,
+      fromStageId: result.fromStageId,
+      fromStageName: result.fromStageName,
+      toStageId: result.toStageId,
+      toStageName: result.toStageName,
+      source: input.source,
     });
   }
 

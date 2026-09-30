@@ -11,7 +11,7 @@
 # ============================================================
 services:
   app:
-    image: demiansoberanes7/lumark-crm:latest
+    image: ghostbreakfast69/lumark-crm:latest
     restart: unless-stopped
     environment:
       NODE_OPTIONS: "--max-old-space-size=384"
@@ -25,12 +25,17 @@ services:
       WAHA_BASE_URL: ${WAHA_BASE_URL:-}
       WAHA_API_KEY: ${WAHA_API_KEY:-}
       CHANNELS: ${CHANNELS:-whatsapp,instagram,messenger}
+      WHATSAPP_ZERNIO_ENABLED: ${WHATSAPP_ZERNIO_ENABLED:-}
+      ZERNIO_BASE_URL: ${ZERNIO_BASE_URL:-https://zernio.com/api/v1}
       OPENROUTER_API_TOKEN: ${OPENROUTER_API_TOKEN:-}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
       OPENROUTER_JUDGE_MODEL: ${OPENROUTER_JUDGE_MODEL:-}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-}
       AGENT_COALESCE_MS: ${AGENT_COALESCE_MS:-6000}
+      AGENDA: ${AGENDA:-}
+      WAHA_TRUSTED_HOSTS: ${WAHA_TRUSTED_HOSTS:-}
+      WEBHOOK_TRUSTED_HOSTS: ${WEBHOOK_TRUSTED_HOSTS:-}
     depends_on:
       postgres:
         condition: service_healthy

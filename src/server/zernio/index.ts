@@ -46,7 +46,7 @@ export function isValidZernioSignature(
   if (!signature) return true;
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(signature.trim().toLowerCase(), "utf8");
+  const b = Buffer.from(signature.replace(/^sha256=/i, "").trim().toLowerCase(), "utf8");
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }

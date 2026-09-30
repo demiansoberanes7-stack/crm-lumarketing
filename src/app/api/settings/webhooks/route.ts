@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { parseBody, withOwner } from "@/lib/api";
+import { parseBody, withOwner, apiError } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { newId } from "@/lib/db/ids";
 import { AVAILABLE_EVENTS, EVENT_LABELS } from "@/lib/webhook-events";
+import { validateWebhookUrl } from "@/server/webhooks/url";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +35,21 @@ const postSchema = z.object({
   name: z.string().min(1).max(200),
   url: z.string().url().max(1024),
   secret: z.string().max(256).optional(),
-  events: z.array(z.string()).min(1),
+  // Contra el catálogo, no contra `z.string()`: antes cualquiera podía
+  // suscribirse a `banana.created` y quedarse preguntando por qué nunca
+  // llega nada. `"*"` se mantiene como atajo de "recibir todo".
+  events: z
+    .array(z.union([z.enum(AVAILABLE_EVENTS), z.literal("*")]))
+    .min(1),
 });
 
 /** POST — crear webhook */
 export const POST = withOwner(async (session, req: Request) => {
   const body = await parseBody(req, postSchema);
   if (!body.ok) return body.response;
+
+  const url = await validateWebhookUrl(body.data.url).catch((err: unknown) => err);
+  if (url instanceof Error) return apiError(422, "invalid_url", url.message);
 
   const id = newId("outboundWebhook");
   const db = getDb();

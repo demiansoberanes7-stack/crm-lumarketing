@@ -42,9 +42,14 @@ const RATE_LIMITED_PATHS = new Set(["/sign-in/email", "/sign-up/email"]);
 
 function createAuth() {
   const env = getEnv();
+  const extraOrigins = (process.env.TRUSTED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
   return betterAuth({
     baseURL: env.APP_BASE_URL,
     secret: env.BETTER_AUTH_SECRET,
+    trustedOrigins: extraOrigins,
     database: drizzleAdapter(getDb(), {
       provider: "pg",
       schema: {
