@@ -23,6 +23,11 @@ const baseActions = [
     reason: z.string().optional(),
     farewell: z.string().optional(),
   }),
+  z.object({
+    action: z.literal("send_quote"),
+    item_id: z.string().min(1),
+    reply: z.string().optional(),
+  }),
 ] as const;
 
 /**

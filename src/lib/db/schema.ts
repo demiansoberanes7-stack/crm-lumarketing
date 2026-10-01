@@ -589,6 +589,7 @@ export const booking = pgTable(
   },
   (t) => [
     index("booking_org_when_idx").on(t.organizationId, t.scheduledAt),
+    index("booking_project_idx").on(t.projectId),
     index("booking_org_status_idx").on(t.organizationId, t.status),
     uniqueIndex("booking_org_active_slot_idx")
       .on(t.organizationId, t.scheduledAt)
@@ -1035,6 +1036,9 @@ export const catalogProduct = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
+    shortDescription: varchar("short_description", { length: 500 }),
+    longDescription: text("long_description"),
+    imageUrl: varchar("image_url", { length: 1024 }),
     price:   integer("price").notNull().default(0),
     currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
     available: boolean("available").notNull().default(true),
@@ -1401,5 +1405,26 @@ export const supplier = pgTable(
   (t) => [
     index("supplier_org_idx").on(t.organizationId),
     index("supplier_org_name_idx").on(t.organizationId, t.name),
+  ]
+);
+
+/* ============================================================
+ * Integraciones — Google Ads, Meta Ads, GA4
+ * ============================================================ */
+
+export const integration = pgTable(
+  "integration",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 50 }).notNull(), // 'google_ads', 'meta_ads', 'ga4'
+    credentials: jsonb("credentials").notNull(), // Encrypted or plain tokens depending on implementation
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("integration_org_provider_idx").on(t.organizationId, t.provider),
   ]
 );

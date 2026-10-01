@@ -25,8 +25,9 @@ export function renderCatalog(products: CatalogProduct[]): string {
     .filter((p) => p.available)
     .map((p) => {
       const price = `$${(p.price / 100).toFixed(2)} ${p.currency}`;
-      const desc = p.description ? ` — ${p.description}` : "";
-      return `- ${p.name} | ${price}${desc}`;
+      const shortDesc = p.shortDescription ? `\n  Descripción: ${p.shortDescription}` : "";
+      const longDesc = p.longDescription ? `\n  Ficha técnica: ${p.longDescription}` : "";
+      return `- ID: ${p.id} | ${p.name} | ${price}${shortDesc}${longDesc}`;
     })
     .join("\n");
 }
@@ -79,10 +80,12 @@ export function buildAgentSystemPrompt(input: {
       '- {"action":"none"} — no responder nada.',
       '- {"action":"reply","text":"..."} — responder al cliente.',
       '- {"action":"update_lead","note":"...","reply":"..."} — guardar una nota del lead (reply opcional).',
+      '- {"action":"send_quote","item_id":"<ID del producto>","reply":"..."} — enviar la ficha o cotización de un servicio del catálogo (envía imagen y formato automáticamente).',
       '- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).',
       '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano (farewell opcional para despedirte).',
       ...agendaLines,
       "Reglas duras:",
+      "- Si el cliente pregunta sobre un producto/servicio, usa send_quote con el ID para enviarle la ficha técnica oficial en lugar de solo responder con texto.",
       "- Si el cliente pide hablar con una persona/humano/asesor → handoff.",
       "- Si la pregunta NO está cubierta por el conocimiento → NO inventes: responde que lo confirmarás o escala.",
       "- Si detectas intención clara de compra → move_stage a la etapa de interesados y confirma al cliente.",

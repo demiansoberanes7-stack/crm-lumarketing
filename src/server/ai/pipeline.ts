@@ -288,6 +288,23 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         type: "conversation.updated",
         data: { conversation: { id: conversationId } },
       });
+      
+      // Auto-trigger Temporal Drip Campaign if moving to Cotizado
+      if (stage.name.toLowerCase() === "cotizado") {
+        try {
+          const { getTemporalClient } = await import("@/server/temporal/client");
+          const client = await getTemporalClient();
+          await client.workflow.start("followUpWorkflow", {
+            args: [conversationId, organizationId, 72],
+            taskQueue: "crm-followups",
+            workflowId: `followup-${conversationId}-${Date.now()}`
+          });
+          console.log(`[temporal] Started followUpWorkflow for conversation ${conversationId}`);
+        } catch (err) {
+          console.error(`[temporal] Failed to start followup workflow:`, err);
+        }
+      }
+      
       if (action.reply) {
         await deliverReply(conversation, action.reply);
       }
@@ -304,6 +321,35 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     case "update_lead": {
       await appendLeadNote(organizationId, conversation.contactId, action.note);
       if (action.reply) await deliverReply(conversation, action.reply);
+      return;
+    }
+    case "send_quote": {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.catalogProduct)
+        .where(
+          scoped(
+            schema.catalogProduct.organizationId,
+            organizationId,
+            eq(schema.catalogProduct.id, action.item_id)
+          )
+        )
+        .limit(1);
+      const product = rows[0];
+      
+      let text = action.reply ? `${action.reply}\n\n` : "";
+      if (product) {
+        const price = new Intl.NumberFormat("es-MX", { style: "currency", currency: product.currency }).format(product.price / 100);
+        text += `*${product.name}*\nPrecio: ${price}\n\n`;
+        if (product.shortDescription) text += `${product.shortDescription}\n\n`;
+        if (product.longDescription) text += `${product.longDescription}\n`;
+        if (product.imageUrl) text += `\nImagen de referencia: ${process.env.MAIN_URL || "https://crm.zorrotech.com"}${product.imageUrl}`;
+      } else {
+        text += "No pude encontrar ese producto en el catálogo.";
+      }
+      
+      await deliverReply(conversation, text.trim());
       return;
     }
     case "handoff": {
