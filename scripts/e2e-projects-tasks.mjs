@@ -214,6 +214,11 @@ try {
   check("PDF con logo PNG embebido", pdfAplanado(await pedirPdf()).includes("/Image"));
   check("subir logo SVG", (await subirLogo("logo.svg", "image/svg+xml", svgLogo)) === 200);
   check("PDF rasteriza el logo SVG a imagen", pdfAplanado(await pedirPdf()).includes("/Image"));
+  // Volcado opcional para inspección visual (solo si E2E_PDF_DUMP define una ruta).
+  if (process.env.E2E_PDF_DUMP) {
+    const fsdump = await import("node:fs");
+    fsdump.writeFileSync(process.env.E2E_PDF_DUMP, await pedirPdf());
+  }
 
   if (process.env.E2E_BROWSER === "1") {
     console.log("Iniciando comprobación visual con Chromium…");

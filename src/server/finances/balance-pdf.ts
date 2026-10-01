@@ -17,7 +17,7 @@ const RED = rgb(0.75, 0.2, 0.2);
 const _noop = undefined as unknown as (val: string) => RGB;
 
 function clean(s: string): string {
-  return s.replace(/[\r\n\t]/g, " ").replace(/[^ -ÿ]/g, "?");
+  return s.replace(/[\r\n\t]/g, " ").replace(/[–—]/g, "-").replace(/[^ -ÿ]/g, "?");
 }
 
 export async function balancePdf(organizationId: string, period: { from: Date; to: Date }) {

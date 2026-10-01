@@ -113,6 +113,16 @@ export async function projectPdf(
 
   // ─── HEADER ───
   const companyName = bs.companyName || "LUMARK";
+  // El nombre no debe invadir la columna derecha (EXPEDIENTE / código / fecha).
+  const rightColX = PAGE_W - MARGIN - 160;
+  const fit = (size: number): string => {
+    const maxW = rightColX - MARGIN - 12;
+    const t = clean(companyName);
+    if (bold.widthOfTextAtSize(t, size) <= maxW) return t;
+    let out = t;
+    while (out.length > 1 && bold.widthOfTextAtSize(`${out}...`, size) > maxW) out = out.slice(0, -1);
+    return `${out}...`;
+  };
   const logoData = tryLoadLogo(bs.logoUrl, organizationId);
   let logoDrawn = false;
   if (logoData && (logoData.mime === "image/png" || logoData.mime === "image/jpeg")) {
@@ -128,7 +138,7 @@ export async function projectPdf(
         width: img.width * scale,
         height: img.height * scale,
       });
-      page.drawText(clean(companyName).slice(0, 60), {
+      page.drawText(fit(14), {
         x: MARGIN,
         y: y - 48,
         size: 14,
@@ -141,25 +151,25 @@ export async function projectPdf(
     }
   }
   if (!logoDrawn) {
-    page.drawText(clean(companyName).slice(0, 60), { x: MARGIN, y, size: 18, font: bold, color: DARK });
+    page.drawText(fit(18), { x: MARGIN, y, size: 18, font: bold, color: DARK });
   }
 
   page.drawText("EXPEDIENTE DE PROYECTO", {
-    x: PAGE_W - MARGIN - 160,
+    x: rightColX,
     y,
     size: 13,
     font: bold,
     color: DARK,
   });
   page.drawText(project.code, {
-    x: PAGE_W - MARGIN - 160,
+    x: rightColX,
     y: y - 14,
     size: 9,
     font: regular,
     color: GRAY,
   });
   page.drawText(`Actualizado: ${dateStr(project.updatedAt)}`, {
-    x: PAGE_W - MARGIN - 160,
+    x: rightColX,
     y: y - 27,
     size: 9,
     font: regular,
@@ -172,6 +182,8 @@ export async function projectPdf(
     color: GOLD,
     thickness: 1,
   });
+  // Respiro entre la línea dorada y el título (16pt) para que nunca se crucen.
+  y -= 22;
 
   // ─── TÍTULO + RESUMEN ───
   checkPage(80);

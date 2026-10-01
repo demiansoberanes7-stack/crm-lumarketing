@@ -12,9 +12,9 @@ const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
 
 export const money = (cents: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(cents / 100);
 
-/** Limpia saltos/caracteres fuera del rango Helvetica. */
+/** Limpia saltos/caracteres fuera del rango Helvetica (guiones → ASCII). */
 export function clean(s: string): string {
-  return s.replace(/[\r\n\t]/g, " ").replace(/[^ -ÿ]/g, "?");
+  return s.replace(/[\r\n\t]/g, " ").replace(/[–—]/g, "-").replace(/[^ -ÿ]/g, "?");
 }
 
 /** Parte un texto en líneas que caben en `maxWidth`. */
@@ -90,7 +90,7 @@ export async function reportPdf(title: string, lines: string[]): Promise<Uint8Ar
   doc.setTitle(title); doc.setAuthor("LUMARK");
   let page = doc.addPage([595.28, 841.89]);
   let y = 730;
-  const clean = (s: string) => s.replace(/[\r\n\t]/g, " ").replace(/[^\u0020-\u00ff]/g, "?");
+  const clean = (s: string) => s.replace(/[\r\n\t]/g, " ").replace(/[–—]/g, "-").replace(/[^ -\u00ff]/g, "?");
   const header = () => {
     page.drawText("LUMARK", { x: 42, y: 795, size: 23, font: bold, color: rgb(.72, .59, .24) });
     page.drawText(clean(title).slice(0, 85), { x: 42, y: 765, size: 12, font: bold });
