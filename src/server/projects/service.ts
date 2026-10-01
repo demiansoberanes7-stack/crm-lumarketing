@@ -10,6 +10,7 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
+import { isProjectTypeKey, stepsForType } from "@/lib/project-types";
 import { ProjectError } from "./errors";
 import { validateProjectMember } from "./members";
 
@@ -44,6 +45,9 @@ export async function createProject(
     name: string;
     contactId?: string;
     service?: string;
+    projectType?: string;
+    startDate?: Date | null;
+    endDate?: Date | null;
     estado?: ProjectEstado;
     prioridad?: ProjectPrioridad;
     riesgo?: ProjectRiesgo;
@@ -52,12 +56,17 @@ export async function createProject(
   }
 ): Promise<string> {
   await validateProjectMember(organizationId, input.assignedUserId);
+  const projectType = input.projectType ?? "marketing";
+  if (!isProjectTypeKey(projectType)) {
+    throw new ProjectError(422, "Tipo de proyecto no válido");
+  }
   if (input.contactId) {
     const [contact] = await getDb().select({ id: schema.contact.id }).from(schema.contact)
       .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId))).limit(1);
     if (!contact) throw new ProjectError(422, "El contacto no pertenece a tu organización");
   }
   const stages = await getProjectStages(organizationId);
+  const stepDefs = stepsForType(projectType);
   const created = await getDb().transaction(async (db) => {
   const id = newId("project");
   const code = await nextProjectCode(db, organizationId);
@@ -69,6 +78,10 @@ export async function createProject(
     name: input.name,
     contactId: input.contactId ?? null,
     service: input.service ?? null,
+    projectType,
+    status: "borrador",
+    startDate: input.startDate ?? null,
+    endDate: input.endDate ?? null,
     estado: input.estado ?? "activo",
     avance: 0,
     stageId: stages[0]?.id,
@@ -78,6 +91,17 @@ export async function createProject(
     assignedUserId: input.assignedUserId ?? null,
   });
 
+  // Sembrar el stepper del expediente (borrador con todos los pasos pendientes).
+  await db.insert(schema.projectStep).values(stepDefs.map((def, position) => ({
+    id: newId("projectStep"),
+    organizationId,
+    projectId: id,
+    stepKey: def.key,
+    position,
+    status: "pendiente",
+    data: {},
+  }))).onConflictDoNothing();
+
   return { id };
   });
 
@@ -85,6 +109,7 @@ export async function createProject(
     projectId: created.id,
     name: input.name,
     contactId: input.contactId ?? null,
+    projectType,
   });
 
   return created.id;

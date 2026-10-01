@@ -921,6 +921,16 @@ export const project = pgTable(
     estado: varchar("estado", { length: 20 })
       .notNull()
       .default("activo"),
+    /** Clave del tipo en `src/lib/project-types.ts` (marketing|maintenance|web_service|…). */
+    projectType: varchar("project_type", { length: 50 })
+      .notNull()
+      .default("marketing"),
+    /** Workflow del expediente (borrador|planeacion|en_proceso|en_revision|completado|cancelado). */
+    status: varchar("status", { length: 20 })
+      .notNull()
+      .default("borrador"),
+    startDate: timestamp("start_date"),
+    endDate: timestamp("end_date"),
     stageId: varchar("stage_id", { length: 255 }).references(
       () => projectStage.id,
       { onDelete: "set null" }
@@ -943,6 +953,35 @@ export const project = pgTable(
     uniqueIndex("project_org_code_uq").on(t.organizationId, t.code),
     index("project_org_idx").on(t.organizationId),
     index("project_contact_idx").on(t.contactId),
+    index("project_org_type_idx").on(t.organizationId, t.projectType),
+  ]
+);
+
+/** Pasos del expediente: un registro por paso del stepper del proyecto. */
+export const projectStep = pgTable(
+  "project_step",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id", { length: 255 })
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    stepKey: varchar("step_key", { length: 100 }).notNull(),
+    position: integer("position").notNull(),
+    status: varchar("status", { length: 20 })
+      .notNull()
+      .default("pendiente"),
+    data: jsonb("data").notNull().default({}),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("project_step_project_key_uq").on(t.projectId, t.stepKey),
+    index("project_step_org_idx").on(t.organizationId),
+    index("project_step_project_idx").on(t.projectId),
   ]
 );
 

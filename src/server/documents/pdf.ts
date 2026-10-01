@@ -1,6 +1,59 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+
+export const PAGE_W = 595.28;
+export const PAGE_H = 841.89;
+export const MARGIN = 50;
+export const CONTENT_W = PAGE_W - MARGIN * 2;
+
+const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
 
 export const money = (cents: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(cents / 100);
+
+/** Limpia saltos/caracteres fuera del rango Helvetica. */
+export function clean(s: string): string {
+  return s.replace(/[\r\n\t]/g, " ").replace(/[^ -ÿ]/g, "?");
+}
+
+/** Parte un texto en líneas que caben en `maxWidth`. */
+export function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
+}
+
+/** Logo del negocio desde MEDIA_DIR (solo PNG/JPEG embebibles). */
+export function tryLoadLogo(
+  logoUrl: string | undefined,
+  organizationId: string
+): { data: Uint8Array; mime: string } | null {
+  if (!logoUrl) return null;
+  const match = logoUrl.match(/\/([^/]+)$/);
+  if (!match) return null;
+  const filename = match[1]!;
+  const filePath = join(MEDIA_DIR, organizationId, filename);
+  if (!existsSync(filePath)) return null;
+  try {
+    const data = readFileSync(filePath);
+    const ext = filename.split(".").pop()?.toLowerCase();
+    const mime = ext === "png" ? "image/png" : ext === "svg" ? "image/svg+xml" : "image/jpeg";
+    return { data: new Uint8Array(data), mime };
+  } catch {
+    return null;
+  }
+}
 
 /** PDF paginado, sin navegador ni servicios externos. Texto seleccionable. */
 export async function reportPdf(title: string, lines: string[]): Promise<Uint8Array> {

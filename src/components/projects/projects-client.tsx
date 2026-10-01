@@ -5,8 +5,15 @@ import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { NewProjectDialog } from "./new-project-dialog";
+import { ProjectTypePicker } from "./project-type-picker";
+import { ProjectWizard } from "./project-wizard";
 import { ProjectDetail } from "./project-detail";
+import {
+  PROJECT_STATUS_BADGE,
+  PROJECT_STATUS_LABELS,
+  getProjectType,
+  type ProjectStatus,
+} from "@/lib/project-types";
 
 interface Project {
   id: string;
@@ -14,24 +21,21 @@ interface Project {
   name: string;
   contactId: string | null;
   service: string | null;
-  estado: string;
+  projectType: string;
+  status: ProjectStatus;
   avance: number;
   prioridad: string | null;
   riesgo: string | null;
   archivedAt: string | null;
 }
 
-const estadoBadge: Record<string, "success" | "warning" | "secondary"> = {
-  activo: "success",
-  reunion: "warning",
-  cerrado: "secondary",
-};
-
 export function ProjectsClient() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [wizardProject, setWizardProject] = useState<string | null>(null);
+  const [wizardStep, setWizardStep] = useState(0);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
@@ -69,12 +73,16 @@ export function ProjectsClient() {
     void refetch();
   };
 
-  if (selectedProject) {
+  if (selectedProject && !wizardProject) {
     return (
       <ProjectDetail
         projectId={selectedProject}
         onBack={() => { setSelectedProject(null); window.history.replaceState(null, "", "/projects"); }}
         onUpdated={() => void refetch()}
+        onOpenWizard={(step) => {
+          setWizardStep(step ?? 0);
+          setWizardProject(selectedProject);
+        }}
       />
     );
   }
@@ -145,12 +153,9 @@ export function ProjectsClient() {
                         {p.code}
                       </span>
                       <CardTitle className="text-sm">{p.name}</CardTitle>
-                      <Badge variant={estadoBadge[p.estado] ?? "secondary"}>
-                        {p.estado === "activo"
-                          ? "Activo"
-                          : p.estado === "reunion"
-                            ? "Reunion"
-                            : "Cerrado"}
+                      <Badge variant="outline">{getProjectType(p.projectType)?.label ?? p.projectType}</Badge>
+                      <Badge variant={PROJECT_STATUS_BADGE[p.status] ?? "secondary"}>
+                        {PROJECT_STATUS_LABELS[p.status] ?? p.status}
                       </Badge>
                       {p.prioridad && (
                         <Badge
@@ -219,12 +224,28 @@ export function ProjectsClient() {
       </div>
 
       {showNewProject && (
-        <NewProjectDialog
+        <ProjectTypePicker
           onClose={() => setShowNewProject(false)}
-          onCreated={() => {
+          onCreated={(projectId) => {
             setShowNewProject(false);
+            setWizardStep(0);
+            setWizardProject(projectId);
             void refetch();
           }}
+        />
+      )}
+
+      {wizardProject && (
+        <ProjectWizard
+          projectId={wizardProject}
+          initialStep={wizardStep}
+          onClose={() => {
+            const opened = wizardProject;
+            setWizardProject(null);
+            setSelectedProject(opened);
+            void refetch();
+          }}
+          onUpdated={() => void refetch()}
         />
       )}
     </div>

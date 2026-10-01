@@ -1,61 +1,23 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getQuote } from "./service";
 import { getBusinessSettings } from "@/server/business-settings";
-import { money } from "@/server/documents/pdf";
+import {
+  clean,
+  tryLoadLogo,
+  wrapText,
+  money,
+  PAGE_W,
+  PAGE_H,
+  MARGIN,
+  CONTENT_W,
+} from "@/server/documents/pdf";
 
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const MARGIN = 50;
-const CONTENT_W = PAGE_W - MARGIN * 2;
 const DARK = rgb(0.13, 0.13, 0.13);
 const GRAY = rgb(0.45, 0.45, 0.45);
 const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
 const HEADER_BG = rgb(0.28, 0.28, 0.28);
 const ROW_ALT = rgb(0.96, 0.96, 0.96);
 const RED = rgb(0.75, 0.2, 0.2);
-
-const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
-
-function clean(s: string): string {
-  return s.replace(/[\r\n\t]/g, " ").replace(/[^\u0020-\u00ff]/g, "?");
-}
-
-function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const test = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = test;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.length ? lines : [""];
-}
-
-function tryLoadLogo(logoUrl: string | undefined, organizationId: string): { data: Uint8Array; mime: string } | null {
-  if (!logoUrl) return null;
-  // Extract filename from URL path: /api/media/public/{orgId}/{filename}
-  const match = logoUrl.match(/\/([^/]+)$/);
-  if (!match) return null;
-  const filename = match[1]!;
-  const filePath = join(MEDIA_DIR, organizationId, filename);
-  if (!existsSync(filePath)) return null;
-  try {
-    const data = readFileSync(filePath);
-    const ext = filename.split(".").pop()?.toLowerCase();
-    const mime = ext === "png" ? "image/png" : ext === "svg" ? "image/svg+xml" : "image/jpeg";
-    return { data: new Uint8Array(data), mime };
-  } catch {
-    return null;
-  }
-}
 
 export async function quotePdf(organizationId: string, id: string) {
   const quote = await getQuote(organizationId, id);

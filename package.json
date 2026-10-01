@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:e2e": "node --env-file=.env scripts/e2e-selftest.mjs",
     "test:e2e:webhooks": "node --env-file=.env scripts/e2e-outbound-webhooks.mjs",
+    "test:e2e:projects": "node scripts/e2e-projects-tasks.mjs",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
