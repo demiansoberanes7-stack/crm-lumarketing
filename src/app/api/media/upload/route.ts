@@ -1,5 +1,5 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, extname } from "path";
+import { join } from "path";
 import { nanoid } from "nanoid";
 import { withAuth } from "@/lib/api";
 

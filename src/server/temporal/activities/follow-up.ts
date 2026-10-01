@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
-import { runAgentTurn } from "@/server/ai/pipeline";
 import { sendText } from "@/server/inbox/send";
 
 /** 
