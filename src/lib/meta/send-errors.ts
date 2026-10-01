@@ -10,11 +10,11 @@
 
 const DESCRIPTIONS: Record<number, string> = {
   130472:
-    "Meta tiene el número del destinatario en un experimento y le está bloqueando los mensajes de MARKETING. No es un fallo de tu configuración: prueba con una plantilla de categoría UTILITY o con otro número.",
+    "Meta tiene el número del destinatario en un experimento y le está bloqueando los mensajes de MARKETING. No es un fallo de tu configuración: espera un tiempo o prueba con otro número.",
   131049:
-    "Meta limitó los mensajes de marketing hacia este usuario para cuidar la calidad del ecosistema. Espera o usa una plantilla de categoría UTILITY.",
+    "Meta limitó los mensajes de marketing hacia este usuario para cuidar la calidad del ecosistema. Espera a que se levante el límite.",
   131047:
-    "Pasaron más de 24 h desde el último mensaje del cliente: solo se puede reabrir con una plantilla aprobada.",
+    "Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp no permite reabrir la conversación desde el CRM.",
   131048:
     "Meta frenó el envío por límite de spam en tu número. Baja el ritmo de envíos y revisa la calidad del número.",
   131026:
@@ -25,20 +25,6 @@ const DESCRIPTIONS: Record<number, string> = {
     "El número del destinatario no está en la lista de permitidos de tu app en modo de prueba.",
   130429:
     "Superaste el límite de mensajes por segundo de Meta. Reintenta en unos momentos.",
-  132000:
-    "La plantilla y los parámetros enviados no coinciden (faltan o sobran variables).",
-  132001:
-    "Meta no encuentra esa plantilla con ese idioma. Sincroniza las plantillas y confirma que sigue aprobada.",
-  132005:
-    "El texto traducido de la plantilla supera el límite de caracteres de Meta.",
-  132007:
-    "El contenido de la plantilla viola las políticas de Meta.",
-  132012:
-    "Los parámetros de la plantilla no respetan el formato que Meta espera.",
-  132015:
-    "La plantilla está pausada por baja calidad: Meta no la deja enviar hasta que se recupere.",
-  132016:
-    "La plantilla fue deshabilitada por calidad y ya no se puede enviar.",
   133010: "El número no está registrado en la Cloud API.",
   368: "El número está temporalmente bloqueado por infringir las políticas de Meta.",
 };

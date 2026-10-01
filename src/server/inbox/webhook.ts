@@ -115,12 +115,6 @@ export type WebhookValue = {
   /** Echoes de coexistence (008): mensajes enviados desde la app del teléfono. */
   message_echoes?: WebhookMessage[];
   statuses?: WebhookStatus[];
-  // message_template_status_update
-  event?: string;
-  message_template_name?: string;
-  message_template_language?: string;
-  message_template_id?: number | string;
-  reason?: string | null;
 };
 
 export type WebhookChange = { field?: string; value?: WebhookValue };

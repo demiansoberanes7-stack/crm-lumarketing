@@ -16,6 +16,11 @@ export async function maybeRunAgentTurn(
   const rows = await db.select({ organizationId: schema.conversation.organizationId }).from(schema.conversation).where(eq(schema.conversation.id, conversationId)).limit(1);
   if (!rows[0]) return;
   const aiConfig = await resolveAiConfig(rows[0].organizationId);
-  if (!isAiConfigured(aiConfig.token)) return;
+  if (!isAiConfigured(aiConfig.token)) {
+    console.warn(
+      `[agente] sin OPENROUTER_API_TOKEN en el runtime: el mensaje entró y no habrá respuesta (org ${rows[0].organizationId})`
+    );
+    return;
+  }
   scheduleAgentTurn(conversationId);
 }

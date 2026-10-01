@@ -4,21 +4,19 @@ import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
  * 014 — Capacidades declaradas por canal.
  *
  * El núcleo NO debe saber las reglas de WhatsApp: debe preguntarlas. Antes,
- * la ventana de 24 h y el "usa una plantilla aprobada" vivían incrustados en
- * el camino genérico de envío, así que cada canal nuevo tenía que pelearse con
- * suposiciones que no eran suyas — Instagram no tiene plantillas, y su salida
- * fuera de ventana es una etiqueta.
+ * la ventana de 24 h vivía incrustada en el camino genérico de envío, así que
+ * cada canal nuevo tenía que pelearse con suposiciones que no eran suyas: en
+ * Instagram la salida fuera de ventana es una etiqueta, en WhatsApp no hay
+ * ninguna salida.
  *
  * Agregar un canal debería ser: escribir su adaptador y declarar aquí lo que
  * puede y no puede hacer.
  */
 
 export type OutsideWindowStrategy =
-  /** Solo se puede reabrir con una plantilla aprobada (WhatsApp). */
-  | "template"
-  /** Se marca el mensaje como respuesta de agente humano (Instagram). */
+  /** Se marca el mensaje como respuesta de agente humano (Instagram/Messenger). */
   | "human_agent_tag"
-  /** No hay forma: fuera de ventana no se envía. */
+  /** No hay forma: fuera de ventana no se envía (WhatsApp). */
   | "none";
 
 export type ChannelCapabilities = {
@@ -46,7 +44,7 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
   whatsapp: {
     label: CHANNEL_LABEL.whatsapp,
     windowMs: DAY_MS,
-    outsideWindow: "template",
+    outsideWindow: "none",
     maxTextBytes: null,
     outboundMedia: true,
     deliveryReceipts: true,
@@ -62,8 +60,8 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     deliveryReceipts: false,
   },
   // 017: Messenger comparte la plataforma de mensajería de Meta con Instagram
-  // (misma ventana de 24 h, misma etiqueta HUMAN_AGENT fuera de ella, sin
-  // plantillas), pero admite textos más largos: 2000 caracteres. Se declara
+  // (misma ventana de 24 h, misma etiqueta HUMAN_AGENT fuera de ella), pero
+  // admite textos más largos: 2000 caracteres. Se declara
   // en bytes para no ser más generoso que la plataforma con acentos y emojis.
   messenger: {
     label: CHANNEL_LABEL.messenger,
@@ -91,8 +89,6 @@ export function capabilitiesFor(channel: Channel): ChannelCapabilities {
 export function windowClosedMessage(channel: Channel): string {
   const caps = capabilitiesFor(channel);
   switch (caps.outsideWindow) {
-    case "template":
-      return "La ventana de 24 horas está cerrada; usa una plantilla aprobada";
     case "human_agent_tag":
       // No se le pide nada al operador: el envío sale etiquetado solo.
       return "";

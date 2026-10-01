@@ -6,7 +6,6 @@ import {
   type WebhookPayload,
 } from "@/server/inbox/webhook";
 import { processEchoesValue, processMessagesValue } from "@/server/inbox/ingest";
-import { processTemplateStatusValue } from "@/server/whatsapp/template-events";
 
 /**
  * Webhook público de WhatsApp (contrato webhook.md).
@@ -77,8 +76,6 @@ async function processPayload(payload: WebhookPayload): Promise<void> {
       } else if (change.field === "smb_message_echoes") {
         // 008: mensajes enviados a mano desde la app del teléfono (coexistence)
         await processEchoesValue(change.value);
-      } else if (change.field === "message_template_status_update") {
-        await processTemplateStatusValue(entry.id ?? null, change.value);
       }
       // otros fields: ignorar sin error
     }

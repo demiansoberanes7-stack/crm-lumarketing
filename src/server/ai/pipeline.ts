@@ -104,7 +104,12 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const organizationId = conversation.organizationId;
 
   const aiConfig = await resolveAiConfig(organizationId);
-  if (!isAiConfigured(aiConfig.token)) return;
+  if (!isAiConfigured(aiConfig.token)) {
+    console.warn(
+      `[agente] sin OPENROUTER_API_TOKEN en el runtime: los mensajes entran pero nadie responde (org ${organizationId})`
+    );
+    return;
+  }
 
   // Condiciones de silencio: handoff activo o IA apagada en la conversación.
   if (conversation.handoffAt || !conversation.aiEnabled) return;
@@ -118,7 +123,12 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   if (!profile) return;
   // El toggle global aplica a conversaciones reales; el Laboratorio evalúa el
   // comportamiento configurado aunque el agente aún no esté encendido.
-  if (!conversation.isTest && !profile.enabled) return;
+  if (!conversation.isTest && !profile.enabled) {
+    console.warn(
+      `[agente] el agente está APAGADO en Ajustes → Agente: la conversación ${conversationId} queda sin respuesta (org ${organizationId})`
+    );
+    return;
+  }
 
   const history = await db
     .select()

@@ -8,7 +8,6 @@ import {
   ArchiveRestore,
   MessageSquareText,
   Search,
-  Send,
   Trash2,
   UserPlus,
 } from "lucide-react";
@@ -23,7 +22,6 @@ import { SOURCE_LABELS } from "@/server/contact-source";
 import { priorityRank } from "@/server/leads/priority";
 import { PriorityBadge } from "@/components/pipeline/priority-picker";
 import { NewContactDialog } from "./new-contact-dialog";
-import { StartConversation } from "./start-conversation";
 
 export function ContactsClient() {
   const router = useRouter();
@@ -34,7 +32,6 @@ export function ContactsClient() {
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<ContactDto | null>(null);
   const [creando, setCreando] = useState(false);
-  const [escribiendo, setEscribiendo] = useState<ContactDto | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Mismo rescate que en la Bandeja: lo tecleado antes de que hidrate el JS
@@ -207,17 +204,6 @@ export function ContactsClient() {
                   >
                     Editar
                   </Button>
-                  {/* A quien nunca escribió hay que abrirle la conversación con
-                      una plantilla: es regla de Meta, no del CRM. */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Escribir primero"
-                    title="Escribir primero (con plantilla)"
-                    onClick={() => setEscribiendo(c)}
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
                   <Link href={`/inbox?contact=${c.id}`}>
                     <Button variant="ghost" size="icon" aria-label="Abrir conversación">
                       <MessageSquareText className="h-4 w-4" />
@@ -260,36 +246,6 @@ export function ContactsClient() {
             setEditing(null);
           }}
         />
-      )}
-
-      {escribiendo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Escribir primero"
-        >
-          <div className="w-full max-w-md rounded-lg border bg-card p-4 shadow-pop">
-            <div className="mb-3 flex items-baseline justify-between gap-2">
-              <h3 className="font-semibold">
-                Escribir a {escribiendo.name}
-              </h3>
-              <Button variant="ghost" size="sm" onClick={() => setEscribiendo(null)}>
-                Cerrar
-              </Button>
-            </div>
-            <StartConversation
-              contactId={escribiendo.id}
-              onStarted={() => {
-                const contactId = escribiendo.id;
-                setEscribiendo(null);
-                // La Bandeja resuelve por CONTACTO (`?contact=`), no por
-                // conversación: con `?conversation=` no seleccionaría nada.
-                router.push(`/inbox?contact=${contactId}`);
-              }}
-            />
-          </div>
-        </div>
       )}
 
       {creando && (

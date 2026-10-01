@@ -67,9 +67,9 @@ la gente llegue por WhatsApp.
 14. **La fuente capturada manda; lo que nadie capturó no se inventa.**
     ✅ Quien llegó por WhatsApp queda "sin identificar" y marcado como deducido.
     ✅ La etiqueta de fuente solo se muestra cuando alguien la capturó.
-15. **Escribir primero**: el botón de enviar abre el panel de plantillas.
-    ✅ Solo plantillas aprobadas: iniciar con texto libre lo prohíbe Meta.
-    ✅ Con la ventana de 24 h abierta se avisa en vez de gastar una plantilla.
+15. **Sin plantillas**: no existe "escribir primero". Meta lo prohíbe por API
+    y el CRM es reactivo: solo se responde dentro de la ventana de 24 h.
+    ✅ Con la ventana cerrada el composer avisa y no deja enviar.
 
 ## Monto de la negociación
 

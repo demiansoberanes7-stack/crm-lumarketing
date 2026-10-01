@@ -12,7 +12,6 @@ import { isWindowOpen } from "@/server/inbox/window";
 import {
   sendText as wahaSendText,
   sendFile as wahaSendFile,
-  sendTemplate as wahaSendTemplate,
   typing as wahaTyping,
   clearTyping as wahaClearTyping,
   type WahaError,
@@ -38,8 +37,8 @@ export class WahaSendError extends Error {
 type SendResult = { messageId: string };
 
 /**
- * Verificar que la ventana de 24h esté abierta para un mensaje de texto libre.
- * Si está cerrada, solo se pueden enviar plantillas.
+ * Verificar que la ventana de 24h esté abierta: fuera de ella WhatsApp no
+ * admite texto libre y el CRM no tiene ninguna vía para reabrir el hilo.
  */
 function checkWindow(
   conversation: typeof schema.conversation.$inferSelect
@@ -47,7 +46,7 @@ function checkWindow(
   if (!isWindowOpen(conversation.lastInboundAt)) {
     throw new WahaSendError(
       "window_closed",
-      "La ventana de 24h está cerrada. Usa una plantilla para contactar al cliente."
+      "La ventana de 24h está cerrada: espera a que el cliente escriba para poder responderle."
     );
   }
 }
@@ -170,111 +169,6 @@ export async function sendWahaText(input: {
       "waha_error",
       `WAHA error: ${wahaErr.message}`
     );
-  }
-}
-
-/**
- * Enviar plantilla por WAHA (para mensajes fuera de ventana).
- */
-export async function sendWahaTemplate(input: {
-  organizationId: string;
-  conversationId: string;
-  templateName: string;
-  languageCode?: string;
-  components?: unknown[];
-}): Promise<SendResult> {
-  const creds = await getWahaCredentialsFull(input.organizationId);
-  if (!creds) {
-    throw new WahaSendError("not_connected", "WAHA no está conectado");
-  }
-
-  const db = getDb();
-  const convRows = await db
-    .select()
-    .from(schema.conversation)
-    .where(
-      scoped(schema.conversation.organizationId, input.organizationId, eq(schema.conversation.id, input.conversationId))
-    )
-    .limit(1);
-
-  const conversation = convRows[0];
-  if (!conversation) {
-    throw new WahaSendError("not_connected", "Conversación no encontrada");
-  }
-
-  const contactRows = await db
-    .select()
-    .from(schema.contact)
-    .where(
-      scoped(schema.contact.organizationId, input.organizationId, eq(schema.contact.id, conversation.contactId))
-    )
-    .limit(1);
-
-  const contact = contactRows[0];
-  if (!contact?.phone) {
-    throw new WahaSendError("not_connected", "Contacto sin teléfono");
-  }
-
-  try {
-    const chatId = chatIdFromPhone(contact.phone);
-    const result = await wahaSendTemplate(
-      creds.baseUrl,
-      creds.apiKey,
-      creds.sessionName,
-      chatId,
-      {
-        name: input.templateName,
-        language: { code: input.languageCode ?? "es" },
-        components: input.components,
-      }
-    );
-
-    const waMessageId = result.key.id;
-
-    const messageId = newId("message");
-    await db.insert(schema.message).values({
-      id: messageId,
-      organizationId: input.organizationId,
-      conversationId: input.conversationId,
-      waMessageId,
-      direction: "out",
-      type: "template",
-      text: input.templateName,
-      status: "sent",
-      origin: "template",
-    });
-
-    await db
-      .update(schema.conversation)
-      .set({
-        lastMessageAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        scoped(schema.conversation.organizationId, input.organizationId, eq(schema.conversation.id, input.conversationId))
-      );
-
-    publish(input.organizationId, {
-      type: "message.new",
-      data: {
-        conversationId: input.conversationId,
-        message: {
-          id: messageId,
-          conversationId: input.conversationId,
-          direction: "out",
-          type: "template",
-          text: input.templateName,
-          status: "sent",
-          origin: "template",
-        },
-      },
-    });
-
-    return { messageId };
-  } catch (err) {
-    if (err instanceof WahaSendError) throw err;
-    const wahaErr = err as WahaError;
-    throw new WahaSendError("waha_error", `WAHA error: ${wahaErr.message}`);
   }
 }
 

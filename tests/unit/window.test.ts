@@ -24,7 +24,7 @@ describe("ventana de 24 horas (FR-005)", () => {
     expect(isWindowOpen(last, now)).toBe(true);
   });
 
-  it("conversación sin ningún entrante (iniciada por plantilla) → cerrada", () => {
+  it("conversación sin ningún entrante → cerrada", () => {
     expect(isWindowOpen(null, now)).toBe(false);
     expect(windowRemainingMs(null, now)).toBe(0);
   });

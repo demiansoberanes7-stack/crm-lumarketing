@@ -252,33 +252,3 @@ export function buildStatusPayload(input: {
     ],
   };
 }
-
-export function buildTemplateStatusPayload(input: {
-  wabaId: string;
-  name: string;
-  language: string;
-  event: "APPROVED" | "REJECTED";
-  reason?: string;
-  templateId?: string;
-}) {
-  return {
-    object: "whatsapp_business_account",
-    entry: [
-      {
-        id: input.wabaId,
-        changes: [
-          {
-            field: "message_template_status_update",
-            value: {
-              event: input.event,
-              message_template_id: input.templateId ?? `tplmock_${nextN()}`,
-              message_template_name: input.name,
-              message_template_language: input.language,
-              reason: input.reason ?? null,
-            },
-          },
-        ],
-      },
-    ],
-  };
-}

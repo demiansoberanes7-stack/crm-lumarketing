@@ -2,8 +2,8 @@
  * Self-test E2E de comportamiento — un envío fallido DEBE decir por qué.
  * Guion tests/e2e/us-envio-fallido.md.
  *
- * Reproduce un caso real: se manda una plantilla APROBADA y el operador solo
- * ve un triángulo mudo. Meta sí había explicado el motivo (error 130472,
+ * Reproduce un caso real: se manda un mensaje y el operador solo ve un
+ * triángulo mudo. Meta sí había explicado el motivo (error 130472,
  * "User's number is part of an experiment"): el CRM lo guardaba en
  * `message.error` y nunca lo mostraba.
  *
@@ -94,8 +94,8 @@ const failed = msgs.find((m) => m.id === waId.id);
 ok("el mensaje quedó en failed", failed?.status === "failed", failed?.status);
 ok("y trae el motivo traducido, no la jerga de Meta",
    /experimento/i.test(failed?.error ?? ""), JSON.stringify(failed?.error));
-ok("el motivo sugiere qué hacer (plantilla UTILITY)",
-   /UTILITY/.test(failed?.error ?? ""), JSON.stringify(failed?.error));
+ok("el motivo sugiere qué hacer",
+   /experimenta|calidad|espera/i.test(failed?.error ?? ""), JSON.stringify(failed?.error));
 ok("conserva el código de Meta para rastrearlo",
    /130472/.test(failed?.error ?? ""), JSON.stringify(failed?.error));
 

@@ -10,10 +10,9 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import type { ConversationDto, TemplateDto } from "@/lib/types";
+import type { ConversationDto } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatRemaining } from "./helpers";
-import { TemplateSender } from "./template-sender";
 
 /** 008 — Panel secundario del clip: formulario de ubicación o contacto. */
 type AttachPanel = "location" | "contact" | null;
@@ -43,7 +42,6 @@ export function Composer({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<TemplateDto[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [panel, setPanel] = useState<AttachPanel>(null);
@@ -53,20 +51,6 @@ export function Composer({
   const [contactPhone, setContactPhone] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/templates")
-      .then((r) => (r.ok ? r.json() : { templates: [] }))
-      .then((d: { templates?: TemplateDto[] }) => {
-        if (!cancelled)
-          setTemplates((d.templates ?? []).filter((t) => t.status === "approved"));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // La URL del preview de imagen se libera al reemplazar/limpiar el archivo.
   useEffect(() => {
@@ -206,12 +190,11 @@ export function Composer({
             <p className="font-medium">La ventana de 24 horas está cerrada.</p>
             <p className="opacity-80">
               WhatsApp solo permite texto libre dentro de las 24 horas
-              siguientes al último mensaje del cliente. Para retomar la
-              conversación, envía una plantilla aprobada.
+              siguientes al último mensaje del cliente. Espera a que el
+              cliente escriba para poder responderle.
             </p>
           </div>
         </div>
-        <TemplateSender conversationId={conversation.id} onSent={onSent} />
       </div>
     );
   }
@@ -220,26 +203,6 @@ export function Composer({
 
   return (
     <div className="border-t bg-background px-[18px] pb-3.5 pt-3">
-      {templates.length > 0 && !file && panel === null && (
-        <div className="mb-2.5 flex flex-wrap gap-1.5">
-          {templates.slice(0, 4).map((t) => (
-            <button
-              key={t.id}
-              className="rounded-full border border-border-strong bg-background px-3 py-1 text-xs font-semibold text-text-2 transition-colors hover:border-brand hover:bg-brand-tint hover:text-brand-text"
-              onClick={() => {
-                const firstName = conversation.contact.name.split(" ")[0] ?? "";
-                setText(t.body.replace(/\{\{\s*1\s*\}\}/g, firstName));
-                taRef.current?.focus();
-                setTimeout(autogrow, 0);
-              }}
-              title={t.body}
-            >
-              {t.name.replace(/_/g, " ")}
-            </button>
-          ))}
-        </div>
-      )}
-
       {file && (
         <div className="mb-2.5 flex items-center gap-2.5 rounded-md border bg-subtle p-2.5">
           {filePreview ? (

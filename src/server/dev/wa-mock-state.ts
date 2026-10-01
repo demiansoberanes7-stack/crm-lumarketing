@@ -25,17 +25,6 @@ export type OutboxEntry = {
   waMessageId?: string;
 };
 
-export type MockTemplate = {
-  id: string;
-  name: string;
-  language: string;
-  category: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  body: string;
-  /** Componentes tal cual los mandó el CRM: Meta valida aquí los `example`. */
-  components?: unknown[];
-};
-
 /**
  * 016 — Un evento de Conversions API que el CRM le mandó al mock. El self-test
  * lo inspecciona para verificar la FORMA del payload: el modo de fallar de ese
@@ -54,7 +43,6 @@ export type CapiMockEvent = {
 
 type WaMockState = {
   outbox: OutboxEntry[];
-  templates: MockTemplate[];
   capiEvents: CapiMockEvent[];
   counter: number;
 };
@@ -65,7 +53,6 @@ export function getWaMockState(): WaMockState {
   if (!globalForMock.__waMockState) {
     globalForMock.__waMockState = {
       outbox: [],
-      templates: [],
       capiEvents: [],
       counter: 0,
     };
@@ -76,7 +63,6 @@ export function getWaMockState(): WaMockState {
 export function resetWaMockState(): void {
   globalForMock.__waMockState = {
     outbox: [],
-    templates: [],
     capiEvents: [],
     counter: 0,
   };

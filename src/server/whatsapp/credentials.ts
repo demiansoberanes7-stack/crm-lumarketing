@@ -51,19 +51,6 @@ export async function getCredentialsByPhoneNumberId(
   return rows[0] ? toCredentials(rows[0]) : null;
 }
 
-/** Resuelve la conexión por WABA ID (eventos a nivel WABA, ej. plantillas). */
-export async function getCredentialsByWabaId(
-  wabaId: string
-): Promise<Credentials | null> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(schema.metaCredentials)
-    .where(eq(schema.metaCredentials.wabaId, wabaId))
-    .limit(1);
-  return rows[0] ? toCredentials(rows[0]) : null;
-}
-
 export async function getCredentialsByOrg(
   organizationId: string
 ): Promise<Credentials | null> {

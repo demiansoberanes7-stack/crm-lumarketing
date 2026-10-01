@@ -55,16 +55,6 @@ export type MessageDto = {
   createdAt: string;
 };
 
-export type TemplateDto = {
-  id: string;
-  name: string;
-  language: string;
-  category: string;
-  body: string;
-  status: "draft" | "pending" | "approved" | "rejected";
-  rejectionReason: string | null;
-};
-
 export type StageDto = {
   id: string;
   name: string;

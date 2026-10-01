@@ -105,7 +105,7 @@ CRM no impone un cuestionario.
 28. Con la IA pausada (handoff), el mismo envío → **409** `ai_paused` y el
     outbox NO cambia: el rechazo ocurre antes de tocar Meta.
 29. Con la ventana de 24 h cerrada → **409** `window_closed`. El bot no puede
-    esquivar la regla de Meta; para eso está el envío de plantilla desde la app.
+    esquivar la regla de Meta: sin plantillas no hay forma de reabrir un hilo.
 30. En una conversación del Laboratorio → **409** `sandbox_violation`.
 
 ## El bot pide un humano

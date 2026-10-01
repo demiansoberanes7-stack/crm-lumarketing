@@ -1,7 +1,7 @@
 /**
  * Ventana de servicio de 24 horas de WhatsApp: solo se puede enviar texto
  * libre dentro de las 24h siguientes al último mensaje ENTRANTE. Una
- * conversación sin entrantes (p. ej. iniciada por plantilla) tiene la
+ * conversación sin entrantes (p. ej. creada a mano) tiene la
  * ventana cerrada.
  */
 

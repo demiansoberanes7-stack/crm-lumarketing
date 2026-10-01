@@ -124,9 +124,9 @@ async function prepareSend(
     );
   }
 
-  // 014: Instagram tiene su propio transporte, su propia ventana y NO tiene
-  // plantillas. Se resuelve antes que las credenciales de WhatsApp para no
-  // exigirle a una instancia de solo-Instagram un numero conectado.
+  // 014: Instagram tiene su propio transporte y su propia ventana. Se resuelve
+  // antes que las credenciales de WhatsApp para no exigirle a una instancia de
+  // solo-Instagram un numero conectado.
   if (row.conversation.channel === "instagram") {
     // Una conversacion de un canal apagado puede existir (se apago despues de
     // recibirla): falla claro en vez de intentar un transporte que no aplica.
@@ -163,8 +163,8 @@ async function prepareSend(
     };
   }
 
-  // 017: Messenger, mismo trato que Instagram: transporte propio, ventana
-  // propia (con etiqueta fuera de ella) y sin plantillas.
+  // 017: Messenger, mismo trato que Instagram: transporte propio y ventana
+  // propia (con etiqueta fuera de ella).
   if (row.conversation.channel === "messenger") {
     if (!isChannelEnabled("messenger")) {
       throw new SendError(
@@ -231,14 +231,14 @@ async function prepareSend(
     };
   }
 
-  // El nucleo no decide la politica: la consulta. WhatsApp exige plantilla
-  // fuera de ventana; Instagram etiqueta y sigue; otro canal podria no tener
-  // ventana en absoluto.
+  // El nucleo no decide la politica: la consulta. En WhatsApp fuera de ventana
+  // no hay salida; Instagram y Messenger etiquetan y siguen; otro canal podria
+  // no tener ventana en absoluto.
   const provider = await whatsappProvider(organizationId);
   const caps = capabilitiesFor(row.conversation.channel as Channel);
   if (
     provider !== "waha" && caps.windowMs !== null &&
-    caps.outsideWindow === "template" &&
+    caps.outsideWindow === "none" &&
     !isWindowOpen(row.conversation.lastInboundAt)
   ) {
     throw new SendError(
@@ -680,8 +680,8 @@ async function callInstagramSend(
     );
   }
 
-  // Instagram no tiene plantillas: fuera de la ventana de 24 h la única vía
-  // es la etiqueta de agente humano (hasta 7 días).
+  // Instagram: fuera de la ventana de 24 h la única vía es la etiqueta de
+  // agente humano (hasta 7 días).
   const humanAgentTag = !isWindowOpen(target.conversation.lastInboundAt);
 
   try {
@@ -733,8 +733,8 @@ async function callMessengerSend(
     );
   }
 
-  // Messenger no tiene plantillas: fuera de la ventana de 24 h la única vía
-  // es la etiqueta de agente humano (hasta 7 días).
+  // Messenger: fuera de la ventana de 24 h la única vía es la etiqueta de
+  // agente humano (hasta 7 días).
   const humanAgentTag = !isWindowOpen(target.conversation.lastInboundAt);
 
   try {

@@ -67,8 +67,8 @@ que la gente usa — y con ramas no habría dónde poner esa prueba.
 ## Consecuencias
 
 - El núcleo no puede saber las reglas de un canal concreto: las pregunta a
-  `src/server/channels/capabilities.ts`. La ventana, las plantillas, el límite
-  de texto y los acuses de entrega se declaran por canal.
+  `src/server/channels/capabilities.ts`. La ventana, la salida fuera de ella,
+  el límite de texto y los acuses de entrega se declaran por canal.
 - Agregar un canal es escribir su adaptador y declarar sus capacidades.
 - main carga código que no todas las instancias usan. Es el costo aceptado; se
   paga igual desde el momento en que la feature debe existir y funcionar, y la

@@ -68,8 +68,7 @@ no se abría.
    ✅ El hilo muestra UNA sola vez el mensaje.
 14. **Ventana cerrada (SC-005)**: inbound de contacto nuevo con
    `timestamp` de hace 25 horas → abrir su conversación.
-   ✅ El composer está bloqueado con la explicación de la ventana y ofrece
-   plantillas (estado vacío si no hay aprobadas).
+   ✅ El composer está bloqueado con la explicación de la ventana.
    ✅ `POST /api/conversations/:id/messages` responde 409 `window_closed`.
 15. **Webhook segmento incorrecto**: `POST /api/webhooks/wa/token-falso` → 404
     y no aparece nada nuevo en la bandeja.

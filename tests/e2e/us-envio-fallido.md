@@ -5,7 +5,7 @@
 
 ## El fallo original
 
-Se mandó una plantilla **aprobada** a un número real y el operador solo vio un
+Se mandó un mensaje a un número real y el operador solo vio un
 triángulo rojo, sin explicación. Meta sí había dicho el motivo en el webhook
 de estado:
 
@@ -25,7 +25,7 @@ el hilo. El operador no tenía forma de saber si el problema era suyo o de Meta.
    (`POST /api/dev/wa-mock/status` con `errorCode`/`errorMessage`).
    ✅ El mensaje pasa a `failed`.
    ✅ `error` explica el motivo **en español** ("…está en un experimento…"),
-   sugiere la salida (usar una plantilla **UTILITY**) y conserva el código
+   sugiere la salida y conserva el código
    `(Meta 130472)` para rastrearlo en la documentación.
 3. Abrir el hilo en la Bandeja.
    ✅ Bajo la burbuja aparece «**No se entregó.** …», no un triángulo mudo.

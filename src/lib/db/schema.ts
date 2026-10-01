@@ -492,34 +492,6 @@ export const kbEntry = pgTable(
   (t) => [index("kb_org_idx").on(t.organizationId)]
 );
 
-export const template = pgTable(
-  "template",
-  {
-    id: varchar("id", { length: 255 }).primaryKey(),
-    organizationId: varchar("organization_id", { length: 255 })
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 255 }).notNull(),
-    language: varchar("language", { length: 20 }).notNull(),
-    category: varchar("category", { length: 50 }).notNull(),
-    body: text("body").notNull(),
-    status: varchar("status", { length: 20 })
-      .notNull()
-      .default("draft"),
-    rejectionReason: text("rejection_reason"),
-    waTemplateId: varchar("wa_template_id", { length: 255 }),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("template_org_name_lang_uq").on(
-      t.organizationId,
-      t.name,
-      t.language
-    ),
-  ]
-);
-
 export const agentTestRun = pgTable(
   "agent_test_run",
   {

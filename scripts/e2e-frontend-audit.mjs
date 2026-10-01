@@ -168,7 +168,7 @@ try {
   await noOverflow("Configuración móvil");
   for (const path of ["whatsapp", "waha", "zernio"]) { await page.goto(`${base}/settings/${path}`); await noOverflow(`Ajustes ${path} móvil`); }
   await page.setViewportSize({ width: 1440, height: 1050 });
-  for (const path of ["dashboard", "inbox", "pipeline", "contacts", "balance", "quotes", "projects", "tareas", "lab", "settings/business", "settings/templates", "settings/agent", "settings/webhooks"]) {
+  for (const path of ["dashboard", "inbox", "pipeline", "contacts", "balance", "quotes", "projects", "tareas", "lab", "settings/business", "settings/agent", "settings/webhooks"]) {
     const response = await page.goto(`${base}/${path}`);
     check(`Auditoría de navegación: /${path}`, response.status() === 200);
   }

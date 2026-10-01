@@ -170,18 +170,6 @@ ok(
   JSON.stringify(basura.json)
 );
 
-console.log("\n== Escribir primero exige plantilla (regla de Meta) ==");
-const contactoNuevo = alta.json.contact.id;
-const sinPlantilla = await api(
-  `/api/contacts/${contactoNuevo}/start-conversation`,
-  { method: "POST", body: JSON.stringify({ templateId: "tpl_inexistente" }) }
-);
-ok(
-  "plantilla inexistente → error tipado, no 500",
-  sinPlantilla.res.status >= 400 && sinPlantilla.res.status < 500,
-  `status ${sinPlantilla.res.status}`
-);
-
 console.log(
   failures === 0
     ? `\nTODO VERDE — ${checks}/${checks} checks`

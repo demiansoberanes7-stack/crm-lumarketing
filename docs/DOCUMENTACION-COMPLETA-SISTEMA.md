@@ -541,7 +541,6 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 | `media_asset` | Archivos media | conversationId, type, mimeType, path, status |
 | `email_account` | Cuentas email | organizationId, imapHost, smtpHost, passwordCipher/iv/tag |
 | `email_message` | Mensajes email | accountId, messageId, subject, from, body |
-| `template` | Templates de WhatsApp | organizationId, name, category, status, body |
 | `integration_secret` | Secretos generales | organizationId, key, valueCipher/iv/tag |
 | `verification` | Verificaciones email | identifier, token, expiresAt |
 | `invitation` | Invitaciones de equipo | organizationId, email, role, status |
@@ -614,7 +613,7 @@ export function isChannelEnabled(channel: Channel): boolean {
 
 | Canal | Ventana | Fuera de ventana | Max texto | Media saliente | Estados de entrega |
 |-------|---------|------------------|-----------|----------------|-------------------|
-| WhatsApp | 24h | template | sin limite | Si | Si |
+| WhatsApp | 24h | none (no se envia) | sin limite | Si | Si |
 | Instagram | 24h | human_agent_tag | 1000 bytes | No | No |
 | Messenger | 24h | human_agent_tag | 2000 bytes | No | No |
 | TikTok | 24h | human_agent_tag | 1000 bytes | No | Si |
@@ -735,7 +734,7 @@ export function isWindowOpen(lastInboundAt: Date | null): boolean {
 ```
 
 Dentro de la ventana: el agente puede enviar texto libre.
-Fuera de la ventana: solo templates aprobados o handoff con razon "ventana".
+Fuera de la ventana: no hay salida (handoff con razon "ventana").
 
 ## Envio Multi-canal
 
@@ -1085,7 +1084,6 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | `/api/conversations/[id]` | GET/PUT | Obtener/actualizar conversacion |
 | `/api/conversations/[id]/messages` | GET | Historial de mensajes |
 | `/api/conversations/[id]/messages/media` | POST | Subir adjuntos |
-| `/api/conversations/[id]/messages/template` | POST | Enviar template |
 
 ## Contactos
 
@@ -1174,7 +1172,6 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | `/api/settings/webhook` | GET | URLs de webhooks |
 | `/api/settings/branding/*` | GET/PUT | Branding white-label |
 | `/api/settings/team` | GET/PUT | Equipo |
-| `/api/settings/templates` | GET | Templates |
 | `/api/settings/diagnostics` | GET | Diagnosticos |
 
 ## Webhooks
@@ -1636,7 +1633,6 @@ if (!signature) return true; // URL token ya valido la fuente
 | Send | `send-sandbox.test.ts` |
 | Stage history | `stage-history.test.ts`, `status-monotonic.test.ts` |
 | Tenant | `tenant.test.ts` |
-| Templates | `templates.test.ts` |
 | Webhooks | `webhook.test.ts` |
 | Window | `window.test.ts` |
 
@@ -1649,10 +1645,8 @@ if (!signature) return true; // URL token ya valido la fuente
 | `e2e-selftest.mjs` | Test comprehensive: BSUID, bot API, agenda, atribucion |
 | `e2e-lumark.mjs` | Flujos LUMARK: login, catalogo, cotizaciones, proyectos |
 | `e2e-bitacora-etapas.mjs` | Eventos de etapa del pipeline |
-| `e2e-templates-sync.mjs` | Sincronizacion de templates |
 | `e2e-send-failure.mjs` | Visualizacion de envios fallidos |
 | `e2e-search-filters.mjs` | Busqueda y filtros del inbox |
-| `e2e-templates-multivar.mjs` | Templates multi-variable |
 | `e2e-projects-tasks.mjs` | Proyectos y tareas |
 | `e2e-envio-instantaneo.mjs` | Envio instantaneo |
 | `e2e-messenger.mjs` | Canal Messenger |
@@ -1814,7 +1808,6 @@ node scripts/migrate.mjs
 | **scoped** | Funcion que agrega filtros de multi-tenancy a queries |
 | **SSE** | Server-Sent Events - protocolo de comunicacion unidireccional |
 | **slot** | Franja horaria disponible para agendar una cita |
-| **template** | Mensaje pre-aprobado por Meta para envio fuera de ventana |
 | **Zernio** | API unificada para Instagram, Messenger y TikTok |
 | **WAHA** | WhatsApp HTTP API - alternativa self-hosted a Meta Cloud API |
 | **window** | Ventana de 24h para responder mensajes gratuitamente |

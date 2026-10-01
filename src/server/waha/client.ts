@@ -192,28 +192,6 @@ export async function clearTyping(
   });
 }
 
-/** Enviar plantilla (out-of-window) */
-export async function sendTemplate(
-  baseUrl: string,
-  apiKey: string,
-  sessionName: string,
-  chatId: string,
-  template: { name: string; language: { code: string }; components?: unknown[] }
-): Promise<{ key: { id: string } }> {
-  const result = (await wahaRequest(
-    baseUrl,
-    apiKey,
-    `/api/${sessionName}/sendTemplate`,
-    {
-      method: "POST",
-      body: { chatId, template },
-    }
-  )) as { id?: string; key?: { id: string } };
-  const id = result.id ?? result.key?.id;
-  if (!id) throw new WahaError("WAHA no confirmó la plantilla");
-  return { key: { id } };
-}
-
 /** Obtener QR code */
 export async function getQR(
   baseUrl: string,

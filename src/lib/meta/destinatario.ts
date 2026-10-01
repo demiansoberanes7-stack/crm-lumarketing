@@ -18,7 +18,7 @@
  * parecer un misterio.
  *
  * Vive aparte porque hay CUATRO sitios que arman envíos (texto, adjuntos,
- * ubicación/contactos y plantillas) y con una copia en cada uno bastaría con
+ * ubicación/contactos) y con una copia en cada uno bastaría con
  * olvidar la quinta.
  */
 export type Destinatario =

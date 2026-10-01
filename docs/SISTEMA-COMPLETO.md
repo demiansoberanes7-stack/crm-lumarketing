@@ -14,12 +14,12 @@
 2. [Stack Tecnológico](#2-stack-tecnológico)
 3. [Arquitectura del Sistema](#3-arquitectura-del-sistema)
 4. [Base de Datos](#4-base-de-datos)
-5. [Autenticación y Multi-tenancy](#5-autenticación-y-multi-tenancy)
+5. [Autenticación y Multi-tenancy](#5-autenticación-y-multitenancy)
 6. [Canales de Comunicación](#6-canales-de-comunicación)
 7. [Sistema de Webhooks](#7-sistema-de-webhooks)
 8. [Bandeja de Entrada Unificada](#8-bandeja-de-entrada-unificada)
 9. [Agente de IA](#9-agente-de-ia)
-10. [Laboratorio de Auto-evaluación](#10-laboratorio-de-auto-evaluación)
+10. [Laboratorio de Auto-evaluación](#10-laboratorio-de-autoevaluación)
 11. [Módulo de Contactos](#11-módulo-de-contactos)
 12. [Pipeline Comercial y Leads](#12-pipeline-comercial-y-leads)
 13. [Cotizaciones](#13-cotizaciones)
@@ -31,18 +31,17 @@
 19. [Sistema de Diagnóstico](#19-sistema-de-diagnóstico)
 20. [Notificaciones en Tiempo Real (SSE)](#20-notificaciones-en-tiempo-real-sse)
 21. [Webhooks Salientes](#21-webhooks-salientes)
-22. [Sistema de Plantillas](#22-sistema-de-plantillas)
-23. [Gestión de Medios](#23-gestión-de-medios)
-24. [Branding y Personalización](#24-branding-y-personalización)
-25. [Configuración del Sistema](#25-configuración-del-sistema)
-26. [Variables de Entorno](#26-variables-de-entorno)
-27. [Despliegue con EasyPanel](#27-despliegue-con-easypanel)
-28. [Docker y Contenedores](#28-docker-y-contenedores)
-29. [Seguridad](#29-seguridad)
-30. [Constitución y Reglas](#30-constitución-y-reglas)
-31. [Guía de Configuración por Canal](#31-guía-de-configuración-por-canal)
-32. [Troubleshooting](#32-troubleshooting)
-33. [Glosario](#33-glosario)
+22. [Gestión de Medios](#22-gestión-de-medios)
+23. [Branding y Personalización](#23-branding-y-personalización)
+24. [Configuración del Sistema](#24-configuración-del-sistema)
+25. [Variables de Entorno](#25-variables-de-entorno)
+26. [Despliegue con EasyPanel](#26-despliegue-con-easypanel)
+27. [Docker y Contenedores](#27-docker-y-contenedores)
+28. [Seguridad](#28-seguridad)
+29. [Constitución y Reglas](#29-constitución-y-reglas)
+30. [Guía de Configuración por Canal](#30-guía-de-configuración-por-canal)
+31. [Troubleshooting](#31-troubleshooting)
+32. [Glosario](#32-glosario)
 
 ---
 
@@ -369,7 +368,7 @@ const CHANNEL_LABEL: Record<Channel, string> = {
 
 | Canal | Ventana 24h | Fuera de Ventana | Máximo Texto | Medios | Confirmaciones |
 |---|---|---|---|---|---|
-| WhatsApp | 24h | template | Sin límite | Sí | Sí |
+| WhatsApp | 24h | none (no se envía) | Sin límite | Sí | Sí |
 | Instagram | 24h | human_agent_tag | 1000 bytes | No | No |
 | Messenger | 24h | human_agent_tag | 2000 bytes | No | No |
 | TikTok | 24h | human_agent_tag | 1000 bytes | No | Sí |
@@ -391,7 +390,7 @@ const CHANNEL_LABEL: Record<Channel, string> = {
 - **GET**: Handshake de verificación Meta (hub.mode, hub.verify_token, hub.challenge)
 - **POST**: Autenticación en 2 capas (token + HMAC signature)
 - **Procesamiento**: En `after()` para respuesta inmediata 200
-- **Eventos**: `messages`, `smb_message_echoes`, `message_template_status_update`
+- **Eventos**: `messages`, `smb_message_echoes`
 
 #### Instagram + TikTok (`/api/webhooks/ig/[webhookToken]/route.ts`)
 - **Gate**: 404 si Instagram y TikTok están deshabilitados
@@ -1031,34 +1030,7 @@ outbound_webhook: {
 
 ---
 
-## 22. Sistema de Plantillas
-
-### Tabla `template`
-
-```typescript
-template: {
-  id: string
-  organizationId: string
-  name: string
-  category: string         // marketing, utility, authentication
-  language: string         // es, en, etc.
-  status: string           // APPROVED, PENDING, REJECTED
-  components: json         // Componentes de la plantilla
-  body: string             // Cuerpo del mensaje
-  variables: string[]      // Variables detectadas
-}
-```
-
-### Funcionalidades
-
-- Importación desde Meta Cloud API
-- Renderizado para vista previa
-- Envío de plantillas fuera de la ventana de 24h
-- Detección automática de variables
-
----
-
-## 23. Gestión de Medios
+## 22. Gestión de Medios
 
 ### Tabla `media_asset`
 
@@ -1089,7 +1061,7 @@ media_asset: {
 
 ---
 
-## 24. Branding y Personalización
+## 23. Branding y Personalización
 
 ### Identidad Visual (`src/lib/brand.ts`)
 
@@ -1142,7 +1114,7 @@ Se guarda en `organization.metadata` como JSON.
 
 ---
 
-## 25. Configuración del Sistema
+## 24. Configuración del Sistema
 
 ### Páginas de Configuración
 
@@ -1154,7 +1126,6 @@ Se guarda en `organization.metadata` como JSON.
 | `/settings/instagram` | Configuración de Instagram |
 | `/settings/messenger` | Configuración de Messenger |
 | `/settings/tiktok` | Configuración de TikTok |
-| `/settings/templates` | Gestión de plantillas WhatsApp |
 | `/settings/calendar` | Agenda/calendario |
 | `/settings/ads` | Atribución de anuncios/CAPI |
 | `/settings/branding` | Branding white-label + favicon |
@@ -1170,7 +1141,7 @@ Se guarda en `organization.metadata` como JSON.
 
 ---
 
-## 26. Variables de Entorno
+## 25. Variables de Entorno
 
 ### Esenciales
 
@@ -1241,7 +1212,7 @@ AGENT_COALESCE_MS=6000
 
 ---
 
-## 27. Despliegue con EasyPanel
+## 26. Despliegue con EasyPanel
 
 ### Infraestructura Actual
 
@@ -1293,7 +1264,7 @@ MEDIA_DIR=/data/media
 
 ---
 
-## 28. Docker y Contenedores
+## 27. Docker y Contenedores
 
 ### Dockerfile (Multi-stage)
 
@@ -1349,7 +1320,7 @@ Retorna status 200 si el sistema está operativo.
 
 ---
 
-## 29. Seguridad
+## 28. Seguridad
 
 ### Cifrado en Reposo
 
@@ -1415,7 +1386,7 @@ validateWahaUrl(url: string): void
 
 ---
 
-## 30. Constitución y Reglas
+## 29. Constitución y Reglas
 
 ### Regla I: Seguridad
 - Secretos cifrados en reposo (AES-256-GCM)
@@ -1455,7 +1426,7 @@ validateWahaUrl(url: string): void
 
 ---
 
-## 31. Guía de Configuración por Canal
+## 30. Guía de Configuración por Canal
 
 ### WhatsApp (Meta Cloud API)
 
@@ -1503,7 +1474,7 @@ validateWahaUrl(url: string): void
 
 ---
 
-## 32. Troubleshooting
+## 31. Troubleshooting
 
 ### El CRM no carga
 
@@ -1549,7 +1520,7 @@ validateWahaUrl(url: string): void
 
 ---
 
-## 33. Glosario
+## 32. Glosario
 
 | Término | Definición |
 |---|---|

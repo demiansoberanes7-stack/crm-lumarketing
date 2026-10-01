@@ -15,7 +15,6 @@ const prefixes = {
   credentials: "cred",
   agentProfile: "agp",
   kbEntry: "kb",
-  template: "tpl",
   testRun: "run",
   testCase: "case",
   mediaAsset: "ma",

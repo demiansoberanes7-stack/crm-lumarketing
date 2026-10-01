@@ -57,7 +57,7 @@ describe("017 · Messenger en el catálogo de canales", () => {
     expect(channelMark("messenger")).not.toBeNull();
   });
 
-  it("capacidades: 24 h con etiqueta fuera de ventana, sin plantillas ni adjuntos salientes", () => {
+  it("capacidades: 24 h con etiqueta fuera de ventana, sin adjuntos salientes", () => {
     const caps = capabilitiesFor("messenger");
     expect(caps.windowMs).toBe(24 * 60 * 60 * 1000);
     expect(caps.outsideWindow).toBe("human_agent_tag");
