@@ -19,7 +19,7 @@ concurrency:
 
 env:
   # Cambia esto si tu usuario de Docker Hub es diferente
-  DOCKER_IMAGE: demiansoberanes7/lumark-crm
+  DOCKER_IMAGE: ghostbreakfast69/lumark-crm
 
 jobs:
   build-and-push:
