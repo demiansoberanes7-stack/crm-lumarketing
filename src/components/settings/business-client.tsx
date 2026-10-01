@@ -103,7 +103,8 @@ export function BusinessSettingsClient() {
         <div className="space-y-2">
           <Label>Logo de la empresa</Label>
           <p className="text-xs text-muted-foreground">
-            Si subes un logo, se mostrará en las cotizaciones. Si lo dejas vacío, se usa el nombre de la empresa como texto.
+            Si subes un logo (PNG, JPG o SVG), se mostrará en las cotizaciones y en los
+            expedientes de proyecto. Si lo dejas vacío, se usa el nombre de la empresa como texto.
           </p>
           <div className="flex items-center gap-4">
             {settings.logoUrl ? (

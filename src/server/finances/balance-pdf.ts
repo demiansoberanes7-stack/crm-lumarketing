@@ -1,9 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type RGB } from "pdf-lib";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
 import { financialReport } from "./report";
 import { getBusinessSettings } from "@/server/business-settings";
-import { money } from "@/server/documents/pdf";
+import { money, tryLoadLogo } from "@/server/documents/pdf";
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -18,27 +16,8 @@ const GREEN = rgb(0.15, 0.55, 0.25);
 const RED = rgb(0.75, 0.2, 0.2);
 const _noop = undefined as unknown as (val: string) => RGB;
 
-const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
-
 function clean(s: string): string {
-  return s.replace(/[\r\n\t]/g, " ").replace(/[^\u0020-\u00ff]/g, "?");
-}
-
-function tryLoadLogo(logoUrl: string | undefined, organizationId: string): { data: Uint8Array; mime: string } | null {
-  if (!logoUrl) return null;
-  const match = logoUrl.match(/\/([^/]+)$/);
-  if (!match) return null;
-  const filename = match[1]!;
-  const filePath = join(MEDIA_DIR, organizationId, filename);
-  if (!existsSync(filePath)) return null;
-  try {
-    const data = readFileSync(filePath);
-    const ext = filename.split(".").pop()?.toLowerCase();
-    const mime = ext === "png" ? "image/png" : ext === "svg" ? "image/svg+xml" : "image/jpeg";
-    return { data: new Uint8Array(data), mime };
-  } catch {
-    return null;
-  }
+  return s.replace(/[\r\n\t]/g, " ").replace(/[^ -ÿ]/g, "?");
 }
 
 export async function balancePdf(organizationId: string, period: { from: Date; to: Date }) {

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { Resvg } from "@resvg/resvg-js";
 
 export const PAGE_W = 595.28;
 export const PAGE_H = 841.89;
@@ -34,7 +35,29 @@ export function wrapText(text: string, font: PDFFont, size: number, maxWidth: nu
   return lines.length ? lines : [""];
 }
 
-/** Logo del negocio desde MEDIA_DIR (solo PNG/JPEG embebibles). */
+/** Ancho al que se rasteriza un logo SVG (suficiente para un encabezado). */
+const SVG_LOGO_WIDTH = 512;
+
+/**
+ * Rasteriza un SVG a PNG embebible. pdf-lib solo admite PNG/JPEG, así que el
+ * logo SVG se convierte aquí (local, sin servicios externos) antes de dibujarlo.
+ * Devuelve null si el SVG no se puede rasterizar.
+ */
+export function svgToPng(svg: Uint8Array): Uint8Array | null {
+  try {
+    const resvg = new Resvg(Buffer.from(svg).toString("utf8"), {
+      fitTo: { mode: "width", value: SVG_LOGO_WIDTH },
+    });
+    return new Uint8Array(resvg.render().asPng());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Logo del negocio desde MEDIA_DIR. PNG y JPEG van directos; el SVG se
+ * rasteriza para que también entre a los PDF (cotizaciones y proyectos).
+ */
 export function tryLoadLogo(
   logoUrl: string | undefined,
   organizationId: string
@@ -48,7 +71,11 @@ export function tryLoadLogo(
   try {
     const data = readFileSync(filePath);
     const ext = filename.split(".").pop()?.toLowerCase();
-    const mime = ext === "png" ? "image/png" : ext === "svg" ? "image/svg+xml" : "image/jpeg";
+    if (ext === "svg") {
+      const png = svgToPng(data);
+      return png ? { data: png, mime: "image/png" } : null;
+    }
+    const mime = ext === "png" ? "image/png" : "image/jpeg";
     return { data: new Uint8Array(data), mime };
   } catch {
     return null;

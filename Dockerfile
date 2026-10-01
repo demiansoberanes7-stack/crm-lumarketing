@@ -39,6 +39,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=384"
+# Tipografías del sistema: sin ellas el rasterizado de logos SVG pierde el texto.
+RUN apk add --no-cache fontconfig ttf-dejavu
 RUN addgroup -S lumark && adduser -S lumark -G lumark
 # Punto de montaje del volumen de adjuntos, propiedad del usuario de la app
 RUN mkdir -p /data/media && chown -R lumark:lumark /data

@@ -5,6 +5,7 @@ import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PdfActions } from "@/components/pdf-actions";
 import { ProjectTypePicker } from "./project-type-picker";
 import { ProjectWizard } from "./project-wizard";
 import { ProjectDetail } from "./project-detail";
@@ -178,6 +179,7 @@ export function ProjectsClient() {
                     )}
                   </div>
                   <div className="flex items-center gap-1">
+                    <PdfActions url={`/api/projects/${p.id}/pdf`} filename={`${p.code}.pdf`} compact />
                     {showArchived && (
                       <Button
                         variant="ghost"

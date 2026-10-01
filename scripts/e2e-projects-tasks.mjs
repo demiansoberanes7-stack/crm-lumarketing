@@ -21,10 +21,9 @@ let cookie = "";
 let projectId, secondProjectId, foreignProjectId, browser;
 let checks = 0;
 /** pdf-lib guarda el texto en streams Flate + strings hex: inflar y comparar en hex. */
-function pdfIncluye(buf, texto) {
-  const objetivo = Buffer.from(texto, "latin1").toString("hex").toUpperCase();
+function pdfAplanado(buf) {
   const plano = buf.toString("latin1");
-  if (plano.includes(objetivo) || plano.includes(texto)) return true;
+  const partes = [plano];
   for (const m of plano.matchAll(/stream\r?\n/g)) {
     const inicio = m.index + m[0].length;
     const fin = buf.indexOf(Buffer.from("endstream"), inicio);
@@ -32,12 +31,17 @@ function pdfIncluye(buf, texto) {
     const chunk = buf.subarray(inicio, fin);
     for (const inflate of [zlib.inflateSync, zlib.inflateRawSync]) {
       try {
-        const dec = inflate(chunk).toString("latin1");
-        if (dec.includes(objetivo) || dec.includes(texto)) return true;
-      } catch { /* stream no comprimido con este método */ }
+        partes.push(inflate(chunk).toString("latin1"));
+        break;
+      } catch { /* stream sin comprimir o con otro método */ }
     }
   }
-  return false;
+  return partes.join("\n");
+}
+function pdfIncluye(buf, texto) {
+  const objetivo = Buffer.from(texto, "latin1").toString("hex").toUpperCase();
+  const a = pdfAplanado(buf);
+  return a.includes(objetivo) || a.includes(texto);
 }
 function check(name, condition) { assert.ok(condition, name); checks++; console.log(`OK ${name}`); }
 async function api(path, method = "GET", body, authenticated = true) {
@@ -116,7 +120,7 @@ try {
   foreignProjectId = `test_prj_foreign_${suffix}`;
   await sql`INSERT INTO project (id, organization_id, code, name) VALUES (${foreignProjectId}, ${otherOrg}, ${'PRJ-X-' + suffix}, 'Proyecto ajeno')`;
   let wfSteps = (await api(`/api/projects/${wf}/steps`)).data;
-  check("stepper con paso general + 6 pasos de marketing", wfSteps.steps.length === 7 && wfSteps.steps[0].key === "general" && wfSteps.status === "borrador");
+  check("stepper con paso general + 7 pasos de marketing", wfSteps.steps.length === 8 && wfSteps.steps[0].key === "general" && wfSteps.status === "borrador");
   check("pasos de otra organización rechazados", (await api(`/api/projects/${foreignProjectId}/steps`)).status === 404);
   check("guardar paso de otra organización rechazado", (await api(`/api/projects/${foreignProjectId}/steps/general`, "PUT", { data: { name: "No" } })).status === 404);
   check("paso inexistente para el tipo rechazado", (await api(`/api/projects/${wf}/steps/inventario`, "PUT", { data: {} })).status === 422);
@@ -127,9 +131,15 @@ try {
   const genProject = (await api(`/api/projects/${wf}`)).data.project;
   check("nombre y fechas viven en el proyecto", genProject.name === `Proyecto workflow ${suffix}` && String(genProject.startDate).startsWith("2026-10-01") && String(genProject.endDate).startsWith("2026-12-15"));
   check("borrador avanza a en_proceso", genProject.status === "en_proceso" && genProject.estado === "activo");
-  check("avance proporcional a pasos", genProject.avance === 14);
+  check("avance proporcional a pasos", genProject.avance === 13);
   const stepPayloads = {
-    objetivos: { objetivo: "Generar leads calificados", meta: "+30% leads", alcance: "nacional" },
+    objetivos: { objetivo: "Generar leads calificados", meta: "+30% leads" },
+    buyer_person: {
+      cobertura: "nacional",
+      demografia: "30 a 45 años, CDMX y GDL, NSE B/C, dueños de negocio",
+      psicografia: "Crecer sin depender de publicidad pagada; valoran los resultados medibles",
+      comportamiento: "Compara 3 agencias antes de decidir; objeción principal: costo",
+    },
     presupuesto: { presupuesto: 15000, duracion_dias: 90 },
     canales: { canales: ["instagram", "facebook"] },
     contenido: { pilares: "Educación de producto" },
@@ -143,7 +153,7 @@ try {
   wfSteps = (await api(`/api/projects/${wf}/steps`)).data;
   check("avance 100 con todos los pasos completos", wfSteps.avance === 100 && wfSteps.steps.every((s) => s.status === "completado"));
   const draftSave = await api(`/api/projects/${wf}/steps/cierre`, "PUT", { data: { entregables: "Borrador sin completar" }, complete: false });
-  check("guardar borrador no completa el paso", draftSave.status === 200 && draftSave.data.step.status === "en_proceso" && draftSave.data.avance === 86);
+  check("guardar borrador no completa el paso", draftSave.status === 200 && draftSave.data.step.status === "en_proceso" && draftSave.data.avance === 88);
   check("reponer paso completado", (await api(`/api/projects/${wf}/steps/cierre`, "PUT", { data: { entregables: "Reporte final editable" }, complete: true })).status === 200);
   check("finalizar proyecto", (await api(`/api/projects/${wf}/status`, "POST", { status: "completado" })).status === 200);
   const wfDone = (await api(`/api/projects/${wf}`)).data.project;
@@ -154,6 +164,56 @@ try {
   const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
   check("PDF real con encabezado y código", pdfBuffer.subarray(0, 5).toString("latin1") === "%PDF-" && pdfIncluye(pdfBuffer, "EXPEDIENTE DE PROYECTO") && pdfIncluye(pdfBuffer, wfDone.code));
   check("PDF sin sesión rechazado", (await fetch(`${base}/api/projects/${wf}/pdf`)).status === 401);
+
+  // ── PDF: mismos datos de empresa y logo que la cotización ──
+  const empresa = `Casa Demo ${suffix}`;
+  check(
+    "sembrar datos de empresa",
+    (await api("/api/settings/business", "PUT", {
+      companyName: empresa,
+      email: "hola@lumark.qa",
+      phone: "55 1234 5678",
+      address: "Av. Siempre Viva 742",
+    })).status === 200
+  );
+  const pedirPdf = async (qs = "") =>
+    Buffer.from(await (await fetch(`${base}/api/projects/${wf}/pdf${qs}`, { headers: { cookie } })).arrayBuffer());
+  const pdfEmpresa = await pedirPdf();
+  check("PDF con el nombre de la empresa", pdfIncluye(pdfEmpresa, empresa));
+  check(
+    "PDF con footer de contacto",
+    pdfIncluye(pdfEmpresa, "hola@lumark.qa") && pdfIncluye(pdfEmpresa, "55 1234 5678")
+  );
+
+  const descarga = await fetch(`${base}/api/projects/${wf}/pdf?download=1`, { headers: { cookie } });
+  const disposition = descarga.headers.get("content-disposition") ?? "";
+  await descarga.arrayBuffer();
+  check(
+    "?download=1 devuelve attachment",
+    descarga.ok && disposition.startsWith("attachment") && disposition.includes(".pdf")
+  );
+
+  async function subirLogo(nombre, mime, contenido) {
+    const form = new FormData();
+    form.append("file", new Blob([contenido], { type: mime }), nombre);
+    const res = await fetch(`${base}/api/settings/business/logo`, {
+      method: "POST",
+      headers: { cookie },
+      body: form,
+    });
+    return res.status;
+  }
+  const pngLogo = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGPgjf5PEmIY1TCqYfhqAADpLGcQ7emRCgAAAABJRU5ErkJggg==",
+    "base64"
+  );
+  const svgLogo =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="8" fill="#0d5bff"/><path d="M16 44 L32 16 L48 44 Z" fill="#ffffff"/></svg>';
+
+  check("subir logo PNG", (await subirLogo("logo.png", "image/png", pngLogo)) === 200);
+  check("PDF con logo PNG embebido", pdfAplanado(await pedirPdf()).includes("/Image"));
+  check("subir logo SVG", (await subirLogo("logo.svg", "image/svg+xml", svgLogo)) === 200);
+  check("PDF rasteriza el logo SVG a imagen", pdfAplanado(await pedirPdf()).includes("/Image"));
 
   if (process.env.E2E_BROWSER === "1") {
     console.log("Iniciando comprobación visual con Chromium…");
@@ -252,26 +312,56 @@ try {
     const reanudado = await page.getByLabel(/^Objetivo principal/).inputValue();
     check("al reabrir se recuperan los datos del borrador", reanudado === "Generar leads calificados desde la web");
     await page.getByRole("button", { name: "Guardar y continuar" }).click();
-    await page.getByRole("heading", { name: "3. Presupuesto" }).waitFor({ timeout: defaultTimeout });
+    await page.getByRole("heading", { name: "3. Buyer person" }).waitFor({ timeout: defaultTimeout });
+    await page.getByLabel(/^Cobertura/).selectOption("nacional");
+    await page.getByLabel(/^Perfil demográfico/).fill("30 a 45 años, CDMX, NSE B, dueños de negocio");
+    await page.getByLabel(/^Perfil psicográfico/).fill("Quieren crecer sin depender de pauta; valoran lo medible");
+    await page.getByRole("button", { name: "Guardar y continuar" }).click();
+    await page.getByRole("heading", { name: "4. Presupuesto" }).waitFor({ timeout: defaultTimeout });
     await page.getByLabel(/^Presupuesto total/).fill("15000");
     await page.getByRole("button", { name: "Guardar y continuar" }).click();
-    await page.getByRole("heading", { name: "4. Canales y audiencia" }).waitFor({ timeout: defaultTimeout });
+    await page.getByRole("heading", { name: "5. Canales y audiencia" }).waitFor({ timeout: defaultTimeout });
     await page.getByLabel("Instagram").check();
     await page.getByRole("button", { name: "Guardar y continuar" }).click();
-    await page.getByRole("heading", { name: "5. Plan de contenido" }).waitFor({ timeout: defaultTimeout });
+    await page.getByRole("heading", { name: "6. Plan de contenido" }).waitFor({ timeout: defaultTimeout });
     await page.getByLabel(/^Pilares de contenido/).fill("Educación y casos de éxito");
     await page.getByRole("button", { name: "Guardar y continuar" }).click();
-    await page.getByRole("heading", { name: "6. Métricas y reportes" }).waitFor({ timeout: defaultTimeout });
+    await page.getByRole("heading", { name: "7. Métricas y reportes" }).waitFor({ timeout: defaultTimeout });
     await page.getByLabel(/^KPIs a perseguir/).fill("CPL y ROAS");
     await page.getByRole("button", { name: "Guardar y continuar" }).click();
-    await page.getByRole("heading", { name: "7. Entregables y cierre" }).waitFor({ timeout: defaultTimeout });
+    await page.getByRole("heading", { name: "8. Entregables y cierre" }).waitFor({ timeout: defaultTimeout });
     await page.getByRole("button", { name: "Guardar y finalizar" }).click();
     await page.getByRole("heading", { name: "Proyecto finalizado" }).waitFor({ timeout: defaultTimeout });
-    check("finalizar muestra el resumen con PDF", await page.getByRole("button", { name: "Descargar PDF" }).isVisible());
+    check(
+      "finalizar muestra el resumen con PDF",
+      await page.getByRole("button", { name: "Descargar PDF", exact: true }).isVisible()
+    );
     await page.getByRole("button", { name: "Ver expediente" }).click();
     await page.getByText("Completado", { exact: true }).first().waitFor({ timeout: defaultTimeout });
-    await page.getByText("7 de 7 pasos completados").waitFor({ timeout: defaultTimeout });
-    check("el expediente refleja 7 de 7 y estado Completado", true);
+    await page.getByText("8 de 8 pasos completados").waitFor({ timeout: defaultTimeout });
+    check("el expediente refleja 8 de 8 y estado Completado", true);
+    console.log("Verificando controles PDF en la lista y vista previa…");
+    await page.goto(`${base}/projects`, { waitUntil: "domcontentloaded" });
+    const verPdfBtn = page.getByRole("button", { name: /^Ver PDF de PRJ-/ }).first();
+    await verPdfBtn.waitFor({ timeout: defaultTimeout });
+    check("la lista enseña controles de PDF", await page.getByRole("button", { name: /^Descargar PDF de PRJ-/ }).first().isVisible());
+    let modalAbierto = false;
+    for (let intento = 0; intento < 5 && !modalAbierto; intento++) {
+      await verPdfBtn.click();
+      try {
+        await page.getByRole("dialog", { name: /^Vista previa de/ }).waitFor({ timeout: 5000 });
+        modalAbierto = true;
+      } catch { await page.waitForTimeout(1000); }
+    }
+    check("ver PDF abre la vista previa en modal", modalAbierto);
+    if (modalAbierto) {
+      await page.locator('iframe[title^="Vista previa"]').waitFor({ timeout: defaultTimeout });
+      check("el modal carga el PDF en el iframe", true);
+      await page.getByRole("button", { name: "Cerrar vista previa" }).click();
+      await page.getByRole("dialog", { name: /^Vista previa de/ }).waitFor({ state: "detached", timeout: defaultTimeout });
+      check("el modal se cierra", true);
+    }
+
     const wizardProject = (await api("/api/projects?limit=1")).data.projects.find((p) => p.name === `Wizard UI ${suffix}`);
     check("proyecto creado por la UI persiste completado", !!wizardProject && wizardProject.status === "completado" && wizardProject.avance === 100 && wizardProject.projectType === "marketing");
     await browser.close(); browser = null;

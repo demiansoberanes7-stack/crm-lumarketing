@@ -15,6 +15,7 @@ import {
   parseStepData,
   stepDataDefaults,
   statusToEstado,
+  stepZodSchema,
   stepsForType,
   type ProjectFieldDef,
   type ProjectStepDef,
@@ -115,6 +116,51 @@ describe("registro de tipos de proyecto", () => {
     expect(findStep("marketing", "inventario")).toBeUndefined();
     expect(getProjectType("no_existe")).toBeUndefined();
     expect(isProjectTypeKey("no_existe")).toBe(false);
+  });
+
+  it("marketing define el bloque de buyer person y ya no el alcance geográfico", () => {
+    const marketing = getProjectType("marketing")!;
+    expect(marketing.steps.map((s) => s.key)).toEqual([
+      "objetivos",
+      "buyer_person",
+      "presupuesto",
+      "canales",
+      "contenido",
+      "metricas",
+      "cierre",
+    ]);
+    const buyer = findStep("marketing", "buyer_person")!;
+    expect(buyer.label).toBe("Buyer person");
+    expect(buyer.kind).toBe("data");
+    expect(buyer.fields.map((f) => f.key)).toEqual([
+      "cobertura",
+      "demografia",
+      "psicografia",
+      "comportamiento",
+    ]);
+    expect(buyer.fields.filter((f) => f.required).map((f) => f.key)).toEqual([
+      "demografia",
+      "psicografia",
+    ]);
+    expect(buyer.fields[0]?.type).toBe("select");
+    expect(buyer.fields[0]?.options?.map((o) => o.value)).toEqual([
+      "local",
+      "regional",
+      "nacional",
+      "internacional",
+    ]);
+    // El paso de objetivos ya no arrastra la cobertura geográfica.
+    expect(findStep("marketing", "objetivos")?.fields.map((f) => f.key)).toEqual([
+      "objetivo",
+      "meta",
+    ]);
+    // El validador exige demografía y psicografía para completar el paso.
+    const schema = stepZodSchema(buyer);
+    expect(schema.safeParse({}).success).toBe(false);
+    expect(schema.safeParse({ demografia: "35 años, CDMX", psicografia: "Emprendedores" }).success).toBe(
+      true
+    );
+    expect(schema.safeParse({ cobertura: "nacional" }).success).toBe(false);
   });
 });
 

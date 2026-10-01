@@ -169,9 +169,17 @@ export const PROJECT_TYPES: ProjectTypeDef[] = [
             required: true,
             placeholder: "+30% de leads en 90 días",
           },
+        ],
+      },
+      {
+        key: "buyer_person",
+        label: "Buyer person",
+        description: "A quién le hablamos: cobertura, perfil demográfico y psicográfico.",
+        kind: "data",
+        fields: [
           {
-            key: "alcance",
-            label: "Alcance geográfico",
+            key: "cobertura",
+            label: "Cobertura o ubicación",
             type: "select",
             options: opts(
               ["local", "Local"],
@@ -179,6 +187,29 @@ export const PROJECT_TYPES: ProjectTypeDef[] = [
               ["nacional", "Nacional"],
               ["internacional", "Internacional"],
             ),
+          },
+          {
+            key: "demografia",
+            label: "Perfil demográfico",
+            type: "textarea",
+            required: true,
+            placeholder:
+              "Edad, género, ocupación, nivel socioeconómico, escolaridad, ciudad o zona…",
+          },
+          {
+            key: "psicografia",
+            label: "Perfil psicográfico",
+            type: "textarea",
+            required: true,
+            placeholder:
+              "Valores, intereses, estilo de vida, personalidad, frustraciones y motivaciones…",
+          },
+          {
+            key: "comportamiento",
+            label: "Comportamiento de compra",
+            type: "textarea",
+            placeholder:
+              "Hábitos, canales donde consume, disparadores y objeciones…",
           },
         ],
       },
