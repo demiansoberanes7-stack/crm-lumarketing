@@ -70,5 +70,13 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@resvg/resvg-js",
+      "@swc/core",
+      "esbuild",
+      "protobufjs"
+    ]
   }
 }
