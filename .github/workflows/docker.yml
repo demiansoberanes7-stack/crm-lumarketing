@@ -18,13 +18,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Cambia esto si tu usuario de Docker Hub es diferente
   DOCKER_IMAGE: ghostbreakfast69/lumark-crm
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # build completo en ~5-8 min
+    timeout-minutes: 20
 
     steps:
       - name: Checkout del repositorio
@@ -56,10 +55,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Cache de capas para builds incrementales rápidos
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Build args para versionado
           build-args: |
             SOURCE_COMMIT=${{ github.sha }}
             GIT_SHA=${{ github.sha }}
@@ -70,3 +67,22 @@ jobs:
           echo "   Imagen: ${{ env.DOCKER_IMAGE }}"
           echo "   Tags: ${{ steps.meta.outputs.tags }}"
           echo "   Commit: ${{ github.sha }}"
+
+      # ─── Deploy automático al VPS de Azure (SSH) ────────────
+      - name: Deploy al servidor Azure
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo "📦 Pulling nueva imagen desde Docker Hub..."
+            docker compose pull app
+            echo "🔄 Reiniciando contenedor (zero-downtime)..."
+            docker compose up -d --no-deps app
+            echo "🧹 Limpiando imágenes antiguas..."
+            docker image prune -f
+            echo "✅ Deploy completado — commit ${{ github.sha }}"
+            curl -s http://localhost:3000/api/health
