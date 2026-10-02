@@ -85,4 +85,17 @@ jobs:
             echo "🧹 Limpiando imágenes antiguas..."
             docker image prune -f
             echo "✅ Deploy completado — commit ${{ github.sha }}"
-            curl -s http://localhost:3000/api/health
+            echo "⏳ Esperando /api/health dentro del contenedor..."
+            for attempt in $(seq 1 30); do
+              if docker compose exec -T app wget -q -O- http://127.0.0.1:3000/api/health; then
+                echo
+                echo "✅ /api/health respondió correctamente"
+                exit 0
+              fi
+              if [ "$attempt" -eq 30 ]; then
+                echo "❌ /api/health no estuvo disponible después de 60 segundos"
+                docker compose ps
+                exit 1
+              fi
+              sleep 2
+            done
