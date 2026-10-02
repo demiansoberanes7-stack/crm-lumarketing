@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { sendText } from "@/server/inbox/send";
+import { getIntegration } from "@/server/integrations";
 
 /** 
  * Verifies if the lead has replied recently. 
@@ -24,19 +25,26 @@ export async function hasClientRepliedSince(conversationId: string, sinceDateIso
  * or directly sends a hardcoded follow up if configured.
  */
 export async function triggerAiFollowUp(conversationId: string, organizationId: string): Promise<void> {
-  // Option 1: Just trigger the agent turn so it can evaluate context and send something
-  // In a real scenario we might inject a system message like "El cliente lleva X días sin contestar, haz seguimiento"
-  // For now we will append an internal note and run the agent.
-  
   const db = getDb();
   const convs = await db.select().from(schema.conversation).where(eq(schema.conversation.id, conversationId)).limit(1);
   if (!convs[0]) return;
-  
+
+  const integration = await getIntegration(organizationId, "automation_rules");
+  let messageText = "Hola, espero que estés teniendo un excelente día. Solo quería dar seguimiento a nuestra conversación anterior. ¿Tienes alguna duda con la cotización?";
+
+  if (integration?.credentials?.rules) {
+    const rules = integration.credentials.rules as any[];
+    const rule = rules.find(r => r.id === "followup-3d");
+    if (rule && rule.messageText) {
+      messageText = rule.messageText;
+    }
+  }
+
   // Directly send a simple text for retargeting.
   await sendText({
     conversationId,
     organizationId,
-    text: "¡Hola! Queríamos saber si tienes alguna duda adicional sobre nuestra cotización. ¡Estamos a la orden!",
+    text: messageText,
     aiGenerated: true
   });
 }

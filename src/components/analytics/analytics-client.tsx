@@ -19,11 +19,21 @@ interface Integration {
 }
 
 interface AdsMetric {
-  source: "google" | "meta";
+  source: "google" | "meta" | "ga4";
   spend: number;
   impressions: number;
   clicks: number;
   leads: number;
+  currency: string;
+}
+
+interface AdsCampaign {
+  id: string;
+  name: string;
+  source: "google" | "meta" | "ga4";
+  spend: number;
+  impressions: number;
+  clicks: number;
   currency: string;
 }
 
@@ -36,8 +46,9 @@ interface PipelineMetric {
 
 interface DashboardData {
   metrics: AdsMetric[];
+  campaigns: AdsCampaign[];
   pipelineMetric: PipelineMetric;
-  chartData: { name: string; google: number; meta: number }[];
+  chartData: { name: string; google: number; meta: number; ga4?: number }[];
 }
 
 /* ─── Helpers ─── */
@@ -277,6 +288,39 @@ export function AnalyticsClient() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Campaigns Table */}
+                    {dashData.campaigns && dashData.campaigns.length > 0 && (
+                      <div className="rounded-xl border bg-card p-4 shadow-sm overflow-hidden">
+                        <h3 className="mb-4 text-sm font-semibold">Rendimiento por Campaña</h3>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-muted-foreground bg-muted/50">
+                              <tr>
+                                <th className="px-4 py-2 font-medium rounded-l-md">Campaña</th>
+                                <th className="px-4 py-2 font-medium">Fuente</th>
+                                <th className="px-4 py-2 font-medium text-right">Inversión</th>
+                                <th className="px-4 py-2 font-medium text-right">Impresiones</th>
+                                <th className="px-4 py-2 font-medium text-right">Clics</th>
+                                <th className="px-4 py-2 font-medium text-right rounded-r-md">CPC Prom.</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {dashData.campaigns.map(camp => (
+                                <tr key={camp.id} className="hover:bg-muted/30 transition-colors">
+                                  <td className="px-4 py-3 font-medium">{camp.name}</td>
+                                  <td className="px-4 py-3"><SourceBadge source={camp.source} /></td>
+                                  <td className="px-4 py-3 text-right">{fmt(camp.spend, camp.currency)}</td>
+                                  <td className="px-4 py-3 text-right">{fmt(camp.impressions)}</td>
+                                  <td className="px-4 py-3 text-right">{fmt(camp.clicks)}</td>
+                                  <td className="px-4 py-3 text-right">{camp.clicks > 0 ? fmt(camp.spend / camp.clicks, camp.currency) : "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Chart: Google vs Meta */}
                     {dashData.chartData.length > 0 && (

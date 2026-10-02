@@ -60,8 +60,33 @@ export function AutomationsClient() {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; } | null>(null);
   const [triggering, setTriggering] = useState(false);
 
+  useEffect(() => {
+    fetch("/api/automations/rules")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.rules && Array.isArray(d.rules)) {
+          // Merge preset with db rules
+          setRules(PRESET_RULES.map(pr => {
+            const dr = d.rules.find((r: AutomationRule) => r.id === pr.id);
+            return dr ? { ...pr, ...dr } : pr;
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function persistRules(newRules: AutomationRule[]) {
+    await fetch("/api/automations/rules", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rules: newRules })
+    });
+  }
+
   function toggleRule(id: string) {
-    setRules((r) => r.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule));
+    const newRules = rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
+    setRules(newRules);
+    void persistRules(newRules);
   }
 
   function startEdit(rule: AutomationRule) {
@@ -76,7 +101,7 @@ export function AutomationsClient() {
 
   function saveEdit() {
     if (!editingId) return;
-    setRules(r => r.map(rule => {
+    const newRules = rules.map(rule => {
       if (rule.id === editingId) {
         return {
           ...rule,
@@ -86,7 +111,9 @@ export function AutomationsClient() {
         };
       }
       return rule;
-    }));
+    });
+    setRules(newRules);
+    void persistRules(newRules);
     cancelEdit();
   }
 

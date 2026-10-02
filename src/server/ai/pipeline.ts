@@ -292,14 +292,29 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       // Auto-trigger Temporal Drip Campaign if moving to Cotizado
       if (stage.name.toLowerCase() === "cotizado") {
         try {
-          const { getTemporalClient } = await import("@/server/temporal/client");
-          const client = await getTemporalClient();
-          await client.workflow.start("followUpWorkflow", {
-            args: [conversationId, organizationId, 72],
-            taskQueue: "crm-followups",
-            workflowId: `followup-${conversationId}-${Date.now()}`
-          });
-          console.log(`[temporal] Started followUpWorkflow for conversation ${conversationId}`);
+          const { getIntegration } = await import("@/server/integrations");
+          const integration = await getIntegration(organizationId, "automation_rules");
+          let delayHours = 72;
+          let enabled = true;
+          if (integration?.credentials?.rules) {
+            const rules = integration.credentials.rules as any[];
+            const rule = rules.find((r: any) => r.id === "followup-3d");
+            if (rule) {
+              enabled = rule.enabled !== false;
+              if (rule.delayHours !== undefined) delayHours = Number(rule.delayHours);
+            }
+          }
+
+          if (enabled) {
+            const { getTemporalClient } = await import("@/server/temporal/client");
+            const client = await getTemporalClient();
+            await client.workflow.start("followUpWorkflow", {
+              args: [conversationId, organizationId, delayHours],
+              taskQueue: "crm-followups",
+              workflowId: `followup-${conversationId}-${Date.now()}`
+            });
+            console.log(`[temporal] Started followUpWorkflow for conversation ${conversationId}`);
+          }
         } catch (err) {
           console.error(`[temporal] Failed to start followup workflow:`, err);
         }
