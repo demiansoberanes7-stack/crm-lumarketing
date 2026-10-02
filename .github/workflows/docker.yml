@@ -78,6 +78,32 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
+            python3 - <<'PY'
+            from pathlib import Path
+
+            path = Path(".env")
+            overrides = {
+                "OPENROUTER_BASE_URL": "https://openrouter.ai/api",
+                "OPENROUTER_MODEL": "anthropic/claude-haiku-4.5",
+                "OPENROUTER_JUDGE_MODEL": "anthropic/claude-haiku-4.5",
+            }
+            if path.exists():
+                lines = path.read_text(encoding="utf-8").splitlines()
+                updated = []
+                seen = set()
+                for line in lines:
+                    key, separator, _ = line.partition("=")
+                    if separator and key in overrides:
+                        if key not in seen:
+                            updated.append(f"{key}={overrides[key]}")
+                            seen.add(key)
+                    else:
+                        updated.append(line)
+                for key, value in overrides.items():
+                    if key not in seen:
+                        updated.append(f"{key}={value}")
+                path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+            PY
             echo "📦 Pulling nueva imagen desde Docker Hub..."
             docker compose pull app
             echo "🔄 Reiniciando contenedor (zero-downtime)..."
