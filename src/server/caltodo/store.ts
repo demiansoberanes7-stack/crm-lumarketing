@@ -19,9 +19,37 @@ export async function upsertCalTodoSettings(userId: string, organizationId: stri
 }
 
 export async function getCalTodoTasks(userId: string, organizationId: string): Promise<CalTodoTask[]> {
-  return getDb().select().from(schema.caltodoTask)
+  const db = getDb();
+  const calTodoTasks = await db.select().from(schema.caltodoTask)
     .where(and(scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId)))
     .orderBy(asc(schema.caltodoTask.priority));
+
+  const projectTasks = await db.select().from(schema.projectTask)
+    .where(and(scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId)));
+
+  const mappedProjectTasks: CalTodoTask[] = projectTasks.map(pt => ({
+    id: pt.id,
+    organizationId: pt.organizationId,
+    userId: pt.assigneeId!,
+    title: pt.title,
+    details: pt.description,
+    urgent: pt.priority === "alta",
+    duration: 60,
+    priority: 0,
+    scheduledStart: pt.dueDate ?? null,
+    scheduledEnd: null,
+    completed: pt.estado === "terminado",
+    completedAt: pt.estado === "terminado" ? pt.updatedAt : null,
+    contactId: null,
+    projectId: pt.projectId,
+    createdAt: pt.createdAt,
+    updatedAt: pt.updatedAt,
+  }));
+
+  return [...calTodoTasks, ...mappedProjectTasks].sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return a.priority - b.priority;
+  });
 }
 
 export async function createCalTodoTask(userId: string, organizationId: string, data: { title: string; details?: string; urgent?: boolean; duration?: number; priority?: number; contactId?: string | null; projectId?: string | null }) {
@@ -41,18 +69,35 @@ export async function createCalTodoTask(userId: string, organizationId: string, 
 }
 
 export async function updateCalTodoTask(taskId: string, organizationId: string, data: Partial<Pick<CalTodoTask, "completed" | "title" | "details" | "urgent" | "duration" | "scheduledStart" | "scheduledEnd" | "priority" | "contactId" | "projectId">>, userId: string) {
+  const db = getDb();
+  if (taskId.startsWith("projectTask_")) {
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.completed !== undefined) updates.estado = data.completed ? "terminado" : "pendiente";
+    if (data.title !== undefined) updates.title = data.title;
+    if (data.details !== undefined) updates.description = data.details;
+    if (data.urgent !== undefined) updates.priority = data.urgent ? "alta" : "normal";
+
+    await db.update(schema.projectTask).set(updates)
+      .where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId)));
+    return { id: taskId } as any;
+  }
+
   const updates: Record<string, unknown> = { ...data, updatedAt: new Date() };
   if (data.completed === true) updates.completedAt = new Date();
   if (data.completed === false) updates.completedAt = null;
-  const [row] = await getDb().update(schema.caltodoTask).set(updates)
+  const [row] = await db.update(schema.caltodoTask).set(updates)
     .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId)))
     .returning();
   return row;
 }
 
 export async function deleteCalTodoTask(taskId: string, organizationId: string, userId: string) {
-  const deleted = await getDb().delete(schema.caltodoTask)
-    .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId))).returning({ id: schema.caltodoTask.id });
+  const db = getDb();
+  if (taskId.startsWith("projectTask_")) {
+    const deleted = await db.delete(schema.projectTask).where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId))).returning({ id: schema.projectTask.id });
+    return deleted.length > 0;
+  }
+  const deleted = await db.delete(schema.caltodoTask).where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId))).returning({ id: schema.caltodoTask.id });
   return deleted.length > 0;
 }
 

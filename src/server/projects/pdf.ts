@@ -271,6 +271,8 @@ export async function projectPdf(
   y -= 16;
 
   stepResult.steps.forEach((step, index) => {
+    if (step.key === "general") return;
+
     checkPage(40);
     page.drawRectangle({
       x: MARGIN,
