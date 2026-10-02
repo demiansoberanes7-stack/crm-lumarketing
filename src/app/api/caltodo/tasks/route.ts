@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { withAuth, parseBody, apiError } from "@/lib/api";
 import { getCalTodoTasks, createCalTodoTask, updateCalTodoTask, deleteCalTodoTask, getCalTodoSettings } from "@/server/caltodo/store";
+import { hasIdKind } from "@/lib/db/ids";
 import { findNextFreeSlot } from "@/server/caltodo/scheduler";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +60,7 @@ export const PATCH = withAuth(async (session, req: Request) => {
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return apiError(404, "not_found", "Tarea no encontrada");
   let schedule = {};
-  if (body.data.duration !== undefined || body.data.completed === false) {
+  if (!hasIdKind(taskId, "projectTask") && (body.data.duration !== undefined || body.data.completed === false)) {
     const settings = await getCalTodoSettings(session.userId, session.organizationId);
     const slot = findNextFreeSlot(tasks.filter((t) => t.id !== taskId), settings, body.data.duration ?? task.duration ?? settings?.defaultDuration ?? 60);
     if (!slot) return apiError(422, "no_slot", "La duración no cabe en el horario laboral disponible");

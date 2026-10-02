@@ -1,6 +1,7 @@
 import { eq, and, asc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { hasIdKind } from "@/lib/db/ids";
 import { nanoid } from "nanoid";
 
 export type CalTodoTask = typeof schema.caltodoTask.$inferSelect;
@@ -70,16 +71,18 @@ export async function createCalTodoTask(userId: string, organizationId: string, 
 
 export async function updateCalTodoTask(taskId: string, organizationId: string, data: Partial<Pick<CalTodoTask, "completed" | "title" | "details" | "urgent" | "duration" | "scheduledStart" | "scheduledEnd" | "priority" | "contactId" | "projectId">>, userId: string) {
   const db = getDb();
-  if (taskId.startsWith("projectTask_")) {
+  if (hasIdKind(taskId, "projectTask")) {
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (data.completed !== undefined) updates.estado = data.completed ? "terminado" : "pendiente";
     if (data.title !== undefined) updates.title = data.title;
     if (data.details !== undefined) updates.description = data.details;
     if (data.urgent !== undefined) updates.priority = data.urgent ? "alta" : "normal";
+    if (data.scheduledStart !== undefined) updates.dueDate = data.scheduledStart;
 
-    await db.update(schema.projectTask).set(updates)
-      .where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId)));
-    return { id: taskId } as any;
+    const [row] = await db.update(schema.projectTask).set(updates)
+      .where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId)))
+      .returning({ id: schema.projectTask.id });
+    return row;
   }
 
   const updates: Record<string, unknown> = { ...data, updatedAt: new Date() };
@@ -93,7 +96,7 @@ export async function updateCalTodoTask(taskId: string, organizationId: string, 
 
 export async function deleteCalTodoTask(taskId: string, organizationId: string, userId: string) {
   const db = getDb();
-  if (taskId.startsWith("projectTask_")) {
+  if (hasIdKind(taskId, "projectTask")) {
     const deleted = await db.delete(schema.projectTask).where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId))).returning({ id: schema.projectTask.id });
     return deleted.length > 0;
   }
@@ -104,6 +107,9 @@ export async function deleteCalTodoTask(taskId: string, organizationId: string, 
 export async function reorderCalTodoTasks(taskIds: string[], organizationId: string, userId: string) {
   await getDb().transaction(async (tx) => {
     for (const [i, id] of taskIds.entries()) {
+      // Project tasks are shown in Pendientes but have no independent rank column;
+      // leave their project ordering intact and only rank native CalTodo tasks.
+      if (hasIdKind(id, "projectTask")) continue;
       await tx.update(schema.caltodoTask).set({ priority: i, updatedAt: new Date() })
         .where(and(eq(schema.caltodoTask.id, id), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId)));
     }

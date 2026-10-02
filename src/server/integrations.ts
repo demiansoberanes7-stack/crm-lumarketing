@@ -2,7 +2,12 @@ import { eq, and } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 
-export type IntegrationProvider = "google_ads" | "meta_ads" | "ga4";
+export type IntegrationProvider =
+  | "google_ads"
+  | "meta_ads"
+  | "ga4"
+  /** Reglas del motor de automatizaciones (reglas editables desde la UI). */
+  | "automation_rules";
 
 export interface Integration {
   id: string;

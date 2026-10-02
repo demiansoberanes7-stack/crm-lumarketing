@@ -4,6 +4,7 @@ import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { runAgentTurn } from "@/server/ai/pipeline";
 
 export const dynamic = "force-dynamic";
@@ -87,7 +88,29 @@ export const POST = withAuth(async (session, req: Request) => {
     .where(eq(schema.conversation.id, convId));
 
   // Run agent turn
-  await runAgentTurn(convId);
+  try {
+    await runAgentTurn(convId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[lab/chat] Agent turn failed for conversation ${convId}:`, error);
+    await recordDiagnostic({
+      organizationId,
+      source: "lab",
+      code: "ai_failed",
+      error,
+      metadata: { operation: "run_agent_turn" },
+    });
+    return Response.json(
+      {
+        conversationId: convId,
+        error: {
+          code: "agent_failed",
+          message: message.slice(0, 500) || "El agente no pudo completar el turno",
+        },
+      },
+      { status: 502 }
+    );
+  }
 
   // Get all messages after the inbound to find the agent's response
   const messages = await db

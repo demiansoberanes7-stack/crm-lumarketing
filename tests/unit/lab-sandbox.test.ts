@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { chatJson } from "@/lib/ai";
 
 /**
  * FR-031/FR-082: el turno del agente sobre una conversación is_test persiste
@@ -132,5 +133,38 @@ describe("sandbox del Laboratorio en el pipeline del agente", () => {
     expect((messageInsert!.values as { text: string }).text).toBe(
       "respuesta simulada"
     );
+  });
+
+  it("el error persistente del proveedor se entrega al llamador después de pausar el agente", async () => {
+    const testConversation = {
+      id: "cv_lab_error",
+      organizationId: "org_1",
+      contactId: "ct_lab",
+      isTest: true,
+      aiEnabled: true,
+      handoffAt: null,
+      handoffReason: null,
+      lastInboundAt: new Date(),
+    };
+    selectQueue.push(
+      [testConversation],
+      [{ id: "agp_1", organizationId: "org_1", enabled: false, name: "Asistente", tone: null, instructions: null, escalationRules: null, greeting: null }],
+      [{ id: "msg_1", direction: "in", text: "hola", createdAt: new Date() }],
+      [],
+      []
+    );
+    vi.mocked(chatJson).mockResolvedValueOnce({
+      ok: false,
+      error: "provider_error",
+      detail: "OpenRouter respondió HTTP 401: Invalid API key",
+    });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await expect(runAgentTurn("cv_lab_error")).rejects.toThrow("OpenRouter respondió HTTP 401: Invalid API key");
+
+    expect(graphRequest).not.toHaveBeenCalled();
+    expect(errorLog).toHaveBeenCalled();
+    errorLog.mockRestore();
   });
 });

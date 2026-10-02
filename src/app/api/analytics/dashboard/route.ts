@@ -1,114 +1,158 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/api";
 import { getIntegration } from "@/server/integrations";
-import { getDb, schema } from "@/lib/db";
-import { eq, and, gte } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
+type Source = "google" | "meta" | "ga4";
+type ConnectionStatus = "disconnected" | "configured" | "connected" | "error";
+type DashboardMetric = {
+  source: Source;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  currency: string;
+};
+type DashboardCampaign = DashboardMetric & { id: string; name: string };
+type ChartPoint = { name: string; meta: number };
+type MetaInsight = {
+  campaign_id?: string;
+  campaign_name?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  date_start?: string;
+};
+type SourceConnection = { status: ConnectionStatus; message?: string };
+
+const hasText = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+function amount(value: string | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function readMetaInsights(url: URL): Promise<{ ok: true; data: MetaInsight[] } | { ok: false; status: number; detail: string }> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return { ok: false, status: response.status, detail: detail.slice(0, 500) };
+  }
+  const payload = (await response.json()) as { data?: MetaInsight[] };
+  return { ok: true, data: payload.data ?? [] };
+}
+
 export const GET = withAuth(async (session) => {
   const orgId = session.organizationId;
-  const metrics = [];
-  let chartData: any[] = [];
-  const campaigns: any[] = [];
+  const [metaIntegration, googleIntegration, ga4Integration] = await Promise.all([
+    getIntegration(orgId, "meta_ads"),
+    getIntegration(orgId, "google_ads"),
+    getIntegration(orgId, "ga4"),
+  ]);
+  const metaCredentials = metaIntegration?.credentials ?? {};
+  const googleCredentials = googleIntegration?.credentials ?? {};
+  const ga4Credentials = ga4Integration?.credentials ?? {};
 
-  try {
-    const metaInt = await getIntegration(orgId, "meta_ads");
-    if (metaInt?.credentials?.accessToken && metaInt?.credentials?.adAccountId) {
-      const { accessToken, adAccountId } = metaInt.credentials as { accessToken: string, adAccountId: string };
-      const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
-      
-      const res = await fetch(
-        `https://graph.facebook.com/v19.0/${accountId}/insights?fields=campaign_name,spend,impressions,clicks&date_preset=last_30d&level=campaign&access_token=${accessToken}`
-      );
-      
-      if (res.ok) {
-        const data = await res.json();
-        const campaignsData = data.data || [];
-        
-        let totalSpend = 0;
-        let totalImpressions = 0;
-        let totalClicks = 0;
+  const metaConfigured = hasText(metaCredentials.accessToken) && hasText(metaCredentials.adAccountId);
+  const googleConfigured = [
+    googleCredentials.customerId,
+    googleCredentials.developerToken,
+    googleCredentials.clientId,
+    googleCredentials.clientSecret,
+  ].every(hasText);
+  const ga4Configured = hasText(ga4Credentials.propertyId) &&
+    (hasText(ga4Credentials.serviceAccountJson) || hasText(ga4Credentials.serviceAccountKey));
 
-        for (const camp of campaignsData) {
-          totalSpend += Number(camp.spend || 0);
-          totalImpressions += Number(camp.impressions || 0);
-          totalClicks += Number(camp.clicks || 0);
-          campaigns.push({
-            id: camp.campaign_id || Math.random().toString(),
-            name: camp.campaign_name || "Campaña Desconocida",
+  const connections: Record<Source, SourceConnection> = {
+    meta: { status: metaConfigured ? "configured" : "disconnected" },
+    google: {
+      status: googleConfigured ? "configured" : "disconnected",
+      ...(googleConfigured ? { message: "Credenciales guardadas; no hay lectura de métricas activa." } : {}),
+    },
+    ga4: {
+      status: ga4Configured ? "configured" : "disconnected",
+      ...(ga4Configured ? { message: "Credenciales guardadas; no hay lectura de métricas activa." } : {}),
+    },
+  };
+  const metrics: DashboardMetric[] = [];
+  const campaigns: DashboardCampaign[] = [];
+  const chartData: ChartPoint[] = [];
+
+  if (metaConfigured) {
+    const token = metaCredentials.accessToken as string;
+    const rawAccountId = metaCredentials.adAccountId as string;
+    const accountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`;
+    const campaignUrl = new URL(`https://graph.facebook.com/v19.0/${accountId}/insights`);
+    campaignUrl.search = new URLSearchParams({
+      fields: "campaign_id,campaign_name,spend,impressions,clicks",
+      date_preset: "last_30d",
+      level: "campaign",
+      access_token: token,
+    }).toString();
+    const dailyUrl = new URL(`https://graph.facebook.com/v19.0/${accountId}/insights`);
+    dailyUrl.search = new URLSearchParams({
+      fields: "date_start,clicks",
+      date_preset: "last_30d",
+      level: "account",
+      time_increment: "1",
+      access_token: token,
+    }).toString();
+
+    try {
+      const [campaignResult, dailyResult] = await Promise.all([
+        readMetaInsights(campaignUrl),
+        readMetaInsights(dailyUrl),
+      ]);
+      if (!campaignResult.ok) {
+        connections.meta = {
+          status: "error",
+          message: `Meta Graph API respondió ${campaignResult.status}: ${campaignResult.detail || "sin detalle"}`,
+        };
+        console.error("[analytics] Meta campaign insights failed", campaignResult.status, campaignResult.detail);
+      } else {
+        const normalizedCampaigns = campaignResult.data.map((campaign, index) => ({
+          id: campaign.campaign_id || `${campaign.campaign_name || "meta-campaign"}-${index}`,
+          name: campaign.campaign_name || "Campaña sin nombre",
+          source: "meta" as const,
+          spend: amount(campaign.spend),
+          impressions: amount(campaign.impressions),
+          clicks: amount(campaign.clicks),
+          currency: "MXN",
+        }));
+        campaigns.push(...normalizedCampaigns);
+        if (campaignResult.data.length > 0) {
+          metrics.push({
             source: "meta",
-            spend: Number(camp.spend || 0),
-            impressions: Number(camp.impressions || 0),
-            clicks: Number(camp.clicks || 0),
-            currency: "MXN"
+            spend: normalizedCampaigns.reduce((total, campaign) => total + campaign.spend, 0),
+            impressions: normalizedCampaigns.reduce((total, campaign) => total + campaign.impressions, 0),
+            clicks: normalizedCampaigns.reduce((total, campaign) => total + campaign.clicks, 0),
+            currency: "MXN",
           });
         }
-        
-        metrics.push({
-          source: "meta",
-          spend: totalSpend,
-          impressions: totalImpressions,
-          clicks: totalClicks,
-          leads: 0,
-          currency: "MXN"
-        });
-
-        const dailyClicks = Math.floor(totalClicks / 7);
-        chartData = Array.from({ length: 7 }).map((_, i) => ({
-          name: `Día ${i + 1}`,
-          meta: dailyClicks,
-          google: 0,
-          ga4: 0
-        }));
+        connections.meta = { status: "connected" };
       }
-    }
 
-    const googleInt = await getIntegration(orgId, "google_ads");
-    if (googleInt?.credentials?.customerId) {
-      metrics.push({
-        source: "google",
-        spend: 0,
-        impressions: 0,
-        clicks: 0,
-        leads: 0,
-        currency: "MXN"
-      });
+      if (!dailyResult.ok) {
+        console.error("[analytics] Meta daily insights failed", dailyResult.status, dailyResult.detail);
+      } else {
+        chartData.push(...dailyResult.data
+          .filter((day) => hasText(day.date_start))
+          .map((day) => ({
+            name: new Date(`${day.date_start}T00:00:00Z`).toLocaleDateString("es-MX", {
+              day: "2-digit",
+              month: "short",
+              timeZone: "UTC",
+            }),
+            meta: amount(day.clicks),
+          })));
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      connections.meta = { status: "error", message: `No se pudo consultar Meta Ads: ${detail.slice(0, 300)}` };
+      console.error("[analytics] Meta insights request failed", error);
     }
-
-    const ga4Int = await getIntegration(orgId, "ga4");
-    if (ga4Int?.credentials?.propertyId) {
-      metrics.push({
-        source: "ga4",
-        spend: 0,
-        impressions: 0, // In GA4 this would be sessions/pageviews
-        clicks: 0,
-        leads: 0,
-        currency: "MXN"
-      });
-    }
-
-    // Si no hay datos, inicializar un chart vacío
-    if (chartData.length === 0) {
-      chartData = [
-        { name: "Lun", meta: 0, google: 0 },
-        { name: "Mar", meta: 0, google: 0 },
-        { name: "Mie", meta: 0, google: 0 },
-        { name: "Jue", meta: 0, google: 0 },
-        { name: "Vie", meta: 0, google: 0 },
-        { name: "Sab", meta: 0, google: 0 },
-        { name: "Dom", meta: 0, google: 0 },
-      ];
-    }
-
-    return NextResponse.json({
-      metrics,
-      chartData,
-      campaigns,
-      pipelineMetric: { leads: 0, quotes: 0, won: 0, conversionRate: 0 } // handled by /api/pipeline/stats usually
-    });
-  } catch (error) {
-    console.error("Error loading dashboard data:", error);
-    return NextResponse.json({ error: "Error loading dashboard data" }, { status: 500 });
   }
+
+  return NextResponse.json({ metrics, campaigns, chartData, connections });
 });

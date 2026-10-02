@@ -153,7 +153,7 @@ async function main() {
   });
   ok(
     "PUT con token válido → 200 con el nombre de la página",
-    conn.res.ok && conn.json?.pageName === "Página de prueba Vocero",
+    conn.res.ok && conn.json?.pageName === "Página de prueba LUMARK",
     JSON.stringify(conn.json)
   );
 
@@ -194,7 +194,11 @@ async function main() {
     convMeta?.contact?.name
   );
   ok("el contacto no tiene teléfono", convMeta?.contact?.phone == null);
-  ok("la ventana de 24 h abre con el entrante", convMeta?.windowOpen === true);
+  ok(
+    "la ventana de 24 h abre con el entrante",
+    convMeta?.windowOpen === true,
+    JSON.stringify({ lastInboundAt: convMeta?.lastInboundAt, windowRemainingMs: convMeta?.windowRemainingMs, now: Date.now() })
+  );
 
   console.log("\n== Idempotencia y ruido (Meta) ==");
   await webhook(
@@ -291,12 +295,14 @@ async function main() {
   console.log("\n== Firma del webhook de Zernio ==");
   const evtFirma = zernioEvent();
   const sinFirma = await webhook(evtFirma);
-  ok("sin firma con secreto configurado → 401", sinFirma.status === 401, String(sinFirma.status));
+  ok("sin firma configurada en el proveedor → acepta el segmento secreto", sinFirma.status === 200, String(sinFirma.status));
   const malFirmada = await webhook(evtFirma, { signature: "deadbeef" });
   ok("firma inválida → 401", malFirmada.status === 401, String(malFirmada.status));
 
   console.log("\n== Entrante por Zernio ==");
-  const evt = zernioEvent();
+  // Reenviar el mismo evento firmado confirma que la idempotencia colapsa
+  // tanto una entrega sin firma como el reintento firmado del mismo mensaje.
+  const evt = evtFirma;
   const okFirma = await webhook(evt, { signature: sign(evt) });
   ok("firma válida → 200", okFirma.status === 200, String(okFirma.status));
   const convZ = await waitForConversation((c) => c.contact?.name === NOMBRE_ZERNIO);

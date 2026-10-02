@@ -5,6 +5,7 @@ import { scoped } from "@/lib/db/tenant";
 import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-history";
 import { getEnv, isAiConfigured } from "@/lib/env";
 import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
+import { findAutomationRule } from "@/server/automation-rules";
 import { publish } from "@/server/events/bus";
 import { isWindowOpen } from "@/server/inbox/window";
 import { SendError, sendText } from "@/server/inbox/send";
@@ -238,7 +239,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     // Fallo persistente del proveedor o salida imposible → escalar (FR-022).
     console.error(`[agente] fallo del proveedor (raw): ${result.detail}`);
     await applyHandoff(conversationId, organizationId, "error");
-    return;
+    throw new Error(result.detail || "El proveedor de IA no pudo completar el turno");
   }
 
   let action: AgentActionType = result.data;
@@ -294,16 +295,9 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         try {
           const { getIntegration } = await import("@/server/integrations");
           const integration = await getIntegration(organizationId, "automation_rules");
-          let delayHours = 72;
-          let enabled = true;
-          if (integration?.credentials?.rules) {
-            const rules = integration.credentials.rules as any[];
-            const rule = rules.find((r: any) => r.id === "followup-3d");
-            if (rule) {
-              enabled = rule.enabled !== false;
-              if (rule.delayHours !== undefined) delayHours = Number(rule.delayHours);
-            }
-          }
+          const rule = findAutomationRule(integration?.credentials?.rules, "followup-3d");
+          const delayHours = rule?.delayHours ?? 72;
+          const enabled = rule?.enabled !== false;
 
           if (enabled) {
             const { getTemporalClient } = await import("@/server/temporal/client");

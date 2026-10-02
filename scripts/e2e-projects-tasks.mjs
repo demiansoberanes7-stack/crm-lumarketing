@@ -117,6 +117,32 @@ try {
 
   // ── Módulo de proyectos: expediente por tipos, borradores y PDF ──
   const wf = secondProjectId;
+  const wfTaskTitle = `Tarea PDF ${suffix}`;
+  const wfTaskDescription = "Descripción detallada de integración en el expediente.";
+  const wfTaskCreated = await api(`/api/projects/${wf}/tasks`, "POST", {
+    title: wfTaskTitle,
+    description: wfTaskDescription,
+    assigneeId: auth.data.user.id,
+    prioridad: "alta",
+    dueDate: "2026-10-22T18:00:00.000Z",
+  });
+  const wfTaskId = wfTaskCreated.data.taskId;
+  check("tarea de proyecto usa prefijo prjt_", wfTaskCreated.status === 201 && wfTaskId.startsWith("prjt_"));
+  const todoTasks = (await api("/api/caltodo/tasks")).data.tasks;
+  check("tarea asignada de proyecto aparece en Pendientes", todoTasks.some((t) => t.id === wfTaskId));
+  check(
+    "reordenar Pendientes acepta IDs prjt_",
+    (await api("/api/caltodo/tasks/reorder", "POST", {
+      taskIds: todoTasks.filter((t) => !t.completed).map((t) => t.id),
+    })).status === 200
+  );
+  check("completar tarea desde Pendientes", (await api(`/api/caltodo/tasks?id=${wfTaskId}`, "PATCH", { completed: true })).status === 200);
+  let wfProjectTasks = (await api(`/api/projects/${wf}/tasks`)).data.tasks;
+  check("completado en Pendientes sincroniza a Proyectos", wfProjectTasks.find((t) => t.id === wfTaskId)?.estado === "terminado");
+  check("descompletar tarea desde Pendientes", (await api(`/api/caltodo/tasks?id=${wfTaskId}`, "PATCH", { completed: false })).status === 200);
+  wfProjectTasks = (await api(`/api/projects/${wf}/tasks`)).data.tasks;
+  check("pendiente en Pendientes sincroniza a Proyectos", wfProjectTasks.find((t) => t.id === wfTaskId)?.estado === "pendiente");
+
   foreignProjectId = `test_prj_foreign_${suffix}`;
   await sql`INSERT INTO project (id, organization_id, code, name) VALUES (${foreignProjectId}, ${otherOrg}, ${'PRJ-X-' + suffix}, 'Proyecto ajeno')`;
   let wfSteps = (await api(`/api/projects/${wf}/steps`)).data;
@@ -128,6 +154,8 @@ try {
   check("finalizar sin pasos completos rechazado", (await api(`/api/projects/${wf}/status`, "POST", { status: "completado" })).status === 422);
   const genSave = await api(`/api/projects/${wf}/steps/general`, "PUT", { data: { name: `Proyecto workflow ${suffix}`, startDate: "2026-10-01", endDate: "2026-12-15", notas: "Expediente completo" }, complete: true });
   check("completar paso general", genSave.status === 200 && genSave.data.step.status === "completado");
+  const rawIdMarker = `ct_private_pdf_${suffix}`;
+  await sql`UPDATE project_step SET data = COALESCE(data, '{}'::jsonb) || ${JSON.stringify({ contactId: rawIdMarker, assignedUserId: auth.data.user.id })}::jsonb WHERE project_id = ${wf} AND step_key = 'general'`;
   const genProject = (await api(`/api/projects/${wf}`)).data.project;
   check("nombre y fechas viven en el proyecto", genProject.name === `Proyecto workflow ${suffix}` && String(genProject.startDate).startsWith("2026-10-01") && String(genProject.endDate).startsWith("2026-12-15"));
   check("borrador avanza a en_proceso", genProject.status === "en_proceso" && genProject.estado === "activo");
@@ -163,6 +191,9 @@ try {
   check("PDF del expediente servido", pdfRes.status === 200 && String(pdfRes.headers.get("content-type")).includes("application/pdf"));
   const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
   check("PDF real con encabezado y código", pdfBuffer.subarray(0, 5).toString("latin1") === "%PDF-" && pdfIncluye(pdfBuffer, "EXPEDIENTE DE PROYECTO") && pdfIncluye(pdfBuffer, wfDone.code));
+  check("PDF omite IDs técnicos del paso general", !pdfIncluye(pdfBuffer, rawIdMarker) && !pdfIncluye(pdfBuffer, auth.data.user.id));
+  check("PDF desglosa título y descripción de tarea", pdfIncluye(pdfBuffer, wfTaskTitle) && pdfIncluye(pdfBuffer, wfTaskDescription));
+  check("PDF incluye estado, prioridad, entrega y responsable", pdfIncluye(pdfBuffer, "Pendiente") && pdfIncluye(pdfBuffer, "Alta") && pdfIncluye(pdfBuffer, "octubre de 2026") && pdfIncluye(pdfBuffer, "Operador E2E"));
   check("PDF sin sesión rechazado", (await fetch(`${base}/api/projects/${wf}/pdf`)).status === 401);
 
   // ── PDF: mismos datos de empresa y logo que la cotización ──
@@ -214,6 +245,8 @@ try {
   check("PDF con logo PNG embebido", pdfAplanado(await pedirPdf()).includes("/Image"));
   check("subir logo SVG", (await subirLogo("logo.svg", "image/svg+xml", svgLogo)) === 200);
   check("PDF rasteriza el logo SVG a imagen", pdfAplanado(await pedirPdf()).includes("/Image"));
+  check("eliminar tarea de proyecto desde Pendientes", (await api(`/api/caltodo/tasks?id=${wfTaskId}`, "DELETE")).status === 200);
+  check("eliminar en Pendientes elimina la tarea del proyecto", !(await api(`/api/projects/${wf}/tasks`)).data.tasks.some((t) => t.id === wfTaskId));
   // Volcado opcional para inspección visual (solo si E2E_PDF_DUMP define una ruta).
   if (process.env.E2E_PDF_DUMP) {
     const fsdump = await import("node:fs");

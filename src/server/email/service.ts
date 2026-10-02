@@ -220,6 +220,7 @@ export async function sendEmail(
     text?: string;
     html?: string;
     inReplyTo?: string;
+    contactId?: string | null;
     attachments?: { filename: string; content: string; contentType: string }[];
   }
 ): Promise<string> {
@@ -267,7 +268,7 @@ export async function sendEmail(
     bodyText: input.text ?? null,
     bodyHtml: input.html ?? null,
     direction: "outbound",
-    contactId: null,
+    contactId: input.contactId ?? null,
     seen: true,
     threadId: input.inReplyTo ?? null,
   });

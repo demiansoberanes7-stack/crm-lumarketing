@@ -54,3 +54,7 @@ export type IdKind = keyof typeof prefixes;
 export function newId(kind: IdKind): string {
   return `${prefixes[kind]}_${nano()}`;
 }
+
+export function hasIdKind(id: string, kind: IdKind): boolean {
+  return id.startsWith(`${prefixes[kind]}_`);
+}

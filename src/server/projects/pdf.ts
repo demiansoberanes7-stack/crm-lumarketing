@@ -3,7 +3,7 @@
  * (mismo motor pdf-lib que las cotizaciones: sin navegador).
  */
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { getBusinessSettings } from "@/server/business-settings";
@@ -67,6 +67,15 @@ export async function projectPdf(
         .where(eq(schema.user.id, project.assignedUserId))
         .limit(1)
     : [];
+  const taskAssigneeIds = [...new Set(tasks.flatMap((task) => task.assigneeId ? [task.assigneeId] : []))];
+  const taskAssignees = taskAssigneeIds.length
+    ? await db
+        .select({ id: schema.user.id, name: schema.user.name, email: schema.user.email })
+        .from(schema.user)
+        .innerJoin(schema.member, eq(schema.member.userId, schema.user.id))
+        .where(and(eq(schema.member.organizationId, organizationId), inArray(schema.user.id, taskAssigneeIds)))
+    : [];
+  const taskAssigneeById = new Map(taskAssignees.map((user) => [user.id, user]));
 
   const type = getProjectType(project.projectType);
   const status = (project.status as ProjectStatus) ?? "borrador";
@@ -271,6 +280,8 @@ export async function projectPdf(
   y -= 16;
 
   stepResult.steps.forEach((step, index) => {
+    // Los datos generales ya están presentados arriba con nombres legibles.
+    // No imprimir su payload técnico (IDs de contacto/usuario) en el expediente.
     if (step.key === "general") return;
 
     checkPage(40);
@@ -331,6 +342,54 @@ export async function projectPdf(
     const done = tasks.filter((t) => t.estado === "terminado").length;
     label("TAREAS");
     line(`Total: ${tasks.length} · Terminadas: ${done} · Pendientes: ${tasks.length - done}`);
+
+    for (const task of tasks) {
+      const statusText = task.estado === "terminado" ? "Terminada" : "Pendiente";
+      const statusColor = task.estado === "terminado" ? rgb(0.12, 0.48, 0.28) : rgb(0.62, 0.39, 0.08);
+      const priorityText = task.priority
+        ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
+        : "Normal";
+      const assignee = task.assigneeId ? taskAssigneeById.get(task.assigneeId) : undefined;
+      const metadata = [
+        task.dueDate ? `Entrega: ${dateStr(task.dueDate)}` : "",
+        assignee ? `Responsable: ${assignee.name || assignee.email}` : "",
+      ].filter(Boolean).join(" · ");
+      const description = task.description?.trim();
+      const titleLines = wrapText(task.title, bold, 10, CONTENT_W - 12);
+      const metadataLines = metadata ? wrapText(metadata, regular, 8, CONTENT_W - 12) : [];
+      const descriptionLines = description ? wrapText(description, regular, 9, CONTENT_W - 24) : [];
+      const required =
+        titleLines.length * 14 + 16 + metadataLines.length * 12 +
+        (description ? 12 + descriptionLines.length * 13 : 0) + 12;
+
+      // Reservar el bloque antes de empezarlo; las líneas extensas siguen
+      // verificando el espacio individualmente y pueden continuar en otra página.
+      checkPage(required);
+      for (const titleLine of titleLines) {
+        checkPage(14);
+        page.drawText(clean(titleLine), { x: MARGIN + 8, y, size: 10, font: bold, color: DARK });
+        y -= 13;
+      }
+      checkPage(14);
+      page.drawText(`[${statusText}]`, { x: MARGIN + 8, y, size: 8, font: bold, color: statusColor });
+      page.drawText(`Prioridad: ${clean(priorityText)}`, {
+        x: MARGIN + 88,
+        y,
+        size: 8,
+        font: regular,
+        color: GRAY,
+      });
+      y -= 12;
+
+      if (metadata) line(metadata, regular, 8, GRAY, MARGIN + 8);
+      if (description) {
+        checkPage(14);
+        page.drawText("Descripción", { x: MARGIN + 8, y, size: 8, font: bold, color: GRAY });
+        y -= 11;
+        line(description, regular, 9, DARK, MARGIN + 8);
+      }
+      y -= 8;
+    }
   }
 
   // ─── FOOTER ───

@@ -77,6 +77,19 @@ describe("chatJson (reintentos y errores tipados)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // agotó los 3 intentos
   });
 
+  it("registra el estado y el mensaje HTTP exactos de OpenRouter sin imprimir el token", async () => {
+    const body = JSON.stringify({ error: { message: "Invalid API key" } });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status: 401 }));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await chatJson(schema, [{ role: "user", content: "hola" }]);
+
+    expect(result.ok).toBe(false);
+    expect(log).toHaveBeenCalledWith("[OpenRouter] HTTP error", { status: 401, body });
+    expect(JSON.stringify(log.mock.calls)).not.toContain("token-test");
+  });
+
   it("salida que nunca cumple el esquema → invalid_output", async () => {
     const fetchMock = vi
       .fn()

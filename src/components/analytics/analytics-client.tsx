@@ -2,28 +2,22 @@
 
 import { useState, useEffect } from "react";
 import {
-  Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart, Legend
+  ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart
 } from "recharts";
 import {
-  Activity, MousePointerClick, RefreshCw, Eye, DollarSign, Plug, Save,
-  Info, AlertCircle, CheckCircle2, BarChart3, Megaphone, Globe
+  MousePointerClick, RefreshCw, Eye, DollarSign, Plug, Save,
+  Info, AlertCircle, CheckCircle2, BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /* ─── Types ─── */
-interface Integration {
-  connected: boolean;
-  credentials: Record<string, string>;
-}
-
 interface AdsMetric {
   source: "google" | "meta" | "ga4";
   spend: number;
   impressions: number;
   clicks: number;
-  leads: number;
   currency: string;
 }
 
@@ -47,9 +41,16 @@ interface PipelineMetric {
 interface DashboardData {
   metrics: AdsMetric[];
   campaigns: AdsCampaign[];
-  pipelineMetric: PipelineMetric;
-  chartData: { name: string; google: number; meta: number; ga4?: number }[];
+  chartData: { name: string; meta: number }[];
+  connections: Record<"google" | "meta" | "ga4", { status: "disconnected" | "configured" | "connected" | "error"; message?: string }>;
 }
+
+const connectionLabel = {
+  disconnected: "Desconectado",
+  configured: "Configurado; datos no disponibles",
+  connected: "Conectado",
+  error: "Error de conexión",
+} as const;
 
 /* ─── Helpers ─── */
 function fmt(n: number, currency?: string): string {
@@ -64,19 +65,6 @@ function FieldHint({ children }: { children: React.ReactNode }) {
       <Info className="h-3 w-3 mt-0.5 shrink-0 text-blue-400" />
       {children}
     </p>
-  );
-}
-
-/* ─── Empty state when no integration connected ─── */
-function NoDataCard({ title, icon: Icon, color }: { title: string; icon: React.ElementType; color: string }) {
-  return (
-    <div className="rounded-xl border border-dashed bg-card p-6 text-center">
-      <Icon className={`mx-auto mb-2 h-8 w-8 ${color} opacity-40`} />
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
-      <p className="mt-1 text-xs text-muted-foreground/60">
-        Conecta la integración en la pestaña <strong>Integraciones</strong> para ver datos reales.
-      </p>
-    </div>
   );
 }
 
@@ -115,7 +103,7 @@ export function AnalyticsClient() {
   const [saved, setSaved] = useState(false);
 
   // Connection status derived from creds
-  const googleConnected = !!(googleAdsCreds.customerId && googleAdsCreds.developerToken);
+  const googleConnected = !!(googleAdsCreds.customerId && googleAdsCreds.developerToken && googleAdsCreds.clientId && googleAdsCreds.clientSecret);
   const metaConnected = !!(metaAdsCreds.accessToken && metaAdsCreds.adAccountId);
   const ga4Connected = !!ga4Creds.propertyId;
   const anyConnected = googleConnected || metaConnected || ga4Connected;
@@ -148,7 +136,6 @@ export function AnalyticsClient() {
 
   // Load ads dashboard if connected
   useEffect(() => {
-    if (!anyConnected) return;
     setLoadingDash(true);
     fetch("/api/analytics/dashboard").then(r => r.ok ? r.json() : null).then(d => {
       if (d) setDashData(d as DashboardData);
@@ -180,8 +167,6 @@ export function AnalyticsClient() {
   const totalSpend = dashData?.metrics.reduce((s, m) => s + m.spend, 0) ?? 0;
   const totalImpr = dashData?.metrics.reduce((s, m) => s + m.impressions, 0) ?? 0;
   const totalClicks = dashData?.metrics.reduce((s, m) => s + m.clicks, 0) ?? 0;
-  const totalLeads = dashData?.metrics.reduce((s, m) => s + m.leads, 0) ?? 0;
-  const cpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
 
   return (
     <div className="flex h-full flex-col bg-background/50 text-foreground">
@@ -219,6 +204,28 @@ export function AnalyticsClient() {
               </div>
             )}
 
+            {dashData && (
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  ["google", "Google Ads"],
+                  ["meta", "Meta Ads"],
+                  ["ga4", "Google Analytics 4"],
+                ] as const).map(([source, label]) => {
+                  const connection = dashData.connections[source];
+                  const connected = connection.status === "connected";
+                  return (
+                    <div key={source} className="rounded-lg border bg-card px-3 py-2 text-sm">
+                      <span className="font-medium">{label}: </span>
+                      <span className={connected ? "text-emerald-600" : "text-muted-foreground"}>
+                        {connectionLabel[connection.status]}
+                      </span>
+                      {connection.message && <p className="mt-1 text-xs text-muted-foreground">{connection.message}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* KPI Cards — only show when connected */}
             {anyConnected && (
               <>
@@ -228,14 +235,22 @@ export function AnalyticsClient() {
 
                 {!loadingDash && dashData && (
                   <>
+                    {dashData.metrics.length === 0 && (
+                      <div className="rounded-xl border border-dashed bg-card p-6 text-center">
+                        <p className="font-medium">No hay métricas reales disponibles</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Revisa el estado de cada integración o conecta una fuente con datos de campañas.
+                        </p>
+                      </div>
+                    )}
                     {/* Per-source section */}
                     {dashData.metrics.map(m => (
                       <div key={m.source} className="space-y-3">
                         <div className="flex items-center gap-2">
                           <SourceBadge source={m.source} />
-                          <span className="text-xs text-muted-foreground">· datos de los últimos 7 días</span>
+                          <span className="text-xs text-muted-foreground">· datos de los últimos 30 días</span>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           <div className="rounded-xl border bg-card p-4 shadow-sm">
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <DollarSign className="h-3.5 w-3.5 text-emerald-500" /> Inversión
@@ -254,14 +269,6 @@ export function AnalyticsClient() {
                             </div>
                             <div className="mt-1 text-xl font-bold">{fmt(m.clicks)}</div>
                           </div>
-                          <div className="rounded-xl border bg-card p-4 shadow-sm">
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <RefreshCw className="h-3.5 w-3.5 text-purple-500" /> CPL
-                            </div>
-                            <div className="mt-1 text-xl font-bold">
-                              {m.leads > 0 ? fmt(m.spend / m.leads, m.currency) : "—"}
-                            </div>
-                          </div>
                         </div>
                       </div>
                     ))}
@@ -271,12 +278,11 @@ export function AnalyticsClient() {
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Totales combinados (todas las fuentes)
                       </p>
-                      <div className="grid gap-3 sm:grid-cols-4">
+                      <div className="grid gap-3 sm:grid-cols-3">
                         {[
                           { label: "Inversión Total", value: fmt(totalSpend, "MXN"), icon: DollarSign, color: "text-emerald-500" },
                           { label: "Impresiones", value: fmt(totalImpr), icon: Eye, color: "text-blue-500" },
                           { label: "Clics Totales", value: fmt(totalClicks), icon: MousePointerClick, color: "text-orange-500" },
-                          { label: "CPL Promedio", value: fmt(cpl, "MXN"), icon: RefreshCw, color: "text-purple-500" },
                         ].map(({ label, value, icon: Icon, color }) => (
                           <div key={label} className="flex items-center gap-3">
                             <Icon className={`h-5 w-5 ${color}`} />
@@ -322,18 +328,16 @@ export function AnalyticsClient() {
                       </div>
                     )}
 
-                    {/* Chart: Google vs Meta */}
+                    {/* Serie diaria real de Meta; no se distribuyen totales artificialmente. */}
                     {dashData.chartData.length > 0 && (
                       <div className="rounded-xl border bg-card p-4 shadow-sm">
-                        <h3 className="mb-4 text-sm font-semibold">Clics por día — Google vs Meta</h3>
+                        <h3 className="mb-4 text-sm font-semibold">Clics diarios — Meta Ads (últimos 30 días)</h3>
                         <div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={dashData.chartData}>
                               <XAxis dataKey="name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                               <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                              <Legend />
-                              <Bar dataKey="google" name="Google Ads" fill="#4285F4" radius={[4, 4, 0, 0]} />
                               <Bar dataKey="meta" name="Meta Ads" fill="#1877F2" radius={[4, 4, 0, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
@@ -423,7 +427,7 @@ export function AnalyticsClient() {
                     onChange={e => setGoogleAdsCreds(c => ({ ...c, customerId: e.target.value }))}
                   />
                   <FieldHint>
-                    En Google Ads → haz clic en el icono de llave inglesa (⚙️) → Configuración de la cuenta. Aparece como <strong>"ID de cliente"</strong> en la esquina superior izquierda.
+                    En Google Ads → haz clic en el icono de llave inglesa (⚙️) → Configuración de la cuenta. Aparece como <strong>“ID de cliente”</strong> en la esquina superior izquierda.
                   </FieldHint>
                 </div>
                 <div>

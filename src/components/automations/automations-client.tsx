@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Clock, GitBranch, MessageSquareMore, Play, RefreshCw,
   ToggleLeft, ToggleRight, Zap, Edit2, Save, X
@@ -16,6 +16,14 @@ interface AutomationRule {
   messageText: string;
   delayHours: number;
   enabled: boolean;
+  channel: "whatsapp" | "email";
+}
+
+interface ConversationOption {
+  id: string;
+  channel: string;
+  contact: { name: string; phone: string | null };
+  stageName: string | null;
 }
 
 const PRESET_RULES: AutomationRule[] = [
@@ -26,6 +34,7 @@ const PRESET_RULES: AutomationRule[] = [
     messageText: "Hola, espero que estés teniendo un excelente día. Solo quería dar seguimiento a nuestra conversación anterior. ¿Tienes alguna duda con la cotización?",
     delayHours: 72,
     enabled: true,
+    channel: "whatsapp",
   },
   {
     id: "followup-7d",
@@ -34,6 +43,7 @@ const PRESET_RULES: AutomationRule[] = [
     messageText: "¡Hola! Te escribo rápidamente por si se te traspapeló mi mensaje anterior. Si ya no te interesa el servicio, no te preocupes, solo dime para no insistir. ¡Saludos!",
     delayHours: 168,
     enabled: false,
+    channel: "whatsapp",
   },
   {
     id: "welcome",
@@ -42,6 +52,7 @@ const PRESET_RULES: AutomationRule[] = [
     messageText: "¡Hola! Gracias por contactarnos. En un momento uno de nuestros agentes te atenderá de forma personalizada.",
     delayHours: 0,
     enabled: false,
+    channel: "whatsapp",
   },
 ];
 
@@ -56,9 +67,15 @@ export function AutomationsClient() {
   const [editForm, setEditForm] = useState<Partial<AutomationRule>>({});
 
   const [testConvId, setTestConvId] = useState("");
+  const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [manualIdEnabled, setManualIdEnabled] = useState(false);
+  const [conversations, setConversations] = useState<ConversationOption[]>([]);
+  const [conversationsError, setConversationsError] = useState("");
   const [testDelayH, setTestDelayH] = useState("72");
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; } | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [savingRules, setSavingRules] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     fetch("/api/automations/rules")
@@ -66,27 +83,55 @@ export function AutomationsClient() {
       .then(d => {
         if (d?.rules && Array.isArray(d.rules)) {
           // Merge preset with db rules
-          setRules(PRESET_RULES.map(pr => {
+          const mergedRules = PRESET_RULES.map(pr => {
             const dr = d.rules.find((r: AutomationRule) => r.id === pr.id);
             return dr ? { ...pr, ...dr } : pr;
-          }));
+          });
+          setRules(mergedRules);
+          const followUp = mergedRules.find((rule) => rule.id === "followup-3d");
+          if (followUp) setTestDelayH(String(followUp.delayHours));
         }
       })
       .catch(() => {});
   }, []);
 
-  async function persistRules(newRules: AutomationRule[]) {
-    await fetch("/api/automations/rules", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ rules: newRules })
-    });
+  useEffect(() => {
+    fetch("/api/conversations")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("No se pudieron cargar las conversaciones");
+        return response.json() as Promise<{ conversations?: ConversationOption[] }>;
+      })
+      .then((data) => setConversations(Array.isArray(data.conversations) ? data.conversations : []))
+      .catch(() => setConversationsError("No se pudieron cargar los contactos activos."));
+  }, []);
+
+  async function persistRules(newRules: AutomationRule[]): Promise<boolean> {
+    setSavingRules(true);
+    setSaveError("");
+    try {
+      const response = await fetch("/api/automations/rules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rules: newRules }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        setSaveError(data?.error?.message ?? "No se pudieron guardar las reglas.");
+        return false;
+      }
+      return true;
+    } catch {
+      setSaveError("No se pudieron guardar las reglas por un error de red.");
+      return false;
+    } finally {
+      setSavingRules(false);
+    }
   }
 
-  function toggleRule(id: string) {
+  async function toggleRule(id: string) {
     const newRules = rules.map((rule) => rule.id === id ? { ...rule, enabled: !rule.enabled } : rule);
     setRules(newRules);
-    void persistRules(newRules);
+    if (!await persistRules(newRules)) setRules(rules);
   }
 
   function startEdit(rule: AutomationRule) {
@@ -99,7 +144,7 @@ export function AutomationsClient() {
     setEditForm({});
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editingId) return;
     const newRules = rules.map(rule => {
       if (rule.id === editingId) {
@@ -107,18 +152,21 @@ export function AutomationsClient() {
           ...rule,
           name: editForm.name ?? rule.name,
           delayHours: editForm.delayHours ?? rule.delayHours,
-          messageText: editForm.messageText ?? rule.messageText
+          messageText: editForm.messageText ?? rule.messageText,
+          channel: editForm.channel ?? rule.channel,
         };
       }
       return rule;
     });
-    setRules(newRules);
-    void persistRules(newRules);
-    cancelEdit();
+    if (await persistRules(newRules)) {
+      setRules(newRules);
+      cancelEdit();
+    }
   }
 
   async function triggerManual() {
-    if (!testConvId.trim()) return;
+    const conversationId = manualIdEnabled ? testConvId.trim() : selectedConversationId;
+    if (!conversationId) return;
     setTriggering(true);
     setTestResult(null);
     try {
@@ -126,8 +174,8 @@ export function AutomationsClient() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          conversationId: testConvId.trim(),
-          delayHours: Number(testDelayH) || 72,
+          conversationId,
+          ...(testDelayH.trim() ? { delayHours: Number(testDelayH) } : {}),
         }),
       });
       const data = (await res.json()) as { ok: boolean; workflowId?: string; error?: string };
@@ -181,6 +229,7 @@ export function AutomationsClient() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Reglas de automatización
           </h2>
+          {saveError && <p role="alert" className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{saveError}</p>}
           <div className="space-y-4">
             {rules.map((rule) => (
               <div key={rule.id} className="rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md overflow-hidden">
@@ -190,7 +239,7 @@ export function AutomationsClient() {
                       <h3 className="font-semibold text-sm">Editando Regla</h3>
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="ghost" onClick={cancelEdit}><X className="h-4 w-4 mr-1"/> Cancelar</Button>
-                        <Button size="sm" onClick={saveEdit}><Save className="h-4 w-4 mr-1"/> Guardar</Button>
+                        <Button size="sm" onClick={() => void saveEdit()} disabled={savingRules}><Save className="h-4 w-4 mr-1"/> Guardar</Button>
                       </div>
                     </div>
                     
@@ -210,6 +259,18 @@ export function AutomationsClient() {
                           value={(editForm.delayHours ?? 0) / 24} 
                           onChange={e => setEditForm({ ...editForm, delayHours: Number(e.target.value) * 24 })}
                         />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor={`channel-${rule.id}`}>Canal de envío</label>
+                        <select
+                          id={`channel-${rule.id}`}
+                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                          value={editForm.channel ?? rule.channel}
+                          onChange={e => setEditForm({ ...editForm, channel: e.target.value as AutomationRule["channel"] })}
+                        >
+                          <option value="whatsapp">WhatsApp</option>
+                          <option value="email">Correo electrónico</option>
+                        </select>
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -237,9 +298,10 @@ export function AutomationsClient() {
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mb-3">
                         <span className="flex items-center gap-1"><Zap className="h-3 w-3 text-orange-400" />{rule.trigger}</span>
                         <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-blue-400" />{rule.delayHours / 24} {rule.delayHours === 24 ? "día" : "días"} de espera</span>
+                        <span>{rule.channel === "email" ? "Correo" : "WhatsApp"}</span>
                       </div>
                       <div className="bg-muted/40 p-3 rounded-lg text-sm italic border-l-2 border-brand/50">
-                        "{rule.messageText}"
+                        “{rule.messageText}”
                       </div>
                     </div>
 
@@ -247,7 +309,7 @@ export function AutomationsClient() {
                       <Button size="icon" variant="ghost" onClick={() => startEdit(rule)} className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <button onClick={() => toggleRule(rule.id)} className="text-muted-foreground transition-colors hover:text-foreground" aria-label={rule.enabled ? "Desactivar" : "Activar"}>
+                      <button onClick={() => void toggleRule(rule.id)} disabled={savingRules} className="text-muted-foreground transition-colors hover:text-foreground" aria-label={rule.enabled ? "Desactivar" : "Activar"}>
                         {rule.enabled ? <ToggleRight className="h-7 w-7 text-brand" /> : <ToggleLeft className="h-7 w-7" />}
                       </button>
                     </div>
@@ -271,8 +333,29 @@ export function AutomationsClient() {
           <div className="p-5 space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">ID de conversación</label>
-                <Input placeholder="cv_xxxxxxxxxxxxxxxx" value={testConvId} onChange={e => setTestConvId(e.target.value)} />
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="conversation-picker">Contacto / conversación</label>
+                {manualIdEnabled ? (
+                  <Input placeholder="ID de conversación para pruebas técnicas" value={testConvId} onChange={e => setTestConvId(e.target.value)} />
+                ) : (
+                  <select
+                    id="conversation-picker"
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                    value={selectedConversationId}
+                    onChange={e => setSelectedConversationId(e.target.value)}
+                  >
+                    <option value="">{conversations.length ? "Selecciona una conversación" : "No hay conversaciones activas"}</option>
+                    {conversations.map((conversation) => (
+                      <option key={conversation.id} value={conversation.id}>
+                        {conversation.contact.name} · {conversation.contact.phone || "Sin teléfono"} · {conversation.stageName || "Sin etapa"}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {conversationsError && !manualIdEnabled && <p className="text-xs text-destructive">{conversationsError}</p>}
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input type="checkbox" checked={manualIdEnabled} onChange={e => setManualIdEnabled(e.target.checked)} />
+                  Ingresar ID manual (pruebas técnicas)
+                </label>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">Esperar (horas)</label>
@@ -281,7 +364,7 @@ export function AutomationsClient() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button disabled={triggering || !testConvId.trim()} onClick={() => void triggerManual()}>
+              <Button disabled={triggering || (manualIdEnabled ? !testConvId.trim() : !selectedConversationId)} onClick={() => void triggerManual()}>
                 {triggering ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Iniciando…</> : <><Play className="mr-2 h-4 w-4" /> Iniciar flujo</>}
               </Button>
               {testResult && <span className={`text-sm font-medium ${testResult.ok ? "text-emerald-600" : "text-amber-600"}`}>{testResult.msg}</span>}
