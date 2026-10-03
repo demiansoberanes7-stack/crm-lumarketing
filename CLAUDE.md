@@ -94,10 +94,14 @@ Ver `.env.example` (cada una con guía inline). Las claves: `APP_BASE_URL`,
 (opcional, firma), y para IA:
 
 ```bash
-OPENROUTER_API_TOKEN=sk-or-...
-OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
-OPENROUTER_JUDGE_MODEL=anthropic/claude-haiku-4.5   # opcional: juez más barato
+OPENROUTER_API_TOKEN=gsk_...  # clave gratis de https://console.groq.com/keys
+OPENROUTER_BASE_URL=https://api.groq.com/openai
+OPENROUTER_MODEL=openai/gpt-oss-120b
+OPENROUTER_JUDGE_MODEL=openai/gpt-oss-20b
 ```
+
+Los nombres `OPENROUTER_*` se conservan por compatibilidad; el endpoint
+predeterminado del proyecto es Groq.
 
 Para el self-test local existe además el modo de pruebas interno (mocks) —
 ver `specs/001-vocero-core/quickstart.md`. Nunca actives mocks en producción.

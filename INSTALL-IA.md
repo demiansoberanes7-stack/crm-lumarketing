@@ -45,8 +45,10 @@
 | `ENCRYPTION_KEY` | generado (base64, 44 caracteres) |
 | `META_WEBHOOK_VERIFY_TOKEN` | generado |
 | `META_GRAPH_API_VERSION` | `v25.0` |
-| `OPENROUTER_API_TOKEN` | del usuario (si lo dio) |
-| `OPENROUTER_MODEL` | si hay token: sugiere `anthropic/claude-sonnet-4.5` u otro a elección |
+| `OPENROUTER_API_TOKEN` | clave gratis de Groq desde `https://console.groq.com/keys` |
+| `OPENROUTER_BASE_URL` | `https://api.groq.com/openai` |
+| `OPENROUTER_MODEL` | `openai/gpt-oss-120b` |
+| `OPENROUTER_JUDGE_MODEL` | `openai/gpt-oss-20b` |
 
 `DOMAIN` solo aplica en la Ruta B (para Caddy).
 

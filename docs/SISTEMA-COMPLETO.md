@@ -1169,13 +1169,13 @@ META_APP_SECRET=<optional-hmac-secret>
 META_GRAPH_API_VERSION=v25.0
 ```
 
-### IA (OpenRouter/Groq)
+### IA (Groq, OpenAI-compatible)
 
 ```bash
-OPENROUTER_BASE_URL=https://api.groq.com/openai/v1
+OPENROUTER_BASE_URL=https://api.groq.com/openai
 OPENROUTER_API_TOKEN=<api-key>
-OPENROUTER_MODEL=llama-3.3-70b-versatile
-OPENROUTER_JUDGE_MODEL=llama-3.3-70b-versatile
+OPENROUTER_MODEL=openai/gpt-oss-120b
+OPENROUTER_JUDGE_MODEL=openai/gpt-oss-20b
 ```
 
 ### Canales Opcionales

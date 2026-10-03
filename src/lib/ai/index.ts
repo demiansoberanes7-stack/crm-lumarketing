@@ -138,8 +138,8 @@ async function callProvider(
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       const providerMessage = text || res.statusText || "sin detalle";
-      console.error("[OpenRouter] HTTP error", { status: res.status, body: providerMessage });
-      throw new Error(`OpenRouter respondió HTTP ${res.status}: ${truncate(providerMessage, 1000)}`);
+      console.error("[LLM] HTTP error", { status: res.status, body: providerMessage });
+      throw new Error(`El proveedor de IA respondió HTTP ${res.status}: ${truncate(providerMessage, 1000)}`);
     }
     const json = (await res.json()) as {
       choices?: { message?: { content?: string } }[];

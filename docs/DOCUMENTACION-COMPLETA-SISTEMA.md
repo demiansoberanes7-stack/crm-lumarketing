@@ -782,7 +782,8 @@ export async function chatJson<T>(
 # Configuracion de IA (solo env vars)
 OPENROUTER_BASE_URL=https://api.groq.com/openai
 OPENROUTER_API_TOKEN=gsk_...
-OPENROUTER_MODEL=openai/gpt-oss-20b
+OPENROUTER_MODEL=openai/gpt-oss-120b
+OPENROUTER_JUDGE_MODEL=openai/gpt-oss-20b
 ```
 
 ## Pipeline del Agente (7 acciones)

@@ -155,8 +155,8 @@ Meta y tu proveedor LLM opcional.
 - Un VPS con Docker (2 GB de RAM bastan) — con o sin [Coolify](https://coolify.io).
 - Un dominio apuntando al VPS (Meta exige **https** para webhooks).
 - Un número de WhatsApp en la Cloud API de Meta (ver [Conexión](#conexión-del-número-de-whatsapp)).
-- Opcional: una API key de [OpenRouter](https://openrouter.ai) (o cualquier
-  proveedor compatible) para el agente y el Laboratorio.
+- Opcional: una API key gratuita de [Groq](https://console.groq.com/keys) (o
+  cualquier proveedor OpenAI-compatible) para el agente y el Laboratorio.
 
 ## Instalación (~15 minutos)
 
@@ -337,11 +337,18 @@ webhook vive en `/api/webhooks/ig/<token>`. El detalle está en
 En las variables de la instancia:
 
 ```bash
-OPENROUTER_API_TOKEN=sk-or-...        # tu key
-OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
-OPENROUTER_JUDGE_MODEL=               # opcional: modelo distinto para el juez del Laboratorio
-OPENROUTER_BASE_URL=https://openrouter.ai/api   # o tu proveedor OpenAI-compatible
+OPENROUTER_API_TOKEN=gsk_...          # clave gratis: https://console.groq.com/keys
+OPENROUTER_BASE_URL=https://api.groq.com/openai
+OPENROUTER_MODEL=openai/gpt-oss-120b
+OPENROUTER_JUDGE_MODEL=openai/gpt-oss-20b
 ```
+
+Los nombres `OPENROUTER_*` se conservan por compatibilidad; el endpoint
+predeterminado es Groq y no requiere créditos.
+
+Para el deploy automático a Azure, guarda esa misma clave como secreto del
+repositorio GitHub `AI_API_TOKEN`. El workflow la instala en el `.env` del VPS
+y cancela el deploy si falta.
 
 Sin token, todo lo demás funciona; Agente y Laboratorio muestran cómo
 activarlos. Después configura el comportamiento y el conocimiento en la

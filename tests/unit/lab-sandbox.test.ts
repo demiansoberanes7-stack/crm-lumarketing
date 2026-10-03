@@ -156,12 +156,12 @@ describe("sandbox del Laboratorio en el pipeline del agente", () => {
     vi.mocked(chatJson).mockResolvedValueOnce({
       ok: false,
       error: "provider_error",
-      detail: "OpenRouter respondió HTTP 401: Invalid API key",
+      detail: "El proveedor de IA respondió HTTP 401: Invalid API key",
     });
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const { runAgentTurn } = await import("@/server/ai/pipeline");
-    await expect(runAgentTurn("cv_lab_error")).rejects.toThrow("OpenRouter respondió HTTP 401: Invalid API key");
+    await expect(runAgentTurn("cv_lab_error")).rejects.toThrow("El proveedor de IA respondió HTTP 401: Invalid API key");
 
     expect(graphRequest).not.toHaveBeenCalled();
     expect(errorLog).toHaveBeenCalled();
