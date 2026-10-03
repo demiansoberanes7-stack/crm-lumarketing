@@ -347,8 +347,9 @@ Los nombres `OPENROUTER_*` se conservan por compatibilidad; el endpoint
 predeterminado es Groq y no requiere créditos.
 
 Para el deploy automático a Azure, guarda esa misma clave como secreto del
-repositorio GitHub `AI_API_TOKEN`. El workflow la instala en el `.env` del VPS
-y cancela el deploy si falta.
+repositorio GitHub `AI_API_TOKEN`. El workflow la instala en el `.env` del VPS;
+si el secreto no existe conserva el token que ya esté en el servidor y cancela
+el deploy solo si no hay ningún token.
 
 Sin token, todo lo demás funciona; Agente y Laboratorio muestran cómo
 activarlos. Después configura el comportamiento y el conocimiento en la

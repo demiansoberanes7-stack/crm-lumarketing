@@ -86,16 +86,17 @@ jobs:
             from pathlib import Path
 
             token = os.environ.get("AI_API_TOKEN", "").strip()
-            if not token:
-                raise SystemExit("Falta el secreto GitHub AI_API_TOKEN; deploy cancelado para proteger la configuración de IA")
 
             path = Path(".env")
             overrides = {
-                "OPENROUTER_API_TOKEN": token,
                 "OPENROUTER_BASE_URL": "https://api.groq.com/openai",
                 "OPENROUTER_MODEL": "openai/gpt-oss-120b",
                 "OPENROUTER_JUDGE_MODEL": "openai/gpt-oss-20b",
             }
+            if token:
+                overrides["OPENROUTER_API_TOKEN"] = token
+            else:
+                print("⚠️ secreto AI_API_TOKEN ausente: se conserva el OPENROUTER_API_TOKEN ya presente en el .env del VPS")
             lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
             updated = []
             seen = set()
@@ -111,6 +112,20 @@ jobs:
                 if key not in seen:
                     updated.append(f"{key}={value}")
             path.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
+
+            final = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                key, separator, value = line.partition("=")
+                if separator:
+                    final.setdefault(key, value)
+            if not final.get("OPENROUTER_API_TOKEN", "").strip():
+                raise SystemExit("OPENROUTER_API_TOKEN ausente en el .env del VPS: fija el secreto AI_API_TOKEN o añádelo en el servidor")
+            print(
+                "✅ IA en .env del VPS:",
+                final["OPENROUTER_BASE_URL"],
+                final["OPENROUTER_MODEL"],
+                f"| token: {len(final['OPENROUTER_API_TOKEN'].strip())} chars",
+            )
             PY
             echo "📦 Pulling nueva imagen desde Docker Hub..."
             docker compose pull app
