@@ -18,7 +18,53 @@ export type ChatJsonResult<T> =
   | { ok: false; error: "not_configured" | "provider_error" | "invalid_output"; detail: string };
 
 const MAX_ATTEMPTS = 3;
+/**
+ * Los límites de los tiers gratuitos (p. ej. Groq: 8000 tokens/min) llegan como
+ * HTTP 429 y NO se disuelven en 500 ms: la ventana se vacía poco a poco. Por
+ * eso el rate limit tiene su propia bolsa de intentos y esperas largas — un
+ * turno que no espera es un turno que escala a mano humana.
+ */
+const MAX_RATE_LIMIT_ATTEMPTS = 5;
+const RATE_LIMIT_BACKOFF_MS = [5_000, 10_000, 20_000, 30_000];
 const RETRY_DELAY_MS = 500;
+
+/** Error HTTP del proveedor que conserva status y la espera que pidió. */
+class ProviderHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterMs?: number;
+  constructor(status: number, message: string, retryAfterMs?: number) {
+    super(message);
+    this.name = "ProviderHttpError";
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function isRateLimit(err: unknown): boolean {
+  return err instanceof ProviderHttpError && err.status === 429;
+}
+
+function retryDelayMs(failureIndex: number, err: unknown, rateLimited: boolean): number {
+  if (!rateLimited) return RETRY_DELAY_MS * failureIndex;
+  const base =
+    RATE_LIMIT_BACKOFF_MS[
+      Math.min(Math.max(failureIndex - 1, 0), RATE_LIMIT_BACKOFF_MS.length - 1)
+    ] ?? RATE_LIMIT_BACKOFF_MS[RATE_LIMIT_BACKOFF_MS.length - 1]!;
+  const hinted = err instanceof ProviderHttpError ? err.retryAfterMs : undefined;
+  // El hint del proveedor subestima a veces la ventana; se respeta pero con
+  // piso (el backoff base) y techo para no colgar un turno más de 45 s.
+  return Math.min(Math.max(base, (hinted ?? 0) + 1_000), 45_000);
+}
+
+/** `Retry-After` (segundos) o el "try again in Xs" que devuelve Groq. */
+function parseRetryAfterMs(res: Response, body: string): number | undefined {
+  const header = res.headers.get("retry-after");
+  const seconds = header ? Number(header) : NaN;
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  const match = body.match(/try again in (\d+(?:\.\d+)?)s/i);
+  if (match) return Math.ceil(Number(match[1]) * 1000);
+  return undefined;
+}
 
 /** Resolve AI token+model — env vars only (DB fields are deprecated). */
 export async function resolveAiConfig(_organizationId: string) {
@@ -67,7 +113,12 @@ export async function chatJson<T>(
   }
 
   let lastDetail = "";
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  let rateLimited = false;
+  let attempt = 1;
+  while (attempt <= MAX_RATE_LIMIT_ATTEMPTS) {
+    const limit = rateLimited ? MAX_RATE_LIMIT_ATTEMPTS : MAX_ATTEMPTS;
+    if (attempt > limit) break;
+
     const attemptMessages: ChatMessage[] =
       attempt === 1
         ? messages
@@ -79,6 +130,7 @@ export async function chatJson<T>(
                 "STRICT: tu respuesta anterior no fue JSON válido según el esquema. Responde ÚNICAMENTE el objeto JSON, sin explicaciones ni markdown.",
             },
           ];
+    attempt += 1;
     try {
       const raw = await callProvider(model, attemptMessages, opts?.timeoutMs, token ?? dbToken, opts?.baseUrl);
       const extracted = extractJson(raw);
@@ -96,8 +148,11 @@ export async function chatJson<T>(
       return { ok: true, data: parsed.data, raw };
     } catch (err) {
       lastDetail = err instanceof Error ? err.message : String(err);
-      if (attempt < MAX_ATTEMPTS) {
-        await sleep(RETRY_DELAY_MS * attempt);
+      rateLimited = isRateLimit(err);
+      const failures = attempt - 1;
+      const nextLimit = rateLimited ? MAX_RATE_LIMIT_ATTEMPTS : MAX_ATTEMPTS;
+      if (failures < nextLimit) {
+        await sleep(retryDelayMs(failures, err, rateLimited));
       }
     }
   }
@@ -139,7 +194,11 @@ async function callProvider(
       const text = await res.text().catch(() => "");
       const providerMessage = text || res.statusText || "sin detalle";
       console.error("[LLM] HTTP error", { status: res.status, body: providerMessage });
-      throw new Error(`El proveedor de IA respondió HTTP ${res.status}: ${truncate(providerMessage, 1000)}`);
+      throw new ProviderHttpError(
+        res.status,
+        `El proveedor de IA respondió HTTP ${res.status}: ${truncate(providerMessage, 1000)}`,
+        parseRetryAfterMs(res, providerMessage)
+      );
     }
     const json = (await res.json()) as {
       choices?: { message?: { content?: string } }[];

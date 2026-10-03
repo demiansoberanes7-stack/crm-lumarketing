@@ -103,6 +103,63 @@ describe("chatJson (reintentos y errores tipados)", () => {
     if (!result.ok) expect(result.error).toBe("invalid_output");
   });
 
+  it("429 (rate limit) → espera la ventana del tier gratis y triunfa al reintentar", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              error: {
+                message:
+                  "Rate limit reached for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000. Please try again in 1.14s.",
+              },
+            }),
+            { status: 429, headers: { "retry-after": "1" } }
+          )
+        )
+        .mockResolvedValueOnce(providerResponse('{"action":"reply","text":"ok"}'));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = chatJson(schema, [{ role: "user", content: "hola" }]);
+      // el reintento NO ocurre en 500 ms: espera el backoff de rate limit
+      await vi.advanceTimersByTimeAsync(5_000);
+      const result = await pending;
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.data.text).toBe("ok");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("429 persistente → agota los 5 intentos de rate limit (no los 3 normales)", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: { message: "Rate limit" } }), {
+            status: 429,
+            headers: { "retry-after": "1" },
+          })
+        )
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = chatJson(schema, [{ role: "user", content: "hola" }]);
+      await vi.advanceTimersByTimeAsync(70_000);
+      const result = await pending;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe("provider_error");
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sin token → not_configured sin tocar la red", async () => {
     vi.stubEnv("OPENROUTER_API_TOKEN", "");
     const fetchMock = vi.fn();

@@ -19,6 +19,13 @@ import { PERSONAS, type Persona } from "@/server/lab/personas";
  */
 
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
+/**
+ * Pausa entre casos: los tiers gratuitos de LLM miden tokens por ventana
+ * (Groq: 8000/min). Una corrida que dispara 6 personas sin tregua se come la
+ * ventana en los primeros segundos y el resto acaba en 429. Esperar aquí es
+ * más barato que reintentar allá.
+ */
+const PACE_BETWEEN_CASES_MS = 6_000;
 
 export class RunConflictError extends Error {}
 
@@ -112,7 +119,10 @@ async function runAllCases(
   const total = cases.length;
   publishProgress(organizationId, runId, "running", done, total);
 
-  for (const testCase of cases) {
+  for (const [index, testCase] of cases.entries()) {
+    if (index > 0) {
+      await new Promise((resolve) => setTimeout(resolve, PACE_BETWEEN_CASES_MS));
+    }
     const persona = PERSONAS.find((p) => p.key === testCase.persona);
     if (!persona) continue;
 
