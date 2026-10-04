@@ -38,6 +38,7 @@ services:
       MAIN_URL: ${APP_BASE_URL}
       WAHA_TRUSTED_HOSTS: ${WAHA_TRUSTED_HOSTS:-}
       WEBHOOK_TRUSTED_HOSTS: ${WEBHOOK_TRUSTED_HOSTS:-}
+      MEDIA_DIR: ${MEDIA_DIR:-/data/media}
     depends_on:
       postgres:
         condition: service_healthy
