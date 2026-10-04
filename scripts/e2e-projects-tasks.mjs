@@ -192,6 +192,7 @@ try {
   const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer());
   check("PDF real con encabezado y código", pdfBuffer.subarray(0, 5).toString("latin1") === "%PDF-" && pdfIncluye(pdfBuffer, "EXPEDIENTE DE PROYECTO") && pdfIncluye(pdfBuffer, wfDone.code));
   check("PDF omite IDs técnicos del paso general", !pdfIncluye(pdfBuffer, rawIdMarker) && !pdfIncluye(pdfBuffer, auth.data.user.id));
+  check("PDF conserva el progreso y no imprime el campo Riesgo vacío", pdfIncluye(pdfBuffer, "Progreso") && !pdfIncluye(pdfBuffer, "Riesgo"));
   check("PDF desglosa título y descripción de tarea", pdfIncluye(pdfBuffer, wfTaskTitle) && pdfIncluye(pdfBuffer, wfTaskDescription));
   check("PDF incluye estado, prioridad, entrega y responsable", pdfIncluye(pdfBuffer, "Pendiente") && pdfIncluye(pdfBuffer, "Alta") && pdfIncluye(pdfBuffer, "octubre de 2026") && pdfIncluye(pdfBuffer, "Operador E2E"));
   check("PDF sin sesión rechazado", (await fetch(`${base}/api/projects/${wf}/pdf`)).status === 401);
@@ -232,7 +233,7 @@ try {
       headers: { cookie },
       body: form,
     });
-    return res.status;
+    return { status: res.status, body: await res.json() };
   }
   const pngLogo = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGPgjf5PEmIY1TCqYfhqAADpLGcQ7emRCgAAAABJRU5ErkJggg==",
@@ -241,9 +242,16 @@ try {
   const svgLogo =
     '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="8" fill="#0d5bff"/><path d="M16 44 L32 16 L48 44 Z" fill="#ffffff"/></svg>';
 
-  check("subir logo PNG", (await subirLogo("logo.png", "image/png", pngLogo)) === 200);
+  const firstLogoUpload = await subirLogo("logo.png", "image/png", pngLogo);
+  check("subir logo PNG", firstLogoUpload.status === 200);
+  const firstLogoSettings = (await api("/api/settings/business")).data.settings;
+  const newLogoUpload = await subirLogo("logo-reemplazo.png", "image/png", pngLogo);
+  const replacedLogoSettings = (await api("/api/settings/business")).data.settings;
+  check("reemplazar logo genera URL versionada para evitar caché", newLogoUpload.status === 200 && firstLogoSettings.logoUrl !== replacedLogoSettings.logoUrl);
+  const logoAsset = await fetch(`${base}${replacedLogoSettings.logoUrl}`);
+  check("la URL del logo reemplazado sirve la nueva imagen", logoAsset.ok && logoAsset.headers.get("content-type") === "image/png");
   check("PDF con logo PNG embebido", pdfAplanado(await pedirPdf()).includes("/Image"));
-  check("subir logo SVG", (await subirLogo("logo.svg", "image/svg+xml", svgLogo)) === 200);
+  check("subir logo SVG", (await subirLogo("logo.svg", "image/svg+xml", svgLogo)).status === 200);
   check("PDF rasteriza el logo SVG a imagen", pdfAplanado(await pedirPdf()).includes("/Image"));
   check("eliminar tarea de proyecto desde Pendientes", (await api(`/api/caltodo/tasks?id=${wfTaskId}`, "DELETE")).status === 200);
   check("eliminar en Pendientes elimina la tarea del proyecto", !(await api(`/api/projects/${wf}/tasks`)).data.tasks.some((t) => t.id === wfTaskId));

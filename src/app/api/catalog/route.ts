@@ -3,6 +3,7 @@ import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { productImageUrlSchema } from "@/lib/catalog-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ const postSchema = z.object({
   description: z.string().nullable().optional(),
   shortDescription: z.string().max(500).nullable().optional(),
   longDescription: z.string().nullable().optional(),
-  imageUrl: z.string().url().max(1024).nullable().optional(),
+  imageUrl: productImageUrlSchema.nullable().optional(),
   price: z.number().int().min(0),
   currency: z.string().default("MXN"),
   available: z.boolean().default(true),

@@ -6,6 +6,7 @@ import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-
 import { getEnv, isAiConfigured } from "@/lib/env";
 import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
 import { findAutomationRule } from "@/server/automation-rules";
+import { enqueueFollowUp } from "@/server/automation-queue";
 import { publish } from "@/server/events/bus";
 import { isWindowOpen } from "@/server/inbox/window";
 import { SendError, sendText } from "@/server/inbox/send";
@@ -300,17 +301,16 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
           const enabled = rule?.enabled !== false;
 
           if (enabled) {
-            const { getTemporalClient } = await import("@/server/temporal/client");
-            const client = await getTemporalClient();
-            await client.workflow.start("followUpWorkflow", {
-              args: [conversationId, organizationId, delayHours],
-              taskQueue: "crm-followups",
-              workflowId: `followup-${conversationId}-${Date.now()}`
+            await enqueueFollowUp({
+              conversationId,
+              organizationId,
+              delayHours,
+              triggeredBy: "stage",
             });
-            console.log(`[temporal] Started followUpWorkflow for conversation ${conversationId}`);
+            console.log(`[automations] Follow-up queued for conversation ${conversationId}`);
           }
         } catch (err) {
-          console.error(`[temporal] Failed to start followup workflow:`, err);
+          console.error(`[automations] Failed to queue follow-up:`, err);
         }
       }
       

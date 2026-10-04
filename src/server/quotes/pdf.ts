@@ -203,7 +203,7 @@ export async function quotePdf(organizationId: string, id: string) {
   const totalsLabelX = MARGIN + 340;
   const totalsValueX = MARGIN + 450;
 
-  checkPage(90);
+  checkPage(110);
 
   // Subtotal
   page.drawText("SUBTOTAL:", { x: totalsLabelX, y, size: 10, font: bold, color: DARK });
@@ -218,6 +218,10 @@ export async function quotePdf(organizationId: string, id: string) {
     page.drawText(`-${money(quote.discountAmount)}`, { x: totalsValueX, y, size: 10, font: bold, color: RED });
     y -= 20;
   }
+
+  page.drawText(`IVA (${quote.taxRate}%):`, { x: totalsLabelX, y, size: 10, font: bold, color: DARK });
+  page.drawText(money(quote.taxAmount), { x: totalsValueX, y, size: 10, font: bold, color: DARK });
+  y -= 20;
 
   // Total (dark background box)
   y -= 4;

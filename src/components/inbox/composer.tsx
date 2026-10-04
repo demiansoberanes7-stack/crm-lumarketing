@@ -77,8 +77,8 @@ export function Composer({
   async function apiSend(path: string, init: RequestInit): Promise<string | null> {
     const res = await fetch(path, init);
     if (res.ok) return null;
-    const data = (await res.json().catch(() => null)) as { message?: string } | null;
-    return data?.message ?? `Error ${res.status}`;
+    const data = (await res.json().catch(() => null)) as { message?: string; error?: { message?: string } } | null;
+    return data?.error?.message ?? data?.message ?? `Error ${res.status}`;
   }
 
   async function submit() {
@@ -200,6 +200,7 @@ export function Composer({
   }
 
   const canSubmit = file !== null || text.trim().length > 0;
+  const canAttach = conversation.channel === "whatsapp" || conversation.channel === "messenger";
 
   return (
     <div className="border-t bg-background px-[18px] pb-3.5 pt-3">
@@ -314,14 +315,16 @@ export function Composer({
           onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
         />
         <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            onClick={() => fileRef.current?.click()}
-            aria-label="Adjuntar archivo"
-            title="Adjuntar imagen, video, audio o documento"
-            className="rounded p-1.5 text-text-3 transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <Paperclip className="h-[18px] w-[18px]" strokeWidth={1.7} />
-          </button>
+          {canAttach && (
+            <button
+              onClick={() => fileRef.current?.click()}
+              aria-label="Adjuntar archivo"
+              title="Adjuntar imagen, video, audio o documento"
+              className="rounded p-1.5 text-text-3 transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Paperclip className="h-[18px] w-[18px]" strokeWidth={1.7} />
+            </button>
+          )}
           <button
             onClick={() => setPanel(panel === "location" ? null : "location")}
             aria-label="Enviar ubicación"

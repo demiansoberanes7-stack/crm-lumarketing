@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, Package, Plus, Trash2, X } from "lucide-react";
+import { ImagePlus, Package, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,15 +43,18 @@ const EMPTY_FORM = {
   shortDescription: "",
   longDescription: "",
   imageUrl: "",
+  available: true,
 };
 
-export function CatalogClient() {
+export function CatalogClient({ compact = false, onClose }: { compact?: boolean; onClose?: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [showNew, setShowNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refetch = useCallback(async () => {
@@ -65,8 +68,27 @@ export function CatalogClient() {
 
   function closeNew() {
     setShowNew(false);
+    setEditingId(null);
     setForm(EMPTY_FORM);
     setImagePreview(null);
+    setFormError("");
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function editProduct(product: Product) {
+    setEditingId(product.id);
+    setForm({
+      name: product.name,
+      price: (product.price / 100).toFixed(2),
+      description: product.description ?? "",
+      shortDescription: product.shortDescription ?? "",
+      longDescription: product.longDescription ?? "",
+      imageUrl: product.imageUrl ?? "",
+      available: product.available,
+    });
+    setImagePreview(product.imageUrl);
+    setFormError("");
+    setShowNew(true);
   }
 
   async function handleImageFile(file: File) {
@@ -83,29 +105,42 @@ export function CatalogClient() {
       setImagePreview(url);
     } catch {
       setImagePreview(null);
+      setFormError("No se pudo cargar la imagen. Intenta con PNG, JPG, WEBP o GIF de hasta 5 MB.");
     } finally {
       setUploading(false);
     }
   }
 
-  async function addProduct() {
+  async function saveProduct() {
     if (!form.name.trim() || !form.price) return;
     setSaving(true);
-    await fetch("/api/catalog", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: form.name.trim(),
-        price: Math.round(Number(form.price) * 100),
-        description: form.description || undefined,
-        shortDescription: form.shortDescription || undefined,
-        longDescription: form.longDescription || undefined,
-        imageUrl: form.imageUrl || undefined,
-      }),
-    }).catch(() => null);
-    closeNew();
-    setSaving(false);
-    void refetch();
+    setFormError("");
+    try {
+      const response = await fetch(editingId ? `/api/catalog/${editingId}` : "/api/catalog", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          price: Math.round(Number(form.price) * 100),
+          description: form.description || null,
+          shortDescription: form.shortDescription || null,
+          longDescription: form.longDescription || null,
+          imageUrl: form.imageUrl || null,
+          available: form.available,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        setFormError(data?.error?.message ?? "No se pudo guardar el producto.");
+        return;
+      }
+      closeNew();
+      await refetch();
+    } catch {
+      setFormError("No se pudo guardar el producto por un error de red.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteProduct(id: string) {
@@ -114,15 +149,16 @@ export function CatalogClient() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={`flex h-full flex-col ${compact ? "min-h-[70dvh]" : ""}`}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-[17px] font-bold tracking-tight">Catálogo de Productos</h2>
-          <Button size="sm" onClick={() => setShowNew(true)}>
+          <Button size="sm" onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setImagePreview(null); setFormError(""); setShowNew(true); }}>
             <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
             Nuevo Producto
           </Button>
         </div>
+        {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Cerrar</Button>}
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -168,8 +204,17 @@ export function CatalogClient() {
                         </p>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
+                     <Button
+                       variant="ghost"
+                       size="icon"
+                       className="h-7 w-7 shrink-0"
+                       onClick={() => editProduct(p)}
+                       aria-label={`Editar ${p.name}`}
+                     >
+                       <Pencil className="h-3.5 w-3.5" />
+                     </Button>
+                     <Button
+                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => void deleteProduct(p.id)}
@@ -192,7 +237,7 @@ export function CatalogClient() {
         )}
       </div>
 
-      {/* Modal nuevo producto */}
+      {/* Modal nuevo o editar producto */}
       {showNew && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-overlay p-4"
@@ -204,7 +249,7 @@ export function CatalogClient() {
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b px-5 py-4">
-              <h3 className="font-semibold">Nuevo Producto / Servicio</h3>
+              <h3 className="font-semibold">{editingId ? "Editar producto / servicio" : "Nuevo producto / servicio"}</h3>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeNew}>
                 <X className="h-4 w-4" />
               </Button>
@@ -330,6 +375,11 @@ export function CatalogClient() {
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.available} onChange={(e) => setForm((f) => ({ ...f, available: e.target.checked }))} />
+                Disponible para cotizar
+              </label>
+              {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
             </div>
 
             {/* Footer */}
@@ -337,9 +387,9 @@ export function CatalogClient() {
               <Button variant="ghost" onClick={closeNew}>Cancelar</Button>
               <Button
                 disabled={saving || uploading || !form.name.trim() || !form.price}
-                onClick={() => void addProduct()}
+                onClick={() => void saveProduct()}
               >
-                {saving ? "Guardando…" : "Guardar producto"}
+                {saving ? "Guardando…" : editingId ? "Guardar cambios" : "Guardar producto"}
               </Button>
             </div>
           </div>

@@ -47,6 +47,7 @@ const prefixes = {
   emailMessage: "emmsg",
   supplier: "sup",
   integration: "int",
+  automationExecution: "aex",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

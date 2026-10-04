@@ -36,6 +36,19 @@ export function avatarColor(seed: string): string {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? AVATAR_COLORS[0];
 }
 
+/** UUID v4. `crypto.randomUUID()` solo existe en secure contexts: en despliegues
+ *  sin TLS (http:// en LAN) no está y revienta el componente que lo use. */
+export function randomUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function formatPhone(phone: string | null | undefined): string {
   // 003: contactos BSUID pueden no tener teléfono.
   return phone ? `+${phone}` : "Sin teléfono";

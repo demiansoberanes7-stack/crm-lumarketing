@@ -30,7 +30,7 @@ import {
   markMessengerReconnectRequired,
   type MessengerCredentials,
 } from "@/server/messenger/credentials";
-import { sendMessengerText } from "@/server/messenger/send";
+import { sendMessengerMedia as deliverMessengerMedia, sendMessengerText } from "@/server/messenger/send";
 import {
   getTikTokCredentialsByOrg,
   markTikTokReconnectRequired,
@@ -466,6 +466,74 @@ export async function sendMediaMessage(input: {
     .where(eq(schema.mediaAsset.id, assetId))
     .limit(1);
 
+  if (target.messenger) {
+    let mediaPlatformId: string;
+    try {
+      mediaPlatformId = await callMessengerMedia(target, {
+        data: input.file.data,
+        mimeType: input.file.mimeType,
+        fileName: input.file.fileName,
+        kind,
+      });
+    } catch (err) {
+      const sendErr = err instanceof SendError
+        ? err
+        : new SendError("meta_unavailable", "No se pudo enviar el adjunto por Messenger");
+      sendErr.messageId = await persistOutbound({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        waMessageId: null,
+        type: kind,
+        text: null,
+        status: "failed",
+        error: sendErr.message,
+        origin: "operator",
+        mediaAssetId: assetId,
+        media: asset!,
+      });
+      throw sendErr;
+    }
+
+    const messageId = await persistOutbound({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      waMessageId: mediaPlatformId,
+      type: kind,
+      text: null,
+      status: "sent",
+      origin: "operator",
+      mediaAssetId: assetId,
+      media: asset!,
+    });
+
+    if (input.caption?.trim()) {
+      try {
+        const captionPlatformId = await callMessengerSend(target, input.caption.trim());
+        await persistOutbound({
+          organizationId: input.organizationId,
+          conversationId: input.conversationId,
+          waMessageId: captionPlatformId,
+          type: "text",
+          text: input.caption.trim(),
+          status: "sent",
+          origin: "operator",
+        });
+      } catch (err) {
+        await persistOutbound({
+          organizationId: input.organizationId,
+          conversationId: input.conversationId,
+          waMessageId: null,
+          type: "text",
+          text: input.caption.trim(),
+          status: "failed",
+          error: err instanceof Error ? err.message : "No se pudo enviar el pie del adjunto",
+          origin: "operator",
+        });
+      }
+    }
+    return { messageId };
+  }
+
   try {
     if (target.zernio) {
       const preGenId = newId("message");
@@ -762,6 +830,44 @@ async function callMessengerSend(
           "meta_unavailable",
           "Messenger no está disponible en este momento; intenta de nuevo"
         );
+      }
+      throw new SendError("meta_error", err.message);
+    }
+    throw err;
+  }
+}
+
+async function callMessengerMedia(
+  target: SendTarget,
+  input: {
+    data: Buffer;
+    mimeType: string;
+    fileName?: string;
+    kind: "image" | "video" | "audio" | "document";
+  }
+): Promise<string> {
+  const creds = target.messenger!;
+  const attachmentType = input.kind === "document" ? "file" : input.kind;
+  try {
+    const result = await deliverMessengerMedia({
+      credentials: creds,
+      recipient: target.recipient,
+      threadRef: target.conversation.channelThreadRef,
+      data: input.data,
+      mimeType: input.mimeType,
+      fileName: input.fileName,
+      attachmentType,
+      humanAgentTag: !isWindowOpen(target.conversation.lastInboundAt),
+    });
+    return result.platformMessageId;
+  } catch (err) {
+    if (err instanceof MetaApiError) {
+      if (err.isAuthError) {
+        await markMessengerReconnectRequired(creds.organizationId);
+        throw new SendError("reconnect_required", "El token de Messenger expiró: reconecta la página");
+      }
+      if (err.status === 0 || err.status >= 500) {
+        throw new SendError("meta_unavailable", "Messenger no pudo aceptar el adjunto; intenta de nuevo");
       }
       throw new SendError("meta_error", err.message);
     }

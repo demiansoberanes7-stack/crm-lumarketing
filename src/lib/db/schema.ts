@@ -308,6 +308,35 @@ export const message = pgTable(
   ]
 );
 
+/** Durable follow-up queue and source of truth for automation metrics. */
+export const automationExecution = pgTable(
+  "automation_execution",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    conversationId: varchar("conversation_id", { length: 255 })
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    ruleId: varchar("rule_id", { length: 80 }).notNull(),
+    triggeredBy: varchar("triggered_by", { length: 20 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("queued"),
+    scheduledAt: timestamp("scheduled_at").notNull(),
+    startedAt: timestamp("started_at"),
+    sentAt: timestamp("sent_at"),
+    attempts: integer("attempts").notNull().default(0),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("automation_execution_due_idx").on(t.status, t.scheduledAt),
+    index("automation_execution_org_sent_idx").on(t.organizationId, t.sentAt),
+    index("automation_execution_conversation_idx").on(t.conversationId, t.createdAt),
+  ]
+);
+
 export const mediaAsset = pgTable(
   "media_asset",
   {

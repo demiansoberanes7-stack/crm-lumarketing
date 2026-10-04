@@ -8,7 +8,7 @@ import {
   normalizeMetaPagePayload,
   normalizeZernioEvent,
 } from "@/server/messenger/ingest";
-import { buildMessengerSendBody } from "@/server/messenger/send";
+import { buildMessengerAttachmentBody, buildMessengerSendBody } from "@/server/messenger/send";
 import {
   isValidZernioSignature,
   looksLikeMetaPayload,
@@ -57,11 +57,11 @@ describe("017 · Messenger en el catálogo de canales", () => {
     expect(channelMark("messenger")).not.toBeNull();
   });
 
-  it("capacidades: 24 h con etiqueta fuera de ventana, sin adjuntos salientes", () => {
+  it("capacidades: 24 h con etiqueta fuera de ventana y adjuntos salientes", () => {
     const caps = capabilitiesFor("messenger");
     expect(caps.windowMs).toBe(24 * 60 * 60 * 1000);
     expect(caps.outsideWindow).toBe("human_agent_tag");
-    expect(caps.outboundMedia).toBe(false);
+    expect(caps.outboundMedia).toBe(true);
     expect(caps.deliveryReceipts).toBe(false);
     // Fuera de ventana no se le pide nada al operador: sale etiquetado solo.
     expect(windowClosedMessage("messenger")).toBe("");
@@ -348,5 +348,19 @@ describe("017 · buildMessengerSendBody (transporte de Meta)", () => {
     const body = buildMessengerSendBody({ recipient: PSID, text: "Ya te contesto", humanAgentTag: true });
     expect(body.messaging_type).toBe("MESSAGE_TAG");
     expect(body.tag).toBe("HUMAN_AGENT");
+  });
+
+  it("construye el payload de adjunto con id reusable y etiqueta de ventana", () => {
+    expect(buildMessengerAttachmentBody({
+      recipient: PSID,
+      attachmentType: "image",
+      attachmentId: "att_123",
+      humanAgentTag: true,
+    })).toEqual({
+      recipient: { id: PSID },
+      message: { attachment: { type: "image", payload: { attachment_id: "att_123" } } },
+      messaging_type: "MESSAGE_TAG",
+      tag: "HUMAN_AGENT",
+    });
   });
 });

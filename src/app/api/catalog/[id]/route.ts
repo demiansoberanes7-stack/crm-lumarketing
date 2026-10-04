@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { productImageUrlSchema } from "@/lib/catalog-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,11 @@ export const GET = withAuth(async (session, _req, { params }) => {
 const patchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().nullable().optional(),
+  shortDescription: z.string().max(500).nullable().optional(),
+  longDescription: z.string().nullable().optional(),
+  imageUrl: productImageUrlSchema.nullable().optional(),
   price: z.number().int().min(0).optional(),
-  currency: z.string().optional(),
+  currency: z.string().min(3).max(3).optional(),
   available: z.boolean().optional(),
 });
 
@@ -43,7 +47,7 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
   if (!body.ok) return body.response;
 
   const db = getDb();
-  await db
+  const updated = await db
     .update(schema.catalogProduct)
     .set({ ...body.data, updatedAt: new Date() })
     .where(
@@ -52,7 +56,10 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
         session.organizationId,
         eq(schema.catalogProduct.id, id)
       )
-    );
+    )
+    .returning({ id: schema.catalogProduct.id });
+
+  if (!updated.length) return apiError(404, "not_found", "Producto no encontrado");
 
   return Response.json({ ok: true });
 });

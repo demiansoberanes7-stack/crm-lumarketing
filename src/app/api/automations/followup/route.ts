@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { scoped } from "@/lib/db/tenant";
 import { getIntegration } from "@/server/integrations";
 import { findAutomationRule } from "@/server/automation-rules";
+import { enqueueFollowUp } from "@/server/automation-queue";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -29,29 +29,18 @@ export const POST = withAuth(async (session, req: Request) => {
 
   const conv = rows[0];
   if (!conv) {
-    return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
+    return Response.json({ error: "Conversación no encontrada" }, { status: 404 });
   }
 
   const integration = await getIntegration(session.organizationId, "automation_rules");
   const rule = findAutomationRule(integration?.credentials?.rules, "followup-3d");
   const delayHours = body.data.delayHours ?? rule?.delayHours ?? 72;
 
-  try {
-    const { getTemporalClient } = await import("@/server/temporal/client");
-    const client = await getTemporalClient();
-    const workflowId = `followup-manual-${body.data.conversationId}-${Date.now()}`;
-    await client.workflow.start("followUpWorkflow", {
-      args: [body.data.conversationId, session.organizationId, delayHours],
-      taskQueue: "crm-followups",
-      workflowId,
-    });
-    return NextResponse.json({ ok: true, workflowId });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // If Temporal is not running, return a soft error (non-breaking)
-    return NextResponse.json(
-      { ok: false, error: "Temporal no disponible: " + msg },
-      { status: 503 }
-    );
-  }
+  const executionId = await enqueueFollowUp({
+    organizationId: session.organizationId,
+    conversationId: body.data.conversationId,
+    delayHours,
+    triggeredBy: "manual",
+  });
+  return Response.json({ ok: true, executionId, scheduled: true });
 });

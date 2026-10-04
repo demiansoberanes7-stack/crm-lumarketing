@@ -68,7 +68,7 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     windowMs: DAY_MS,
     outsideWindow: "human_agent_tag",
     maxTextBytes: 2000,
-    outboundMedia: false,
+    outboundMedia: true,
     deliveryReceipts: false,
   },
   tiktok: {

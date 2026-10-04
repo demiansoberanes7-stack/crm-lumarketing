@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NewQuoteDialog } from "./new-quote-dialog";
 import { QuoteDetail } from "./quote-detail";
+import { CatalogClient } from "@/components/catalog/catalog-client";
 import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
 
 interface Quote {
@@ -212,106 +213,13 @@ export function QuotesClient() {
           onClick={() => setShowCatalog(false)}
         >
           <div
-            className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
+            className="max-h-[90dvh] w-full max-w-5xl overflow-y-auto rounded-lg border bg-card shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <CatalogInline onClose={() => setShowCatalog(false)} />
+            <CatalogClient compact onClose={() => setShowCatalog(false)} />
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function CatalogInline({ onClose }: { onClose: () => void }) {
-  const [products, setProducts] = useState<{ id: string; name: string; price: number }[]>([]);
-  const [newName, setNewName] = useState("");
-  const [newPrice, setNewPrice] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-
-  useEffect(() => {
-    fetch("/api/catalog")
-      .then((r) => r.json())
-      .then((d: { products: { id: string; name: string; price: number }[] }) => setProducts(d.products))
-      .catch(() => {});
-  }, []);
-
-  async function addProduct() {
-    if (!newName.trim() || !newPrice) return;
-    await fetch("/api/catalog", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: newName.trim(), price: Number(newPrice), description: newDesc || undefined }),
-    }).catch(() => null);
-    setNewName("");
-    setNewPrice("");
-    setNewDesc("");
-    const res = await fetch("/api/catalog").catch(() => null);
-    if (res?.ok) {
-      const d = (await res.json()) as { products: { id: string; name: string; price: number }[] };
-      setProducts(d.products);
-    }
-  }
-
-  async function deleteProduct(id: string) {
-    await fetch(`/api/catalog/${id}`, { method: "DELETE" }).catch(() => null);
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-  }
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-semibold">Catálogo de Productos</h3>
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cerrar
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        {products.map((p) => (
-          <div key={p.id} className="flex items-center justify-between rounded-md border px-3 py-2">
-            <div>
-              <span className="text-sm font-medium">{p.name}</span>
-              <span className="ml-2 text-xs text-muted-foreground">{formatMXNCents(p.price)}</span>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => void deleteProduct(p.id)}>
-              <span className="sr-only">Eliminar</span>
-              ×
-            </Button>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 space-y-2">
-        <input
-          placeholder="Nombre del producto"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-        />
-        <input
-          placeholder="Precio (MXN)"
-          type="number"
-          value={newPrice}
-          onChange={(e) => setNewPrice(e.target.value)}
-          onBlur={(e) => {
-            const val = parseFloat(e.target.value);
-            if (!isNaN(val)) {
-              setNewPrice(val.toFixed(2));
-            }
-          }}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-        />
-        <input
-          placeholder="Descripción (opcional)"
-          value={newDesc}
-          onChange={(e) => setNewDesc(e.target.value)}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-        />
-        <Button onClick={() => void addProduct()} disabled={!newName.trim() || !newPrice}>
-          Agregar producto
-        </Button>
-      </div>
     </div>
   );
 }

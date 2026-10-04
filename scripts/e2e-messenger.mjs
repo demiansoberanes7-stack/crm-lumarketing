@@ -246,6 +246,18 @@ async function main() {
   const out = (msgsOut.json?.messages ?? []).find((m) => m.direction === "out");
   ok("el saliente queda como 'sent' (Messenger no manda acuses)", out?.status === "sent", out?.status);
 
+  const mediaForm = new FormData();
+  mediaForm.set("file", new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: "image/png" }), "adjunto-e2e.png");
+  const mediaRes = await fetch(`${BASE}/api/conversations/${convMeta?.id}/messages/media`, {
+    method: "POST",
+    headers: { cookie },
+    body: mediaForm,
+  });
+  ok("adjunto de Messenger → respuesta exitosa (no 502)", mediaRes.status === 201, String(mediaRes.status));
+  const mediaMessages = await api(`/api/conversations/${convMeta?.id}/messages`);
+  const sentMedia = (mediaMessages.json?.messages ?? []).find((m) => m.direction === "out" && m.type === "image");
+  ok("el adjunto de Messenger queda visible y enviado", sentMedia?.status === "sent" && sentMedia?.media?.fileName === "adjunto-e2e.png", JSON.stringify(sentMedia));
+
   console.log("\n== Lo que Messenger no admite falla claro ==");
   const loc = await api(`/api/conversations/${convMeta?.id}/messages`, {
     method: "POST",

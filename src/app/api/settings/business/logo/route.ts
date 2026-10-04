@@ -1,5 +1,6 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
+import { nanoid } from "nanoid";
 import { withAuth } from "@/lib/api";
 import { getBusinessSettings, saveBusinessSettings } from "@/server/business-settings";
 
@@ -23,12 +24,16 @@ export const POST = withAuth(async (session, req: Request) => {
   if (mime !== "image/png" && mime !== "image/jpeg" && mime !== "image/svg+xml") {
     return Response.json({ error: { code: "invalid_type", message: "Formato no soportado. Usa PNG, JPG o SVG." } }, { status: 422 });
   }
+  if (file.size > 5 * 1024 * 1024) {
+    return Response.json({ error: { code: "file_too_large", message: "El logo no puede superar los 5 MB." } }, { status: 422 });
+  }
 
   const orgDir = join(MEDIA_DIR, session.organizationId);
   if (!existsSync(orgDir)) mkdirSync(orgDir, { recursive: true });
 
   const ext = mime === "image/png" ? "png" : mime === "image/svg+xml" ? "svg" : "jpg";
-  const filename = `logo.${ext}`;
+  // Una URL distinta evita que navegador/CDN reutilicen el logo anterior.
+  const filename = `logo-${nanoid(12)}.${ext}`;
   const filePath = join(orgDir, filename);
 
   const buffer = Buffer.from(await file.arrayBuffer());

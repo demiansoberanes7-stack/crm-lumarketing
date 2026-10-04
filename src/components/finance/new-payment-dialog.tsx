@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { randomUuid } from "@/lib/utils";
 
 interface NewPaymentDialogProps {
   onClose: () => void;
@@ -18,7 +19,7 @@ export function NewPaymentDialog({ onClose, onSaved }: NewPaymentDialogProps) {
   const [notas, setNotas] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [requestId] = useState(() => crypto.randomUUID());
+  const [requestId] = useState(() => randomUuid());
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [chargeId, setChargeId] = useState("");
   const [charges, setCharges] = useState<Array<{ id: string; concept: string; totalAmount: number; paidAmount: number }>>([]);

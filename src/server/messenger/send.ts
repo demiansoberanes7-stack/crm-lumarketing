@@ -1,6 +1,6 @@
 import { graphRequest, MetaApiError } from "@/lib/meta/client";
 import type { MessengerCredentials } from "@/server/messenger/credentials";
-import { sendZernioMessage } from "@/server/zernio";
+import { sendZernioMessage, ZERNIO_BASE } from "@/server/zernio";
 
 /**
  * 017 — Frontera de salida del canal de Messenger (Constitución II: todo
@@ -37,6 +37,26 @@ export function buildMessengerSendBody(input: {
   return body;
 }
 
+export function buildMessengerAttachmentBody(input: {
+  recipient: string;
+  attachmentType: "image" | "video" | "audio" | "file";
+  attachmentId: string;
+  humanAgentTag: boolean;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    recipient: { id: input.recipient },
+    message: {
+      attachment: {
+        type: input.attachmentType,
+        payload: { attachment_id: input.attachmentId },
+      },
+    },
+    messaging_type: input.humanAgentTag ? "MESSAGE_TAG" : "RESPONSE",
+  };
+  if (input.humanAgentTag) body.tag = "HUMAN_AGENT";
+  return body;
+}
+
 /**
  * Envía texto por el transporte que corresponda.
  *
@@ -63,6 +83,79 @@ export async function sendMessengerText(input: {
     });
   }
   return sendViaMeta(input);
+}
+
+/** Sube un adjunto reusable y lo envía por Messenger (Meta o Zernio). */
+export async function sendMessengerMedia(input: {
+  credentials: MessengerCredentials;
+  recipient: string;
+  threadRef: string | null;
+  data: Buffer;
+  mimeType: string;
+  fileName?: string;
+  attachmentType: "image" | "video" | "audio" | "file";
+  humanAgentTag: boolean;
+}): Promise<MessengerSendResult> {
+  if (input.credentials.source === "zernio") {
+    if (!input.threadRef) {
+      throw new MetaApiError("La conversación no tiene referencia de hilo en Zernio", { status: 400 });
+    }
+    const form = new FormData();
+    form.set("accountId", input.credentials.accountRef ?? "");
+    form.set("message", "");
+    form.set("attachmentType", input.attachmentType);
+    form.set("file", new Blob([new Uint8Array(input.data)], { type: input.mimeType }), input.fileName ?? "archivo");
+    let response: Response;
+    try {
+      response = await fetch(`${ZERNIO_BASE}/inbox/conversations/${encodeURIComponent(input.threadRef)}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${input.credentials.token}` },
+        body: form,
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (cause) {
+      throw new MetaApiError("No se pudo contactar la API de Zernio", { status: 0, details: cause });
+    }
+    const text = await response.text();
+    type ZernioMediaResponse = { data?: { messageId?: string }; message?: { id?: string }; id?: string };
+    let payload: ZernioMediaResponse | null = null;
+    try { payload = text ? JSON.parse(text) as ZernioMediaResponse : null; } catch { /* respuesta no JSON */ }
+    if (!response.ok) {
+      throw new MetaApiError(`Zernio rechazó el adjunto (HTTP ${response.status})`, { status: response.status, details: payload ?? text });
+    }
+    const id = payload?.data?.messageId ?? payload?.message?.id ?? payload?.id;
+    if (!id) throw new MetaApiError("Zernio no devolvió el identificador del adjunto", { status: 502 });
+    return { platformMessageId: String(id) };
+  }
+
+  if (!input.credentials.pageId) {
+    throw new MetaApiError("La conexión de Messenger no tiene ID de página para subir adjuntos", { status: 400 });
+  }
+  const form = new FormData();
+  form.set("message", JSON.stringify({
+    attachment: { type: input.attachmentType, payload: { is_reusable: true } },
+  }));
+  form.set("filedata", new Blob([new Uint8Array(input.data)], { type: input.mimeType }), input.fileName ?? "archivo");
+  const upload = await graphRequest<{ attachment_id?: string }>(`${input.credentials.pageId}/message_attachments`, {
+    method: "POST",
+    token: input.credentials.token,
+    body: form,
+  });
+  if (!upload.attachment_id) {
+    throw new MetaApiError("Meta no devolvió el identificador del adjunto", { status: 502 });
+  }
+  const response = await graphRequest<{ message_id?: string }>(`${input.credentials.pageId}/messages`, {
+    method: "POST",
+    token: input.credentials.token,
+    body: buildMessengerAttachmentBody({
+      recipient: input.recipient,
+      attachmentType: input.attachmentType,
+      attachmentId: upload.attachment_id,
+      humanAgentTag: input.humanAgentTag,
+    }),
+  });
+  if (!response.message_id) throw new MetaApiError("Meta no devolvió el identificador del mensaje", { status: 502 });
+  return { platformMessageId: String(response.message_id) };
 }
 
 /**

@@ -224,27 +224,27 @@ export async function projectPdf(
   });
   y -= 24;
 
-  // ─── DATOS GENERALES (2 columnas) ───
+  // ─── DATOS GENERALES (2 columnas; omitir campos sin información) ───
   checkPage(110);
   const leftCol = MARGIN;
   const rightCol = MARGIN + CONTENT_W / 2 + 10;
 
-  page.drawText("DATOS GENERALES", { x: leftCol, y, size: 9, font: bold, color: DARK });
-  page.drawText("PARTES Y FECHAS", { x: rightCol, y, size: 9, font: bold, color: DARK });
-  y -= 16;
-  const startY = y;
-  const leftEntries: [string, string][] = [
+  const leftEntries: [string, string][] = ([
     ["Servicio", project.service ?? ""],
     ["Prioridad", project.prioridad ?? ""],
     ["Riesgo", project.riesgo ?? ""],
     ["Progreso", `${completed} de ${defs.length} pasos completados (${project.avance}%)`],
-  ];
-  const rightEntries: [string, string][] = [
+  ] as [string, string][]).filter((entry) => entry[1].trim().length > 0);
+  const rightEntries: [string, string][] = ([
     ["Cliente", contact ? `${contact.name ?? "Sin nombre"}${contact.phone ? ` · ${contact.phone}` : ""}` : ""],
     ["Responsable", assignee ? assignee.name || assignee.email : ""],
     ["Inicio", dateStr(project.startDate)],
     ["Término", dateStr(project.endDate)],
-  ];
+  ] as [string, string][]).filter((entry) => entry[1].trim().length > 0 && entry[1] !== "—");
+  if (leftEntries.length) page.drawText("DATOS GENERALES", { x: leftCol, y, size: 9, font: bold, color: DARK });
+  if (rightEntries.length) page.drawText("PARTES Y FECHAS", { x: rightCol, y, size: 9, font: bold, color: DARK });
+  y -= 16;
+  const startY = y;
   let leftY = startY;
   for (const [k, v] of leftEntries) {
     page.drawText(clean(k), { x: leftCol, y: leftY, size: 8, font: bold, color: GRAY });

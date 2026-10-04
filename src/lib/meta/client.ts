@@ -50,16 +50,21 @@ export async function graphRequest<T>(
   let text: string;
   const signal = AbortSignal.timeout(20_000);
   try {
+    const formData = typeof FormData !== "undefined" && opts.body instanceof FormData;
     res = await fetch(url, {
       signal,
       method: opts.method ?? "GET",
       headers: {
         Authorization: `Bearer ${opts.token}`,
-        ...(opts.body !== undefined
+        ...(opts.body !== undefined && !formData
           ? { "Content-Type": "application/json" }
           : {}),
       },
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: opts.body === undefined
+        ? undefined
+        : formData
+          ? opts.body as FormData
+          : JSON.stringify(opts.body),
     });
     // The deadline also covers a provider that sends headers but stalls its body.
     text = await res.text();

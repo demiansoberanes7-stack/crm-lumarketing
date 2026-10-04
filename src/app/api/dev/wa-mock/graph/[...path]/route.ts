@@ -129,6 +129,15 @@ export async function POST(req: Request, ctx: Params) {
     return Response.json({ id: `media-up-${nextN()}` });
   }
 
+  // Messenger Send API file upload: page/message_attachments (multipart).
+  if (path.length === 2 && path[1] === "message_attachments") {
+    const form = await req.formData().catch(() => null);
+    if (!form?.get("filedata")) {
+      return Response.json({ error: { message: "missing filedata", code: 100 } }, { status: 400 });
+    }
+    return Response.json({ attachment_id: `mock-attachment-${nextN()}` });
+  }
+
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
   // 016 — POST {datasetId}/events: Conversions API. Imita las tres cosas que
@@ -204,6 +213,22 @@ export async function POST(req: Request, ctx: Params) {
   // POST {phoneNumberId}/messages → registra en el outbox
   if (path.length === 2 && path[1] === "messages") {
     const state = getWaMockState();
+
+    const messengerRecipient = body.recipient as { id?: string } | undefined;
+    if (messengerRecipient?.id) {
+      const waMessageId = nextOutboundWamid();
+      state.outbox.push({
+        n: nextN(),
+        waMessageId,
+        phoneNumberId: path[0]!,
+        to: "",
+        recipient: messengerRecipient.id,
+        type: String((body.message as { attachment?: { type?: string }; text?: string } | undefined)?.attachment?.type ?? "text"),
+        body,
+        at: new Date().toISOString(),
+      });
+      return Response.json({ recipient_id: messengerRecipient.id, message_id: waMessageId });
+    }
 
     /**
      * Meta espera un TELEFONO en `to`. Un BSUID ahi devuelve 131026 — «el

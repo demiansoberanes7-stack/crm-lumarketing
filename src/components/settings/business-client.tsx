@@ -52,6 +52,7 @@ export function BusinessSettingsClient() {
       body: form,
     }).catch(() => null);
     setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
     if (!res?.ok) {
       const data = (await res?.json().catch(() => null)) as { error?: { message?: string } } | null;
       setError(data?.error?.message ?? "No se pudo subir el logo");
@@ -108,31 +109,40 @@ export function BusinessSettingsClient() {
           </p>
           <div className="flex items-center gap-4">
             {settings.logoUrl ? (
-              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border-strong bg-secondary">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                aria-label="Cambiar logo"
+                title="Haz clic para cambiar el logo"
+                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border-strong bg-secondary"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-contain p-1" />
-                <button
-                  onClick={removeLogo}
-                  className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground"
-                  aria-label="Quitar logo"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
+                <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[9px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">Cambiar</span>
+              </button>
             ) : (
-              <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-border-strong bg-secondary text-muted-foreground transition-colors hover:bg-accent">
-                <Upload className="h-4 w-4" />
-                <span className="mt-0.5 text-[10px]">Logo</span>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml"
-                  className="hidden"
-                  onChange={(e) => void handleLogoUpload(e)}
-                />
-              </label>
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-border-strong bg-secondary text-muted-foreground">
+                <Upload className="h-5 w-5" />
+              </div>
             )}
-            {uploading && <span className="text-xs text-muted-foreground">Subiendo…</span>}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                className="hidden"
+                onChange={(e) => void handleLogoUpload(e)}
+              />
+              <Button type="button" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" />
+                {uploading ? "Subiendo…" : settings.logoUrl ? "Cambiar logo" : "Subir logo"}
+              </Button>
+              {settings.logoUrl && (
+                <Button type="button" variant="ghost" onClick={removeLogo} aria-label="Quitar logo">
+                  <X className="mr-1 h-4 w-4" /> Quitar
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Clock, GitBranch, MessageSquareMore, Play, RefreshCw,
   ToggleLeft, ToggleRight, Zap, Edit2, Save, X
@@ -24,6 +24,27 @@ interface ConversationOption {
   channel: string;
   contact: { name: string; phone: string | null };
   stageName: string | null;
+}
+
+type DelayUnit = "hours" | "days";
+interface AutomationMetrics {
+  activeFlows: number;
+  sent: number;
+  eligible: number;
+  responded: number;
+  responseRate: number;
+  periodDays: number;
+  responseWindowDays: number;
+  schedulerReady: boolean;
+}
+
+function describeDelay(hours: number): string {
+  if (hours === 0) return "sin espera";
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    return `${days} ${days === 1 ? "día" : "días"} de espera`;
+  }
+  return `${hours} ${hours === 1 ? "hora" : "horas"} de espera`;
 }
 
 const PRESET_RULES: AutomationRule[] = [
@@ -65,17 +86,30 @@ export function AutomationsClient() {
   const [rules, setRules] = useState<AutomationRule[]>(PRESET_RULES);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<AutomationRule>>({});
+  const [editDelayValue, setEditDelayValue] = useState("3");
+  const [editDelayUnit, setEditDelayUnit] = useState<DelayUnit>("days");
 
   const [testConvId, setTestConvId] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [manualIdEnabled, setManualIdEnabled] = useState(false);
   const [conversations, setConversations] = useState<ConversationOption[]>([]);
   const [conversationsError, setConversationsError] = useState("");
-  const [testDelayH, setTestDelayH] = useState("72");
+  const [manualDelayValue, setManualDelayValue] = useState("3");
+  const [manualDelayUnit, setManualDelayUnit] = useState<DelayUnit>("days");
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; } | null>(null);
+  const [metrics, setMetrics] = useState<AutomationMetrics | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  const refetchMetrics = useCallback(async () => {
+    const response = await fetch("/api/automations/metrics").catch(() => null);
+    if (!response?.ok) return;
+    const data = (await response.json()) as { metrics?: AutomationMetrics };
+    if (data.metrics) setMetrics(data.metrics);
+  }, []);
+
+  useEffect(() => { void refetchMetrics(); }, [refetchMetrics]);
 
   useEffect(() => {
     fetch("/api/automations/rules")
@@ -89,7 +123,11 @@ export function AutomationsClient() {
           });
           setRules(mergedRules);
           const followUp = mergedRules.find((rule) => rule.id === "followup-3d");
-          if (followUp) setTestDelayH(String(followUp.delayHours));
+          if (followUp) {
+            const inDays = followUp.delayHours % 24 === 0;
+            setManualDelayUnit(inDays ? "days" : "hours");
+            setManualDelayValue(String(inDays ? followUp.delayHours / 24 : followUp.delayHours));
+          }
         }
       })
       .catch(() => {});
@@ -119,6 +157,7 @@ export function AutomationsClient() {
         setSaveError(data?.error?.message ?? "No se pudieron guardar las reglas.");
         return false;
       }
+      void refetchMetrics();
       return true;
     } catch {
       setSaveError("No se pudieron guardar las reglas por un error de red.");
@@ -137,6 +176,9 @@ export function AutomationsClient() {
   function startEdit(rule: AutomationRule) {
     setEditingId(rule.id);
     setEditForm({ ...rule });
+    const inDays = rule.delayHours % 24 === 0;
+    setEditDelayUnit(inDays ? "days" : "hours");
+    setEditDelayValue(String(inDays ? rule.delayHours / 24 : rule.delayHours));
   }
 
   function cancelEdit() {
@@ -151,7 +193,7 @@ export function AutomationsClient() {
         return {
           ...rule,
           name: editForm.name ?? rule.name,
-          delayHours: editForm.delayHours ?? rule.delayHours,
+          delayHours: Math.min(8760, Math.max(0, Math.round(Number(editDelayValue) || 0) * (editDelayUnit === "days" ? 24 : 1))),
           messageText: editForm.messageText ?? rule.messageText,
           channel: editForm.channel ?? rule.channel,
         };
@@ -175,12 +217,15 @@ export function AutomationsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           conversationId,
-          ...(testDelayH.trim() ? { delayHours: Number(testDelayH) } : {}),
+          delayHours: Math.min(
+            8760,
+            Math.max(0, Math.round(Number(manualDelayValue) || 0) * (manualDelayUnit === "days" ? 24 : 1))
+          ),
         }),
       });
-      const data = (await res.json()) as { ok: boolean; workflowId?: string; error?: string };
+      const data = (await res.json()) as { ok: boolean; executionId?: string; error?: string };
       if (data.ok) {
-        setTestResult({ ok: true, msg: `Workflow iniciado: ${data.workflowId}` });
+        setTestResult({ ok: true, msg: `Seguimiento programado: ${data.executionId}` });
       } else {
         setTestResult({ ok: false, msg: data.error ?? "Error al iniciar workflow" });
       }
@@ -201,17 +246,17 @@ export function AutomationsClient() {
           </p>
         </div>
         <div className="flex items-center gap-1.5 rounded-lg border bg-muted/40 px-3 py-1.5">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-medium text-muted-foreground">Motor Temporal</span>
+          <span className={`h-2 w-2 rounded-full ${metrics?.schedulerReady ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+          <span className="text-xs font-medium text-muted-foreground">Programador {metrics?.schedulerReady ? "activo" : "iniciando"}</span>
         </div>
       </header>
 
       <main className="flex-1 overflow-auto p-6 space-y-8">
         <div className="grid gap-4 sm:grid-cols-3">
           {[
-            { label: "Flujos activos", value: rules.filter(r => r.enabled).length, icon: Zap, color: "text-brand" },
-            { label: "Seguimientos enviados", value: "24", icon: MessageSquareMore, color: "text-blue-500" },
-            { label: "Tasa de respuesta", value: "34%", icon: RefreshCw, color: "text-emerald-500" },
+            { label: "Flujos activos", value: metrics?.activeFlows ?? rules.filter(r => r.enabled).length, icon: Zap, color: "text-brand" },
+            { label: "Enviados · últimos 30 días", value: metrics?.sent ?? "—", icon: MessageSquareMore, color: "text-blue-500" },
+            { label: "Tasa de respuesta · 7 días", value: metrics ? `${metrics.responseRate}%` : "—", icon: RefreshCw, color: "text-emerald-500" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="flex items-center gap-4 rounded-xl border bg-card p-4 shadow-sm">
               <div className={`rounded-lg bg-muted p-2.5 ${color}`}>
@@ -252,13 +297,26 @@ export function AutomationsClient() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-muted-foreground">Días de espera (inactividad)</label>
-                        <Input 
-                          type="number" 
-                          min={0}
-                          value={(editForm.delayHours ?? 0) / 24} 
-                          onChange={e => setEditForm({ ...editForm, delayHours: Number(e.target.value) * 24 })}
-                        />
+                       <label className="text-xs font-medium text-muted-foreground">Tiempo de espera (inactividad)</label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1}
+                            max={editDelayUnit === "days" ? 365 : 8760}
+                            value={editDelayValue}
+                            onChange={(e) => setEditDelayValue(e.target.value)}
+                          />
+                          <select
+                            className="h-10 rounded-md border bg-background px-3 text-sm"
+                            value={editDelayUnit}
+                            onChange={(e) => setEditDelayUnit(e.target.value as DelayUnit)}
+                            aria-label="Unidad del tiempo de espera"
+                          >
+                            <option value="hours">Horas</option>
+                            <option value="days">Días</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-xs font-medium text-muted-foreground" htmlFor={`channel-${rule.id}`}>Canal de envío</label>
@@ -297,7 +355,7 @@ export function AutomationsClient() {
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mb-3">
                         <span className="flex items-center gap-1"><Zap className="h-3 w-3 text-orange-400" />{rule.trigger}</span>
-                        <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-blue-400" />{rule.delayHours / 24} {rule.delayHours === 24 ? "día" : "días"} de espera</span>
+                         <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-blue-400" />{describeDelay(rule.delayHours)}</span>
                         <span>{rule.channel === "email" ? "Correo" : "WhatsApp"}</span>
                       </div>
                       <div className="bg-muted/40 p-3 rounded-lg text-sm italic border-l-2 border-brand/50">
@@ -306,7 +364,7 @@ export function AutomationsClient() {
                     </div>
 
                     <div className="absolute right-4 top-4 sm:relative sm:top-0 sm:right-0 flex items-center gap-2">
-                      <Button size="icon" variant="ghost" onClick={() => startEdit(rule)} className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button size="icon" variant="ghost" onClick={() => startEdit(rule)} aria-label={`Editar ${rule.name}`} className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <button onClick={() => void toggleRule(rule.id)} disabled={savingRules} className="text-muted-foreground transition-colors hover:text-foreground" aria-label={rule.enabled ? "Desactivar" : "Activar"}>
@@ -358,8 +416,14 @@ export function AutomationsClient() {
                 </label>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Esperar (horas)</label>
-                <Input type="number" min={0} step={1} placeholder="72" value={testDelayH} onChange={e => setTestDelayH(e.target.value)} />
+                 <label className="text-xs font-medium text-muted-foreground">Esperar</label>
+                 <div className="flex gap-2">
+                   <Input type="number" min={0} step={1} value={manualDelayValue} onChange={e => setManualDelayValue(e.target.value)} />
+                   <select className="h-10 rounded-md border bg-background px-3 text-sm" value={manualDelayUnit} onChange={e => setManualDelayUnit(e.target.value as DelayUnit)} aria-label="Unidad de espera manual">
+                     <option value="hours">Horas</option>
+                     <option value="days">Días</option>
+                   </select>
+                 </div>
               </div>
             </div>
 
@@ -367,8 +431,9 @@ export function AutomationsClient() {
               <Button disabled={triggering || (manualIdEnabled ? !testConvId.trim() : !selectedConversationId)} onClick={() => void triggerManual()}>
                 {triggering ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Iniciando…</> : <><Play className="mr-2 h-4 w-4" /> Iniciar flujo</>}
               </Button>
-              {testResult && <span className={`text-sm font-medium ${testResult.ok ? "text-emerald-600" : "text-amber-600"}`}>{testResult.msg}</span>}
+               {testResult && <span className={`text-sm font-medium ${testResult.ok ? "text-emerald-600" : "text-amber-600"}`}>{testResult.msg}</span>}
             </div>
+            {metrics && <p className="text-xs text-muted-foreground">{metrics.responded} respuestas de {metrics.eligible} seguimientos con 7 días completos para responder, dentro de los últimos 30 días.</p>}
           </div>
         </section>
       </main>

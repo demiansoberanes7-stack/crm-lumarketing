@@ -1,30 +1,30 @@
 name: lumark-crm-test
 
 services:
-  preview:
-    image: lumark-crm-local-app
+  postgres:
+    image: postgres:16-alpine
     environment:
-      APP_BASE_URL: http://preview:3000
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lumark_test
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      META_WEBHOOK_VERIFY_TOKEN: lumark-local-test-webhook
-      CHANNELS: whatsapp,instagram,messenger
-      MEDIA_DIR: /data/media
+      POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:-e2e-local-only-password}
+      POSTGRES_DB: lumark_test
     volumes:
-      - /data/media
-    networks:
-      - local
-    profiles: [browser]
+      - e2e_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lumark_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
   browser:
     build:
       context: .
       target: test
     environment:
-      APP_BASE_URL: http://preview:3000
-    networks:
-      - local
+      # Chrome navega a https:// cualquier host SIN punto (`app`) y da
+      # ERR_SSL_PROTOCOL_ERROR; con punto sí usa http.
+      APP_BASE_URL: http://lumark.test:3000
+      DATABASE_URL: postgres://postgres:${E2E_POSTGRES_PASSWORD:-e2e-local-only-password}@postgres:5432/lumark_test
+    depends_on:
+      - app
     profiles: [browser]
 
   app:
@@ -32,13 +32,13 @@ services:
     build:
       context: .
       target: deps
-    command: ["sh", "-c", "CI=true pnpm install --no-frozen-lockfile 2>&1 | tail -3 && exec pnpm dev --hostname 0.0.0.0"]
+    command: ["sh", "-c", "CI=true pnpm install --no-frozen-lockfile 2>&1 | tail -3 && MIGRATIONS_DIR=/app/drizzle node scripts/migrate.mjs && exec pnpm dev --hostname 0.0.0.0"]
     ports:
       - "127.0.0.1:3101:3000"
     environment:
       APP_BASE_URL: http://localhost:3000
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lumark_test
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      DATABASE_URL: postgres://postgres:${E2E_POSTGRES_PASSWORD:-e2e-local-only-password}@postgres:5432/lumark_test
+      BETTER_AUTH_SECRET: ${E2E_BETTER_AUTH_SECRET:-e2e-local-only-secret-for-vocero-test}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       META_WEBHOOK_VERIFY_TOKEN: lumark-local-test-webhook
       BOT_API_KEY: lumark-local-test-bot-key
@@ -54,17 +54,22 @@ services:
       ZERNIO_BASE_URL: http://localhost:3000/api/dev/zernio-mock
       # El E2E de webhooks de salida se apunta a sí mismo por http://localhost.
       WEBHOOK_TRUSTED_HOSTS: localhost,127.0.0.1,preview
+      # El navegador E2E entra por el alias con punto (ver servicio `browser`).
+      TRUSTED_ORIGINS: http://lumark.test:3000
       MEDIA_DIR: /data/media
       CI: "true"
+    networks:
+      default:
+        aliases:
+          - lumark.test
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - .:/app
       - /app/node_modules
       - /app/.next
       - /data/media
-    networks:
-      - local
 
-networks:
-  local:
-    external: true
-    name: lumark-crm-local_default
+volumes:
+  e2e_postgres_data:
