@@ -6,6 +6,8 @@ export interface QuoteItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  /** Descripción corta (del catálogo o escrita a mano); va al PDF. */
+  description?: string;
 }
 
 export const STATUS_LABELS: Record<string, string> = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle, Pencil, X, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PdfActions } from "@/components/pdf-actions";
 import { NewQuoteDialog } from "./new-quote-dialog";
 import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import type { ConversationDto } from "@/lib/types";
+import { formatRemaining } from "@/components/inbox/helpers";
+
+/** Canales por los que puede salir una cotización (mismos que acepta la API). */
+const SEND_CHANNELS = ["whatsapp", "instagram", "messenger"] as const;
+type SendChannel = (typeof SEND_CHANNELS)[number];
 
 interface QuoteData {
   id: string;
@@ -52,6 +59,40 @@ export function QuoteDetail({
   const [displayName, setDisplayName] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [conversations, setConversations] = useState<ConversationDto[]>([]);
+  const [chatId, setChatId] = useState<string>("");
+
+  useEffect(() => {
+    fetch("/api/conversations")
+      .then((r) => (r.ok ? r.json() : { conversations: [] }))
+      .then((d: { conversations?: ConversationDto[] }) =>
+        setConversations(Array.isArray(d.conversations) ? d.conversations : [])
+      )
+      .catch(() => setConversations([]));
+  }, []);
+
+  /** Sólo chats de canales que pueden enviar cotización, agrupados por canal. */
+  const chatsByChannel = useMemo(() => {
+    const map = new Map<SendChannel, ConversationDto[]>();
+    for (const channel of SEND_CHANNELS) {
+      const list = conversations.filter((c) => c.channel === channel);
+      if (list.length) map.set(channel, list);
+    }
+    return map;
+  }, [conversations]);
+
+  /** Chat elegido, validado contra el canal que se va a usar. */
+  const selectedChat = useMemo(
+    () => conversations.find((c) => c.id === chatId) ?? null,
+    [conversations, chatId]
+  );
+
+  useEffect(() => {
+    // Al cargar la cotización, preselecciona el chat de su contacto.
+    if (!quote?.contactId || chatId) return;
+    const match = conversations.find((c) => c.contact.id === quote.contactId);
+    if (match) setChatId(match.id);
+  }, [quote?.contactId, conversations, chatId]);
 
   useEffect(() => {
     fetch(`/api/quotes/${quoteId}`)
@@ -95,13 +136,21 @@ export function QuoteDetail({
   );
 
   const sendVia = useCallback(
-    async (channel: "whatsapp" | "instagram" | "messenger") => {
+    async (channel: SendChannel) => {
       setSending(channel);
       setError("");
       const response = await fetch(`/api/quotes/${quoteId}/send`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ channel }),
+        body: JSON.stringify({
+          channel,
+          // Si el chat elegido es de este canal, se manda a ese; si no, la API
+          // resuelve por el contacto de la cotización (comportamiento clásico).
+          conversationId:
+            selectedChat && selectedChat.channel === channel
+              ? selectedChat.id
+              : undefined,
+        }),
       }).catch(() => null);
       setSending(null);
       if (!response?.ok) { setError((await response?.json())?.error?.message ?? "No se pudo enviar"); return; }
@@ -112,8 +161,13 @@ export function QuoteDetail({
       }
       onUpdated();
     },
-    [quoteId, onUpdated]
+    [quoteId, onUpdated, selectedChat]
   );
+
+  /** Envía al chat seleccionado: el canal lo dicta el chat, no el botón. */
+  const sendToSelected = useCallback(() => {
+    if (selectedChat) void sendVia(selectedChat.channel as SendChannel);
+  }, [sendVia, selectedChat]);
 
   if (!quote) {
     return (
@@ -247,31 +301,58 @@ export function QuoteDetail({
         </p>
 
         {quote.status === "draft" && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={sending === "whatsapp"}
-              onClick={() => void sendVia("whatsapp")}
-            >
-              {sending === "whatsapp" ? "Enviando…" : "Enviar por WhatsApp"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={sending === "instagram"}
-              onClick={() => void sendVia("instagram")}
-            >
-              {sending === "instagram" ? "Enviando…" : "Enviar por Instagram"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={sending === "messenger"}
-              onClick={() => void sendVia("messenger")}
-            >
-              {sending === "messenger" ? "Enviando…" : "Enviar por Messenger"}
-            </Button>
+          <div className="mt-4 space-y-2">
+            <label className="text-sm font-medium" htmlFor="quote-chat">
+              Enviar a
+            </label>
+            {chatsByChannel.size === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No hay chats en canales conectados para enviar esta cotización.
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  id="quote-chat"
+                  className="h-9 max-w-full flex-1 rounded-md border border-input bg-background px-2 text-sm"
+                  value={chatId}
+                  onChange={(e) => setChatId(e.target.value)}
+                >
+                  <option value="">— Elige un chat —</option>
+                  {[...chatsByChannel.entries()].map(([channel, list]) => (
+                    <optgroup key={channel} label={CHANNEL_LABEL[channel]}>
+                      {list.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.contact.name}
+                          {c.contact.phone ? ` · ${c.contact.phone}` : ""}
+                          {c.windowOpen
+                            ? ` · ventana abierta (${formatRemaining(c.windowRemainingMs)})`
+                            : " · ventana cerrada"}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!selectedChat || sending !== null}
+                  onClick={sendToSelected}
+                >
+                  {sending
+                    ? "Enviando…"
+                    : selectedChat
+                      ? `Enviar por ${CHANNEL_LABEL[selectedChat.channel as Channel]}`
+                      : "Enviar cotización"}
+                </Button>
+              </div>
+            )}
+            {selectedChat && !selectedChat.windowOpen && selectedChat.channel !== "whatsapp" && (
+              <p className="text-xs text-amber-600">
+                La ventana de 24 h de {CHANNEL_LABEL[selectedChat.channel as Channel]} está
+                cerrada: Meta sólo acepta la etiqueta de agente humano, y puede rechazarla
+                con el error #100. Pide al cliente que escriba primero.
+              </p>
+            )}
           </div>
         )}
       </CardContent>

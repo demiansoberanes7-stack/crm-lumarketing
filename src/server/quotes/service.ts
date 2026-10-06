@@ -245,7 +245,9 @@ export async function updateQuote(
 export async function sendQuote(
   organizationId: string,
   quoteId: string,
-  channel: "whatsapp" | "instagram" | "messenger"
+  channel: "whatsapp" | "instagram" | "messenger",
+  /** 053: chat elegido por el operador. Si falta, se resuelve por el contacto. */
+  conversationId?: string
 ): Promise<{ waMessageId?: string; total: number }> {
   const sent = await getDb().transaction(async (db) => {
 
@@ -264,9 +266,20 @@ export async function sendQuote(
   const quote = rows[0];
   if (!quote) throw new Error("Cotización no encontrada");
   if (quote.status !== "draft") throw new Error("Esta cotización ya no es un borrador");
-  if (!quote.contactId) throw new Error("Asigna un contacto antes de enviar");
-  const [conversation] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.contactId, quote.contactId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
-  if (!conversation) throw new Error("El contacto no tiene una conversación real en este canal");
+
+  // Resolver el chat de destino: el elegido explícitamente (y sólo si es del
+  // canal pedido), o el del contacto de la cotización como hasta ahora.
+  let conversation;
+  if (conversationId) {
+    const [picked] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.id, conversationId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
+    if (!picked) throw new Error("Ese chat no existe en este canal");
+    conversation = picked;
+  } else {
+    if (!quote.contactId) throw new Error("Asigna un contacto antes de enviar");
+    const [byContact] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.contactId, quote.contactId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
+    if (!byContact) throw new Error("El contacto no tiene una conversación real en este canal");
+    conversation = byContact;
+  }
   const { sendMediaMessage, sendText } = await import("@/server/inbox/send");
   if (channel === "whatsapp") {
     const { quotePdf } = await import("./pdf");
@@ -285,6 +298,9 @@ export async function sendQuote(
     .set({
       status: "sent",
       sendChannel: channel,
+      // La cotización queda ligada al chat por el que salió: la siguiente
+      // edición/reeenvío parte de ese contacto y no de uno adivinado.
+      contactId: conversation.contactId,
       lockedAt: new Date(),
       version: quote.version + 1,
       updatedAt: new Date(),
@@ -331,14 +347,32 @@ export async function getQuote(organizationId: string, quoteId: string) {
   if (!quote) return null;
 
   const items = await db
-    .select()
+    .select({
+      item: schema.quoteItem,
+      // Descripción larga del catálogo: el PDF la imprime en letra chica
+      // debajo de cada partida. Sin join sería un segundo query por ítem.
+      longDescription: schema.catalogProduct.longDescription,
+    })
     .from(schema.quoteItem)
+    .leftJoin(
+      schema.catalogProduct,
+      eq(schema.quoteItem.productId, schema.catalogProduct.id)
+    )
     .where(eq(schema.quoteItem.quoteId, quoteId))
     .orderBy(schema.quoteItem.position);
 
   const [contact] = quote.contactId ? await db.select({ name: schema.contact.name, phone: schema.contact.phone, ficha: schema.contact.ficha }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, quote.contactId))) : [];
   const contactEmail = contact?.ficha && typeof contact.ficha === "object" ? (contact.ficha as Record<string, unknown>).email as string ?? null : null;
-  return { ...quote, items, contactName: contact?.name ?? null, contactPhone: contact?.phone ?? null, contactEmail };
+  return {
+    ...quote,
+    items: items.map(({ item, longDescription }) => ({
+      ...item,
+      longDescription: longDescription ?? null,
+    })),
+    contactName: contact?.name ?? null,
+    contactPhone: contact?.phone ?? null,
+    contactEmail,
+  };
 }
 
 /** Cambiar estado de una cotización (accepted / rejected) */

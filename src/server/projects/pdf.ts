@@ -7,10 +7,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { getBusinessSettings } from "@/server/business-settings";
+import { getBranding } from "@/server/branding";
+import { pdfInkOn } from "@/lib/branding";
 import {
   clean,
   tryLoadLogo,
   wrapText,
+  money,
   PAGE_W,
   PAGE_H,
   MARGIN,
@@ -26,12 +29,21 @@ import {
 } from "@/lib/project-types";
 import { getProject, listTasks } from "./service";
 import { listProjectSteps } from "./steps";
+import { listItems } from "./items";
 
 const DARK = rgb(0.13, 0.13, 0.13);
 const GRAY = rgb(0.45, 0.45, 0.45);
 const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
-const HEADER_BG = rgb(0.28, 0.28, 0.28);
-const GOLD = rgb(0.72, 0.59, 0.24);
+const ROW_ALT = rgb(0.96, 0.96, 0.96);
+
+/** Hex de la marca (0-255) → tinta pdf-lib (0-1). */
+function hexRgb(hex: string) {
+  return rgb(
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255
+  );
+}
 
 export async function projectPdf(
   organizationId: string,
@@ -40,11 +52,20 @@ export async function projectPdf(
   const project = await getProject(organizationId, projectId);
   if (!project) return null;
 
-  const [bs, stepResult, tasks] = await Promise.all([
+  const [bs, branding, stepResult, tasks, items] = await Promise.all([
     getBusinessSettings(organizationId),
+    getBranding(organizationId),
     listProjectSteps(organizationId, projectId),
     listTasks(organizationId, projectId),
+    listItems(organizationId, projectId),
   ]);
+
+  // Colores configurados en Configuración → Marca (default naranja LUMARK);
+  // el expediente salía con un dorado que no era de la marca.
+  const HEADER_BG = hexRgb(branding.pdfColors.header);
+  const ACCENT = hexRgb(branding.pdfColors.accent);
+  const ink = pdfInkOn(branding.pdfColors.header);
+  const HEADER_INK = rgb(ink.r / 255, ink.g / 255, ink.b / 255);
 
   const db = getDb();
   const [contact] = project.contactId
@@ -188,10 +209,10 @@ export async function projectPdf(
   page.drawLine({
     start: { x: MARGIN, y: y + 8 },
     end: { x: PAGE_W - MARGIN, y: y + 8 },
-    color: GOLD,
+    color: ACCENT,
     thickness: 1,
   });
-  // Respiro entre la línea dorada y el título (16pt) para que nunca se crucen.
+  // Respiro entre la línea de acento y el título (16pt) para que nunca se crucen.
   y -= 22;
 
   // ─── TÍTULO + RESUMEN ───
@@ -274,6 +295,76 @@ export async function projectPdf(
     y -= 6;
   }
 
+  // ─── PRODUCTOS / SERVICIOS ───
+  if (items.length) {
+    const colQty = MARGIN + 330;
+    const colUnit = MARGIN + 395;
+    const colTotal = MARGIN + 465;
+
+    checkPage(70);
+    page.drawText("PRODUCTOS / SERVICIOS", { x: MARGIN, y, size: 10, font: bold, color: DARK });
+    y -= 16;
+
+    // Cabecera de tabla (mismo estilo que el resto del documento)
+    const headerH = 20;
+    page.drawRectangle({ x: MARGIN, y: y - 4, width: CONTENT_W, height: headerH, color: HEADER_BG });
+    const headerY = y + 2;
+    page.drawText("Descripción", { x: MARGIN + 8, y: headerY, size: 9, font: bold, color: HEADER_INK });
+    page.drawText("Cant.", { x: colQty, y: headerY, size: 9, font: bold, color: HEADER_INK });
+    page.drawText("P. Unit.", { x: colUnit, y: headerY, size: 9, font: bold, color: HEADER_INK });
+    page.drawText("Total", { x: colTotal, y: headerY, size: 9, font: bold, color: HEADER_INK });
+    y -= headerH + 4;
+
+    let subtotal = 0;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      const amount = item.quantity * item.unitPrice;
+      subtotal += amount;
+
+      const nameLines = wrapText(item.name, bold, 11, CONTENT_W - 170);
+      const descLines = item.description
+        ? wrapText(item.description, regular, 8, CONTENT_W - 170)
+        : [];
+      const rowH = Math.max(nameLines.length * 14 + descLines.length * 10 + 12, 30);
+      checkPage(rowH + 10);
+
+      if (i % 2 === 0) {
+        page.drawRectangle({ x: MARGIN, y: y - rowH + 12, width: CONTENT_W, height: rowH, color: ROW_ALT });
+      }
+
+      let textY = y;
+      for (const l of nameLines) {
+        page.drawText(clean(l), { x: MARGIN + 8, y: textY, size: 11, font: bold, color: DARK });
+        textY -= 14;
+      }
+      for (const l of descLines) {
+        page.drawText(clean(l), { x: MARGIN + 8, y: textY, size: 8, font: regular, color: GRAY });
+        textY -= 10;
+      }
+
+      page.drawText(String(item.quantity), { x: colQty + 8, y, size: 10, font: regular, color: DARK });
+      page.drawText(money(item.unitPrice), { x: colUnit, y, size: 10, font: regular, color: DARK });
+      page.drawText(money(amount), { x: colTotal, y, size: 10, font: bold, color: DARK });
+      y -= rowH;
+    }
+
+    // Total de la sección
+    y -= 6;
+    checkPage(34);
+    const totalBoxH = 24;
+    const totalLabelX = MARGIN + 330;
+    page.drawRectangle({
+      x: totalLabelX - 8,
+      y: y - totalBoxH + 14,
+      width: PAGE_W - MARGIN - totalLabelX + 8,
+      height: totalBoxH,
+      color: HEADER_BG,
+    });
+    page.drawText("TOTAL:", { x: totalLabelX, y: y - 3, size: 11, font: bold, color: HEADER_INK });
+    page.drawText(money(subtotal), { x: MARGIN + 465, y: y - 3, size: 11, font: bold, color: HEADER_INK });
+    y -= totalBoxH + 12;
+  }
+
   // ─── PASOS DEL EXPEDIENTE ───
   checkPage(60);
   page.drawText("PROCESO DEL PROYECTO", { x: MARGIN, y, size: 10, font: bold, color: DARK });
@@ -297,7 +388,7 @@ export async function projectPdf(
       y,
       size: 9,
       font: bold,
-      color: rgb(1, 1, 1),
+      color: HEADER_INK,
     });
     const statusText =
       step.status === "completado" ? "Completado" : step.status === "en_proceso" ? "En proceso" : "Pendiente";
@@ -306,7 +397,7 @@ export async function projectPdf(
       y,
       size: 9,
       font: regular,
-      color: rgb(1, 1, 1),
+      color: HEADER_INK,
     });
     y -= 26;
 

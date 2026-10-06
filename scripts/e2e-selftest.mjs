@@ -15,6 +15,18 @@
 const BASE = process.env.APP_BASE_URL ?? "http://localhost:3000";
 const BOT_KEY = process.env.BOT_API_KEY;
 
+/**
+ * Sal de corrida para los `waMessageId` del guion.
+ *
+ * El webhook deduplica por `wa_message_id`, así que con IDs fijos una segunda
+ * corrida contra la misma BD es un no-op: nunca llega el inbound, la ventana
+ * de 24 h no se refresca y los checks de envío fallan con `window_closed`
+ * (era "arreglar" la BD a mano cada vez). Con la sal, cada corrida ingiere de
+ * nuevo y el guion queda re-ejecutable — dentro de la corrida los IDs siguen
+ * siendo estables, que es lo que prueba la idempotencia.
+ */
+const RUN = Date.now().toString(36);
+
 let cookie = "";
 let failures = 0;
 let checks = 0;
@@ -124,7 +136,7 @@ async function main() {
       fromUserId: "bsu_e2e_1",
       name: "Dueña Dental",
       text: "hola, vi su anuncio",
-      waMessageId: "wamid.e2e.bsuid.1",
+      waMessageId: `wamid.e2e.${RUN}.bsuid.1`,
     }),
   });
   ok("inbound BSUID entregado", inb1.res.ok, JSON.stringify(inb1.json));
@@ -155,6 +167,9 @@ async function main() {
   );
 
   // Idempotencia: re-entrega del mismo wa_message_id
+  const inCountBefore =
+    ((await api(`/api/conversations/${bsuidConv?.id}/messages`)).json
+      ?.messages ?? []).filter((m) => m.direction === "in").length;
   await api("/api/dev/wa-mock/inbound", {
     method: "POST",
     body: JSON.stringify({
@@ -162,7 +177,7 @@ async function main() {
       fromUserId: "bsu_e2e_1",
       name: "Dueña Dental",
       text: "hola, vi su anuncio",
-      waMessageId: "wamid.e2e.bsuid.1",
+      waMessageId: `wamid.e2e.${RUN}.bsuid.1`,
     }),
   });
   await sleep(800);
@@ -170,7 +185,12 @@ async function main() {
     (await api(`/api/conversations/${bsuidConv?.id}/messages`)).json?.messages ??
     [];
   const inCount = msgs.filter((m) => m.direction === "in").length;
-  ok("webhook duplicado no duplica mensajes", inCount === 1, `in=${inCount}`);
+  /**
+   * Se mide el ANTES y el DESPUÉS, no un absoluto: la conversación vive en una
+   * BD que persiste entre corridas, así que `in === 1` dejó de ser verdad en
+   * cuanto corrió el guion dos veces — aunque la dedup funcionara perfecta.
+   */
+  ok("webhook duplicado no duplica mensajes", inCount === inCountBefore, `antes=${inCountBefore} después=${inCount}`);
 
   console.log("\n== us-bsuid: a un contacto sin teléfono se le puede responder ==");
   {
@@ -245,7 +265,7 @@ async function main() {
       from: AR_REPORTADO,
       name: "Lead AR",
       text: "hola desde Argentina",
-      waMessageId: "wamid.e2e.ar.1",
+      waMessageId: `wamid.e2e.${RUN}.ar.1`,
     }),
   });
   await sleep(1200);
@@ -796,7 +816,7 @@ async function main() {
       from: LEAD,
       name: "Lead 008",
       text: "hola, quiero informes",
-      waMessageId: "wamid.e2e.008.in.1",
+      waMessageId: `wamid.e2e.${RUN}.008.in.1`,
     }),
   });
   await sleep(1200);
@@ -815,7 +835,7 @@ async function main() {
       phoneNumberId: PN,
       to: LEAD,
       text: "te contesto yo, dame un minuto",
-      waMessageId: "wamid.e2e.008.echo.1",
+      waMessageId: `wamid.e2e.${RUN}.008.echo.1`,
     }),
   });
   ok("echo entregado al webhook", echo1.res.ok, JSON.stringify(echo1.json));
@@ -842,20 +862,25 @@ async function main() {
   );
 
   // Idempotencia: el mismo echo otra vez no duplica.
+  const echoText = "te contesto yo, dame un minuto";
+  const echoCountBefore = msgs1.filter((m) => m.text === echoText).length;
   await api("/api/dev/wa-mock/echo", {
     method: "POST",
     body: JSON.stringify({
       phoneNumberId: PN,
       to: LEAD,
-      text: "te contesto yo, dame un minuto",
-      waMessageId: "wamid.e2e.008.echo.1",
+      text: echoText,
+      waMessageId: `wamid.e2e.${RUN}.008.echo.1`,
     }),
   });
   await sleep(700);
   const msgs2 = (await api(`/api/conversations/${conv008.id}/messages`)).json?.messages ?? [];
+  const echoCountAfter = msgs2.filter((m) => m.text === echoText).length;
   ok(
     "echo duplicado (mismo wamid) no duplica el mensaje",
-    msgs2.filter((m) => m.text === "te contesto yo, dame un minuto").length === 1
+    // Relativo a esta corrida: la BD persiste y los textos se repiten.
+    echoCountAfter === echoCountBefore,
+    `antes=${echoCountBefore} después=${echoCountAfter}`
   );
 
   // Variante defensiva: echoes bajo la clave `messages`.
@@ -865,7 +890,7 @@ async function main() {
       phoneNumberId: PN,
       to: LEAD,
       text: "segundo mensaje manual",
-      waMessageId: "wamid.e2e.008.echo.2",
+      waMessageId: `wamid.e2e.${RUN}.008.echo.2`,
       useMessagesKey: true,
     }),
   });
@@ -883,7 +908,7 @@ async function main() {
       phoneNumberId: PN,
       to: "5214627008002",
       text: "hola, te escribo del anuncio",
-      waMessageId: "wamid.e2e.008.echo.3",
+      waMessageId: `wamid.e2e.${RUN}.008.echo.3`,
     }),
   });
   await sleep(700);
@@ -989,7 +1014,7 @@ async function main() {
       type: "image",
       mediaId: "media-e2e-img-1",
       caption: "foto de mi negocio",
-      waMessageId: "wamid.e2e.008.in.img",
+      waMessageId: `wamid.e2e.${RUN}.008.in.img`,
     }),
   });
   await sleep(1600); // ingesta + descarga in-process del binario
@@ -1015,7 +1040,7 @@ async function main() {
       from: LEAD,
       type: "location",
       location: { latitude: 20.5, longitude: -100.8, name: "Mi taller" },
-      waMessageId: "wamid.e2e.008.in.loc",
+      waMessageId: `wamid.e2e.${RUN}.008.in.loc`,
     }),
   });
   await sleep(900);
@@ -1036,7 +1061,7 @@ async function main() {
       from: LEAD,
       type: "image",
       mediaId: "broken-no-url",
-      waMessageId: "wamid.e2e.008.in.broken",
+      waMessageId: `wamid.e2e.${RUN}.008.in.broken`,
     }),
   });
   await sleep(1600);
@@ -1063,7 +1088,7 @@ async function main() {
       type: "image",
       mediaId: "media-e2e-echo-img",
       caption: "así quedaría tu logo",
-      waMessageId: "wamid.e2e.008.echo.img",
+      waMessageId: `wamid.e2e.${RUN}.008.echo.img`,
     }),
   });
   await sleep(1600);
@@ -1184,7 +1209,7 @@ async function agendaChecks() {
       from: LEAD_A,
       name: "Lead agenda A",
       text: "quiero agendar",
-      waMessageId: "wamid.e2e.015.a.1",
+      waMessageId: `wamid.e2e.${RUN}.015.a.1`,
     }),
   });
   const LEAD_B = "5214627015002";
@@ -1195,7 +1220,7 @@ async function agendaChecks() {
       from: LEAD_B,
       name: "Lead agenda B",
       text: "yo también quiero",
-      waMessageId: "wamid.e2e.015.b.1",
+      waMessageId: `wamid.e2e.${RUN}.015.b.1`,
     }),
   });
   await sleep(1500);

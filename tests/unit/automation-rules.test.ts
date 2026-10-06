@@ -25,4 +25,11 @@ describe("reglas de automatización persistidas", () => {
     expect(findAutomationRule([{ id: "followup-3d", delayHours: -4, channel: "sms" }], "followup-3d"))
       .toEqual({ id: "followup-3d" });
   });
+
+  it("acepta los canales de mensajería conectados (Messenger, Instagram, TikTok)", () => {
+    for (const channel of ["messenger", "instagram", "tiktok"] as const) {
+      expect(findAutomationRule([{ id: "followup-3d", channel }], "followup-3d"))
+        .toEqual({ id: "followup-3d", channel });
+    }
+  });
 });

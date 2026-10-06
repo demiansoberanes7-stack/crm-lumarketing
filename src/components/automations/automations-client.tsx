@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+type AutomationChannel = "whatsapp" | "messenger" | "instagram" | "tiktok" | "email";
+
 interface AutomationRule {
   id: string;
   name: string;
@@ -16,7 +18,15 @@ interface AutomationRule {
   messageText: string;
   delayHours: number;
   enabled: boolean;
-  channel: "whatsapp" | "email";
+  channel: AutomationChannel;
+}
+
+interface ChannelOption {
+  id: AutomationChannel;
+  label: string;
+  enabled: boolean;
+  connected: boolean;
+  status: string;
 }
 
 interface ConversationOption {
@@ -82,6 +92,16 @@ const statusColors: Record<string, string> = {
   inactive: "bg-zinc-500/10 text-zinc-500 border-zinc-200",
 };
 
+/** Fallback si /api/automations/channels no responde: siempre hay WhatsApp. */
+const FALLBACK_CHANNELS: ChannelOption[] = [
+  { id: "whatsapp", label: "WhatsApp", enabled: true, connected: true, status: "connected" },
+  { id: "email", label: "Correo electrónico", enabled: true, connected: false, status: "not_configured" },
+];
+
+function channelLabel(channels: ChannelOption[], id: AutomationChannel): string {
+  return channels.find((c) => c.id === id)?.label ?? (id === "email" ? "Correo" : id);
+}
+
 export function AutomationsClient() {
   const [rules, setRules] = useState<AutomationRule[]>(PRESET_RULES);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,6 +118,7 @@ export function AutomationsClient() {
   const [manualDelayUnit, setManualDelayUnit] = useState<DelayUnit>("days");
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; } | null>(null);
   const [metrics, setMetrics] = useState<AutomationMetrics | null>(null);
+  const [channels, setChannels] = useState<ChannelOption[]>(FALLBACK_CHANNELS);
   const [triggering, setTriggering] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -110,6 +131,15 @@ export function AutomationsClient() {
   }, []);
 
   useEffect(() => { void refetchMetrics(); }, [refetchMetrics]);
+
+  useEffect(() => {
+    fetch("/api/automations/channels")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (Array.isArray(d?.channels) && d.channels.length) setChannels(d.channels as ChannelOption[]);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/automations/rules")
@@ -324,11 +354,21 @@ export function AutomationsClient() {
                           id={`channel-${rule.id}`}
                           className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                           value={editForm.channel ?? rule.channel}
-                          onChange={e => setEditForm({ ...editForm, channel: e.target.value as AutomationRule["channel"] })}
+                          onChange={e => setEditForm({ ...editForm, channel: e.target.value as AutomationChannel })}
                         >
-                          <option value="whatsapp">WhatsApp</option>
-                          <option value="email">Correo electrónico</option>
+                          {channels.map((option) => {
+                            const current = (editForm.channel ?? rule.channel) === option.id;
+                            const blocked = !option.connected && !current;
+                            return (
+                              <option key={option.id} value={option.id} disabled={blocked}>
+                                {option.label}{blocked ? " · Sin conexión" : ""}
+                              </option>
+                            );
+                          })}
                         </select>
+                        <p className="text-[11px] text-muted-foreground">
+                          El seguimiento solo se envía si la conversación está en este canal.
+                        </p>
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -356,7 +396,7 @@ export function AutomationsClient() {
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mb-3">
                         <span className="flex items-center gap-1"><Zap className="h-3 w-3 text-orange-400" />{rule.trigger}</span>
                          <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-blue-400" />{describeDelay(rule.delayHours)}</span>
-                        <span>{rule.channel === "email" ? "Correo" : "WhatsApp"}</span>
+                        <span className="flex items-center gap-1">{channelLabel(channels, rule.channel)}</span>
                       </div>
                       <div className="bg-muted/40 p-3 rounded-lg text-sm italic border-l-2 border-brand/50">
                         “{rule.messageText}”

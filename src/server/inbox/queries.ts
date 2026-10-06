@@ -7,7 +7,9 @@ import type { ConversationDto } from "@/lib/types";
 
 export async function listConversations(
   organizationId: string,
-  since?: Date
+  since?: Date,
+  /** 053: filtra por canal (el selector de envío de cotizaciones). */
+  channel?: Channel
 ): Promise<ConversationDto[]> {
   const db = getDb();
   const previewSql = sql<string | null>`(
@@ -41,6 +43,7 @@ export async function listConversations(
         schema.conversation.organizationId,
         organizationId,
         eq(schema.conversation.isTest, false),
+        channel ? eq(schema.conversation.channel, channel) : undefined,
         since ? gt(schema.conversation.updatedAt, since) : undefined
       )
     )

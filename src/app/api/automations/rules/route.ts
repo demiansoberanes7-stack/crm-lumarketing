@@ -20,7 +20,7 @@ export const POST = withAuth(async (session, req: Request) => {
       messageText: z.string().trim().min(1).max(5000),
       delayHours: z.number().int().min(0).max(8760),
       enabled: z.boolean(),
-      channel: z.enum(["whatsapp", "email"]).default("whatsapp"),
+      channel: z.enum(["whatsapp", "messenger", "instagram", "tiktok", "email"]).default("whatsapp"),
     }).strict()).min(1).max(50),
   }));
   if (!body.ok) return body.response;

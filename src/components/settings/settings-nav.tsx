@@ -19,6 +19,7 @@ const TABS: Tab[] = [
 
 const GOOGLE_TAB: Tab = { href: "/settings/google", label: "Google Calendar" };
 const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
+const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
 const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
 const INSTAGRAM_TAB: Tab = { href: "/settings/instagram", label: "Instagram" };
 const TIKTOK_TAB: Tab = { href: "/settings/tiktok", label: "TikTok" };
@@ -52,6 +53,7 @@ export function SettingsNav({
       ? TABS.slice(2)
       : TABS.slice(2).filter((t) => t.href !== "/settings/webhooks")),
     ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
+    ...(owner ? [MARKETING_TAB] : []),
     ...(agenda ? [GOOGLE_TAB] : []),
     ...(atribucion ? [ADS_TAB] : []),
     ...(owner ? [DATA_CLEANUP_TAB] : []),

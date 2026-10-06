@@ -1052,6 +1052,37 @@ export const projectTask = pgTable(
   ]
 );
 
+/**
+ * Productos / servicios entregados en el expediente: la sección que imprime
+ * el PDF. Un solo renglón por partida (nombre, cantidad, precio), sin
+ * versionado — el cotizador es quien maneja versiones.
+ */
+export const projectItem = pgTable(
+  "project_item",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id", { length: 255 })
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    quantity: integer("quantity").notNull().default(1),
+    /** Centavos, como en quote_item. */
+    unitPrice: integer("unit_price").notNull().default(0),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("project_item_org_idx").on(t.organizationId),
+    index("project_item_project_idx").on(t.projectId),
+  ]
+);
+
 /* ============================================================
  * Cotizador — catálogo y cotizaciones versionadas
  * ============================================================ */

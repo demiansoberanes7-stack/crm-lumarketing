@@ -30,7 +30,7 @@ export async function hasClientRepliedSince(conversationId: string, sinceDateIso
 export async function triggerAiFollowUp(conversationId: string, organizationId: string): Promise<void> {
   const db = getDb();
   const [conversation] = await db
-    .select({ contactId: schema.contact.id, contactName: schema.contact.name, ficha: schema.contact.ficha })
+    .select({ contactId: schema.contact.id, contactName: schema.contact.name, ficha: schema.contact.ficha, channel: schema.conversation.channel })
     .from(schema.conversation)
     .innerJoin(schema.contact, eq(schema.conversation.contactId, schema.contact.id))
     .where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.id, conversationId)))
@@ -40,6 +40,15 @@ export async function triggerAiFollowUp(conversationId: string, organizationId: 
   const integration = await getIntegration(organizationId, "automation_rules");
   const rule = findAutomationRule(integration?.credentials?.rules, "followup-3d");
   const messageText = rule?.messageText ?? "Hola, espero que estés teniendo un excelente día. Solo quería dar seguimiento a nuestra conversación anterior. ¿Tienes alguna duda con la cotización?";
+
+  // Guarda: el canal de la regla debe coincidir con el de la conversación.
+  // (La cola ya lo cancela antes; esto protege cualquier otra vía de llamada.)
+  const ruleChannel = rule?.channel ?? "whatsapp";
+  if (ruleChannel !== "email" && conversation.channel !== ruleChannel) {
+    throw new Error(
+      `El canal de la conversación (${conversation.channel}) no coincide con el canal de la regla (${ruleChannel})`
+    );
+  }
 
   if (rule?.channel === "email") {
     const ficha = conversation.ficha;

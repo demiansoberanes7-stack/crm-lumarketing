@@ -19,6 +19,13 @@ const putSchema = z.object({
   accent: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)"),
   /** La moneda del negocio: la única que el tablero suma. */
   currency: z.enum(CURRENCIES),
+  /** Colores de los PDF; opcional para no romper clientes viejos. */
+  pdfColors: z
+    .object({
+      header: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)"),
+      accent: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)"),
+    })
+    .optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
@@ -33,6 +40,9 @@ export const PUT = withAuth(async (session, req: Request) => {
   const actual = await getBranding(session.organizationId);
   await saveBranding(session.organizationId, {
     ...body.data,
+    // Sin pdfColors en el body se conservan los guardados (mismo criterio
+    // que el icono: un PUT parcial no debe pisar lo que no viene).
+    pdfColors: body.data.pdfColors ?? actual.pdfColors,
     favicon: actual.favicon,
   });
   return Response.json({ ok: true });

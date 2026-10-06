@@ -11,8 +11,14 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 // `next dev` en el contenedor de pruebas tarda 80–220 s por petición cuando
 // el host está cargado: los timeouts son amplios a propósito.
-page.setDefaultTimeout(240000);
-page.setDefaultNavigationTimeout(300000);
+// El dev server de pruebas compila por ruta y con el host cargado una ruta
+// nueva tarda 3–10 min: los timeouts son amplios a propósito (el default de
+// Playwright es 30 s y no alcanza ni para la primera compilación).
+page.setDefaultTimeout(600000);
+page.setDefaultNavigationTimeout(900000);
+// Ojo: `page.request` NO hereda los timeouts de arriba (se queda en 30 s) ni
+// acepta un default; hay que pasarlo petición por petición. El dev server de
+// pruebas tarda minutos en compilar una ruta nueva.
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const suffix = Date.now();
@@ -134,6 +140,7 @@ try {
 
   // La pantalla Datos de Empresa debe permitir reemplazar un logo existente.
   const initialLogo = await page.request.post(`${base}/api/settings/business/logo`, {
+    timeout: 300000,
     multipart: { file: { name: "logo-inicial.png", mimeType: "image/png", buffer: pngFixture } },
   });
   assert.ok(initialLogo.ok());
@@ -155,13 +162,34 @@ try {
   const created = await save("/api/quotes", "Crear cotización");
   const { quote } = await json(`/api/quotes/${created.quoteId}`);
   ok("cotización calcula subtotal e IVA en centavos", quote.subtotal === 24690 && quote.taxAmount === 3950 && quote.total === 28640);
-  const quotePdf = await page.request.get(`${base}/api/quotes/${created.quoteId}/pdf`);
+  const quotePdf = await page.request.get(`${base}/api/quotes/${created.quoteId}/pdf`, { timeout: 300000 });
   assert.ok(quotePdf.ok(), `PDF cotización: ${quotePdf.status()}`);
   const quotePdfBytes = Buffer.from(await quotePdf.body());
   ok("PDF de cotización muestra el IVA aplicado y su importe", pdfHasText(quotePdfBytes, "IVA (16%):") && pdfHasText(quotePdfBytes, "$39.50"));
   await page.getByText(quote.quoteNumber, { exact: true }).click();
   await page.getByText(/Válida hasta el/).waitFor();
   ok("detalle de cotización muestra su vigencia sin romper la pantalla");
+
+  // 053 — desplegable de chats: sólo el canal pedido, y canal desconocido = 400.
+  const waChats = (await json("/api/conversations?channel=whatsapp")).conversations;
+  ok(
+    "GET /api/conversations?channel= devuelve sólo ese canal",
+    waChats.length >= 0 && waChats.every((c) => c.channel === "whatsapp")
+  );
+  const badChannel = await page.request.get(`${base}/api/conversations?channel=tiktok2`, { timeout: 300000 });
+  ok("canal desconocido rechazado con 400", badChannel.status() === 400);
+  await page.getByLabel("Enviar a").waitFor();
+  ok("detalle de cotización en borrador muestra el selector de chat");
+  const ghostSend = await page.request.post(`${base}/api/quotes/${created.quoteId}/send`, {
+    timeout: 300000,
+    data: { channel: "whatsapp", conversationId: "cnv_que_no_existe" },
+  });
+  const ghostBody = await ghostSend.json();
+  ok(
+    "envío a un chat inexistente falla con error legible (sin tiro real)",
+    ghostSend.status() === 400 &&
+      /no existe en este canal/i.test(ghostBody?.error?.message ?? "")
+  );
 
   await nav("/projects");
   await page.getByRole("button", { name: /Nuevo proyecto/i }).click();

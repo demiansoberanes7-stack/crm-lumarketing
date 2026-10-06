@@ -13,6 +13,7 @@ interface CatalogProduct {
   name: string;
   price: number;
   available: boolean;
+  shortDescription?: string | null;
 }
 
 const EMPTY_ITEM: QuoteItem = { name: "", quantity: 1, unitPrice: 0 };
@@ -73,7 +74,17 @@ export function NewQuoteDialog({
     setItems((prev) =>
       prev.map((it, i) =>
         i === index
-          ? { ...it, name: product.name, unitPrice: product.price / 100 }
+          ? {
+              ...it,
+              name: product.name,
+              unitPrice: product.price / 100,
+              // La descripción corta del catálogo viaja con la partida: en el
+              // PDF se imprime bajo el nombre. El texto ya escrito a mano se
+              // conserva si el producto no trae una.
+              description: product.shortDescription?.trim()
+                ? product.shortDescription
+                : it.description,
+            }
           : it
       )
     );

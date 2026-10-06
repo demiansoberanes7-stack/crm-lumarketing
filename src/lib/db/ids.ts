@@ -35,6 +35,7 @@ const prefixes = {
   project: "prj",
   projectStageEvent: "prje",
   projectTask: "prjt",
+  projectItem: "prji",
   projectStep: "prjs",
   catalogProduct: "cat",
   quote: "qt",

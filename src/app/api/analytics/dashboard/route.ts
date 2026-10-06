@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/api";
 import { getIntegration } from "@/server/integrations";
+import { parseGa4Credentials, readGa4Metrics, type Ga4Metrics } from "@/server/analytics/ga4";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,13 @@ type MetaInsight = {
   date_start?: string;
 };
 type SourceConnection = { status: ConnectionStatus; message?: string };
+type DashboardData = {
+  metrics: DashboardMetric[];
+  campaigns: DashboardCampaign[];
+  chartData: ChartPoint[];
+  connections: Record<Source, SourceConnection>;
+  ga4: Ga4Metrics | null;
+};
 
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
@@ -70,14 +78,30 @@ export const GET = withAuth(async (session) => {
       status: googleConfigured ? "configured" : "disconnected",
       ...(googleConfigured ? { message: "Credenciales guardadas; no hay lectura de métricas activa." } : {}),
     },
-    ga4: {
-      status: ga4Configured ? "configured" : "disconnected",
-      ...(ga4Configured ? { message: "Credenciales guardadas; no hay lectura de métricas activa." } : {}),
-    },
+    ga4: { status: ga4Configured ? "configured" : "disconnected" },
   };
   const metrics: DashboardMetric[] = [];
   const campaigns: DashboardCampaign[] = [];
   const chartData: ChartPoint[] = [];
+  let ga4Metrics: Ga4Metrics | null = null;
+
+  // GA4 sí tiene lectura real: la Data API corre del lado del servidor y su
+  // fallo jamás bloquea el dashboard, solo cambia el estado de la conexión.
+  if (ga4Configured) {
+    const credentials = parseGa4Credentials(ga4Credentials);
+    if (!credentials) {
+      connections.ga4 = { status: "error", message: "Credenciales de GA4 incompletas o inválidas." };
+    } else {
+      try {
+        ga4Metrics = await readGa4Metrics(credentials);
+        connections.ga4 = { status: "connected" };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        connections.ga4 = { status: "error", message: detail.slice(0, 300) };
+        console.error("[analytics] GA4 read failed", error);
+      }
+    }
+  }
 
   if (metaConfigured) {
     const token = metaCredentials.accessToken as string;
@@ -154,5 +178,5 @@ export const GET = withAuth(async (session) => {
     }
   }
 
-  return NextResponse.json({ metrics, campaigns, chartData, connections });
+  return NextResponse.json({ metrics, campaigns, chartData, connections, ga4: ga4Metrics } satisfies DashboardData);
 });

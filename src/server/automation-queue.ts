@@ -2,6 +2,7 @@ import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { findAutomationRule } from "@/server/automation-rules";
 import { getIntegration } from "@/server/integrations";
 import { triggerAiFollowUp } from "@/server/temporal/activities/follow-up";
@@ -140,7 +141,7 @@ async function processExecution(execution: Execution): Promise<void> {
   const db = getDb();
   try {
     const [conversation] = await db
-      .select({ id: schema.conversation.id, contactId: schema.conversation.contactId })
+      .select({ id: schema.conversation.id, contactId: schema.conversation.contactId, channel: schema.conversation.channel })
       .from(schema.conversation)
       .where(
         scoped(
@@ -192,6 +193,18 @@ async function processExecution(execution: Execution): Promise<void> {
     const rule = findAutomationRule(integration?.credentials?.rules, execution.ruleId);
     if (execution.triggeredBy === "stage" && rule?.enabled === false) {
       await finishExecution(execution.id, "cancelled", "La regla fue desactivada antes de ejecutarse");
+      return;
+    }
+
+    // El seguimiento solo sale si el canal de la regla coincide con el de la
+    // conversación (el correo es la excepción: va al correo del contacto).
+    const ruleChannel = rule?.channel ?? "whatsapp";
+    if (ruleChannel !== "email" && conversation.channel !== ruleChannel) {
+      await finishExecution(
+        execution.id,
+        "cancelled",
+        `La conversación está en «${CHANNEL_LABEL[conversation.channel as Channel]}» pero la regla apunta a «${CHANNEL_LABEL[ruleChannel as Channel]}»`
+      );
       return;
     }
 

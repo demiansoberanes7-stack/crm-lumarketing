@@ -9,6 +9,8 @@
  */
 
 const DESCRIPTIONS: Record<number, string> = {
+  100:
+    "Meta rechazó la etiqueta HUMAN_AGENT: la ventana de 24 h ya se cerró y esta conversación no califica para mensajes con etiqueta. Pide al cliente que te escriba primero para reabrirla.",
   130472:
     "Meta tiene el número del destinatario en un experimento y le está bloqueando los mensajes de MARKETING. No es un fallo de tu configuración: espera un tiempo o prueba con otro número.",
   131049:
@@ -42,4 +44,18 @@ export function describeSendError(
   // mensaje de error vacío es tan inútil como el triángulo mudo.
   const base = known || detail?.trim() || "Meta rechazó el envío";
   return code != null ? `${base} (Meta ${code})` : base;
+}
+
+/**
+ * Igual que `describeSendError`, pero partiendo del mensaje COMPLETO del
+ * error — que es lo único que llega cuando la excepción ya fue envuelta
+ * (`String(err)` en las rutas). Detecta los tres formatos en que Meta escribe
+ * su código (`(#100)`, `(Meta 100)`, `código 100`) y, si no encuentra ninguno,
+ * deja pasar el texto original: traducir a ciegas sería mentir.
+ */
+export function describeSendErrorText(raw: string): string {
+  const code = /\(#(\d+)\)|\(Meta (\d+)\)|\bcódigo\s+(\d+)\b/i.exec(raw);
+  const digits = code?.slice(1).find((g) => g !== undefined);
+  if (!digits) return raw;
+  return describeSendError(Number(digits), raw.replace(/^\w*Error:\s*/, ""));
 }

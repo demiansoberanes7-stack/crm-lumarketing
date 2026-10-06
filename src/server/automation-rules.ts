@@ -1,4 +1,11 @@
-export type AutomationChannel = "whatsapp" | "email";
+export type AutomationChannel = "whatsapp" | "messenger" | "instagram" | "tiktok" | "email";
+
+/** Canales de mensajería (no correo) — coinciden con `Channel` de `lib/channels.ts`. */
+export const AUTOMATION_MESSAGE_CHANNELS = ["whatsapp", "messenger", "instagram", "tiktok"] as const;
+
+export function isAutomationChannel(value: unknown): value is AutomationChannel {
+  return value === "whatsapp" || value === "messenger" || value === "instagram" || value === "tiktok" || value === "email";
+}
 
 export interface AutomationRuleConfig {
   id: string;
@@ -25,7 +32,7 @@ export function findAutomationRule(value: unknown, id: string): AutomationRuleCo
       rule.delayHours = record.delayHours;
     }
     if (typeof record.messageText === "string") rule.messageText = record.messageText;
-    if (record.channel === "whatsapp" || record.channel === "email") rule.channel = record.channel;
+    if (isAutomationChannel(record.channel)) rule.channel = record.channel;
     return rule;
   }
 

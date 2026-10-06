@@ -4,8 +4,10 @@ import {
   ACCENT_PRESETS,
   accentCssVariables,
   DEFAULT_BRANDING,
+  DEFAULT_PDF_COLORS,
   isValidHex,
   normalizeBranding,
+  pdfInkOn,
   resolveAccentSet,
 } from "@/lib/branding";
 
@@ -121,5 +123,40 @@ describe("white-label: normalización", () => {
   it("acento inválido → default", () => {
     expect(normalizeBranding({ accent: "azul" }).accent).toBe("#B8963E");
     expect(normalizeBranding({ accent: "#3F6B66" }).accent).toBe("#3f6b66");
+  });
+});
+
+describe("white-label: colores de PDF", () => {
+  it("el default es el naranja LUMARK (los PDF salían gris carbón)", () => {
+    expect(DEFAULT_PDF_COLORS.header).toBe("#E87722");
+    expect(normalizeBranding(null).pdfColors).toEqual(DEFAULT_PDF_COLORS);
+    expect(DEFAULT_BRANDING.pdfColors).toEqual(DEFAULT_PDF_COLORS);
+  });
+
+  it("cada color se valida por separado: uno malo no tira al otro", () => {
+    const out = normalizeBranding({
+      pdfColors: { header: "#123456", accent: "nope" },
+    }).pdfColors;
+    expect(out.header).toBe("#123456");
+    expect(out.accent).toBe(DEFAULT_PDF_COLORS.accent);
+  });
+
+  it("pdfColors ausente conserva los defaults (registro viejo)", () => {
+    expect(normalizeBranding({ name: "Otro" }).pdfColors).toEqual(DEFAULT_PDF_COLORS);
+  });
+
+  it("la tinta sobre el color de cabecera siempre llega a 3:1", () => {
+    // Caso real: naranja con texto blanco NO llega a 3:1, así que debe salir
+    // tinta oscura. Con un azul profundo sí entra la blanca.
+    for (const hex of ["#E87722", "#ffee88", "#12305a", "#000000", "#ffffff"]) {
+      const ink = pdfInkOn(hex);
+      const inkHex = `#${[ink.r, ink.g, ink.b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      expect(contrast(inkHex, hex)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("hex inválido en pdfInkOn cae al default sin lanzar", () => {
+    expect(() => pdfInkOn("naranja")).not.toThrow();
+    expect(pdfInkOn("naranja")).toEqual(pdfInkOn(DEFAULT_PDF_COLORS.header));
   });
 });

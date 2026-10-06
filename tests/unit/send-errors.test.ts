@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSendError } from "@/lib/meta/send-errors";
+import { describeSendError, describeSendErrorText } from "@/lib/meta/send-errors";
 
 describe("describeSendError (fallo real del 2026-08-05)", () => {
   it("130472 → explica el experimento de Meta y qué hacer", () => {
@@ -29,5 +29,35 @@ describe("describeSendError (fallo real del 2026-08-05)", () => {
 
   it("sin código pero con texto → usa el texto tal cual", () => {
     expect(describeSendError(null, "Fallo de red")).toBe("Fallo de red");
+  });
+});
+
+describe("describeSendErrorText (mensaje completo de la excepción)", () => {
+  it("el fallo real del cotizador: error #100 de HUMAN_AGENT", () => {
+    const raw =
+      'SendError: (#100) No se puede agregar la etiqueta "HUMAN_AGENT" antes de 24 horas.';
+    const out = describeSendErrorText(raw);
+    expect(out).toMatch(/etiqueta HUMAN_AGENT/);
+    expect(out).toMatch(/te escriba primero/i);
+    // la jerga cruda de Meta no debería ser lo primero que ve el operador
+    expect(out).not.toMatch(/No se puede agregar la etiqueta "HUMAN_AGENT" antes/);
+    expect(out).toContain("(Meta 100)");
+  });
+
+  it("acepta los tres formatos en que Meta escribe el código", () => {
+    expect(describeSendErrorText("(#131047) eror")).toMatch(/24 h/);
+    expect(describeSendErrorText("(Meta 131047) eror")).toMatch(/24 h/);
+    expect(describeSendErrorText("fallo con código 131047")).toMatch(/24 h/);
+  });
+
+  it("sin código reconocido → texto original, sin inventar", () => {
+    expect(describeSendErrorText("Cotización no encontrada")).toBe(
+      "Cotización no encontrada"
+    );
+    expect(describeSendErrorText("Error de red")).toBe("Error de red");
+  });
+
+  it("quita el prefijo del nombre de la excepción", () => {
+    expect(describeSendErrorText("SendError: (#130472) x")).not.toMatch(/^SendError/);
   });
 });

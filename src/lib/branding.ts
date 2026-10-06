@@ -42,7 +42,36 @@ export type Branding = {
   currency: Currency;
   /** `null` = se dibuja con la inicial sobre el acento (ver `lib/favicon`). */
   favicon: BrandingFavicon | null;
+  /** Colores de los PDF (cotización y expediente). */
+  pdfColors: PdfColors;
 };
+
+/**
+ * Paleta de los PDF. Por defecto naranja LUMARK: los documentos salían con
+ * cabeceras gris carbón y el expediente con un dorado que no era de la marca.
+ * Se configuran en Configuración → Marca (no en un panel aparte).
+ */
+export type PdfColors = {
+  /** Fondo de las cabeceras de tabla, barras de proceso y caja TOTAL. */
+  header: string;
+  /** Divisores y líneas de acento (bajo el encabezado, pie de página). */
+  accent: string;
+};
+
+export const DEFAULT_PDF_COLORS: PdfColors = {
+  header: "#E87722",
+  accent: "#E87722",
+};
+
+/**
+ * Tinta legible ENCIMA de un color de PDF (cabeceras, cajas TOTAL).
+ * El naranja con texto blanco no llega a 3:1, así que se decide por contraste
+ * WCAG y no a mano: cualquier color que elija el dueño queda legible.
+ */
+export function pdfInkOn(hex: string): Rgb {
+  const base = isValidHex(hex) ? hexToRgb(hex) : hexToRgb(DEFAULT_PDF_COLORS.header);
+  return contrast(base, WHITE) >= 3 ? WHITE : BLACK;
+}
 
 export const DEFAULT_BRANDING: Branding = {
   name: "LUMARK",
@@ -51,6 +80,7 @@ export const DEFAULT_BRANDING: Branding = {
   accent: "#B8963E",
   currency: DEFAULT_CURRENCY,
   favicon: null,
+  pdfColors: DEFAULT_PDF_COLORS,
 };
 
 /**
@@ -217,6 +247,19 @@ export function normalizeBranding(input: Partial<Branding> | null): Branding {
   const currency = isCurrency(input?.currency)
     ? input.currency
     : DEFAULT_BRANDING.currency;
+  // Colores de PDF: cada campo se valida por separado, así un registro viejo
+  // (o un body parcial) no tira a la basura el color que sí está bien.
+  const pdf = input?.pdfColors;
+  const pdfColors: PdfColors = {
+    header:
+      pdf?.header && isValidHex(pdf.header)
+        ? pdf.header.toLowerCase()
+        : DEFAULT_PDF_COLORS.header,
+    accent:
+      pdf?.accent && isValidHex(pdf.accent)
+        ? pdf.accent.toLowerCase()
+        : DEFAULT_PDF_COLORS.accent,
+  };
   // El icono no se toca desde el formulario de marca: se sube y se quita por
   // su propia ruta. Un PUT de nombre/color no debe borrarlo de rebote.
   const f = input?.favicon;
@@ -224,5 +267,5 @@ export function normalizeBranding(input: Partial<Branding> | null): Branding {
     f && typeof f.mime === "string" && Number.isFinite(f.version)
       ? { mime: f.mime, version: Math.max(1, Math.floor(f.version)) }
       : null;
-  return { name, accent, currency, favicon };
+  return { name, accent, currency, favicon, pdfColors };
 }

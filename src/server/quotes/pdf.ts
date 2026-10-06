@@ -1,29 +1,38 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getQuote } from "./service";
 import { getBusinessSettings } from "@/server/business-settings";
-import {
-  clean,
-  tryLoadLogo,
-  wrapText,
-  money,
-  PAGE_W,
-  PAGE_H,
-  MARGIN,
-  CONTENT_W,
-} from "@/server/documents/pdf";
+import { getBranding } from "@/server/branding";
+import { pdfInkOn } from "@/lib/branding";
+import { clean, tryLoadLogo, wrapText, money, PAGE_W, PAGE_H, MARGIN, CONTENT_W } from "@/server/documents/pdf";
 
 const DARK = rgb(0.13, 0.13, 0.13);
 const GRAY = rgb(0.45, 0.45, 0.45);
-const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
-const HEADER_BG = rgb(0.28, 0.28, 0.28);
 const ROW_ALT = rgb(0.96, 0.96, 0.96);
 const RED = rgb(0.75, 0.2, 0.2);
+
+/** Hex de la marca (0-255) → tinta pdf-lib (0-1). */
+function hexRgb(hex: string) {
+  return rgb(
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255
+  );
+}
 
 export async function quotePdf(organizationId: string, id: string) {
   const quote = await getQuote(organizationId, id);
   if (!quote) return null;
 
-  const bs = await getBusinessSettings(organizationId);
+  const [bs, branding] = await Promise.all([
+    getBusinessSettings(organizationId),
+    getBranding(organizationId),
+  ]);
+
+  // Colores configurados en Configuración → Marca (default naranja LUMARK).
+  const HEADER_BG = hexRgb(branding.pdfColors.header);
+  const ACCENT = hexRgb(branding.pdfColors.accent);
+  const ink = pdfInkOn(branding.pdfColors.header);
+  const HEADER_INK = rgb(ink.r / 255, ink.g / 255, ink.b / 255);
 
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
@@ -153,10 +162,10 @@ export async function quotePdf(organizationId: string, id: string) {
   });
 
   const headerY = y + 2;
-  page.drawText("Descripción", { x: colDesc + 8, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
-  page.drawText("Cantidad", { x: colQty, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
-  page.drawText("Und", { x: colUnit, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
-  page.drawText("Total", { x: colTotal, y: headerY, size: 9, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("Descripción", { x: colDesc + 8, y: headerY, size: 9, font: bold, color: HEADER_INK });
+  page.drawText("Cantidad", { x: colQty, y: headerY, size: 9, font: bold, color: HEADER_INK });
+  page.drawText("P. Unit.", { x: colUnit, y: headerY, size: 9, font: bold, color: HEADER_INK });
+  page.drawText("Total", { x: colTotal, y: headerY, size: 9, font: bold, color: HEADER_INK });
 
   y -= headerH + 4;
 
@@ -164,10 +173,20 @@ export async function quotePdf(organizationId: string, id: string) {
   for (let i = 0; i < quote.items.length; i++) {
     const item = quote.items[i]!;
     const amount = item.quantity * item.unitPrice;
-    const rowText = item.description
-      ? wrapText(`${item.name} — ${item.description}`, regular, 9, CONTENT_W - 180)
-      : wrapText(item.name, regular, 9, CONTENT_W - 180);
-    const rowH = Math.max(rowText.length * 13 + 10, 28);
+    // Tipografía por jerarquía: el nombre manda (11, negrita), la descripción
+    // corta sigue a 9 y la descripción larga del catálogo cierra en 8 gris —
+    // era el texto que más rápido se perdía en la página.
+    const nameLines = wrapText(item.name, bold, 11, CONTENT_W - 180);
+    const descLines = item.description
+      ? wrapText(item.description, regular, 9, CONTENT_W - 180)
+      : [];
+    const longLines = item.longDescription
+      ? wrapText(item.longDescription, regular, 8, CONTENT_W - 180)
+      : [];
+    const rowH = Math.max(
+      nameLines.length * 14 + descLines.length * 12 + longLines.length * 10 + 12,
+      30
+    );
 
     checkPage(rowH + 10);
 
@@ -182,17 +201,25 @@ export async function quotePdf(organizationId: string, id: string) {
       });
     }
 
-    // Description (may wrap)
+    // Nombre (grande) → descripción → descripción larga (pequeña)
     let textY = y;
-    for (const line of rowText) {
+    for (const line of nameLines) {
+      page.drawText(clean(line), { x: colDesc + 8, y: textY, size: 11, font: bold, color: DARK });
+      textY -= 14;
+    }
+    for (const line of descLines) {
       page.drawText(clean(line), { x: colDesc + 8, y: textY, size: 9, font: regular, color: DARK });
-      textY -= 13;
+      textY -= 12;
+    }
+    for (const line of longLines) {
+      page.drawText(clean(line), { x: colDesc + 8, y: textY, size: 8, font: regular, color: GRAY });
+      textY -= 10;
     }
 
-    // Qty, Unit, Total
-    page.drawText(String(item.quantity), { x: colQty + 8, y, size: 9, font: regular, color: DARK });
-    page.drawText(String(item.quantity), { x: colUnit + 8, y, size: 9, font: regular, color: DARK });
-    page.drawText(money(amount), { x: colTotal - 20, y, size: 9, font: regular, color: DARK });
+    // Qty, Unit price, Total — alineados al renglón del nombre
+    page.drawText(String(item.quantity), { x: colQty + 8, y, size: 10, font: regular, color: DARK });
+    page.drawText(money(item.unitPrice), { x: colUnit - 10, y, size: 10, font: regular, color: DARK });
+    page.drawText(money(amount), { x: colTotal - 20, y, size: 10, font: bold, color: DARK });
 
     y -= rowH;
   }
@@ -233,8 +260,8 @@ export async function quotePdf(organizationId: string, id: string) {
     height: totalBoxH,
     color: HEADER_BG,
   });
-  page.drawText("TOTAL:", { x: totalsLabelX, y: y - 4, size: 11, font: bold, color: rgb(1, 1, 1) });
-  page.drawText(money(quote.total), { x: totalsValueX, y: y - 4, size: 11, font: bold, color: rgb(1, 1, 1) });
+  page.drawText("TOTAL:", { x: totalsLabelX, y: y - 4, size: 11, font: bold, color: HEADER_INK });
+  page.drawText(money(quote.total), { x: totalsValueX, y: y - 4, size: 11, font: bold, color: HEADER_INK });
   y -= totalBoxH + 10;
 
   // ─── NOTES AND TERMS ───
@@ -256,7 +283,7 @@ export async function quotePdf(organizationId: string, id: string) {
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i]!;
     // Footer separator line
-    p.drawLine({ start: { x: MARGIN, y: footerY + 12 }, end: { x: PAGE_W - MARGIN, y: footerY + 12 }, color: LIGHT_GRAY, thickness: 0.5 });
+    p.drawLine({ start: { x: MARGIN, y: footerY + 12 }, end: { x: PAGE_W - MARGIN, y: footerY + 12 }, color: ACCENT, thickness: 0.75 });
 
     const parts: string[] = [];
     if (bs.email) parts.push(bs.email);

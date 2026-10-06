@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   ACCENT_PRESETS,
   DEFAULT_BRANDING,
+  DEFAULT_PDF_COLORS,
   isValidHex,
+  pdfInkOn,
   resolveAccentSet,
   type Branding,
 } from "@/lib/branding";
@@ -24,6 +26,7 @@ export function BrandingClient() {
   const [name, setName] = useState("");
   const [accent, setAccent] = useState<string>(DEFAULT_BRANDING.accent);
   const [currency, setCurrency] = useState<Currency>(DEFAULT_CURRENCY);
+  const [pdfColors, setPdfColors] = useState(DEFAULT_PDF_COLORS);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +40,7 @@ export function BrandingClient() {
           setName(d.branding.name);
           setAccent(d.branding.accent);
           if (d.branding.currency) setCurrency(d.branding.currency);
+          if (d.branding.pdfColors) setPdfColors(d.branding.pdfColors);
         }
         setLoaded(true);
       })
@@ -55,7 +59,7 @@ export function BrandingClient() {
     const res = await fetch("/api/settings/branding", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), accent, currency }),
+      body: JSON.stringify({ name: name.trim(), accent, currency, pdfColors }),
     }).catch(() => null);
     setSaving(false);
     if (!res?.ok) {
@@ -192,6 +196,58 @@ export function BrandingClient() {
           {saved && <p className="text-sm" style={{ color: previewSet.text }}>Marca guardada ✓</p>}
           <Button disabled={saving || !name.trim()} onClick={() => void save()}>
             {saving ? "Guardando…" : "Guardar marca"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Colores de los PDF (cotización y expediente). Mismo botón de guardar
+          que la marca: son parte de la identidad, no un panel aparte. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Colores de los PDF</CardTitle>
+          <CardDescription>
+            Cotizaciones y expedientes se pintan con estos tonos: el primero
+            para cabeceras, barras de proceso y la caja del TOTAL; el segundo
+            para divisores y líneas de acento.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {([
+            ["header", "Cabeceras y TOTAL"],
+            ["accent", "Divisores y acentos"],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="space-y-1.5">
+              <Label htmlFor={`pdf-${key}`}>{label}</Label>
+              <div className="flex items-center gap-3">
+                <input
+                  id={`pdf-${key}`}
+                  type="color"
+                  value={isValidHex(pdfColors[key]) ? pdfColors[key] : DEFAULT_PDF_COLORS[key]}
+                  onChange={(e) => setPdfColors((c) => ({ ...c, [key]: e.target.value }))}
+                  className="h-9 w-14 cursor-pointer appearance-none rounded-md border border-input bg-card p-1"
+                />
+                <code className="rounded bg-muted px-2 py-1 text-xs uppercase text-text-3">
+                  {pdfColors[key]}
+                </code>
+                {/* Muestra el texto ENCIMA del color elegido: así se ve de un
+                    vistazo si queda legible (blanco u oscuro, según contraste). */}
+                <span
+                  className="rounded px-3 py-1.5 text-xs font-bold"
+                  style={{
+                    background: pdfColors[key],
+                    color: (() => {
+                      const { r, g, b } = pdfInkOn(pdfColors[key]);
+                      return `rgb(${r}, ${g}, ${b})`;
+                    })(),
+                  }}
+                >
+                  TOTAL $0.00
+                </span>
+              </div>
+            </div>
+          ))}
+          <Button disabled={saving || !name.trim()} onClick={() => void save()}>
+            {saving ? "Guardando…" : "Guardar colores"}
           </Button>
         </CardContent>
       </Card>

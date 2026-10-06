@@ -54,6 +54,14 @@ async function main() {
   const saved = await api("/api/automations/rules");
   check("API conserva 2 horas (1440 minutos) sin convertirla a días", saved.json?.rules?.[0]?.delayHours === 2);
 
+  // Canales: el selector debe conocer las cuentas conectadas de la instancia.
+  const channels = await api("/api/automations/channels");
+  const channelList = channels.json?.channels ?? [];
+  const waChannel = channelList.find((item) => item.id === "whatsapp");
+  const messengerChannel = channelList.find((item) => item.id === "messenger");
+  check("endpoint de canales lista WhatsApp y Messenger", channels.response.ok && Boolean(waChannel) && Boolean(messengerChannel), JSON.stringify(channels.json));
+  check("WhatsApp aparece conectado en el selftest (Zernio mock)", waChannel?.connected === true, JSON.stringify(waChannel));
+
   const initialMetrics = await api("/api/automations/metrics");
   const initial = initialMetrics.json?.metrics;
   check("métricas reales informan periodo y programador", initial?.periodDays === 30 && initial?.responseWindowDays === 7 && initial?.schedulerReady === true, JSON.stringify(initial));
@@ -83,6 +91,30 @@ async function main() {
   }
   check("el worker envía el seguimiento desde la cola persistida", finalMetrics.sent > initial.sent, JSON.stringify({ before: initial.sent, after: finalMetrics.sent }));
   check("la métrica no usa los valores de demostración 24 / 34%", finalMetrics.sent !== 24 || finalMetrics.responseRate !== 34);
+
+  // Coincidencia estricta de canal: con la regla en Messenger, un seguimiento
+  // sobre una conversación WhatsApp debe cancelarse sin enviar nada.
+  const mismatchRule = { ...rule, channel: "messenger" };
+  const saveMismatch = await api("/api/automations/rules", "POST", { rules: [mismatchRule] });
+  check("la regla acepta el canal Messenger", saveMismatch.response.ok, JSON.stringify(saveMismatch.json));
+  const mismatchTrigger = await api("/api/automations/followup", "POST", {
+    conversationId: conversation.id,
+    delayHours: 0,
+  });
+  check("el disparo con canal no coincidente queda encolado", mismatchTrigger.response.status === 200, JSON.stringify(mismatchTrigger.json));
+  if (mismatchTrigger.response.ok) {
+    const cancelDeadline = Date.now() + 30_000;
+    let mismatchMetrics = finalMetrics;
+    while (Date.now() < cancelDeadline) {
+      await sleep(1000);
+      const current = await api("/api/automations/metrics");
+      mismatchMetrics = current.json?.metrics ?? mismatchMetrics;
+      if (mismatchMetrics.sent > finalMetrics.sent) break;
+    }
+    check("la conversación de otro canal se cancela y no envía", mismatchMetrics.sent === finalMetrics.sent, JSON.stringify({ before: finalMetrics.sent, after: mismatchMetrics.sent }));
+  }
+  const restore = await api("/api/automations/rules", "POST", { rules: [rule] });
+  check("se restaura la regla original (WhatsApp)", restore.response.ok, JSON.stringify(restore.json));
 
   console.log(`AUTOMATIONS: ${checks - failures}/${checks} comprobaciones OK`);
   if (failures) process.exitCode = 1;
