@@ -13,6 +13,7 @@ import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
 import { isProjectTypeKey, stepsForType } from "@/lib/project-types";
 import { ProjectError } from "./errors";
 import { validateProjectMember } from "./members";
+import { syncTaskById } from "@/server/agenda/tasks-sync";
 
 export type ProjectEstado = "activo" | "reunion" | "cerrado";
 export type ProjectPrioridad = "alta" | "media" | "baja";
@@ -277,6 +278,7 @@ export async function createTask(
     dueDate: input.dueDate ?? null,
   });
 
+  await syncTaskById(organizationId, id);
   return id;
 }
 

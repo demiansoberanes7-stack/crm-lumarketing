@@ -231,12 +231,21 @@ async function main() {
       from: "5214621349768",
       name: "Kevin MX",
       text: "uno",
+      // Con sal: sin ella el mock autogenera el mismo `wamid.mock.in.N` en
+      // cada re-corrida (su contador se reinicia) y el webhook deduplica el
+      // entrante — la ventana de 24 h de "Kevin MX" se quedaba vencida.
+      waMessageId: `wamid.e2e.${RUN}.reconc.1`,
     }),
   });
   await sleep(800);
   await api("/api/dev/wa-mock/inbound", {
     method: "POST",
-    body: JSON.stringify({ phoneNumberId: PN, from: "524621349768", text: "dos" }),
+    body: JSON.stringify({
+      phoneNumberId: PN,
+      from: "524621349768",
+      text: "dos",
+      waMessageId: `wamid.e2e.${RUN}.reconc.2`,
+    }),
   });
   await sleep(800);
   const contacts =

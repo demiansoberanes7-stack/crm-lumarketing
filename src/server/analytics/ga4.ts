@@ -18,6 +18,23 @@ const SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 /** Margen para que el token no expire en vuelo. */
 const TOKEN_TTL_S = 3600;
 const TOKEN_EXPIRY_MARGIN_MS = 60_000;
+/**
+ * Cortes por petición. Sin ellos, un Google colgado deja el botón de prueba y
+ * el dashboard de marketing esperando indefinidamente: el token tarda poco, el
+ * reporte puede ser lento, ninguno merece esperar para siempre.
+ */
+const TOKEN_TIMEOUT_MS = 15_000;
+const REPORT_TIMEOUT_MS = 30_000;
+
+/**
+ * `grant_type` del intercambio JWT → token.
+ *
+ * Google exige el valor COMPLETO (`urn:ietf:params:oauth:grant-type:jwt-bearer`).
+ * Con el apócrifo `jwt-bearer` responde 400 `invalid_grant` /
+ * "Invalid grant_type: jwt-bearer" y ni la prueba de conexión ni el dashboard
+ * de marketing podían leer nada.
+ */
+const JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 
 interface ServiceAccount {
   client_email: string;
@@ -91,22 +108,61 @@ function signJwt(account: ServiceAccount): string {
 type TokenEntry = { token: string; expiresAt: number };
 const tokenCache = new Map<string, TokenEntry>();
 
+type TokenFailure = { error?: string; error_description?: string };
+
+/**
+ * Traduce el rechazo del canjear a lo que el dueño puede ARREGLAR.
+ *
+ * El texto crudo de Google está en inglés y describe el protocolo, no la causa
+ * práctica: "Invalid JWT: signature verification failed" significa que la
+ * `private_key` del JSON no corresponde al cliente_email — otra vez casi siempre
+ * por pegar el JSON a medias o con los `\n` convertidos.
+ */
+function tokenErrorMessage(status: number, payload: TokenFailure | null): string {
+  const detail = [payload?.error, payload?.error_description].filter(Boolean).join(": ");
+  const low = detail.toLowerCase();
+  const hint =
+    low.includes("signature") || low.includes("private key") || low.includes("invalid jwt")
+      ? "La `private_key` del JSON no sirve para firmar: revisa que esté completa y con sus saltos de línea."
+      : payload?.error === "invalid_client" || payload?.error === "unauthorized_client"
+        ? "Google no reconoce esa service account para pedir tokens."
+        : null;
+  const raw = detail || `Google rechazó las credenciales (HTTP ${status})`;
+  return hint ? `${hint} (${raw})` : raw;
+}
+
+/** `fetch` con corte: nunca deja una petición abierta para siempre. */
+async function boundedFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    throw new Ga4Error(
+      timedOut
+        ? `Google no respondió en ${Math.round(timeoutMs / 1000)} s`
+        : `No se pudo contactar a Google: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
 async function getAccessToken(account: ServiceAccount): Promise<string> {
   const cacheKey = `${account.client_email}:${account.private_key.length}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt - Date.now() > TOKEN_EXPIRY_MARGIN_MS) return cached.token;
 
-  const body = new URLSearchParams({ grant_type: "jwt-bearer", assertion: signJwt(account) });
-  const response = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const payload = (await response.json().catch(() => null)) as { access_token?: string; error_description?: string } | null;
+  const body = new URLSearchParams({ grant_type: JWT_BEARER_GRANT, assertion: signJwt(account) });
+  const response = await boundedFetch(
+    TOKEN_URL,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+    },
+    TOKEN_TIMEOUT_MS
+  );
+  const payload = (await response.json().catch(() => null)) as (TokenFailure & { access_token?: string }) | null;
   if (!response.ok || !payload?.access_token) {
-    throw new Ga4Error(
-      payload?.error_description || `Google rechazó las credenciales (HTTP ${response.status})`
-    );
+    throw new Ga4Error(tokenErrorMessage(response.status, payload));
   }
   tokenCache.set(cacheKey, {
     token: payload.access_token,
@@ -126,21 +182,30 @@ async function runReport(
 ): Promise<RunReportResponse> {
   const account = parseServiceAccount(creds.serviceAccountJson);
   const token = await getAccessToken(account);
-  const response = await fetch(`${DATA_URL}/properties/${encodeURIComponent(creds.propertyId)}:runReport`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
+  const response = await boundedFetch(
+    `${DATA_URL}/properties/${encodeURIComponent(creds.propertyId)}:runReport`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
     },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+    REPORT_TIMEOUT_MS
+  );
   const payload = (await response.json().catch(() => null)) as
     | (RunReportResponse & { error?: { message?: string } })
     | null;
   if (!response.ok) {
+    const detail = payload?.error?.message || `Google Analytics Data API respondió ${response.status}`;
+    // 403 suele ser permiso de la propiedad y no credencial mala: decirlo
+    // ahorra el ciclo "revisar el JSON" cuando lo que falta es el rol.
     throw new Ga4Error(
-      payload?.error?.message || `Google Analytics Data API respondió ${response.status}`
+      response.status === 403
+        ? `Sin permiso sobre la propiedad ${creds.propertyId}: dale el rol Observador de datos (o Analytics Data Viewer) a la service account. (${detail})`
+        : detail
     );
   }
   return payload ?? {};

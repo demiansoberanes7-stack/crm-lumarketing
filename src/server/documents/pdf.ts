@@ -35,6 +35,28 @@ export function wrapText(text: string, font: PDFFont, size: number, maxWidth: nu
   return lines.length ? lines : [""];
 }
 
+/**
+ * Encoge `size` (en pasos de 0.5) hasta que `text` quepa en `maxWidth`; si
+ * aunque en `minSize` sigue pasándose, recorta por la derecha con "...".
+ *
+ * Los importes se dibujan con esto: con muchos dígitos la cifra crece hacia la
+ * izquierda y jamás sobresale de su columna (ni del recuadro naranja).
+ */
+export function fitText(
+  font: PDFFont,
+  text: string,
+  size: number,
+  maxWidth: number,
+  minSize = 5
+): { size: number; text: string } {
+  let s = size;
+  while (s > minSize && font.widthOfTextAtSize(text, s) > maxWidth) s -= 0.5;
+  if (font.widthOfTextAtSize(text, s) <= maxWidth) return { size: s, text };
+  let cut = text;
+  while (cut.length > 1 && font.widthOfTextAtSize(`${cut}...`, s) > maxWidth) cut = cut.slice(0, -1);
+  return { size: s, text: `${cut}...` };
+}
+
 /** Ancho al que se rasteriza un logo SVG (suficiente para un encabezado). */
 const SVG_LOGO_WIDTH = 512;
 

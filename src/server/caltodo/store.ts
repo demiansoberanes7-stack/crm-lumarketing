@@ -2,6 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { hasIdKind } from "@/lib/db/ids";
+import { syncTaskById, taskEventIdFor, removeTaskEvent } from "@/server/agenda/tasks-sync";
 import { nanoid } from "nanoid";
 
 export type CalTodoTask = typeof schema.caltodoTask.$inferSelect;
@@ -43,6 +44,7 @@ export async function getCalTodoTasks(userId: string, organizationId: string): P
     completedAt: pt.estado === "terminado" ? pt.updatedAt : null,
     contactId: null,
     projectId: pt.projectId,
+    googleEventId: pt.googleEventId,
     createdAt: pt.createdAt,
     updatedAt: pt.updatedAt,
   }));
@@ -66,6 +68,7 @@ export async function createCalTodoTask(userId: string, organizationId: string, 
     duration: data.duration ?? null,
     priority: data.priority ?? 0,
   }).returning();
+  if (row) await syncTaskById(organizationId, row.id);
   return row;
 }
 
@@ -82,6 +85,7 @@ export async function updateCalTodoTask(taskId: string, organizationId: string, 
     const [row] = await db.update(schema.projectTask).set(updates)
       .where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId)))
       .returning({ id: schema.projectTask.id });
+    if (row) await syncTaskById(organizationId, taskId);
     return row;
   }
 
@@ -91,16 +95,22 @@ export async function updateCalTodoTask(taskId: string, organizationId: string, 
   const [row] = await db.update(schema.caltodoTask).set(updates)
     .where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId)))
     .returning();
+  if (row) await syncTaskById(organizationId, taskId);
   return row;
 }
 
 export async function deleteCalTodoTask(taskId: string, organizationId: string, userId: string) {
   const db = getDb();
+  // El id de Google vive en la fila: se lee antes de borrarla y el evento se
+  // retira solo si la tarea se borró de verdad.
+  const googleEventId = await taskEventIdFor(organizationId, taskId);
   if (hasIdKind(taskId, "projectTask")) {
     const deleted = await db.delete(schema.projectTask).where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId))).returning({ id: schema.projectTask.id });
+    if (deleted.length) await removeTaskEvent(organizationId, googleEventId);
     return deleted.length > 0;
   }
   const deleted = await db.delete(schema.caltodoTask).where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId))).returning({ id: schema.caltodoTask.id });
+  if (deleted.length) await removeTaskEvent(organizationId, googleEventId);
   return deleted.length > 0;
 }
 

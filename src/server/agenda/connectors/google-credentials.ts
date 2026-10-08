@@ -16,6 +16,11 @@ export type GoogleCreds = {
   refreshToken: string;
   calendarId: string;
   status: "connected" | "error";
+  /**
+   * Apagado por defecto: sincronizar Pendientes/tareas es opt-in del dueño.
+   * Opcional en el tipo porque el conector de citas no lo usa.
+   */
+  syncTasks?: boolean;
 };
 
 export async function getGoogleCredentials(
@@ -43,6 +48,7 @@ export async function getGoogleCredentials(
     }),
     calendarId: row.calendarId,
     status: row.status as "connected" | "error",
+    syncTasks: row.syncTasks ?? false,
   };
 }
 
@@ -102,6 +108,18 @@ export async function markGoogleError(organizationId: string): Promise<void> {
 
 export function secretLast4(secret: string): string {
   return secret.slice(-4);
+}
+
+/** Enciende o apaga la sincronización de Pendientes y tareas de proyecto. */
+export async function setGoogleTasksSync(
+  organizationId: string,
+  syncTasks: boolean
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(schema.googleCredentials)
+    .set({ syncTasks, updatedAt: new Date() })
+    .where(scoped(schema.googleCredentials.organizationId, organizationId));
 }
 
 /* Caché del access token, por proceso. Google los emite de una hora. */

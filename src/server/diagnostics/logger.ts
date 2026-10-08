@@ -17,6 +17,7 @@ const messages = {
   send_failed: "No se pudo enviar el mensaje. Revisa el estado de la conexión y el error en la conversación.",
   media_failed: "No se pudo descargar el adjunto. Revisa la conexión y disponibilidad del archivo.",
   ai_failed: "El proveedor de IA no pudo completar el turno. Revisa token, modelo y disponibilidad.",
+  tasks_sync_failed: "No se pudo sincronizar la tarea con Google Calendar. La tarea quedó guardada; el evento se reintentará en la siguiente edición.",
 } as const;
 export type DiagnosticCode = keyof typeof messages;
 let lastPurge = 0;

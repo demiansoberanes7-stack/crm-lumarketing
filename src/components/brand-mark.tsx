@@ -9,6 +9,7 @@ import {
 } from "@/lib/brand";
 import { faviconInitial } from "@/lib/favicon";
 import { cn } from "@/lib/utils";
+import { PhotoLogo } from "@/components/photo-logo";
 
 /**
  * El trazo de la marca LUMARK: la "L" geométrica con remate dorado.
@@ -85,44 +86,50 @@ const TILE_SIZE = {
   lg: "h-[44px] w-[44px] rounded-[13px] text-[22px]",
 } as const;
 
+/** Altura del logo subido: entra en la barra lateral sin empujar el wordmark. */
+const PHOTO_SIZE = {
+  md: "h-[26px] max-w-[132px]",
+  lg: "h-[36px] max-w-[200px]",
+} as const;
+
 /**
  * La marca completa: trazo + wordmark "LUMARK" en mayúsculas.
  * Una instancia rebautizada ve en su lugar el mosaico con la inicial y su nombre (white-label).
+ *
+ * Si el negocio SUBIÓ un logo (Configuración → Negocio), esa foto es la que se
+ * dibuja en la barra lateral y en la cabecera móvil; el trazo vectorial queda
+ * como alternativa cuando no hay imagen.
  */
 export function BrandLogo({
   branding,
   size = "md",
   className,
+  logoUrl,
 }: {
   branding: Pick<Branding, "name">;
   size?: keyof typeof WORDMARK_SIZE;
   className?: string;
+  logoUrl?: string | null;
 }) {
-  if (isLumarkName(branding.name)) {
-    return (
-      <span className={cn("flex items-center gap-2 text-foreground", className)}>
-        <BrandMark className={cn("shrink-0 text-brand", MARK_SIZE[size])} />
-        <span
-          className={cn(
-            "font-[800] leading-none tracking-[-0.045em]",
-            WORDMARK_SIZE[size]
-          )}
-        >
-          LUMARK
-        </span>
-      </span>
-    );
-  }
+  const lumark = isLumarkName(branding.name);
   return (
-    <span className={cn("flex min-w-0 items-center gap-2.5", className)}>
-      <BrandTile branding={branding} className={TILE_SIZE[size]} />
+    <span className={cn("flex min-w-0 items-center", lumark ? "gap-2" : "gap-2.5", className)}>
+      {logoUrl ? (
+        <PhotoLogo src={logoUrl} alt={branding.name} className={cn("w-auto", PHOTO_SIZE[size])} />
+      ) : lumark ? (
+        <BrandMark className={cn("shrink-0 text-brand", MARK_SIZE[size])} />
+      ) : (
+        <BrandTile branding={branding} className={TILE_SIZE[size]} />
+      )}
       <span
         className={cn(
-          "truncate font-[750] leading-none tracking-tight",
-          size === "lg" ? "text-[26px]" : "text-[17px]"
+          lumark
+            ? "font-[800] leading-none tracking-[-0.045em]"
+            : "truncate font-[750] leading-none tracking-tight",
+          lumark ? WORDMARK_SIZE[size] : size === "lg" ? "text-[26px]" : "text-[17px]"
         )}
       >
-        {branding.name}
+        {lumark ? "LUMARK" : branding.name}
       </span>
     </span>
   );

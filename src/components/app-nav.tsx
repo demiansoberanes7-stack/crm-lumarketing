@@ -66,6 +66,7 @@ function navItemClass(active: boolean) {
 
 export function AppNav({
   branding,
+  logoUrl,
   userName,
   role,
   theme,
@@ -74,6 +75,8 @@ export function AppNav({
   onClose,
 }: {
   branding: Branding;
+  /** Logo subido en Configuración → Negocio; manda sobre el trazo vectorial. */
+  logoUrl?: string | null;
   userName: string;
   role: string;
   theme: ThemePreference;
@@ -137,7 +140,7 @@ export function AppNav({
           <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
         <div className="min-w-0">
-          <BrandLogo branding={branding} />
+          <BrandLogo branding={branding} logoUrl={logoUrl} />
           <span className="kicker mt-2 block">CRM · WhatsApp</span>
         </div>
       </div>

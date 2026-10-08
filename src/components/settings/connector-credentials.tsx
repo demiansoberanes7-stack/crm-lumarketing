@@ -94,6 +94,7 @@ export function ConnectorCredentials({
   const [connection, setConnection] = useState<Connection | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [syncTasks, setSyncTasks] = useState(false);
   const [message, setMessage] = useState<{
     kind: "ok" | "error";
     text: string;
@@ -103,11 +104,16 @@ export function ConnectorCredentials({
     setConnection(null);
     setValues({});
     setMessage(null);
+    setSyncTasks(false);
     void (async () => {
       const res = await fetch(`/api/settings/${connector}`).catch(() => null);
       if (!res?.ok) return;
-      const data = (await res.json()) as { connection: Connection | null };
+      const data = (await res.json()) as {
+        connection: Connection | null;
+        syncTasks?: boolean;
+      };
       setConnection(data.connection);
+      setSyncTasks(Boolean(data.syncTasks));
       if (data.connection) setValues({ ...data.connection.fields });
     })();
   }, [connector]);
@@ -155,7 +161,39 @@ export function ConnectorCredentials({
     setBusy(false);
     setConnection(null);
     setValues({});
+    setSyncTasks(false);
     setMessage(null);
+  }
+
+  /** Interruptor de sincronización de tareas: va por su cuenta, sin secretos. */
+  async function toggleSync(next: boolean) {
+    setBusy(true);
+    const res = await fetch(`/api/settings/${connector}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ syncTasks: next }),
+    }).catch(() => null);
+    setBusy(false);
+
+    if (!res?.ok) {
+      const data = (await res?.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setMessage({
+        kind: "error",
+        text:
+          data?.error?.message ??
+          "No se pudo cambiar la sincronización de tareas.",
+      });
+      return;
+    }
+    setSyncTasks(next);
+    setMessage({
+      kind: "ok",
+      text: next
+        ? "Sincronización de tareas encendida"
+        : "Sincronización de tareas apagada",
+    });
   }
 
   return (
@@ -199,6 +237,27 @@ export function ConnectorCredentials({
             </div>
           ))}
         </div>
+
+        {connector === "google" && connection && (
+          <div className="space-y-1.5 rounded-sm border border-border px-3 py-2.5">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={syncTasks}
+                disabled={busy}
+                onChange={(e) => toggleSync(e.target.checked)}
+              />
+              Sincronizar mis Pendientes y tareas de proyecto
+            </label>
+            <p className="text-xs text-text-3">
+              Cada tarea con fecha se crea como evento en{" "}
+              {values.calendarId || "tu calendario"}: editarla mueve ese mismo
+              evento y borrarla lo elimina. Apagarlo no borra los eventos ya
+              creados.
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={() => submit("test")} disabled={busy}>

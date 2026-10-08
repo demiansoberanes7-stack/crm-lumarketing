@@ -7,6 +7,7 @@ import {
   getGoogleCredentials,
   saveGoogleCredentials,
   secretLast4,
+  setGoogleTasksSync,
 } from "@/server/agenda/connectors/google-credentials";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +17,14 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
   const creds = await getGoogleCredentials(session.organizationId);
-  if (!creds) return Response.json({ connection: null });
+  if (!creds) return Response.json({ connection: null, syncTasks: false });
   return Response.json({
     connection: {
       status: creds.status,
       secretLast4: secretLast4(creds.clientSecret),
       fields: { clientId: creds.clientId, calendarId: creds.calendarId },
     },
+    syncTasks: creds.syncTasks,
   });
 });
 
@@ -65,4 +67,21 @@ export const DELETE = withAuth(async (session) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
   await deleteGoogleCredentials(session.organizationId);
   return Response.json({ ok: true });
+});
+
+const syncSchema = z.object({ syncTasks: z.boolean() });
+
+/**
+ * Enciende o apaga la sincronización de Pendientes y tareas de proyecto.
+ * Va aparte del PUT de credenciales: quien ya conectó no debe volver a pegar
+ * secretos solo por mover un interruptor.
+ */
+export const PATCH = withAuth(async (session, req: Request) => {
+  if (!agendaEnabled()) return agendaDisabledResponse();
+  const body = await parseBody(req, syncSchema);
+  if (!body.ok) return body.response;
+  const creds = await getGoogleCredentials(session.organizationId);
+  if (!creds) return apiError(409, "google_not_connected", "Conecta Google antes de sincronizar tareas");
+  await setGoogleTasksSync(session.organizationId, body.data.syncTasks);
+  return Response.json({ syncTasks: body.data.syncTasks });
 });

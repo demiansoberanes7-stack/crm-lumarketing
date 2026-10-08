@@ -111,7 +111,12 @@ async function getAccessToken(creds: GoogleCreds): Promise<string> {
   return data.access_token;
 }
 
-async function googleFetch(
+/**
+ * GET/POST/PATCH/DELETE contra la API de Calendar con el token fresco.
+ * Exportado: el mismo transporte sirve a la sincronización de tareas
+ * (`../tasks-sync`), que no crea citas ni enlaces de Meet.
+ */
+export async function googleFetch(
   creds: GoogleCreds,
   path: string,
   init: RequestInit & { allow404?: boolean } = {}

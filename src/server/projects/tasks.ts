@@ -5,6 +5,7 @@ import { scoped } from "@/lib/db/tenant";
 import { updateTaskSchema } from "@/lib/project-contract";
 import { validateProjectMember } from "./members";
 import { ProjectError } from "./errors";
+import { syncTaskById, taskEventIdFor, removeTaskEvent } from "@/server/agenda/tasks-sync";
 
 export async function listAllTasks(organizationId: string, filters: { projectId?: string; assigneeId?: string; estado?: string } = {}) {
   const conditions = [scoped(schema.projectTask.organizationId, organizationId), scoped(schema.project.organizationId, organizationId)];
@@ -24,11 +25,14 @@ export async function updateTask(organizationId: string, projectId: string, task
     ...fields, priority: prioridad, dueDate: dueDate === undefined ? undefined : dueDate === null ? null : new Date(dueDate), updatedAt: new Date(),
   }).where(scoped(schema.projectTask.organizationId, organizationId, eq(schema.projectTask.projectId, projectId), eq(schema.projectTask.id, taskId))).returning();
   if (!task) throw new ProjectError(404, "Tarea no encontrada en este proyecto");
+  await syncTaskById(organizationId, taskId);
   return task;
 }
 
 export async function deleteTask(organizationId: string, projectId: string, taskId: string) {
+  const googleEventId = await taskEventIdFor(organizationId, taskId);
   const deleted = await getDb().delete(schema.projectTask)
     .where(scoped(schema.projectTask.organizationId, organizationId, eq(schema.projectTask.projectId, projectId), eq(schema.projectTask.id, taskId))).returning({ id: schema.projectTask.id });
   if (!deleted.length) throw new ProjectError(404, "Tarea no encontrada en este proyecto");
+  await removeTaskEvent(organizationId, googleEventId);
 }

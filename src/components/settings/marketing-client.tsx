@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  BarChart3, CheckCircle2, Info, Plug, RefreshCw, Save, AlertCircle, XCircle,
+  BarChart3, CheckCircle2, Circle, Info, Plug, RefreshCw, Save, AlertCircle, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,90 @@ interface Ga4Creds {
   serviceAccountConfigured?: boolean;
 }
 
+/**
+ * Estado de la conexión, no "campos llenos".
+ *
+ * `saved` existe por Google Ads: hay credenciales guardadas que no se pueden
+ * verificar de extremo a extremo, y el tilde NO se pone verde por tener datos
+ * en los campos.
+ */
+type Provider = "google_ads" | "meta_ads" | "ga4";
+type TestState = "idle" | "testing" | "connected" | "error" | "saved" | "missing";
+type TestStatus = { state: TestState; message?: string };
+
+const IDLE: TestStatus = { state: "idle" };
+
+function StatusBadge({ status }: { status: TestStatus }) {
+  if (status.state === "testing") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Verificando…
+      </span>
+    );
+  }
+  if (status.state === "connected") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+        <CheckCircle2 className="h-4 w-4" /> Conectado
+      </span>
+    );
+  }
+  if (status.state === "error") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs font-medium text-red-600" title={status.message}>
+        <XCircle className="h-4 w-4" /> Sin conectar
+      </span>
+    );
+  }
+  if (status.state === "saved") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={status.message}>
+        <Circle className="h-3.5 w-3.5" /> Guardado · sin verificar
+      </span>
+    );
+  }
+  if (status.state === "missing") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={status.message}>
+        <Circle className="h-3.5 w-3.5" /> Sin configurar
+      </span>
+    );
+  }
+  return null;
+}
+
+function TestButton({
+  onClick,
+  testing,
+  disabled,
+}: {
+  onClick: () => void;
+  testing: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Button variant="outline" onClick={onClick} disabled={testing || disabled}>
+      {testing ? (
+        <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Probando…</>
+      ) : (
+        <><Plug className="mr-2 h-4 w-4" /> Probar conexión</>
+      )}
+    </Button>
+  );
+}
+
+function TestMessage({ status }: { status: TestStatus }) {
+  if (!status.message || status.state === "testing" || status.state === "idle") return null;
+  const bad = status.state === "error";
+  return (
+    <p className={`flex items-center gap-1.5 text-sm ${bad ? "text-red-600" : "text-emerald-600"}`}>
+      {bad ? <XCircle className="h-4 w-4 shrink-0" /> : <CheckCircle2 className="h-4 w-4 shrink-0" />}
+      <span>{status.message}</span>
+    </p>
+  );
+}
+
+
 function FieldHint({ children }: { children: React.ReactNode }) {
   return (
     <p className="mt-1 text-[11px] text-muted-foreground leading-snug flex items-start gap-1">
@@ -49,9 +133,47 @@ export function MarketingClient() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Prueba de conexión GA4
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  /**
+   * Estado de conexión de cada integración.
+   *
+   * NO es "los campos están llenos": el tilde se enciende solo cuando el
+   * proveedor respondió bien (`connected`). Mientras tanto queda gris.
+   */
+  const [tests, setTests] = useState<Record<Provider, TestStatus>>({
+    google_ads: IDLE,
+    meta_ads: IDLE,
+    ga4: IDLE,
+  });
+  /** Descarta respuestas viejas: se puede volver a probar mientras vuelve la anterior. */
+  const testSeq = useRef<Record<Provider, number>>({ google_ads: 0, meta_ads: 0, ga4: 0 });
+
+  const runTest = useCallback(async (provider: Provider, values?: object) => {
+    testSeq.current[provider] += 1;
+    const seq = testSeq.current[provider];
+    setTests((t) => ({ ...t, [provider]: { state: "testing" } }));
+
+    let next: TestStatus;
+    try {
+      const res = await fetch(`/api/integrations/${provider}/test`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(values ?? {}),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        status?: TestState;
+        message?: string;
+        error?: { message?: string };
+      } | null;
+      next = data?.status
+        ? { state: data.status, message: data.message }
+        : { state: "error", message: data?.error?.message ?? "No se pudo probar la conexión." };
+    } catch {
+      next = { state: "error", message: "Error de red al probar la conexión." };
+    }
+
+    if (testSeq.current[provider] !== seq) return;
+    setTests((t) => ({ ...t, [provider]: next }));
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -67,6 +189,13 @@ export function MarketingClient() {
     }
     void load();
   }, []);
+
+  // Auto-prueba al abrir, con lo GUARDADO (body vacío): así el tilde refleja
+  // la conexión real del primer render y no una que nunca se verificó.
+  useEffect(() => {
+    if (loading) return;
+    void Promise.all([runTest("google_ads"), runTest("meta_ads"), runTest("ga4")]);
+  }, [loading, runTest]);
 
   const googleReady = !!(googleAds.customerId && googleAds.developerToken && googleAds.clientId && googleAds.clientSecret);
   const metaReady = !!(metaAds.accessToken && metaAds.adAccountId);
@@ -100,6 +229,9 @@ export function MarketingClient() {
         setServiceAccountJson("");
         setTimeout(() => setSaved(false), 3000);
         router.refresh();
+        // Se vuelve a probar con lo recién guardado: el tilde debe reflejar
+        // la conexión real, no la que había antes de guardar.
+        void Promise.all([runTest("google_ads"), runTest("meta_ads"), runTest("ga4")]);
       } else {
         setSaveError("No se pudo guardar una de las integraciones. Revisa los campos.");
       }
@@ -107,30 +239,6 @@ export function MarketingClient() {
       setSaveError("Error de red al guardar.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleTestGa4() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/analytics/ga4/test", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          propertyId: ga4.propertyId,
-          ...(serviceAccountJson.trim() ? { serviceAccountJson } : {}),
-        }),
-      });
-      const payload = await res.json().catch(() => null);
-      setTestResult({
-        ok: payload?.ok === true,
-        message: payload?.message ?? (res.ok ? "Conectado." : "No se pudo probar la conexión."),
-      });
-    } catch {
-      setTestResult({ ok: false, message: "Error de red al probar la conexión." });
-    } finally {
-      setTesting(false);
     }
   }
 
@@ -176,7 +284,7 @@ export function MarketingClient() {
             </span>
             Google Ads
           </h3>
-          {googleReady && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+          <StatusBadge status={tests.google_ads} />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -227,6 +335,14 @@ export function MarketingClient() {
             </FieldHint>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <TestButton
+            onClick={() => void runTest("google_ads", googleAds)}
+            testing={tests.google_ads.state === "testing"}
+            disabled={!googleReady}
+          />
+          <TestMessage status={tests.google_ads} />
+        </div>
         <p className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
           Guardado: la lectura de métricas de Google Ads aún no está activa; las credenciales quedan listas para su módulo.
         </p>
@@ -243,7 +359,7 @@ export function MarketingClient() {
             </span>
             Meta Ads (Facebook & Instagram)
           </h3>
-          {metaReady && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+          <StatusBadge status={tests.meta_ads} />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -271,6 +387,15 @@ export function MarketingClient() {
             </FieldHint>
           </div>
         </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <TestButton
+            onClick={() => void runTest("meta_ads", metaAds)}
+            testing={tests.meta_ads.state === "testing"}
+            disabled={!metaReady}
+          />
+          <TestMessage status={tests.meta_ads} />
+        </div>
       </div>
 
       {/* ── Google Analytics 4 ── */}
@@ -282,7 +407,7 @@ export function MarketingClient() {
             </span>
             Google Analytics 4 (GA4)
           </h3>
-          {ga4Ready && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+          <StatusBadge status={tests.ga4} />
         </div>
 
         <div className="max-w-sm">
@@ -321,25 +446,17 @@ export function MarketingClient() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            onClick={() => void handleTestGa4()}
-            disabled={testing || (!ga4.propertyId && !serviceAccountJson.trim())}
-          >
-            {testing ? (
-              <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Probando…</>
-            ) : (
-              <><Plug className="mr-2 h-4 w-4" /> Probar conexión</>
-            )}
-          </Button>
-          {testResult && (
-            <p className={`flex items-center gap-1.5 text-sm ${testResult.ok ? "text-emerald-600" : "text-red-600"}`}>
-              {testResult.ok
-                ? <CheckCircle2 className="h-4 w-4" />
-                : <XCircle className="h-4 w-4" />}
-              {testResult.message}
-            </p>
-          )}
+          <TestButton
+            onClick={() =>
+              void runTest("ga4", {
+                propertyId: ga4.propertyId,
+                ...(serviceAccountJson.trim() ? { serviceAccountJson } : {}),
+              })
+            }
+            testing={tests.ga4.state === "testing"}
+            disabled={!ga4Ready}
+          />
+          <TestMessage status={tests.ga4} />
         </div>
 
         <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">

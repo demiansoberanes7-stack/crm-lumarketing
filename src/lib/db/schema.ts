@@ -684,6 +684,7 @@ export const googleCredentials = pgTable(
     status: varchar("status", { length: 20 })
       .notNull()
       .default("connected"),
+    syncTasks: boolean("sync_tasks").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1043,6 +1044,7 @@ export const projectTask = pgTable(
       .notNull()
       .default("pendiente"),
     dueDate: timestamp("due_date"),
+    googleEventId: varchar("google_event_id", { length: 255 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1411,6 +1413,7 @@ export const caltodoTask = pgTable(
     completed: boolean("completed").notNull().default(false),
     completedAt: timestamp("completed_at"),
     priority: integer("priority").notNull().default(0),
+    googleEventId: varchar("google_event_id", { length: 255 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

@@ -22,6 +22,7 @@ import { BrandLogo } from "@/components/brand-mark";
  */
 export function AppShell({
   branding,
+  logoUrl,
   userName,
   role,
   theme,
@@ -29,6 +30,8 @@ export function AppShell({
   children,
 }: {
   branding: Branding;
+  /** Logo subido en Configuración → Negocio (foto, no el trazo vectorial). */
+  logoUrl?: string | null;
   userName: string;
   role: string;
   theme: ThemePreference;
@@ -67,6 +70,7 @@ export function AppShell({
 
       <AppNav
         branding={branding}
+        logoUrl={logoUrl}
         commit={commit}
         userName={userName}
         role={role}
@@ -85,7 +89,7 @@ export function AppShell({
           >
             <Menu className="h-5 w-5" strokeWidth={1.8} />
           </button>
-          <BrandLogo branding={branding} className="min-w-0" />
+          <BrandLogo branding={branding} logoUrl={logoUrl} className="min-w-0" />
         </header>
 
         <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>

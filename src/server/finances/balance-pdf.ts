@@ -1,28 +1,50 @@
 import { PDFDocument, StandardFonts, rgb, type RGB } from "pdf-lib";
 import { financialReport } from "./report";
 import { getBusinessSettings } from "@/server/business-settings";
-import { money, tryLoadLogo } from "@/server/documents/pdf";
+import { getBranding } from "@/server/branding";
+import { pdfInkOn } from "@/lib/branding";
+import {
+  clean,
+  money,
+  tryLoadLogo,
+  CONTENT_W,
+  MARGIN,
+  PAGE_H,
+  PAGE_W,
+} from "@/server/documents/pdf";
 
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const MARGIN = 50;
-const CONTENT_W = PAGE_W - MARGIN * 2;
 const DARK = rgb(0.13, 0.13, 0.13);
 const GRAY = rgb(0.45, 0.45, 0.45);
-const LIGHT_GRAY = rgb(0.88, 0.88, 0.88);
-const HEADER_BG = rgb(0.28, 0.28, 0.28);
 const ROW_ALT = rgb(0.96, 0.96, 0.96);
 const GREEN = rgb(0.15, 0.55, 0.25);
 const RED = rgb(0.75, 0.2, 0.2);
-const _noop = undefined as unknown as (val: string) => RGB;
 
-function clean(s: string): string {
-  return s.replace(/[\r\n\t]/g, " ").replace(/[–—]/g, "-").replace(/[^ -ÿ]/g, "?");
+/** Hex de la marca (0-255) → tinta pdf-lib (0-1). */
+function hexRgb(hex: string) {
+  return rgb(
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255
+  );
 }
+
+/** Columna sin color propio: la tinta normal del documento. */
+const NEUTRAL = (): RGB => DARK;
 
 export async function balancePdf(organizationId: string, period: { from: Date; to: Date }) {
   const report = await financialReport(organizationId, period);
-  const bs = await getBusinessSettings(organizationId);
+  const [bs, branding] = await Promise.all([
+    getBusinessSettings(organizationId),
+    getBranding(organizationId),
+  ]);
+
+  // Colores configurados en Configuración → Marca (mismos que cotización y
+  // expediente): las cabeceras dejan de ser gris carbón genérico.
+  const HEADER_BG = hexRgb(branding.pdfColors.header);
+  const ACCENT = hexRgb(branding.pdfColors.accent);
+  const ink = pdfInkOn(branding.pdfColors.header);
+  const HEADER_INK = rgb(ink.r / 255, ink.g / 255, ink.b / 255);
+
   const from = period.from.toISOString().slice(0, 10);
   const to = period.to.toISOString().slice(0, 10);
 
@@ -47,6 +69,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
 
   // ─── HEADER: Logo (left) + Date (right) ───
   const logoData = tryLoadLogo(bs.logoUrl, organizationId);
+  let logoBottom = y;
   if (logoData && logoData.mime === "image/png") {
     try {
       const img = await doc.embedPng(logoData.data);
@@ -55,6 +78,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
       const w = img.width * scale;
       const h = img.height * scale;
       page.drawImage(img, { x: MARGIN, y: y - h + 10, width: w, height: h });
+      logoBottom = y - h + 10;
     } catch { /* fall through */ }
   } else if (logoData && logoData.mime === "image/jpeg") {
     try {
@@ -64,9 +88,11 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
       const w = img.width * scale;
       const h = img.height * scale;
       page.drawImage(img, { x: MARGIN, y: y - h + 10, width: w, height: h });
+      logoBottom = y - h + 10;
     } catch { /* fall through */ }
   } else {
     page.drawText(clean(companyName).slice(0, 60), { x: MARGIN, y, size: 22, font: bold, color: DARK });
+    logoBottom = y - 8;
   }
 
   // Date on the right
@@ -74,7 +100,15 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
   const dateStr = now.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
   page.drawText(clean(dateStr), { x: PAGE_W - MARGIN - 150, y, size: 11, font: regular, color: GRAY });
 
-  y -= 30;
+  // Filete de marca entre el encabezado y el título (mismo ritmo que expediente).
+  y = Math.min(logoBottom - 14, y - 30);
+  page.drawLine({
+    start: { x: MARGIN, y: y + 10 },
+    end: { x: PAGE_W - MARGIN, y: y + 10 },
+    color: ACCENT,
+    thickness: 1,
+  });
+  y -= 16;
 
   // ─── TITLE ───
   page.drawText("BALANCE GENERAL", { x: MARGIN, y, size: 14, font: bold, color: DARK });
@@ -112,7 +146,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
     headers: string[],
     colWidths: number[],
     rows: string[][],
-    columnColors?: ((val: string) => RGB | undefined)[] | null,
+    columnColors?: ((val: string) => RGB)[],
   ) {
     if (rows.length === 0) return;
 
@@ -124,7 +158,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
     page.drawRectangle({ x: MARGIN, y: y - 4, width: CONTENT_W, height: 20, color: HEADER_BG });
     let xOff = MARGIN;
     for (let i = 0; i < headers.length; i++) {
-      page.drawText(clean(headers[i]!), { x: xOff + 8, y: y + 2, size: 9, font: bold, color: rgb(1, 1, 1) });
+      page.drawText(clean(headers[i]!), { x: xOff + 8, y: y + 2, size: 9, font: bold, color: HEADER_INK });
       xOff += colWidths[i]!;
     }
     y -= 20;
@@ -141,7 +175,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
         const val = row[c]!;
         const colorFn = columnColors?.[c] ?? null;
         const color = colorFn ? colorFn(val) : DARK;
-        page.drawText(clean(val).slice(0, 60), { x: xOff + 8, y: y, size: 9, font: regular, color });
+        page.drawText(clean(val).slice(0, 60), { x: xOff + 8, y, size: 9, font: regular, color });
         xOff += colWidths[c]!;
       }
       y -= 16;
@@ -162,7 +196,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
     ["Fecha", "Monto", "Método", "Referencia", "Notas"],
     [90, 100, 110, 110, 110],
     ingresoRows,
-    [_noop, () => GREEN, _noop, _noop, _noop],
+    [NEUTRAL, () => GREEN, NEUTRAL, NEUTRAL, NEUTRAL],
   );
 
   // ─── EGRESOS TABLE ───
@@ -178,7 +212,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
     ["Fecha", "Monto", "Descripción", "Categoría", "Método"],
     [90, 100, 130, 90, 100],
     egresoRows,
-    [_noop, () => RED, _noop, _noop, _noop],
+    [NEUTRAL, () => RED, NEUTRAL, NEUTRAL, NEUTRAL],
   );
 
   // ─── CUENTAS POR COBRAR TABLE ───
@@ -194,7 +228,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
     ["Concepto", "Total", "Pagado", "Pendiente", "Estado"],
     [140, 100, 100, 100, 80],
     cxcRows,
-    [_noop, _noop, _noop, (v) => v === "$0.00" ? GREEN : RED, (v) => v === "Pagado" ? GREEN : RED],
+    [NEUTRAL, NEUTRAL, NEUTRAL, (v) => (v === "$0.00" ? GREEN : RED), (v) => (v === "Pagado" ? GREEN : RED)],
   );
 
   // ─── FOOTER (phone | email | website) + page numbers ───
@@ -202,7 +236,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
   const footerY = 30;
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i]!;
-    p.drawLine({ start: { x: MARGIN, y: footerY + 12 }, end: { x: PAGE_W - MARGIN, y: footerY + 12 }, color: LIGHT_GRAY, thickness: 0.5 });
+    p.drawLine({ start: { x: MARGIN, y: footerY + 12 }, end: { x: PAGE_W - MARGIN, y: footerY + 12 }, color: ACCENT, thickness: 0.75 });
     const parts: string[] = [];
     if (bs.phone) parts.push(bs.phone);
     if (bs.email) parts.push(bs.email);
