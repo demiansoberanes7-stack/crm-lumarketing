@@ -19,6 +19,7 @@ import {
   X,
   Activity,
   Zap,
+  Compass,
 } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import type { ThemePreference } from "@/lib/theme";
@@ -45,6 +46,7 @@ const NAV: NavItem[] = [
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
   { href: "/analytics", label: "Marketing Hub", icon: Activity },
+  { href: "/commercial", label: "Control comercial", icon: Compass },
   { href: "/automations", label: "Automatizaciones", icon: Zap },
   { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
