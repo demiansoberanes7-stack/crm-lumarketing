@@ -325,14 +325,34 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
               Bandeja de entrada
             </button>
 
-            <div className="my-3 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Cuentas
+            <div className="my-3 flex items-center justify-between px-3">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Cuentas
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-blue-600 hover:text-blue-700"
+                onClick={() => { setEditing(undefined); setShowNewAccount(true); }}
+              >
+                + Nueva
+              </Button>
             </div>
 
             {accounts.length === 0 && (
-              <p className="px-3 py-4 text-xs text-muted-foreground text-center">
-                Sin cuentas configuradas
-              </p>
+              <div className="px-3 py-4 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Sin cuentas configuradas
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 rounded-full text-xs"
+                  onClick={() => { setEditing(undefined); setShowNewAccount(true); }}
+                >
+                  Agregar cuenta
+                </Button>
+              </div>
             )}
 
             {accounts.map((acc) => (

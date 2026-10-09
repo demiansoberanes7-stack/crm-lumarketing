@@ -5,6 +5,7 @@ import { RefreshCw, TrendingUp, Inbox, DollarSign, Target, Megaphone, MousePoint
 import { Button } from "@/components/ui/button";
 import { KpiCard, formatCurrency, formatNumber, formatPercent } from "@/components/dashboard/kpi-card";
 import { FunnelChart, HorizontalBarChart } from "@/components/dashboard/charts";
+import { CampaignForm, ServiceCostForm, MarketplaceOrderForm } from "@/components/commercial/registration-forms";
 import Link from "next/link";
 
 /* ── Types (espejo de la respuesta de /api/commercial) ── */
@@ -203,8 +204,9 @@ export function CommercialHub() {
                   <MetricCard title="CAC" metric={data.publicidad.cac} formatter={formatCurrency} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  La inversión se calcula desde las campañas registradas. Conecta Meta Ads o registra campañas para ver ROAS/ROMI reales.
+                  La inversión se calcula desde las campañas registradas. Registra tu inversión manualmente o conecta Meta Ads para ver ROAS/ROMI reales.
                 </p>
+                <CampaignForm onSaved={load} />
               </div>
             )}
 
@@ -246,6 +248,8 @@ export function CommercialHub() {
                     Registra el costo de prestación de tus servicios para calcular contribución y margen reales. Hasta entonces no se muestra una rentabilidad estimada como si fuera real.
                   </p>
                 )}
+                <ServiceCostForm onSaved={load} />
+                <MarketplaceOrderForm onSaved={load} />
               </div>
             )}
 

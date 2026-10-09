@@ -19,6 +19,19 @@ import { ExpensesSection } from "./sections/expenses-section";
 import { ProfitabilitySection } from "./sections/profitability-section";
 import { InboxSection } from "./sections/inbox-section";
 import { ContactsSection } from "./sections/contacts-section";
+import { MarketingSection } from "./marketing-section";
+import { CommercialSection } from "./commercial-section";
+
+function CategoryGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <h2 className="border-b border-border/60 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
 
 interface DashboardData {
   period: string;
@@ -158,16 +171,32 @@ export function DashboardClient() {
             subtitle={`${data.projects.archived} archivados`} />
         </div>
 
-        {/* ── SECCIONES ────────────────────────── */}
-        <ProjectsSection data={data.projects} />
-        <TasksSection data={data.tasks} />
-        <QuotesSection data={data.quotes} />
-        <ReceivablesSection data={data.receivables} />
-        <PaymentsSection data={data.payments} />
-        <ExpensesSection data={data.expenses} />
-        <ProfitabilitySection data={data.profitability} />
-        <InboxSection data={data.inbox} />
-        <ContactsSection data={data.contacts} />
+        {/* ── SECCIONES POR CATEGORÍA ──────────── */}
+        <CategoryGroup title="Marketing y publicidad">
+          <MarketingSection />
+        </CategoryGroup>
+
+        <CategoryGroup title="Control comercial">
+          <CommercialSection period={period} />
+        </CategoryGroup>
+
+        <CategoryGroup title="Ventas y cotizaciones">
+          <QuotesSection data={data.quotes} />
+        </CategoryGroup>
+
+        <CategoryGroup title="Finanzas">
+          <ReceivablesSection data={data.receivables} />
+          <PaymentsSection data={data.payments} />
+          <ExpensesSection data={data.expenses} />
+          <ProfitabilitySection data={data.profitability} />
+        </CategoryGroup>
+
+        <CategoryGroup title="Operación y equipo">
+          <ProjectsSection data={data.projects} />
+          <TasksSection data={data.tasks} />
+          <InboxSection data={data.inbox} />
+          <ContactsSection data={data.contacts} />
+        </CategoryGroup>
       </div>
     </div>
   );

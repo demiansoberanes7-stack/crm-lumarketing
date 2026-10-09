@@ -62,6 +62,8 @@ describe("017 · Messenger en el catálogo de canales", () => {
     expect(caps.windowMs).toBe(24 * 60 * 60 * 1000);
     expect(caps.outsideWindow).toBe("human_agent_tag");
     expect(caps.outboundMedia).toBe(true);
+    expect(capabilitiesFor("whatsapp").outboundMedia).toBe(true);
+    expect(capabilitiesFor("instagram").outboundMedia).toBe(false);
     expect(caps.deliveryReceipts).toBe(false);
     // Fuera de ventana no se le pide nada al operador: sale etiquetado solo.
     expect(windowClosedMessage("messenger")).toBe("");

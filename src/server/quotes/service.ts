@@ -283,7 +283,10 @@ export async function sendQuote(
     conversation = byContact;
   }
   const { sendMediaMessage, sendText } = await import("@/server/inbox/send");
-  if (channel === "whatsapp") {
+  const { capabilitiesFor } = await import("@/server/channels/capabilities");
+  // El PDF sale como adjunto en todo canal que lo admita (WhatsApp, Messenger).
+  // Instagram no soporta outboundMedia, así que ahí degrada a resumen en texto.
+  if (capabilitiesFor(channel).outboundMedia) {
     const { quotePdf } = await import("./pdf");
     const pdf = await quotePdf(organizationId, quoteId);
     if (!pdf) throw new Error("No se pudo generar el PDF de la cotización");

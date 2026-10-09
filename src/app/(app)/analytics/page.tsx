@@ -1,9 +1,9 @@
-import { AnalyticsClient } from "@/components/analytics/analytics-client";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Marketing Hub | Zorro Tech CRM",
 };
 
 export default function AnalyticsPage() {
-  return <AnalyticsClient />;
+  redirect("/dashboard");
 }

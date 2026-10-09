@@ -40,7 +40,19 @@ const maybe = (
 ): MetricValue => (value == null ? unavailable(state) : available(value, fmt));
 
 type Row = Record<string, unknown>;
-const n = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+/**
+ * Normaliza un valor numérico viniendo de Postgres. `sum()` regresa bigint y
+ * postgres-js lo entrega como string; sin este casteo un ingreso real de
+ * $899 se leería como 0.
+ */
+const n = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+};
 
 /**
  * Plataforma de control comercial: agrega las 10 categorías desde datos REALES

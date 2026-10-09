@@ -1,9 +1,9 @@
-import { CommercialHub } from "@/components/commercial/commercial-hub";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Control comercial | Zorro Tech CRM",
 };
 
 export default function CommercialPage() {
-  return <CommercialHub />;
+  redirect("/dashboard");
 }

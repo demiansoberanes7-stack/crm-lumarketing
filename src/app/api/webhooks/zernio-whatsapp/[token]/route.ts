@@ -8,6 +8,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   if (raw.length > 2_000_000) return new Response(null, { status: 413 });
   let payload: unknown;
   try { payload = JSON.parse(raw); } catch { return new Response(null, { status: 400 }); }
+  // Eventos de plataforma de Zernio (ej. api.changelog.published): no traen
+  // `account` ni `message`, no son mensajes. Se reconocen con 200 para que
+  // Zernio no los marque como entregas fallidas, y se descartan sin procesar.
+  const evt = (payload as { event?: unknown } | null)?.event;
+  if (typeof evt === "string" && evt.startsWith("api.")) {
+    return Response.json({ received: true, ignored: evt });
+  }
   const parsed = whatsappZernioEvent.safeParse(payload);
   if (!parsed.success) return new Response(null, { status: 400 });
   const accountId = parsed.data.account.accountId ?? parsed.data.account.id;

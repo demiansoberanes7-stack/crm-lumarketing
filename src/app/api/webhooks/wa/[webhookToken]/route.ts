@@ -68,7 +68,15 @@ export async function POST(req: Request, { params }: Params) {
 }
 
 async function processPayload(payload: WebhookPayload): Promise<void> {
-  for (const entry of payload.entry ?? []) {
+  // Meta envía `entry` como arreglo; payloads de plataforma de terceros
+  // (ej. api.changelog.published de Zernio) lo traen como objeto. Normalizamos
+  // a arreglo para no lanzar "entry is not iterable".
+  const entries = Array.isArray(payload.entry)
+    ? payload.entry
+    : payload.entry
+      ? [payload.entry]
+      : [];
+  for (const entry of entries) {
     for (const change of entry.changes ?? []) {
       if (!change.value) continue;
       if (change.field === "messages") {
