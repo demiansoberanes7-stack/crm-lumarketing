@@ -139,7 +139,6 @@ export function AppNav({
         </button>
         <div className="min-w-0">
           <BrandLogo branding={branding} logoUrl={logoUrl} />
-          <span className="kicker mt-2 block">CRM · WhatsApp</span>
         </div>
       </div>
 

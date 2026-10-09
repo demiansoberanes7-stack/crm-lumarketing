@@ -50,7 +50,7 @@ export function DiagnosticsClient() {
       {data?.events.map((event) => <article key={event.id} className="rounded border p-4 space-y-2">
         <div className="flex flex-wrap justify-between gap-2"><strong>{event.source} · {event.severity}</strong><time>{new Date(event.created_at).toLocaleString("es-MX")}</time></div>
         <p>{event.message}</p><p className="text-xs text-text-2">Código: {event.code} · {event.id}</p>
-        <details><summary className="cursor-pointer text-sm">Detalle técnico seguro</summary><pre className="overflow-auto text-xs">{JSON.stringify(event.metadata, null, 2)}</pre></details>
+        <details open><summary className="cursor-pointer text-sm">Detalles técnicos (credenciales y tokens ocultos)</summary><pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-3 text-xs">{JSON.stringify(event.metadata, null, 2)}</pre></details>
         <button className="rounded border px-3 py-1 text-sm" onClick={() => void resolve(event)}>{event.resolved_at ? "Resuelto · Reabrir" : "Marcar resuelto"}</button>
       </article>)}
     </section>

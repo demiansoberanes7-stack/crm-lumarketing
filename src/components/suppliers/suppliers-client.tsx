@@ -227,6 +227,7 @@ export function SuppliersClient() {
   const [showArchived, setShowArchived] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SupplierDto | null>(null);
+  const [viewing, setViewing] = useState<SupplierDto | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const refetch = useCallback(async () => {
@@ -313,12 +314,23 @@ export function SuppliersClient() {
                 key={s.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-3 sm:flex-nowrap sm:gap-x-4 sm:px-4"
               >
-                {/* Avatar with initials */}
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground">
-                  {s.name.slice(0, 2).toUpperCase()}
-                </div>
-
-                <div className="min-w-[60%] flex-1 sm:min-w-0">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Abrir ficha de ${s.name}`}
+                  onClick={() => setViewing(s)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setViewing(s);
+                    }
+                  }}
+                  className="flex min-w-[60%] flex-1 cursor-pointer items-center gap-x-3 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-0"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground">
+                    {s.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-medium">{s.name}</span>
                     {s.category && (
@@ -337,7 +349,8 @@ export function SuppliersClient() {
                     {s.phone && <span>{s.phone}</span>}
                     {s.email && <span className="truncate">{s.email}</span>}
                     {s.rfc && <span className="font-mono">RFC: {s.rfc}</span>}
-                    {s.rating != null && s.rating > 0 && <Stars rating={s.rating} />}
+                    {s.rating != null && s.rating > 0 && <span className="text-xs text-amber-500">{s.rating} ★</span>}
+                  </div>
                   </div>
                 </div>
 
@@ -380,6 +393,87 @@ export function SuppliersClient() {
         onClose={() => { setDialogOpen(false); setEditing(null); }}
         onSaved={refetch}
       />
+
+      {viewing && (
+        <SupplierDetailDialog
+          supplier={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={(supplier) => { setViewing(null); setEditing(supplier); setDialogOpen(true); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SupplierDetailDialog({
+  supplier,
+  onClose,
+  onEdit,
+}: {
+  supplier: SupplierDto;
+  onClose: () => void;
+  onEdit: (supplier: SupplierDto) => void;
+}) {
+  const fields: { label: string; value: string | null }[] = [
+    { label: "Nombre comercial", value: supplier.tradeName },
+    { label: "Persona de contacto", value: supplier.contactName },
+    { label: "Teléfono", value: supplier.phone },
+    { label: "Correo", value: supplier.email },
+    { label: "RFC", value: supplier.rfc },
+    { label: "Categoría", value: supplier.category ? CATEGORY_LABELS[supplier.category] ?? supplier.category : null },
+    { label: "Dirección", value: supplier.address },
+    { label: "Condiciones de pago", value: supplier.paymentTerms },
+    { label: "Sitio web", value: supplier.website },
+    { label: "Calificación", value: supplier.rating ? `${supplier.rating} / 5` : null },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4" onClick={onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Ficha de proveedor ${supplier.name}`}
+        className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-xl border bg-card p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">{supplier.name}</h2>
+            <p className="text-sm text-muted-foreground">Ficha del proveedor</p>
+          </div>
+          <button type="button" aria-label="Cerrar ficha" onClick={onClose} className="rounded px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground">×</button>
+        </header>
+
+        {supplier.archivedAt && <p className="mb-3 text-sm text-amber-700">Proveedor archivado</p>}
+        <dl className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
+          {fields.map(({ label, value }) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+              <dd className="break-words text-sm">
+                {value
+                  ? label === "Correo"
+                    ? <a className="text-primary underline" href={`mailto:${value}`}>{value}</a>
+                    : label === "Teléfono"
+                      ? <a className="text-primary underline" href={`tel:${value}`}>{value}</a>
+                      : label === "Sitio web"
+                        ? <a className="text-primary underline" href={value.startsWith("http") ? value : `https://${value}`} target="_blank" rel="noreferrer">{value}</a>
+                        : value
+                  : "Sin capturar"}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {supplier.notes && (
+          <div className="mt-4 rounded-lg border p-3">
+            <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Notas</h3>
+            <p className="whitespace-pre-wrap text-sm">{supplier.notes}</p>
+          </div>
+        )}
+        <footer className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+          <Button onClick={() => onEdit(supplier)}>Editar proveedor</Button>
+        </footer>
+      </section>
     </div>
   );
 }

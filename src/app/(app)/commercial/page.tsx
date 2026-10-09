@@ -1,9 +1,9 @@
-import { redirect } from "next/navigation";
+import { CommercialRegistrationPage } from "@/components/commercial/registration-page";
 
 export const metadata = {
-  title: "Control comercial | Zorro Tech CRM",
+  title: "Registros comerciales | Zorro Tech CRM",
 };
 
 export default function CommercialPage() {
-  redirect("/dashboard");
+  return <CommercialRegistrationPage />;
 }

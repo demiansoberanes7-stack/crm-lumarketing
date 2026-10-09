@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { listMessages, sendEmail } from "@/server/email/service";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +54,14 @@ export const POST = withAuth(async (session, req: Request) => {
     });
     return Response.json({ ok: true, messageId });
   } catch (err) {
-    return apiError(500, "send_failed", String(err));
+    await recordDiagnostic({
+      organizationId: session.organizationId,
+      source: "email",
+      code: "send_failed",
+      error: err,
+      metadata: { operation: "send", provider: "smtp", accountId: body.data.accountId },
+    });
+    const detail = err instanceof Error ? safeDiagnosticText(err.message, 500) : "Error SMTP";
+    return apiError(502, "send_failed", `No se pudo enviar el correo: ${detail}`);
   }
 });

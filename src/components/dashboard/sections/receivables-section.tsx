@@ -19,10 +19,7 @@ export function ReceivablesSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <Clock className="h-4 w-4" /> Cuentas por Cobrar
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
-        <KpiCard title="Total por Cobrar" value={formatCurrency(data.totalPending)} icon={<Clock />} />
-        <KpiCard title="Vencidas" value={data.overdueCount} icon={<AlertTriangle />}
-          trend={data.overdueCount > 0 ? "down" : "neutral"} trendValue={formatCurrency(data.overdueAmount)} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 mb-4">
         <KpiCard title="Tasa de Mora" value={formatPercent(data.overdueRate)} subtitle="Saldo vencido / saldo pendiente" />
         <KpiCard title="Monto Vencido" value={formatCurrency(data.overdueAmount)} icon={<AlertTriangle />} />
       </div>

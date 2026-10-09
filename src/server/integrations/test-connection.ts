@@ -11,14 +11,13 @@
  */
 
 import { parseGa4Credentials, testGa4Connection } from "@/server/analytics/ga4";
+import { getEnv } from "@/lib/env";
 
 export type ConnectionStatus = "connected" | "error" | "saved" | "missing";
 export type ConnectionTest = { status: ConnectionStatus; message: string };
 
 /** Corte por petición: una prueba que no responde no puede dejar colgado el botón. */
 const TEST_TIMEOUT_MS = 20_000;
-
-const GRAPH = "https://graph.facebook.com/v19.0";
 
 async function fetchJson(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; body: Record<string, unknown> | null }> {
   let res: Response;
@@ -38,8 +37,16 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ ok: boolean
 
 /* ─── Meta Ads ─── */
 
-/** Los Graph errors traen el motivo adentro; afuera solo hay status. */
-type GraphError = { error?: { message?: string; code?: number; type?: string } };
+/** Graph errors traen datos de diagnóstico que conviene conservar sin secretos. */
+type GraphError = {
+  error?: {
+    message?: string;
+    code?: number;
+    type?: string;
+    error_subcode?: number;
+    fbtrace_id?: string;
+  };
+};
 
 /** El id puede venir como `act_123` o como puro número: Graph exige el prefijo. */
 export function normalizeAdAccountId(raw: string): string {
@@ -55,6 +62,8 @@ function graphHint(code: number | undefined): string | null {
       return "El access token no es válido o ya expiró.";
     case 10:
       return "El token no tiene permiso ads_read sobre esa cuenta.";
+    case 200:
+      return "Meta bloqueó el acceso a la API para este token, aplicación o negocio; revisa Account Quality y el panel de desarrolladores.";
     case 100:
       return "Graph no reconoce la cuenta: revisa el Ad Account ID.";
     case 80004:
@@ -83,7 +92,9 @@ export async function testMetaAdsConnection(creds: {
     return { status: "missing", message: "Falta el access token o el Ad Account ID." };
   }
 
-  const url = new URL(`${GRAPH}/${adAccountId}`);
+  const env = getEnv();
+  const graphRoot = `${env.META_GRAPH_BASE_URL.replace(/\/+$/, "")}/${env.META_GRAPH_API_VERSION.replace(/^\/+|\/+$/g, "")}`;
+  const url = new URL(`${graphRoot}/${adAccountId}`);
   url.search = new URLSearchParams({
     fields: "name,account_status,currency",
     access_token: accessToken,
@@ -94,7 +105,19 @@ export async function testMetaAdsConnection(creds: {
     const graph = (body ?? {}) as GraphError;
     const detail = graph.error?.message ?? `HTTP ${status}`;
     const hint = graphHint(graph.error?.code);
-    return { status: "error", message: hint ? `${hint} (${detail})` : `Meta rechazó las credenciales: ${detail}` };
+    const diagnostics = [
+      graph.error?.type,
+      typeof graph.error?.code === "number" ? `code ${graph.error.code}` : null,
+      typeof graph.error?.error_subcode === "number" ? `subcode ${graph.error.error_subcode}` : null,
+      graph.error?.fbtrace_id ? `fbtrace_id ${graph.error.fbtrace_id}` : null,
+    ].filter((value): value is string => Boolean(value));
+    const suffix = diagnostics.length ? ` [${diagnostics.join(" · ")}]` : "";
+    return {
+      status: "error",
+      message: hint
+        ? `${hint} (${detail})${suffix}`
+        : `Meta rechazó las credenciales: ${detail}${suffix}`,
+    };
   }
 
   const name = typeof body?.name === "string" ? body.name : adAccountId;

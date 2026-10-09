@@ -1,7 +1,7 @@
 "use client";
 
 import { Wallet } from "lucide-react";
-import { KpiCard, formatCurrency, formatPercent } from "../kpi-card";
+import { KpiCard, formatPercent } from "../kpi-card";
 import { PieChartCard, AreaChartCard, GaugeChart, HorizontalBarChart } from "../charts";
 
 interface Props {
@@ -19,8 +19,7 @@ export function ExpensesSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <Wallet className="h-4 w-4" /> Gastos
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
-        <KpiCard title="Gasto Total" value={formatCurrency(data.total)} icon={<Wallet />} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 mb-4">
         <KpiCard title="% sobre Ingresos" value={formatPercent(data.expenseVsIncome)} />
         <KpiCard title="Categorías" value={data.byCategory.length} />
       </div>

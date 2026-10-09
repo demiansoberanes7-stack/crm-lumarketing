@@ -173,6 +173,9 @@ export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+          <p className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+            Para mejorar la entrega, configura SPF, DKIM y DMARC en el DNS del dominio que envía. La prueba valida IMAP/SMTP, pero no puede garantizar que el destinatario lo reciba en Inbox.
+          </p>
           {error && (
             <p className="text-sm text-danger-text">{error}</p>
           )}

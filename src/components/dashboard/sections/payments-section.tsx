@@ -19,9 +19,8 @@ export function PaymentsSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <DollarSign className="h-4 w-4" /> Pagos Recibidos
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-4">
-        <KpiCard title="Ingresos Brutos" value={formatCurrency(data.grossIncome)} icon={<DollarSign />} />
-        <KpiCard title="Ticket Promedio" value={formatCurrency(data.avgTicket)} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
+        <KpiCard title="Cobro promedio" value={formatCurrency(data.avgTicket)} />
         <KpiCard title="Total Pagos" value={data.count} />
         <KpiCard title="Con Comprobante" value={`${data.withReceiptRate.toFixed(0)}%`} />
       </div>

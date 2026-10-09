@@ -233,6 +233,7 @@ export async function sendEmail(
     host: creds.smtpHost,
     port: creds.smtpPort,
     secure: creds.smtpSecure,
+    requireTLS: !creds.smtpSecure,
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 20000,
@@ -246,6 +247,7 @@ export async function sendEmail(
     text: input.text,
     html: input.html,
     inReplyTo: input.inReplyTo,
+    references: input.inReplyTo ? [input.inReplyTo] : undefined,
     attachments: input.attachments?.map((a) => ({
       filename: a.filename,
       content: Buffer.from(a.content, "base64"),

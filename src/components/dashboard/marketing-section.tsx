@@ -22,12 +22,6 @@ interface AdsCampaign {
   clicks: number;
   currency: string;
 }
-interface PipelineMetric {
-  leads: number;
-  quotes: number;
-  won: number;
-  conversionRate: number;
-}
 interface Ga4Data {
   sessions: number;
   users: number;
@@ -59,18 +53,16 @@ function fmt(n: number, currency?: string): string {
 /** Sección "Marketing digital": integraciones GA4 + Meta Ads + conversión de pipeline. */
 export function MarketingSection() {
   const [data, setData] = useState<AnalyticsData | null>(null);
-  const [pipe, setPipe] = useState<PipelineMetric | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      fetch("/api/analytics/dashboard").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      fetch("/api/pipeline/stats").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([d, p]) => {
+    fetch("/api/analytics/dashboard")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((d) => {
       if (!alive) return;
       if (d) setData(d as AnalyticsData);
-      if (p) setPipe(p as PipelineMetric);
       setLoading(false);
     });
     return () => { alive = false; };
@@ -220,36 +212,6 @@ export function MarketingSection() {
           )}
         </div>
       )}
-
-      {/* Pipeline */}
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Conversión del pipeline</h3>
-          <span className="text-xs text-muted-foreground">(tiempo real del CRM)</span>
-        </div>
-        {pipe ? (
-          <div className="max-w-xs space-y-3">
-            {[
-              { label: "Leads captados", value: pipe.leads, color: "bg-blue-500" },
-              { label: "Cotizados", value: pipe.quotes, color: "bg-orange-500" },
-              { label: "Ganados", value: pipe.won, color: "bg-emerald-500" },
-            ].map(({ label, value, color }) => (
-              <div key={label}>
-                <div className="mb-1 flex justify-between text-sm">
-                  <span>{label}</span>
-                  <span className="font-bold">{value}</span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div className={`h-full rounded-full ${color} transition-all duration-700`} style={{ width: pipe.leads > 0 ? `${Math.min(100, (value / pipe.leads) * 100)}%` : "0%" }} />
-                </div>
-              </div>
-            ))}
-            <p className="pt-1 text-xs text-muted-foreground">Tasa de conversión global: {pipe.conversionRate.toFixed(1)}%</p>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No se pudieron cargar las métricas del pipeline.</p>
-        )}
-      </div>
 
       {/* Estado de integraciones */}
       {data && (

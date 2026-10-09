@@ -19,13 +19,12 @@ export function QuotesSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <FileText className="h-4 w-4" /> Cotizaciones
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6 mb-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 mb-4">
         <KpiCard title="Ticket Promedio" value={formatCurrency(data.avgTicket)} icon={<FileText />} />
         <KpiCard title="Tasa de Aprobación" value={formatPercent(data.approvalRate)} subtitle="Aceptadas / enviadas, incl. rechazadas y expiradas" />
         <KpiCard title="Pipeline del período" value={formatCurrency(data.pipelineValue)} subtitle="Borradores y enviadas vigentes" />
         <KpiCard title="Descuento Promedio" value={formatCurrency(data.avgDiscount)} />
         <KpiCard title="Enviadas" value={data.sent} />
-        <KpiCard title="Aprobadas" value={data.approved} />
       </div>
       <p className="mb-3 text-xs text-muted-foreground">Cohorte por fecha de creación, sin archivadas. Enviadas incluye aceptadas, rechazadas y expiradas. {data.excludedCurrency > 0 && `${data.excludedCurrency} cotizaciones en otras monedas excluidas de los KPIs MXN.`}</p>
       <div className="grid gap-4 lg:grid-cols-3">

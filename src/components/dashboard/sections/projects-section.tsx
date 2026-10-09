@@ -20,8 +20,7 @@ export function ProjectsSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <FolderKanban className="h-4 w-4" /> Proyectos
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6 mb-4">
-        <KpiCard title="Activos" value={data.active} icon={<FolderKanban />} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
         <KpiCard title="Archivados" value={data.archived} icon={<FolderKanban />} />
         <KpiCard title="Avance Promedio" value={`${data.avgAdvance.toFixed(0)}%`} />
         <KpiCard title="Riesgo Alto" value={data.highRisk} icon={<AlertTriangle />}

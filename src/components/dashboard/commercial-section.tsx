@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   RefreshCw, Target, DollarSign, Megaphone, Compass, Percent,
   FlaskConical, Headphones, ShieldCheck,
 } from "lucide-react";
 import { KpiCard, formatCurrency, formatNumber, formatPercent } from "./kpi-card";
 import { FunnelChart, HorizontalBarChart } from "./charts";
-import { CampaignForm, ServiceCostForm, MarketplaceOrderForm } from "@/components/commercial/registration-forms";
 
 type MetricValue = { value: number | null; availability: "available" | "no_data" | "not_applicable" | "pending"; formatted: string | null };
 
@@ -76,11 +76,16 @@ export function CommercialSection({ period }: { period: string }) {
   }, [load]);
 
   return (
-    <section>
+      <section>
       <div className="mb-3 flex justify-end">
-        <button onClick={load} disabled={loading} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
-          <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} /> Actualizar
-        </button>
+        <div className="flex items-center gap-3">
+          <Link href="/commercial" className="text-xs font-medium text-primary underline-offset-4 hover:underline">
+            Registrar datos comerciales
+          </Link>
+          <button onClick={load} disabled={loading} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} /> Actualizar
+          </button>
+        </div>
       </div>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">{error}</div>}
@@ -91,17 +96,8 @@ export function CommercialSection({ period }: { period: string }) {
         </div>
       )}
 
-      {data && !loading && (
-        <div className="space-y-2">
-          {/* Ventas: KPIs que no aparecen en las métricas financieras generales. */}
-          <Subhead icon={<DollarSign className="h-3.5 w-3.5" />}>Ventas y cierre</Subhead>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard title="Nuevos prospectos" metric={data.resumen.newLeads} formatter={formatNumber} />
-            <MetricCard title="Tratos ganados" metric={data.resumen.closedDeals} formatter={formatNumber} />
-            <MetricCard title="Tratos perdidos" metric={data.ventas.lostDeals} formatter={formatNumber} />
-            <MetricCard title="Tasa de cierre" metric={data.resumen.winRate} formatter={formatPercent} />
-          </div>
-
+        {data && !loading && (
+          <div className="space-y-2">
           {/* Embudo */}
           <Subhead icon={<Target className="h-3.5 w-3.5" />}>Embudo de ventas</Subhead>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -110,10 +106,11 @@ export function CommercialSection({ period }: { period: string }) {
               <FunnelChart data={data.embudo.stages} />
             </div>
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <MetricCard title="Prospecto → ganado" metric={data.embudo.leadToWon} formatter={formatPercent} />
                 <MetricCard title="Prospecto → cotizado" metric={data.embudo.leadToQuote} formatter={formatPercent} />
                 <MetricCard title="Cotizado → ganado" metric={data.embudo.quoteToWon} formatter={formatPercent} />
+                <MetricCard title="Tasa de cierre" metric={data.resumen.winRate} formatter={formatPercent} />
               </div>
               <div className="rounded-xl border bg-card p-4 shadow-sm">
                 <h4 className="mb-3 text-sm font-semibold">Motivos de pérdida</h4>
@@ -129,12 +126,14 @@ export function CommercialSection({ period }: { period: string }) {
           {/* Publicidad */}
           <Subhead icon={<Megaphone className="h-3.5 w-3.5" />}>Publicidad</Subhead>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard title="Inversión publicitaria" metric={data.publicidad.adSpend} formatter={formatCurrency} icon={<DollarSign className="h-4 w-4" />} />
+            <MetricCard title="Presupuesto planeado" metric={data.publicidad.plannedBudget} formatter={formatCurrency} icon={<DollarSign className="h-4 w-4" />} />
             <MetricCard title="ROAS" metric={data.publicidad.roas} formatter={(n) => `${n.toFixed(2)}x`} />
             <MetricCard title="ROMI" metric={data.publicidad.romi} formatter={formatPercent} />
             <MetricCard title="CAC" metric={data.publicidad.cac} formatter={formatCurrency} />
           </div>
-          <CampaignForm onSaved={load} />
+          <p className="text-xs text-muted-foreground">
+            ROAS, ROMI y CAC requieren gasto real y atribución por campaña. El gasto real de las plataformas aparece en Marketing digital; el presupuesto planeado se captura en Registros comerciales.
+          </p>
 
           {/* Adquisición */}
           <Subhead icon={<Compass className="h-3.5 w-3.5" />}>Adquisición</Subhead>
@@ -148,19 +147,18 @@ export function CommercialSection({ period }: { period: string }) {
           </div>
 
           {/* Rentabilidad */}
-          <Subhead icon={<Percent className="h-3.5 w-3.5" />}>Rentabilidad</Subhead>
+          <Subhead icon={<Percent className="h-3.5 w-3.5" />}>Rentabilidad de prestación</Subhead>
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard title="Contribución" metric={data.rentabilidad.contribution} formatter={formatCurrency} />
             <MetricCard title="Margen de contribución" metric={data.rentabilidad.contributionMargin} formatter={formatPercent} />
-            <MetricCard title="Ingresos de Marketplace" metric={data.rentabilidad.mlRevenue} formatter={formatCurrency} />
+            <MetricCard title="Órdenes de Marketplace" metric={data.rentabilidad.mlOrders} formatter={formatNumber} />
           </div>
+          <p className="text-xs text-muted-foreground">La contribución descuenta los costos de prestación; no descuenta publicidad porque falta gasto real atribuible.</p>
           {!data.rentabilidad.hasCosts && (
             <p className="text-xs text-muted-foreground">
               Registra el costo de prestación de tus servicios para calcular contribución y margen reales.
             </p>
           )}
-          <ServiceCostForm onSaved={load} />
-          <MarketplaceOrderForm onSaved={load} />
 
           {/* Experimentos */}
           <Subhead icon={<FlaskConical className="h-3.5 w-3.5" />}>Experimentos A/B ({data.experimentos.total})</Subhead>
@@ -183,11 +181,10 @@ export function CommercialSection({ period }: { period: string }) {
 
           {/* Operaciones + Calidad */}
           <Subhead icon={<Headphones className="h-3.5 w-3.5" />}>Operaciones y calidad de datos</Subhead>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <MetricCard title="Actividades registradas" metric={data.operaciones.activitiesLogged} formatter={formatNumber} />
             <MetricCard title="Tiempo de respuesta" metric={data.operaciones.responseTimeHours} formatter={(n) => `${n.toFixed(1)} h`} />
             <MetricCard title="Contactos con canal" metric={data.calidad.contactsWithChannel} formatter={formatPercent} icon={<ShieldCheck className="h-4 w-4" />} />
-            <MetricCard title="Total de contactos" metric={data.calidad.totalContacts} formatter={formatNumber} />
             <MetricCard title="Con canal capturado" metric={data.calidad.contactsWithChannelCount} formatter={formatNumber} />
           </div>
 

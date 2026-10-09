@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Archive,
   ArrowLeft,
@@ -10,7 +10,6 @@ import {
   Pencil,
   RefreshCw,
   Reply,
-  ReplyAll,
   Search,
   Send,
   Star,
@@ -23,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NewAccountDialog } from "./new-account-dialog";
 import Link from "next/link";
+import { groupEmailThreads } from "./threading";
 
 type EmailAccount = {
   id: string;
@@ -40,9 +40,12 @@ type EmailMessage = {
   id: string;
   from: string;
   messageId: string;
+  threadId: string | null;
+  direction: "inbound" | "outbound";
   to: { value: Array<{ address: string; name: string }> };
+  cc?: { value: Array<{ address: string; name: string }> } | null;
   subject: string;
-  bodyText: string;
+  bodyText: string | null;
   createdAt: string;
   seen: boolean;
 };
@@ -90,6 +93,7 @@ function getPreview(text: string | null, max = 80): string {
 
 export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }) {
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [editing, setEditing] = useState<EmailAccount | undefined>();
@@ -101,6 +105,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [showReply, setShowReply] = useState(false);
+  const [replyOptionsOpen, setReplyOptionsOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncCount, setSyncCount] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState("");
@@ -112,7 +117,21 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<{ filename: string; content: string; contentType: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const threads = useMemo(() => groupEmailThreads(messages), [messages]);
+  const selectedMsg = messages.find((m) => m.id === selectedMessage);
+  const selectedThread = selectedMsg
+    ? threads.find((thread) => thread.messages.some((message) => message.id === selectedMsg.id)) ?? null
+    : null;
+  const selectedThreadMessages = selectedThread?.messages ?? (selectedMsg ? [selectedMsg] : []);
+  const replyRecipient = selectedMsg
+    ? selectedMsg.direction === "inbound"
+      ? selectedMsg.from
+      : [...selectedThreadMessages].reverse().find((message) => message.direction === "inbound")?.from
+        ?? selectedMsg.to.value[0]?.address
+        ?? ""
+    : "";
 
   const refetchAccounts = useCallback(async () => {
     const res = await fetch("/api/email/accounts").catch(() => null);
@@ -149,18 +168,27 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
       const data = (await res.json()) as { synced: number };
       setSyncCount(data.synced);
       void refetchMessages(selectedAccount);
-    } else setError("No se pudo sincronizar.");
+    } else {
+      const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "No se pudo sincronizar. Revisa Diagnóstico para ver el error técnico.");
+    }
   };
 
   const handleSelectMessage = (id: string) => {
     setSelectedMessage(id);
     setShowReply(false);
-    void fetch(`/api/email/messages/${id}`, { method: "PATCH" }).then((res) => {
-      if (res.ok) setMessages((prev) => prev.map((m) => m.id === id ? { ...m, seen: true } : m));
-    });
+    setReplyOptionsOpen(false);
+    const thread = threads.find((item) => item.messages.some((message) => message.id === id));
+    const unreadIds = (thread?.messages ?? []).filter((message) => !message.seen && message.direction === "inbound").map((message) => message.id);
+    if (unreadIds.length) {
+      setMessages((prev) => prev.map((message) => unreadIds.includes(message.id) ? { ...message, seen: true } : message));
+      for (const messageId of unreadIds) {
+        void fetch(`/api/email/messages/${messageId}`, { method: "PATCH" });
+      }
+    }
   };
 
-  const handleBack = () => { setSelectedMessage(null); setShowReply(false); };
+  const handleBack = () => { setSelectedMessage(null); setShowReply(false); setReplyOptionsOpen(false); };
 
   const handleDeleteMessage = async () => {
     if (!selectedMessage || !selectedAccount) return;
@@ -174,14 +202,19 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
   };
 
   const handleOpenReply = () => {
-    const msg = messages.find((m) => m.id === selectedMessage);
+    const msg = selectedMsg;
     if (!msg) return;
-    setReplyTo(msg.from);
+    setReplyTo(replyRecipient);
     setReplySubject(msg.subject.startsWith("Re:") ? msg.subject : `Re: ${msg.subject}`);
     setReplyBody("");
     setAttachments([]);
+    setReplyOptionsOpen(false);
     setShowReply(true);
   };
+
+  useEffect(() => {
+    if (showReply) replyTextareaRef.current?.focus();
+  }, [showReply]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -219,12 +252,17 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
       }),
     }).catch(() => null);
     setSending(false);
-    if (!response?.ok) { setError("No se pudo enviar el correo."); return; }
+    if (!response?.ok) {
+      const data = await response?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "No se pudo enviar el correo.");
+      return;
+    }
     void refetchMessages(selectedAccount);
     setShowReply(false);
     setReplyTo("");
     setReplySubject("");
     setReplyBody("");
+    setReplyOptionsOpen(false);
     setAttachments([]);
   };
 
@@ -245,7 +283,11 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
       }),
     }).catch(() => null);
     setSending(false);
-    if (!response?.ok) { setError("No se pudo enviar el correo."); return; }
+    if (!response?.ok) {
+      const data = await response?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "No se pudo enviar el correo.");
+      return;
+    }
     void refetchMessages(selectedAccount);
     setShowCompose(false);
     setComposeTo("");
@@ -254,16 +296,14 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
     setAttachments([]);
   };
 
-  const filteredMessages = messages.filter((msg) => {
-    if (filter === "unread" && msg.seen) return false;
+  const filteredThreads = threads.filter((thread) => {
+    if (filter === "unread" && !thread.unread) return false;
     if (query.trim()) {
       const q = query.toLowerCase();
-      return `${msg.subject} ${msg.from}`.toLowerCase().includes(q);
+      return thread.messages.some((message) => `${message.subject} ${message.from} ${message.bodyText ?? ""}`.toLowerCase().includes(q));
     }
     return true;
   });
-
-  const selectedMsg = messages.find((m) => m.id === selectedMessage);
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -373,9 +413,11 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                   <div className="flex gap-1 px-3 pb-2">
                     <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={() => { setEditing(acc); setShowNewAccount(true); }}>Editar</Button>
                     <Button variant="ghost" size="sm" className="h-6 text-[10px]" disabled={!!testing} onClick={async () => {
-                      setTesting(acc.id); setError("");
+                      setTesting(acc.id); setError(""); setSuccess("");
                       const res = await fetch(`/api/email/accounts/${acc.id}/test`, { method: "POST" }).catch(() => null);
-                      setError(res?.ok ? "Conexion verificada" : "Fallo la conexion.");
+                      const data = await res?.json().catch(() => null) as { message?: string; error?: { message?: string } } | null;
+                      if (res?.ok) setSuccess(data?.message ?? "Conexión IMAP/SMTP verificada.");
+                      else setError(data?.error?.message ?? "Falló la conexión IMAP/SMTP.");
                       setTesting(null);
                     }}>{testing === acc.id ? "Probando..." : "Probar"}</Button>
                     <Button variant="ghost" size="sm" className="h-6 text-[10px] text-destructive" onClick={async () => {
@@ -395,6 +437,12 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
             <div className="mx-4 mt-3 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
               {error}
               <button onClick={() => setError("")} className="ml-2 text-red-500 hover:text-red-700"><X className="inline h-3 w-3" /></button>
+            </div>
+          )}
+          {success && (
+            <div className="mx-4 mt-3 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+              {success}
+              <button onClick={() => setSuccess("")} className="ml-2 text-emerald-700 hover:text-emerald-900"><X className="inline h-3 w-3" /></button>
             </div>
           )}
 
@@ -431,7 +479,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto">
-                {filteredMessages.length === 0 ? (
+                {filteredThreads.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                     <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
                       <Mail className="h-10 w-10 text-muted-foreground/50" />
@@ -446,11 +494,14 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                     </p>
                   </div>
                 ) : (
-                  filteredMessages.map((msg) => (
+                  filteredThreads.map((thread) => {
+                    const msg = thread.latest;
+                    const correspondent = thread.messages.find((message) => message.direction === "inbound")?.from ?? msg.from;
+                    return (
                     <button
-                      key={msg.id}
+                      key={thread.id}
                       onClick={() => handleSelectMessage(msg.id)}
-                      className={`flex w-full items-start gap-3 border-b border-transparent px-4 py-3 text-left transition-colors hover:bg-muted/50 ${!msg.seen ? "bg-blue-50/50 dark:bg-blue-950/20" : ""}`}
+                      className={`flex w-full items-start gap-3 border-b border-transparent px-4 py-3 text-left transition-colors hover:bg-muted/50 ${thread.unread ? "bg-blue-50/50 dark:bg-blue-950/20" : ""}`}
                     >
                       {/* Checkbox */}
                       <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-blue-600" onClick={(e) => e.stopPropagation()} />
@@ -461,36 +512,38 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                       </button>
 
                       {/* Avatar */}
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarColor(msg.from)}`}>
-                        {getInitials(msg.from)}
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${getAvatarColor(correspondent)}`}>
+                        {getInitials(correspondent)}
                       </div>
 
                       {/* Content */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
-                          <span className={`truncate text-sm ${!msg.seen ? "font-semibold" : "font-medium"}`}>
-                            {msg.from.replace(/["<>]/g, "").split("@")[0]}
+                          <span className={`truncate text-sm ${thread.unread ? "font-semibold" : "font-medium"}`}>
+                            {correspondent.replace(/["<>]/g, "").split("@")[0]}
                           </span>
+                          {thread.messages.length > 1 && <Badge variant="secondary" className="shrink-0 text-[10px]">{thread.messages.length}</Badge>}
                           <span className="shrink-0 text-[11px] text-muted-foreground">
                             {formatTime(msg.createdAt)}
                           </span>
                         </div>
                         <div className="flex items-baseline gap-2">
-                          <span className={`truncate text-sm ${!msg.seen ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                          <span className={`truncate text-sm ${thread.unread ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                             {msg.subject}
                           </span>
                         </div>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground/70">
-                          {getPreview(msg.bodyText)}
+                          {msg.direction === "outbound" ? "Tú: " : ""}{getPreview(msg.bodyText)}
                         </p>
                       </div>
 
                       {/* Unread dot */}
-                      {!msg.seen && (
+                      {thread.unread && (
                         <div className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" />
                       )}
                     </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -505,14 +558,11 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-base font-semibold">{selectedMsg.subject}</h2>
+                  <h2 className="truncate text-base font-semibold">{selectedThread?.latest.subject ?? selectedMsg.subject}</h2>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleOpenReply}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Responder" title="Responder" onClick={handleOpenReply}>
                     <Reply className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <ReplyAll className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8">
                     <Archive className="h-4 w-4" />
@@ -523,46 +573,104 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                 </div>
               </div>
 
-              {/* Sender info */}
-              <div className="flex items-start gap-3 px-6 py-4">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${getAvatarColor(selectedMsg.from)}`}>
-                  {getInitials(selectedMsg.from)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-semibold">{selectedMsg.from}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(selectedMsg.createdAt).toLocaleString("es-MX", {
-                        weekday: "short", day: "numeric", month: "short",
-                        hour: "2-digit", minute: "2-digit",
-                      })}
-                    </span>
+              {/* Conversación agrupada por In-Reply-To / References. */}
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
+                {selectedThreadMessages.map((message) => {
+                  const outbound = message.direction === "outbound";
+                  return (
+                    <article key={message.id} className={`max-w-[92%] rounded-xl border p-3 sm:max-w-[82%] ${outbound ? "ml-auto border-blue-200 bg-blue-50/70 dark:border-blue-900 dark:bg-blue-950/30" : "mr-auto bg-card"}`}>
+                      <header className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
+                        <span className="font-semibold">{outbound ? "Tú" : message.from}</span>
+                        <time className="text-muted-foreground">{new Date(message.createdAt).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</time>
+                      </header>
+                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">{message.bodyText || "(sin contenido de texto)"}</p>
+                      {message.to.value.length > 0 && (
+                        <p className="mt-2 text-[11px] text-muted-foreground">Para: {message.to.value.map((recipient) => recipient.address).join(", ")}</p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              {/* Respuesta en línea dentro del hilo, como el compositor de chat. */}
+              {showReply ? (
+                <form onSubmit={handleSendReply} className="border-t bg-background px-4 py-3 sm:px-6">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">Responder a {replyTo}</p>
+                      <p className="truncate text-xs text-muted-foreground">{replySubject}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button type="button" onClick={() => setReplyOptionsOpen((open) => !open)} className="text-xs text-primary hover:underline">
+                        {replyOptionsOpen ? "Ocultar campos" : "Editar para/asunto"}
+                      </button>
+                      <button type="button" aria-label="Cerrar respuesta" onClick={() => setShowReply(false)} className="rounded p-1 text-muted-foreground hover:bg-accent">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Para: {selectedMsg.to.value.map((r) => r.address).join(", ")}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </div>
 
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto px-6 pb-6">
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                  {selectedMsg.bodyText || "(sin contenido)"}
-                </div>
-              </div>
+                  {replyOptionsOpen && (
+                    <div className="mb-2 grid gap-2 sm:grid-cols-2">
+                      <label className="space-y-1 text-xs text-muted-foreground">Para
+                        <Input type="email" required value={replyTo} onChange={(e) => setReplyTo(e.target.value)} />
+                      </label>
+                      <label className="space-y-1 text-xs text-muted-foreground">Asunto
+                        <Input required value={replySubject} onChange={(e) => setReplySubject(e.target.value)} />
+                      </label>
+                    </div>
+                  )}
 
-              {/* Quick reply bar */}
-              <div className="border-t px-6 py-3">
-                <button
-                  onClick={handleOpenReply}
-                  className="w-full rounded-lg border bg-muted/30 px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60"
-                >
-                  Responder...
-                </button>
-              </div>
+                  <textarea
+                    ref={replyTextareaRef}
+                    required
+                    rows={3}
+                    placeholder="Escribe una respuesta… (Enter envía · Shift+Enter nueva línea)"
+                    value={replyBody}
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    className="max-h-40 min-h-[72px] w-full resize-y rounded-lg border bg-card px-3 py-2 text-sm outline-none placeholder:text-muted-foreground/60 focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+
+                  {attachments.length > 0 && (
+                    <ul className="mt-2 flex flex-wrap gap-2">
+                      {attachments.map((attachment, index) => (
+                        <li key={`${attachment.filename}-${index}`} className="flex max-w-full items-center gap-2 rounded-full bg-muted px-3 py-1 text-xs">
+                          <Paperclip className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{attachment.filename}</span>
+                          <button type="button" aria-label={`Quitar ${attachment.filename}`} onClick={() => removeAttachment(index)}><X className="h-3 w-3" /></button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <div className="mt-2 flex items-center justify-between">
+                    <div>
+                      <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple className="hidden" onChange={(e) => void handleFileChange(e)} />
+                      <Button type="button" variant="ghost" size="icon" aria-label="Adjuntar archivo" onClick={() => fileInputRef.current?.click()}>
+                        <Paperclip className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <Button type="submit" disabled={sending || !replyBody.trim()} className="rounded-full bg-blue-600 px-5 text-white hover:bg-blue-700">
+                      <Send className="mr-2 h-4 w-4" /> {sending ? "Enviando…" : "Enviar"}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <div className="border-t px-4 py-3 sm:px-6">
+                  <button
+                    onClick={handleOpenReply}
+                    className="w-full rounded-lg border bg-muted/30 px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60"
+                  >
+                    Responder a {replyRecipient || selectedMsg.from}…
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -582,87 +690,6 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
           )}
         </main>
       </div>
-
-      {/* ═══ REPLY MODAL ═══ */}
-      {showReply && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-          <button aria-label="Cerrar" onClick={() => setShowReply(false)} className="absolute inset-0 bg-black/30" />
-          <div className="relative z-10 w-full max-w-2xl rounded-t-2xl border bg-card shadow-2xl sm:rounded-2xl">
-            {/* Modal header */}
-            <div className="flex items-center justify-between border-b px-5 py-3">
-              <h2 className="text-sm font-semibold">Nuevo mensaje</h2>
-              <button onClick={() => setShowReply(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSendReply} className="flex flex-col">
-              <div className="flex items-center gap-2 border-b px-5 py-2.5">
-                <Label className="w-12 text-xs text-muted-foreground">Para</Label>
-                <Input
-                  type="email"
-                  required
-                  value={replyTo}
-                  onChange={(e) => setReplyTo(e.target.value)}
-                  className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
-                />
-              </div>
-              <div className="flex items-center gap-2 border-b px-5 py-2.5">
-                <Label className="w-12 text-xs text-muted-foreground">Asunto</Label>
-                <Input
-                  required
-                  value={replySubject}
-                  onChange={(e) => setReplySubject(e.target.value)}
-                  className="border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
-                />
-              </div>
-
-              <textarea
-                required
-                rows={10}
-                placeholder="Escribe tu mensaje..."
-                value={replyBody}
-                onChange={(e) => setReplyBody(e.target.value)}
-                className="min-h-[200px] resize-none border-0 bg-transparent px-5 py-3 text-sm outline-none placeholder:text-muted-foreground/50"
-              />
-
-              {/* Attachments */}
-              {attachments.length > 0 && (
-                <div className="border-t px-5 py-2">
-                  <ul className="space-y-1">
-                    {attachments.map((a, i) => (
-                      <li key={i} className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-xs">
-                        <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="flex-1 truncate">{a.filename}</span>
-                        <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Modal footer */}
-              <div className="flex items-center justify-between border-t px-5 py-3">
-                <div className="flex items-center gap-1">
-                  <Button type="submit" disabled={sending} className="rounded-full bg-blue-600 px-6 text-white hover:bg-blue-700">
-                    <Send className="mr-1.5 h-3.5 w-3.5" />
-                    {sending ? "Enviando..." : "Enviar"}
-                  </Button>
-                  <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" multiple className="hidden" onChange={(e) => void handleFileChange(e)} />
-                  <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => fileInputRef.current?.click()}>
-                    <Paperclip className="h-4 w-4" />
-                  </Button>
-                </div>
-                <button type="button" onClick={() => setShowReply(false)} className="text-xs text-muted-foreground hover:text-foreground">
-                  Descartar
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {showNewAccount && (
         <NewAccountDialog

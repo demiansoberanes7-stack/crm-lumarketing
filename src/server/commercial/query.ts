@@ -7,12 +7,9 @@ import {
   available,
   unavailable,
   averageTicket,
-  cac,
   contribution,
   contributionMargin,
   conversionRate,
-  roas,
-  romi,
   winRate,
   type MetricValue,
 } from "@/server/metrics/compute";
@@ -147,13 +144,17 @@ export async function queryCommercial(
   const paymentsCount = n(paymentsRow[0]?.cnt);
   const expenses = n(expensesRow[0]?.total);
 
-  // ── Inversión publicitaria (tabla campaign) ──
+  // La tabla campaign guarda presupuesto planeado, no gasto realizado. No se
+  // debe usar ese presupuesto como si fuera inversión real para ROAS/ROMI/CAC.
   const campaignRows = await db
-    .select({ spend: sql<number>`coalesce(sum(${schema.campaign.budgetPlannedCents}), 0)` })
+    .select({
+      plannedBudget: sql<number>`coalesce(sum(${schema.campaign.budgetPlannedCents}), 0)`,
+      campaigns: count(),
+    })
     .from(schema.campaign)
     .where(and(orgScope(schema.campaign.organizationId), gte(schema.campaign.createdAt, from), lte(schema.campaign.createdAt, to)));
-  const adSpend = campaignRows.reduce((sum, r) => sum + n(r.spend), 0);
-  const hasCampaigns = campaignRows.length > 0;
+  const plannedBudget = n(campaignRows[0]?.plannedBudget);
+  const hasCampaigns = n(campaignRows[0]?.campaigns) > 0;
 
   // ── Atribución: primer toque por canal ──
   const channelRows = (await db
@@ -183,7 +184,9 @@ export async function queryCommercial(
     .where(orgScope(schema.serviceCost.organizationId));
   const hasCosts = costRows.length > 0;
   const totalDeliveryCost = costRows.reduce((sum, r) => sum + n(r.cost), 0);
-  const contrib = hasCosts ? contribution(revenue, totalDeliveryCost, hasCampaigns ? adSpend : 0) : null;
+  // Contribución de prestación: se informa antes de publicidad porque aún no
+  // hay un dato de gasto realizado atribuible en la tabla de campañas.
+  const contrib = hasCosts ? contribution(revenue, totalDeliveryCost) : null;
 
   // ── Experimentos ──
   const experimentRows = await db
@@ -287,10 +290,11 @@ export async function queryCommercial(
     },
 
     publicidad: {
-      adSpend: hasCampaigns ? num(adSpend) : unavailable("no_data"),
-      roas: hasCampaigns ? maybe(roas(revenue, adSpend), "not_applicable") : unavailable("no_data"),
-      romi: hasCampaigns ? maybe(romi(revenue, adSpend), "not_applicable") : unavailable("no_data"),
-      cac: hasCampaigns ? maybe(cac(adSpend, won), "not_applicable") : unavailable("no_data"),
+      plannedBudget: hasCampaigns ? num(plannedBudget) : unavailable("no_data"),
+      adSpend: unavailable("pending"),
+      roas: unavailable("pending"),
+      romi: unavailable("pending"),
+      cac: unavailable("pending"),
     },
 
     // La capa de tráfico (GA4) se mezcla en la ruta: aquí solo el vínculo

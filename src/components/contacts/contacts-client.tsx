@@ -10,6 +10,7 @@ import {
   Search,
   Trash2,
   UserPlus,
+  X,
 } from "lucide-react";
 import type { ContactDto } from "@/lib/types";
 import { formatPhone } from "@/lib/utils";
@@ -33,6 +34,7 @@ export function ContactsClient() {
   const [stages, setStages] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<ContactDto | null>(null);
+  const [viewing, setViewing] = useState<ContactDto | null>(null);
   const [creando, setCreando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -173,35 +175,36 @@ export function ContactsClient() {
                 key={c.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-3 sm:flex-nowrap sm:gap-x-4 sm:px-4"
               >
-                <ContactAvatar name={c.name} seed={c.id} />
-                {/* El 60% mínimo es lo que empuja los botones a su propio
-                    renglón en el teléfono en vez de exprimir el nombre. */}
-                <div className="min-w-[60%] flex-1 sm:min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-medium">
-                      {c.name}
-                    </span>
-                    {c.priority && <PriorityBadge value={c.priority} />}
-                    {c.stageName && (
-                      <Badge variant="outline">{c.stageName}</Badge>
-                    )}
-                    {c.archivedAt && (
-                      <Badge variant="secondary">Archivado</Badge>
-                    )}
-                    {/* Solo la fuente que alguien capturó: presentar una
-                        deducción como dato la volvería un número inventado en
-                        cuanto se cuente por fuente. */}
-                    {c.source?.source === "capturada" && (
-                      <Badge variant="secondary">
-                        {SOURCE_LABELS[c.source.value]}
-                      </Badge>
-                    )}
-                    {med && <Badge variant="outline">{med}</Badge>}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setViewing(c)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setViewing(c);
+                    }
+                  }}
+                  aria-label={`Abrir ficha de ${c.name}`}
+                  className="flex min-w-[60%] flex-1 cursor-pointer items-center gap-x-3 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-0"
+                >
+                  <ContactAvatar name={c.name} seed={c.id} />
+                  {/* El 60% mínimo reserva espacio para los botones en móvil. */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-medium">{c.name}</span>
+                      {c.priority && <PriorityBadge value={c.priority} />}
+                      {c.stageName && <Badge variant="outline">{c.stageName}</Badge>}
+                      {c.archivedAt && <Badge variant="secondary">Archivado</Badge>}
+                      {c.source?.source === "capturada" && (
+                        <Badge variant="secondary">{SOURCE_LABELS[c.source.value]}</Badge>
+                      )}
+                      {med && <Badge variant="outline">{med}</Badge>}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {formatPhone(c.phone)}{c.notes ? ` · ${c.notes.slice(0, 60)}` : ""}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {formatPhone(c.phone)}
-                    {c.notes ? ` · ${c.notes.slice(0, 60)}` : ""}
-                  </p>
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1.5">
                   <Button
@@ -256,6 +259,14 @@ export function ContactsClient() {
         />
       )}
 
+      {viewing && (
+        <ContactDetailDialog
+          contact={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={(contact) => { setViewing(null); setEditing(contact); }}
+        />
+      )}
+
       {creando && (
         <NewContactDialog
           onClose={() => setCreando(false)}
@@ -269,6 +280,113 @@ export function ContactsClient() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+type ContactDetailResponse = {
+  contact: ContactDto;
+  stage: { id: string; name: string; kind: string; position: number } | null;
+  lead: { id: string } | null;
+};
+
+function ContactDetailDialog({
+  contact: initial,
+  onClose,
+  onEdit,
+}: {
+  contact: ContactDto;
+  onClose: () => void;
+  onEdit: (contact: ContactDto) => void;
+}) {
+  const [detail, setDetail] = useState<ContactDetailResponse | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/contacts/${initial.id}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("No se pudo cargar la ficha del contacto.");
+        return await res.json() as ContactDetailResponse;
+      })
+      .then((data) => { if (active) setDetail(data); })
+      .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Error de conexión."); });
+    return () => { active = false; };
+  }, [initial.id]);
+
+  const contact = detail?.contact ?? initial;
+  const ficha = contact.ficha ?? {};
+  const fichaEntries = Object.entries(ficha).filter(([key]) => key !== "email");
+  const email = typeof ficha.email === "string" ? ficha.email : null;
+  const medium = mediumLabel(contact.medium, contact.mediumDetail);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-overlay p-4" onClick={onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Ficha de ${contact.name}`}
+        className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-xl border bg-card p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="mb-5 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <ContactAvatar name={contact.name} seed={contact.id} />
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold">{contact.name}</h2>
+              <p className="text-sm text-muted-foreground">Ficha del contacto</p>
+            </div>
+          </div>
+          <button type="button" aria-label="Cerrar ficha" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
+        {!detail && !error && <p className="mb-3 text-sm text-muted-foreground">Cargando datos completos…</p>}
+
+        <dl className="grid gap-x-5 gap-y-3 sm:grid-cols-2">
+          <DetailField label="Teléfono" value={contact.phone ? formatPhone(contact.phone) : null} />
+          <DetailField label="Correo" value={email} />
+          <DetailField label="Etapa" value={detail?.stage?.name ?? contact.stageName} />
+          <DetailField label="Medio de contacto" value={medium} />
+          <DetailField label="Fuente" value={contact.source ? `${SOURCE_LABELS[contact.source.value]} · ${contact.source.source === "capturada" ? "capturada" : "deducida"}` : null} />
+          <DetailField label="Prioridad" value={contact.priority ?? null} />
+          <DetailField label="Estado" value={contact.archivedAt ? "Archivado" : "Activo"} />
+        </dl>
+
+        {contact.notes && (
+          <div className="mt-4 rounded-lg border p-3">
+            <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Notas</h3>
+            <p className="whitespace-pre-wrap text-sm">{contact.notes}</p>
+          </div>
+        )}
+        {fichaEntries.length > 0 && (
+          <div className="mt-4 rounded-lg border p-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Información adicional</h3>
+            <dl className="grid gap-x-5 gap-y-3 sm:grid-cols-2">
+              {fichaEntries.map(([key, value]) => (
+                <DetailField key={key} label={key} value={String(value)} />
+              ))}
+            </dl>
+          </div>
+        )}
+
+        <footer className="mt-5 flex flex-wrap justify-end gap-2">
+          <Link href={`/inbox?contact=${contact.id}`}>
+            <Button variant="outline"><MessageSquareText className="mr-2 h-4 w-4" />Abrir conversación</Button>
+          </Link>
+          <Button onClick={() => onEdit(contact)}>Editar contacto</Button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="break-words text-sm">{value || "Sin capturar"}</dd>
     </div>
   );
 }

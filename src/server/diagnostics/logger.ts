@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { diagnosticMetadata, errorCode } from "./redact";
+import { diagnosticError, diagnosticMetadata, errorCode } from "./redact";
 
 const messages = {
   api_failed: "Una operación del sistema falló. Revisa la configuración del módulo y vuelve a intentar.",
@@ -18,6 +18,7 @@ const messages = {
   media_failed: "No se pudo descargar el adjunto. Revisa la conexión y disponibilidad del archivo.",
   ai_failed: "El proveedor de IA no pudo completar el turno. Revisa token, modelo y disponibilidad.",
   tasks_sync_failed: "No se pudo sincronizar la tarea con Google Calendar. La tarea quedó guardada; el evento se reintentará en la siguiente edición.",
+  email_sync_failed: "No se pudo sincronizar la cuenta de correo. Revisa IMAP y el estado del servidor.",
 } as const;
 export type DiagnosticCode = keyof typeof messages;
 let lastPurge = 0;
@@ -32,7 +33,15 @@ export async function recordDiagnostic(input: {
   metadata?: Record<string, unknown>;
 }) {
   const metadata = diagnosticMetadata(input.metadata);
-  const safe = { source: input.source, code: input.code, severity: input.severity ?? "error", errorCode: errorCode(input.error), ...metadata };
+  const details = diagnosticError(input.error);
+  const safe = {
+    source: input.source,
+    code: input.code,
+    severity: input.severity ?? "error",
+    errorCode: errorCode(input.error),
+    ...(details ? { errorDetails: details } : {}),
+    ...metadata,
+  };
   try {
     const db = getDb();
     await db.transaction(async (tx) => {

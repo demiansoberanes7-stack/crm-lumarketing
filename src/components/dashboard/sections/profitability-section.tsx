@@ -1,8 +1,7 @@
 "use client";
 
 import { TrendingUp } from "lucide-react";
-import { KpiCard, formatCurrency, formatPercent } from "../kpi-card";
-import { BarChartCard, LineChartCard, GaugeChart } from "../charts";
+import { BarChartCard, LineChartCard } from "../charts";
 
 interface Props {
   data: {
@@ -18,19 +17,7 @@ export function ProfitabilitySection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <TrendingUp className="h-4 w-4" /> Resultado de caja · ingresos cobrados menos gastos pagados
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
-        <KpiCard title="Resultado de caja" value={formatCurrency(data.netIncome)} icon={<TrendingUp />}
-          trend={data.netIncome === 0 ? "neutral" : data.netIncome > 0 ? "up" : "down"} />
-        <KpiCard title="Margen de caja" value={formatPercent(data.margin)} />
-        <KpiCard title="Flujo de Caja (neto)" value={formatCurrency(
-          data.weeklyCashFlow.reduce((s, w) => s + w.net, 0)
-        )} />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Margen neto</p>
-          {data.margin === null ? <p>N/D: sin ingresos en el período</p> : <GaugeChart value={data.margin} label="margen de caja" />}
-        </div>
+      <div className="grid gap-4 lg:grid-cols-2">
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">Ingresos vs Gastos mensual</p>
           <BarChartCard

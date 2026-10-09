@@ -54,7 +54,7 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
   }, []);
 
   const timezone = settings?.timezone ?? "America/Mexico_City";
-  const dateLabel = (date: Date | string) => format(zonedDisplayDate(date, timezone), "EEE dd.MM HH:mm", { locale: es });
+  const dateLabel = (date: Date | string) => format(zonedDisplayDate(date, timezone), "EEE d MMM yyyy, HH:mm", { locale: es });
   /** ISO del servidor → valor de un input datetime-local en la zona del negocio. */
   const toInputValue = (iso: Date | string | null | undefined): string => {
     if (!iso) return "";
@@ -245,7 +245,9 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                                 {task.urgent && <Badge variant="destructive" className="text-xs">Urgente</Badge>}
                                 {task.duration && <Badge variant="outline" className="gap-1 text-xs">{task.duration >= 60 ? `${task.duration / 60}h` : `${task.duration}m`}</Badge>}
-                                {task.scheduledStart && <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{dateLabel(task.scheduledStart)}</Badge>}
+                                {task.scheduledStart
+                                  ? <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />Entrega: {dateLabel(task.scheduledStart)}</Badge>
+                                  : <Badge variant="outline">Sin fecha de entrega</Badge>}
                                 <Button variant="ghost" size="icon" aria-label={`Editar ${task.title}`} disabled={busy} onClick={() => { setEditingId(task.id); setNewTitle(task.title); setNewDetails(task.details ?? ""); setNewUrgent(task.urgent); setNewDuration(task.duration ? String(task.duration) : "default"); setNewContactId(task.contactId); setNewProjectId(task.projectId); setNewStart(toInputValue(task.scheduledStart)); titleRef.current?.focus(); }}><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" aria-label={`Eliminar ${task.title}`} disabled={busy} onClick={() => void removeTask(task)}><Trash2 className="h-4 w-4" /></Button>
                               </div>
@@ -294,6 +296,9 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                             </Badge>
                           )}
                         </div>
+                        <p className="text-xs text-text-3 mt-1">
+                          {task.scheduledStart ? `Entrega: ${dateLabel(task.scheduledStart)}` : "Sin fecha de entrega"}
+                        </p>
                         {task.completedAt && <p className="text-xs text-text-3 mt-1">Completada {dateLabel(task.completedAt)}</p>}
                       </div>
                       <Button variant="ghost" size="sm" disabled={busy} onClick={() => void toggleComplete(task.id, false)}>

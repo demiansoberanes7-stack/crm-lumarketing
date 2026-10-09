@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/api";
+import { getEnv } from "@/lib/env";
 import { getIntegration } from "@/server/integrations";
 import { ga4ConnectionState, parseGa4Credentials, readGa4Metrics, type Ga4Metrics } from "@/server/analytics/ga4";
 
@@ -101,17 +102,19 @@ export const GET = withAuth(async (session) => {
   }
 
   if (metaConfigured) {
+    const env = getEnv();
+    const graphRoot = `${env.META_GRAPH_BASE_URL.replace(/\/+$/, "")}/${env.META_GRAPH_API_VERSION.replace(/^\/+|\/+$/g, "")}`;
     const token = metaCredentials.accessToken as string;
     const rawAccountId = metaCredentials.adAccountId as string;
     const accountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`;
-    const campaignUrl = new URL(`https://graph.facebook.com/v19.0/${accountId}/insights`);
+    const campaignUrl = new URL(`${graphRoot}/${accountId}/insights`);
     campaignUrl.search = new URLSearchParams({
       fields: "campaign_id,campaign_name,spend,impressions,clicks",
       date_preset: "last_30d",
       level: "campaign",
       access_token: token,
     }).toString();
-    const dailyUrl = new URL(`https://graph.facebook.com/v19.0/${accountId}/insights`);
+    const dailyUrl = new URL(`${graphRoot}/${accountId}/insights`);
     dailyUrl.search = new URLSearchParams({
       fields: "date_start,clicks",
       date_preset: "last_30d",
