@@ -71,6 +71,25 @@ export function parseGa4Credentials(credentials: Record<string, unknown>): Ga4Cr
   return { propertyId: propertyId.trim(), serviceAccountJson: raw };
 }
 
+export type Ga4ConnectionState = { status: "disconnected" | "configured"; message?: string };
+
+/**
+ * Estado del Hub ANTES de intentar leer datos.
+ *
+ * Un Property ID guardado sin la service account no es "Desconectado": hay una
+ * configuración a medias y la tarjeta tiene que decir exactamente qué falta, no
+ * mandar al usuario a empezar de cero.
+ */
+export function ga4ConnectionState(credentials: Record<string, unknown>): Ga4ConnectionState {
+  if (parseGa4Credentials(credentials)) return { status: "configured" };
+  const propertyId = credentials.propertyId;
+  if (typeof propertyId !== "string" || !propertyId.trim()) return { status: "disconnected" };
+  return {
+    status: "configured",
+    message: "Falta el JSON de la service account: ve a Ajustes → Marketing.",
+  };
+}
+
 function parseServiceAccount(json: string): ServiceAccount {
   let parsed: unknown;
   try {

@@ -8,6 +8,7 @@ import {
   getContactStage,
   serializeContact,
 } from "@/server/contacts";
+import { normalizeMedium } from "@/lib/contact-medium";
 import { upsertFicha } from "@/server/bot/ficha";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ const patchSchema = z.object({
   notes: z.string().max(4000).nullable().optional(),
   archived: z.boolean().optional(),
   ficha: z.record(z.unknown()).optional(),
+  medium: z.unknown().optional(),
+  mediumDetail: z.unknown().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
@@ -56,6 +59,18 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   }
 
   const set: Record<string, unknown> = { updatedAt: new Date() };
+
+  const mediumTocado =
+    body.data.medium !== undefined || body.data.mediumDetail !== undefined;
+  if (mediumTocado) {
+    const medium = normalizeMedium({
+      medium: body.data.medium ?? null,
+      mediumDetail: body.data.mediumDetail ?? null,
+    });
+    if (!medium.ok) return apiError(422, "medium", medium.error);
+    set.medium = medium.medium;
+    set.mediumDetail = medium.mediumDetail;
+  }
   if (body.data.name !== undefined) {
     set.name = body.data.name;
     set.nameSource = "manual";

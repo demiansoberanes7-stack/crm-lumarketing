@@ -19,6 +19,11 @@ const createSchema = z.object({
   duration: z.number().int().min(15).max(480).optional(),
   contactId: z.string().max(255).nullable().optional(),
   projectId: z.string().max(255).nullable().optional(),
+  /**
+   * Día y hora elegidos por el usuario (ISO con offset). Si no viene, la tarea
+   * cae en el siguiente hueco libre del horario laboral, como siempre.
+   */
+  scheduledStart: z.string().datetime({ offset: true }).optional(),
 });
 
 export const POST = withAuth(async (session, req: Request) => {
@@ -27,10 +32,21 @@ export const POST = withAuth(async (session, req: Request) => {
   const settings = await getCalTodoSettings(session.userId, session.organizationId);
   const tasks = await getCalTodoTasks(session.userId, session.organizationId);
   const duration = body.data.duration ?? settings?.defaultDuration ?? 60;
-  const slot = findNextFreeSlot(tasks, settings, duration);
+  const manualStart = body.data.scheduledStart ? new Date(body.data.scheduledStart) : null;
+  const slot = manualStart
+    ? { start: manualStart, end: new Date(manualStart.getTime() + duration * 60_000) }
+    : findNextFreeSlot(tasks, settings, duration);
   if (!slot) return apiError(422, "no_slot", "La duración no cabe en el horario laboral disponible");
   const priority = body.data.urgent ? Math.min(0, ...tasks.map((t) => t.priority)) - 1 : Math.max(-1, ...tasks.map((t) => t.priority)) + 1;
-  const created = await createCalTodoTask(session.userId, session.organizationId, { ...body.data, priority });
+  const created = await createCalTodoTask(session.userId, session.organizationId, {
+    title: body.data.title,
+    details: body.data.details,
+    urgent: body.data.urgent,
+    duration: body.data.duration,
+    contactId: body.data.contactId,
+    projectId: body.data.projectId,
+    priority,
+  });
   if (!created) return apiError(500, "create_failed", "No se pudo crear la tarea");
   if (slot) {
     await updateCalTodoTask(created.id, session.organizationId, { scheduledStart: slot.start, scheduledEnd: slot.end }, session.userId);
@@ -48,6 +64,11 @@ const patchSchema = z.object({
   completed: z.boolean().optional(),
   contactId: z.string().max(255).nullable().optional(),
   projectId: z.string().max(255).nullable().optional(),
+  /**
+   * string = programar en ese instante · null = dejarla sin programar ·
+   * ausente = reprogramación automática (cambio de duración, reabrir, etc.).
+   */
+  scheduledStart: z.string().datetime({ offset: true }).nullable().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request) => {
@@ -59,14 +80,36 @@ export const PATCH = withAuth(async (session, req: Request) => {
   const tasks = await getCalTodoTasks(session.userId, session.organizationId);
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return apiError(404, "not_found", "Tarea no encontrada");
-  let schedule = {};
-  if (!hasIdKind(taskId, "projectTask") && (body.data.duration !== undefined || body.data.completed === false)) {
+  const isProjectTask = hasIdKind(taskId, "projectTask");
+  let schedule: { scheduledStart?: Date | null; scheduledEnd?: Date | null } = {};
+  if (body.data.scheduledStart !== undefined) {
+    // Día y hora elegidos (o borrados) por el usuario: manda lo que pidió,
+    // sin saltar al siguiente hueco libre.
+    if (body.data.scheduledStart === null) {
+      schedule = { scheduledStart: null, scheduledEnd: null };
+    } else {
+      const start = new Date(body.data.scheduledStart);
+      const duration = body.data.duration ?? task.duration ?? (await getCalTodoSettings(session.userId, session.organizationId))?.defaultDuration ?? 60;
+      schedule = { scheduledStart: start, scheduledEnd: new Date(start.getTime() + duration * 60_000) };
+    }
+  } else if (!isProjectTask && (body.data.duration !== undefined || body.data.completed === false)) {
     const settings = await getCalTodoSettings(session.userId, session.organizationId);
     const slot = findNextFreeSlot(tasks.filter((t) => t.id !== taskId), settings, body.data.duration ?? task.duration ?? settings?.defaultDuration ?? 60);
     if (!slot) return apiError(422, "no_slot", "La duración no cabe en el horario laboral disponible");
     schedule = { scheduledStart: slot.start, scheduledEnd: slot.end };
   }
-  const updated = await updateCalTodoTask(taskId, session.organizationId, { ...body.data, ...schedule }, session.userId);
+  // `scheduledStart` llega como texto del cliente y ya quedó convertido en
+  // `schedule`; pasar el string tal cual rompería la firma (Date | null).
+  const updated = await updateCalTodoTask(taskId, session.organizationId, {
+    title: body.data.title,
+    details: body.data.details,
+    urgent: body.data.urgent,
+    duration: body.data.duration,
+    completed: body.data.completed,
+    contactId: body.data.contactId,
+    projectId: body.data.projectId,
+    ...schedule,
+  }, session.userId);
   if (!updated) return apiError(404, "not_found", "Task not found");
   return Response.json({ task: updated });
 });

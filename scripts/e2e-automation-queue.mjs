@@ -44,6 +44,10 @@ async function main() {
     id: "followup-3d",
     name: "Seguimiento E2E",
     trigger: "Etapa Cotizado o inactividad",
+    // Clave explícita: el texto legacy también activaría el barrido de
+    // inactividad, que encola para todos los leads mudos y ensuciaría las
+    // comprobaciones de envío de este mismo guion.
+    triggers: ["stage_change"],
     messageText: `Seguimiento automático E2E ${Date.now()}`,
     delayHours: 2,
     enabled: true,
@@ -53,6 +57,7 @@ async function main() {
   check("regla guarda una espera expresada en horas", saveRule.response.ok, JSON.stringify(saveRule.json));
   const saved = await api("/api/automations/rules");
   check("API conserva 2 horas (1440 minutos) sin convertirla a días", saved.json?.rules?.[0]?.delayHours === 2);
+  check("la API devuelve las claves de disparo además del texto", saved.json?.rules?.[0]?.triggers?.[0] === "stage_change", JSON.stringify(saved.json?.rules?.[0]));
 
   // Canales: el selector debe conocer las cuentas conectadas de la instancia.
   const channels = await api("/api/automations/channels");
@@ -115,6 +120,127 @@ async function main() {
   }
   const restore = await api("/api/automations/rules", "POST", { rules: [rule] });
   check("se restaura la regla original (WhatsApp)", restore.response.ok, JSON.stringify(restore.json));
+
+  // ===== Disparos automáticos: nadie pulsa "Disparar manualmente" =====
+  // Todo se apoya en el endpoint de ejecuciones, que dice qué regla, por qué
+  // disparo y si salió — contar métricas globales no alcanzaría para saberlo.
+  const sinceIso = new Date(Date.now() - 2000).toISOString();
+  const esperar = async (ruleId, triggeredBy, estado, ms = 60_000) => {
+    const fin = Date.now() + ms;
+    let rows = [];
+    for (;;) {
+      const r = await api(
+        `/api/automations/executions?ruleId=${encodeURIComponent(ruleId)}` +
+          `&since=${encodeURIComponent(sinceIso)}&limit=200`
+      );
+      rows = (r.json?.executions ?? []).filter((e) => e.triggeredBy === triggeredBy);
+      const listo =
+        estado === "alguno"
+          ? rows.length > 0
+          : rows.some((e) => e.status === estado);
+      if (listo) return rows;
+      if (Date.now() > fin) return rows;
+      await sleep(1000);
+    }
+  };
+
+  const stages = (await api("/api/pipeline/stages")).json?.stages ?? [];
+  const stageRule = { ...rule, delayHours: 0 };
+  const welcomeRule = {
+    ...rule,
+    id: "welcome",
+    name: "Bienvenida E2E",
+    trigger: "Nuevo lead entra al pipeline",
+    triggers: ["new_lead"],
+    delayHours: 0,
+    messageText: `Bienvenida E2E ${Date.now()}`,
+  };
+  const inactivityRule = {
+    ...rule,
+    id: "inactivity-e2e",
+    name: "Inactividad E2E",
+    trigger: "Sin actividad durante la espera",
+    triggers: ["inactivity"],
+    delayHours: 0,
+    messageText: `Inactividad E2E ${Date.now()}`,
+  };
+  const guardadas = await api("/api/automations/rules", "POST", {
+    rules: [stageRule, welcomeRule, inactivityRule],
+  });
+  check("se arman las tres reglas automáticas", guardadas.response.ok, JSON.stringify(guardadas.json));
+
+  // Un número que nunca escribió entra por el webhook: nacen contacto,
+  // conversación y lead — y el trigger "nuevo lead" tiene que dispararse solo.
+  const marca = Date.now();
+  const telefono = `5214630${String(marca).slice(-7)}`;
+  const inbound = await api("/api/dev/wa-mock/inbound", "POST", {
+    phoneNumberId: "PN-E2E-1",
+    from: telefono,
+    name: "Lead Automations",
+    text: "hola, vi su anuncio",
+    waMessageId: `wamid.e2e.auto.${marca}`,
+  });
+  check("un lead nuevo entra por el webhook de verdad", inbound.response.ok, JSON.stringify(inbound.json));
+
+  const bienvenida = await esperar("welcome", "new_lead", "sent", 60_000);
+  check(
+    "el alta del lead dispara la bienvenida sin que nadie la inicie",
+    bienvenida.length > 0 && bienvenida.some((e) => e.status === "sent"),
+    JSON.stringify(bienvenida)
+  );
+
+  // El contacto se busca por sus dígitos: el teléfono viaja normalizado
+  // (521 → 52), así que casar contra la lista cruda fallaría.
+  const digitos = String(marca).slice(-7);
+  let contactoNuevo = null;
+  for (let i = 0; i < 20 && !contactoNuevo; i++) {
+    const lista = (await api(`/api/contacts?q=${encodeURIComponent(telefono)}`)).json?.contacts ?? [];
+    contactoNuevo = lista.find((c) => (c.phone ?? "").includes(digitos)) ?? null;
+    if (!contactoNuevo) await sleep(400);
+  }
+  check("el mensaje entrante dejó el contacto en el directorio", Boolean(contactoNuevo), telefono);
+  const detalle = contactoNuevo ? await api(`/api/contacts/${contactoNuevo.id}`) : null;
+  const leadId = detalle?.json?.lead?.id ?? null;
+  const etapaActual = detalle?.json?.stage?.id ?? null;
+  const destino =
+    stages.find((s) => s.id !== etapaActual && s.kind === "open") ??
+    stages.find((s) => s.id !== etapaActual && s.kind !== "lost");
+  check("hay una etapa distinta a la que mover la tarjeta", Boolean(destino), JSON.stringify(stages.map((s) => s.id)));
+  if (leadId && destino) {
+    const mover = await api(`/api/pipeline/leads/${leadId}`, "PATCH", { stageId: destino.id });
+    check("mover la tarjeta no devuelve error", mover.response.ok, JSON.stringify(mover.json));
+    const porEtapa = await esperar("followup-3d", "stage_change", "sent", 60_000);
+    check(
+      "cambiar de etapa dispara y envía el seguimiento solo",
+      porEtapa.length > 0 && porEtapa.some((e) => e.status === "sent"),
+      JSON.stringify(porEtapa)
+    );
+  }
+
+  // El de inactividad no tiene evento: lo barre el programador cada minuto.
+  const porSilencio = await esperar("inactivity-e2e", "inactivity", "sent", 120_000);
+  check(
+    "el barrido de inactividad encola y envía solo",
+    porSilencio.length > 0 && porSilencio.some((e) => e.status === "sent"),
+    JSON.stringify(porSilencio)
+  );
+
+  // Drenar antes de salir: si el lote sigue en la cola, seguirá escribiendo a
+  // las conversaciones mientras corre el self-test siguiente.
+  const drenaje = Date.now() + 120_000;
+  let pendientes = -1;
+  while (Date.now() < drenaje) {
+    const r = await api(`/api/automations/executions?ruleId=inactivity-e2e&since=${encodeURIComponent(sinceIso)}&limit=200`);
+    pendientes = (r.json?.executions ?? []).filter(
+      (e) => e.status === "queued" || e.status === "running"
+    ).length;
+    if (pendientes === 0) break;
+    await sleep(1000);
+  }
+  check("el lote de inactividad queda drenado antes de salir", pendientes === 0, `pendientes=${pendientes}`);
+
+  const desarmar = await api("/api/automations/rules", "POST", { rules: [rule] });
+  check("se desarma el barrido de inactividad al terminar", desarmar.response.ok, JSON.stringify(desarmar.json));
 
   console.log(`AUTOMATIONS: ${checks - failures}/${checks} comprobaciones OK`);
   if (failures) process.exitCode = 1;

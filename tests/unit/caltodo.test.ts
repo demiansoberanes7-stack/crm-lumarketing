@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { caltodoSettingsSchema, DEFAULT_TODO_SETTINGS, zonedParts, type CalTodoItem } from "@/lib/caltodo";
+import { caltodoSettingsSchema, DEFAULT_TODO_SETTINGS, zonedDisplayDate, zonedInputToUtc, zonedParts, type CalTodoItem } from "@/lib/caltodo";
 import { findNextFreeSlot, rescheduleAll } from "@/server/caltodo/scheduler";
 
 const settings = DEFAULT_TODO_SETTINGS;
@@ -45,5 +45,52 @@ describe("CalTodo scheduling and settings regressions", () => {
   });
   it("renders the correct calendar day across the UTC midnight boundary", () => {
     expect(zonedParts("2026-09-23T01:30:00Z", "America/Mexico_City")).toEqual({ year: 2026, month: 9, day: 22, hour: 19, minute: 30 });
+  });
+});
+
+/**
+ * Pendientes ahora permite elegir día y hora. El valor del `datetime-local` es
+ * hora del NEGOCIO, no del navegador: guardarlo con `new Date(valor)` lo
+ * interpretaría en la zona del navegador y la tarea caería a otra hora (o a
+ * otro día).
+ */
+const MX = "America/Mexico_City";
+const pad = (n: number) => String(n).padStart(2, "0");
+
+describe("zonedInputToUtc", () => {
+  it("convierte la hora del negocio al instante UTC correcto", () => {
+    expect(zonedInputToUtc("2026-10-08T06:00", MX)?.toISOString()).toBe("2026-10-08T12:00:00.000Z");
+    // Zonas con desplazamiento fraccionario.
+    expect(zonedInputToUtc("2026-10-08T06:00", "Asia/Kolkata")?.toISOString()).toBe("2026-10-08T00:30:00.000Z");
+  });
+
+  it("ida y vuelta con zonedDisplayDate devuelve la misma hora", () => {
+    const iso = "2026-11-15T09:45:00.000Z";
+    const p = zonedParts(iso, MX);
+    const input = `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+    const back = zonedInputToUtc(input, MX);
+    expect(back).not.toBeNull();
+    expect(back!.toISOString()).toBe(iso);
+    expect(zonedDisplayDate(back!, MX).getHours()).toBe(p.hour);
+  });
+
+  it("atraviesa un cambio de horario sin correrse de día", () => {
+    // 02:30 del 8-mar-2026 no existe en Nueva York (salto 02:00 → 03:00):
+    // cae en la ventana contigua, pero JAMÁS en otro día.
+    const atDST = zonedInputToUtc("2026-03-08T02:30", "America/New_York");
+    expect(atDST).not.toBeNull();
+    const parts = zonedParts(atDST!, "America/New_York");
+    expect(parts).toMatchObject({ year: 2026, month: 3, day: 8 });
+    expect(Math.abs(parts.hour - 2)).toBeLessThanOrEqual(1);
+
+    // Hora repetida (fin del horario de verano): la elegida se conserva tal cual.
+    const repeated = zonedInputToUtc("2026-11-01T01:30", "America/New_York");
+    expect(zonedParts(repeated!, "America/New_York")).toMatchObject({ month: 11, day: 1, hour: 1, minute: 30 });
+  });
+
+  it("texto que no es un datetime-local da null, no una fecha inventada", () => {
+    expect(zonedInputToUtc("", MX)).toBeNull();
+    expect(zonedInputToUtc("mañana", MX)).toBeNull();
+    expect(zonedInputToUtc("2026/10/08 06:00", MX)).toBeNull();
   });
 });

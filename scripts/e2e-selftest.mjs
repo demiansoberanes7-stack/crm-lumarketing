@@ -362,6 +362,64 @@ async function main() {
       `nombre: ${(await contactoDe())?.name}`);
   }
 
+  console.log("\n== medio de contacto: red social (y cuál), llamada, correo, presencial ==");
+  {
+    const N = String(Date.now()).slice(-7);
+    const creado = await api("/api/contacts", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Mariana Medios",
+        phone: `5214628${N}`,
+        medium: "red_social",
+        mediumDetail: "instagram",
+      }),
+    });
+    ok(
+      "alta con medio capturado: red social + Instagram",
+      creado.res.ok &&
+        creado.json?.contact?.medium === "red_social" &&
+        creado.json?.contact?.mediumDetail === "instagram",
+      JSON.stringify(creado.json)
+    );
+
+    const sinRed = await api("/api/contacts", {
+      method: "POST",
+      body: JSON.stringify({ name: "Sin red elegida", phone: `5214629${N}`, medium: "red_social" }),
+    });
+    ok(
+      "red social sin elegir la red → 422 (no se guarda a medias)",
+      sinRed.res.status === 422,
+      `status=${sinRed.res.status}`
+    );
+
+    const id = creado.json?.contact?.id;
+    const llamada = await api(`/api/contacts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ medium: "llamada", mediumDetail: "facebook" }),
+    });
+    ok(
+      "cambiar de medio tira la red vieja que quedaba",
+      llamada.res.ok &&
+        llamada.json?.contact?.medium === "llamada" &&
+        llamada.json?.contact?.mediumDetail === null,
+      JSON.stringify(llamada.json)
+    );
+
+    const enLista = ((await api("/api/contacts?q=Mariana")).json?.contacts ?? [])
+      .find((c) => c.id === id);
+    ok("el listado trae el medio para pintarlo", enLista?.medium === "llamada", JSON.stringify(enLista));
+
+    const limpio = await api(`/api/contacts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ medium: null, mediumDetail: null }),
+    });
+    ok(
+      "vacío vuelve a «sin capturar» y no se inventa «otro»",
+      limpio.res.ok && limpio.json?.contact?.medium === null && limpio.json?.contact?.mediumDetail === null,
+      JSON.stringify(limpio.json)
+    );
+  }
+
   console.log("\n== us-bot-api: autorización ==");
   const noKey = await api("/api/bot/media/media123");
   ok("media sin API key → 401", noKey.res.status === 401);

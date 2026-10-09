@@ -10,6 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 type AutomationChannel = "whatsapp" | "messenger" | "instagram" | "tiktok" | "email";
+type AutomationTrigger = "stage_change" | "inactivity" | "new_lead" | "no_reply";
+
+/** Claves canónicas y lo que la tarjeta pinta por cada una. */
+const AUTOMATION_TRIGGERS: AutomationTrigger[] = ["stage_change", "inactivity", "new_lead", "no_reply"];
+const AUTOMATION_TRIGGER_LABELS: Record<AutomationTrigger, string> = {
+  stage_change: "Cambia de etapa",
+  inactivity: "Deja de escribir",
+  new_lead: "Entra un lead nuevo",
+  no_reply: "No responden al seguimiento",
+};
 
 interface AutomationRule {
   id: string;
@@ -19,6 +29,16 @@ interface AutomationRule {
   delayHours: number;
   enabled: boolean;
   channel: AutomationChannel;
+  /** Qué eventos lo disparan; vacío = solo manual. */
+  triggers?: AutomationTrigger[];
+  /** Etapa objetivo del disparo por etapa; vacío = cualquiera (salvo perdidas). */
+  stageId?: string | null;
+}
+
+interface StageOption {
+  id: string;
+  name: string;
+  kind: string;
 }
 
 interface ChannelOption {
@@ -66,6 +86,7 @@ const PRESET_RULES: AutomationRule[] = [
     delayHours: 72,
     enabled: true,
     channel: "whatsapp",
+    triggers: ["stage_change", "inactivity"],
   },
   {
     id: "followup-7d",
@@ -75,6 +96,7 @@ const PRESET_RULES: AutomationRule[] = [
     delayHours: 168,
     enabled: false,
     channel: "whatsapp",
+    triggers: ["no_reply"],
   },
   {
     id: "welcome",
@@ -84,6 +106,7 @@ const PRESET_RULES: AutomationRule[] = [
     delayHours: 0,
     enabled: false,
     channel: "whatsapp",
+    triggers: ["new_lead"],
   },
 ];
 
@@ -119,6 +142,7 @@ export function AutomationsClient() {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string; } | null>(null);
   const [metrics, setMetrics] = useState<AutomationMetrics | null>(null);
   const [channels, setChannels] = useState<ChannelOption[]>(FALLBACK_CHANNELS);
+  const [stages, setStages] = useState<StageOption[]>([]);
   const [triggering, setTriggering] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -159,6 +183,15 @@ export function AutomationsClient() {
             setManualDelayValue(String(inDays ? followUp.delayHours / 24 : followUp.delayHours));
           }
         }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/pipeline/stages")
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (Array.isArray(d?.stages)) setStages(d.stages as StageOption[]);
       })
       .catch(() => {});
   }, []);
@@ -226,6 +259,8 @@ export function AutomationsClient() {
           delayHours: Math.min(8760, Math.max(0, Math.round(Number(editDelayValue) || 0) * (editDelayUnit === "days" ? 24 : 1))),
           messageText: editForm.messageText ?? rule.messageText,
           channel: editForm.channel ?? rule.channel,
+          triggers: editForm.triggers ?? rule.triggers,
+          stageId: editForm.stageId || null,
         };
       }
       return rule;
@@ -369,7 +404,58 @@ export function AutomationsClient() {
                         <p className="text-[11px] text-muted-foreground">
                           El seguimiento solo se envía si la conversación está en este canal.
                         </p>
+                        {((editForm.channel ?? rule.channel) === "whatsapp" && (editForm.delayHours ?? rule.delayHours) > 24) && (
+                          <p className="text-[11px] text-amber-600">
+                            La ventana de WhatsApp se cierra a las 24 h: si el contacto no escribe antes, este mensaje no se enviará.
+                          </p>
+                        )}
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Disparos automáticos</label>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {AUTOMATION_TRIGGERS.map((key) => {
+                          const activos = editForm.triggers ?? rule.triggers ?? [];
+                          const checked = activos.includes(key);
+                          return (
+                            <label key={key} className="flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  const current = editForm.triggers ?? rule.triggers ?? [];
+                                  const next = checked
+                                    ? current.filter((k) => k !== key)
+                                    : [...new Set([...current, key])];
+                                  setEditForm({ ...editForm, triggers: next });
+                                }}
+                              />
+                              <span>{AUTOMATION_TRIGGER_LABELS[key]}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Sin disparos marcados la regla solo sale con «Disparar manualmente».
+                      </p>
+                      {(editForm.triggers ?? rule.triggers ?? []).includes("stage_change") && (
+                        <div className="mt-2 space-y-1.5">
+                          <label className="text-xs font-medium text-muted-foreground" htmlFor={`stage-${rule.id}`}>
+                            Etapa objetivo (al cambiar de etapa)
+                          </label>
+                          <select
+                            id={`stage-${rule.id}`}
+                            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                            value={editForm.stageId ?? rule.stageId ?? ""}
+                            onChange={(e) => setEditForm({ ...editForm, stageId: e.target.value || null })}
+                          >
+                            <option value="">Cualquier etapa (salvo perdidas)</option>
+                            {stages.map((stage) => (
+                              <option key={stage.id} value={stage.id}>{stage.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">Mensaje Automático</label>
@@ -394,10 +480,28 @@ export function AutomationsClient() {
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mb-3">
-                        <span className="flex items-center gap-1"><Zap className="h-3 w-3 text-orange-400" />{rule.trigger}</span>
-                         <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-blue-400" />{describeDelay(rule.delayHours)}</span>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <Zap className="h-3 w-3 text-orange-400 shrink-0" />
+                          {rule.triggers?.length ? rule.triggers.map((key) => (
+                            <span key={key} className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-600">
+                              {AUTOMATION_TRIGGER_LABELS[key]}
+                            </span>
+                          )) : <span>{rule.trigger}</span>}
+                        </span>
+                        <span className="flex items-center gap-1"><Clock className="h-3 w-3 text-blue-400" />{describeDelay(rule.delayHours)}</span>
                         <span className="flex items-center gap-1">{channelLabel(channels, rule.channel)}</span>
+                        {rule.stageId && (
+                          <span className="flex items-center gap-1">
+                            <GitBranch className="h-3 w-3 text-emerald-500" />
+                            {stages.find((stage) => stage.id === rule.stageId)?.name ?? "Etapa elegida"}
+                          </span>
+                        )}
                       </div>
+                      {rule.enabled && rule.channel === "whatsapp" && rule.delayHours > 24 && (
+                        <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-700">
+                          La ventana de WhatsApp se cierra a las 24 h: si el contacto no escribe antes, este mensaje no se enviará.
+                        </p>
+                      )}
                       <div className="bg-muted/40 p-3 rounded-lg text-sm italic border-l-2 border-brand/50">
                         “{rule.messageText}”
                       </div>

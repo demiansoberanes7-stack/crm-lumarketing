@@ -5,8 +5,6 @@ import { scoped } from "@/lib/db/tenant";
 import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-history";
 import { getEnv, isAiConfigured } from "@/lib/env";
 import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
-import { findAutomationRule } from "@/server/automation-rules";
-import { enqueueFollowUp } from "@/server/automation-queue";
 import { publish } from "@/server/events/bus";
 import { isWindowOpen } from "@/server/inbox/window";
 import { SendError, sendText } from "@/server/inbox/send";
@@ -290,30 +288,11 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         type: "conversation.updated",
         data: { conversation: { id: conversationId } },
       });
-      
-      // Auto-trigger Temporal Drip Campaign if moving to Cotizado
-      if (stage.name.toLowerCase() === "cotizado") {
-        try {
-          const { getIntegration } = await import("@/server/integrations");
-          const integration = await getIntegration(organizationId, "automation_rules");
-          const rule = findAutomationRule(integration?.credentials?.rules, "followup-3d");
-          const delayHours = rule?.delayHours ?? 72;
-          const enabled = rule?.enabled !== false;
+      // El seguimiento automático de etapa no vive aquí: lo decide la regla
+      // con su propio trigger (`stage_change`, ver `automation-events.ts`), y
+      // este gancho exigía el nombre literal "Cotizado", que ninguna etapa
+      // tenía — por eso nunca disparó nada.
 
-          if (enabled) {
-            await enqueueFollowUp({
-              conversationId,
-              organizationId,
-              delayHours,
-              triggeredBy: "stage",
-            });
-            console.log(`[automations] Follow-up queued for conversation ${conversationId}`);
-          }
-        } catch (err) {
-          console.error(`[automations] Failed to queue follow-up:`, err);
-        }
-      }
-      
       if (action.reply) {
         await deliverReply(conversation, action.reply);
       }

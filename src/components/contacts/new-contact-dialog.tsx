@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { SourceValue, StageDto } from "@/lib/types";
+import { normalizeMedium } from "@/lib/contact-medium";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MediumPicker } from "./medium-picker";
 
 const SOURCES: { value: SourceValue; label: string }[] = [
   { value: "referido", label: "Referido" },
@@ -32,6 +34,8 @@ export function NewContactDialog({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [source, setSource] = useState<SourceValue>("referido");
+  const [medium, setMedium] = useState("");
+  const [mediumDetail, setMediumDetail] = useState("");
   const [notes, setNotes] = useState("");
   const [stages, setStages] = useState<StageDto[]>([]);
   const [stageId, setStageId] = useState("");
@@ -63,6 +67,8 @@ export function NewContactDialog({
         name: name.trim(),
         phone: phone.trim(),
         source,
+        medium: medium || undefined,
+        mediumDetail: mediumDetail || undefined,
         notes: notes.trim() || undefined,
         stageId: stageId || undefined,
       }),
@@ -91,7 +97,11 @@ export function NewContactDialog({
 
   // 11 dígitos = código de país + número. Ver la nota del endpoint sobre por
   // qué el código de país no puede faltar ni asumirse.
-  const listo = name.trim().length > 0 && phone.replace(/\D/g, "").length >= 11;
+  const mediumListo = normalizeMedium({ medium, mediumDetail }).ok;
+  const listo =
+    name.trim().length > 0 &&
+    phone.replace(/\D/g, "").length >= 11 &&
+    mediumListo;
 
   return (
     <div
@@ -177,6 +187,16 @@ export function NewContactDialog({
               </select>
             </div>
           </div>
+
+          <MediumPicker
+            idPrefix="nc"
+            medium={medium}
+            mediumDetail={mediumDetail}
+            onChange={(next) => {
+              setMedium(next.medium);
+              setMediumDetail(next.mediumDetail);
+            }}
+          />
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="nc-notes">

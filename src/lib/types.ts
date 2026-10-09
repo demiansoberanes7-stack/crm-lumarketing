@@ -1,6 +1,7 @@
 /** DTOs que viajan por la API interna (lado cliente). */
 
 import type { Channel } from "@/lib/channels";
+import type { MediumValue } from "@/lib/contact-medium";
 
 export type ConversationDto = {
   id: string;
@@ -83,6 +84,10 @@ export type ContactDto = {
   archivedAt: string | null;
   /** De dónde salió el prospecto, capturada o deducida. */
   source?: SourceDto;
+  /** Por qué canal llegó la primera conversación; null mientras no se capture. */
+  medium?: MediumValue | null;
+  /** La red social elegida, solo cuando `medium = "red_social"`. */
+  mediumDetail?: string | null;
   /** Prioridad del lead asociado; null si nadie la fijó. */
   priority?: PriorityValue | null;
   /** Lo que se sabe del lead. `{}` mientras nadie haya calificado. */

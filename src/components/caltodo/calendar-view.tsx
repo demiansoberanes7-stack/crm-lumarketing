@@ -7,21 +7,41 @@ import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, addWeeks,
 import { es } from "date-fns/locale";
 import { zonedDisplayDate } from "@/lib/caltodo";
 
-type Task = { id: string; title: string; scheduledStart: Date | string | null; scheduledEnd: Date | string | null; completed: boolean; details: string | null };
+type Task = { id: string; title: string; scheduledStart: Date | string | null; scheduledEnd: Date | string | null; completed: boolean; details: string | null; duration: number | null };
 type Settings = { workStartHour: number; workEndHour: number; timezone: string } | null;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+/**
+ * Ventana [inicio, fin] de una tarea en la hora local de la zona del negocio.
+ * Las tareas de Proyectos llegan con `dueDate` y SIN hora de fin: se dibujan
+ * con su duración en vez de no aparecer en el calendario.
+ */
+function blockFor(t: Task, timezone: string): { start: Date; end: Date } {
+  const start = zonedDisplayDate(t.scheduledStart!, timezone);
+  const end = t.scheduledEnd
+    ? zonedDisplayDate(t.scheduledEnd, timezone)
+    // Tareas de Proyectos: llegan con `dueDate` y SIN hora de fin, así que se
+    // dibujan con su duración en vez de no aparecer en el calendario.
+    : new Date(start.getTime() + (t.duration ?? 60) * 60_000);
+  return { start, end };
+}
 
 export function CalendarView({ tasks, settings }: { tasks: Task[]; settings: Settings }) {
   const timezone = settings?.timezone ?? "America/Mexico_City";
   const [mode, setMode] = useState<"week" | "day">("week");
   const [current, setCurrent] = useState(() => zonedDisplayDate(new Date(), timezone));
 
-  const scheduled = tasks.filter((t) => !t.completed && t.scheduledStart).map((t) => ({ ...t, scheduledStart: zonedDisplayDate(t.scheduledStart!, timezone), scheduledEnd: t.scheduledEnd ? zonedDisplayDate(t.scheduledEnd, timezone) : null }));
+  const scheduled = tasks
+    .filter((t) => !t.completed && t.scheduledStart)
+    .map((t) => {
+      const { start, end } = blockFor(t, timezone);
+      return { ...t, scheduledStart: start, scheduledEnd: end };
+    });
   const ws = settings?.workStartHour ?? 9;
   const we = settings?.workEndHour ?? 17;
-  const firstHour = Math.min(ws - 1, ...scheduled.map((t) => t.scheduledStart.getHours()));
-  const lastHour = Math.max(we + 1, ...scheduled.map((t) => t.scheduledEnd?.getHours() ?? 0));
+  const firstHour = Math.max(0, Math.min(ws - 1, ...scheduled.map((t) => t.scheduledStart.getHours())));
+  const lastHour = Math.min(23, Math.max(we + 1, ...scheduled.map((t) => t.scheduledEnd.getHours())));
   const hours = HOURS.filter((h) => h >= firstHour && h <= lastHour);
 
   const weekStart = startOfWeek(current, { weekStartsOn: 1 });

@@ -18,7 +18,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { mediumLabel, normalizeMedium } from "@/lib/contact-medium";
 import { SOURCE_LABELS } from "@/server/contact-source";
+import { MediumPicker } from "./medium-picker";
 import { priorityRank } from "@/server/leads/priority";
 import { PriorityBadge } from "@/components/pipeline/priority-picker";
 import { NewContactDialog } from "./new-contact-dialog";
@@ -162,7 +164,11 @@ export function ContactsClient() {
           </div>
         ) : (
           <ul className="space-y-2">
-            {contacts.map((c) => (
+            {contacts.map((c) => {
+              // Etiqueta del medio capturado ("Red social · Instagram"), nula
+              // si nadie lo llenó — a ese contacto no se le inventa uno.
+              const med = mediumLabel(c.medium, c.mediumDetail);
+              return (
               <li
                 key={c.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-3 sm:flex-nowrap sm:gap-x-4 sm:px-4"
@@ -190,6 +196,7 @@ export function ContactsClient() {
                         {SOURCE_LABELS[c.source.value]}
                       </Badge>
                     )}
+                    {med && <Badge variant="outline">{med}</Badge>}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {formatPhone(c.phone)}
@@ -232,7 +239,8 @@ export function ContactsClient() {
                   </Button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
@@ -279,6 +287,8 @@ function EditDialog({
   const [email, setEmail] = useState((contact.ficha as Record<string, unknown>)?.email as string ?? "");
   const [interests, setInterests] = useState((contact.ficha as Record<string, unknown>)?.interests as string ?? "");
   const [notes, setNotes] = useState(contact.notes ?? "");
+  const [medium, setMedium] = useState(contact.medium ?? "");
+  const [mediumDetail, setMediumDetail] = useState(contact.mediumDetail ?? "");
 
   return (
     <div
@@ -324,6 +334,15 @@ function EditDialog({
               placeholder="correo@ejemplo.com"
             />
           </div>
+          <MediumPicker
+            idPrefix="edit"
+            medium={medium}
+            mediumDetail={mediumDetail}
+            onChange={(next) => {
+              setMedium(next.medium);
+              setMediumDetail(next.mediumDetail);
+            }}
+          />
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="edit-interests">
               Intereses / Servicios de interés
@@ -353,10 +372,12 @@ function EditDialog({
             Cancelar
           </Button>
           <Button
-            disabled={!name.trim()}
+            disabled={!name.trim() || !normalizeMedium({ medium, mediumDetail }).ok}
             onClick={() => {
               const patch: Record<string, unknown> = { name: name.trim(), notes };
               if (phone !== (contact.phone ?? "")) patch.phone = phone || null;
+              patch.medium = medium || null;
+              patch.mediumDetail = medium === "red_social" ? mediumDetail || null : null;
               const ficha: Record<string, unknown> = {};
               if (email) ficha.email = email;
               if (interests) ficha.interests = interests;

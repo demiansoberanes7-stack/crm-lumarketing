@@ -120,5 +120,15 @@ export async function createLeadForContact(input: {
     contactId: input.contactId,
   });
 
+  // Reglas de automatización con trigger "entró al pipeline" (la bienvenida).
+  // Best-effort y con import dinámico por el mismo motivo que los webhooks:
+  // jamás puede tumbar el alta del lead ni enredar el grafo de imports.
+  try {
+    const { onLeadCreated } = await import("@/server/automation-events");
+    await onLeadCreated({ organizationId: input.organizationId, contactId: input.contactId });
+  } catch (err) {
+    console.error("[automations] No se pudo evaluar el alta del lead:", err);
+  }
+
   return creado;
 }

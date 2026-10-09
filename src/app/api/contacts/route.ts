@@ -6,6 +6,7 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { normalizeMx } from "@/lib/meta/client";
 import { digitsOnly, normalizeText } from "@/lib/search";
+import { normalizeMedium } from "@/lib/contact-medium";
 import { serializeContact } from "@/server/contacts";
 import { createLeadForContact } from "@/server/inbox/lead-activity";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
@@ -116,6 +117,9 @@ const createSchema = z.object({
     .regex(/^\d{7,15}$/, "Teléfono en dígitos, con código de país (ej. 5215512345678)"),
   notes: z.string().max(4000).optional(),
   source: z.enum(["anuncio", "organico", "referido", "conocido", "otro"]).optional(),
+  /** Cómo se contactó; el detalle (la red) lo resuelve `normalizeMedium`. */
+  medium: z.unknown().optional(),
+  mediumDetail: z.unknown().optional(),
   /** Etapa inicial del lead; si no viene, la primera abierta del tablero. */
   stageId: z.string().min(1).optional(),
 });
@@ -123,6 +127,9 @@ const createSchema = z.object({
 export const POST = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, createSchema);
   if (!body.ok) return body.response;
+
+  const medium = normalizeMedium(body.data);
+  if (!medium.ok) return apiError(422, "medium", medium.error);
 
   const db = getDb();
   // 003: la identidad WhatsApp se deriva del teléfono normalizado.
@@ -138,6 +145,8 @@ export const POST = withAuth(async (session, req: Request) => {
       waIdentity: phone,
       notes: body.data.notes ?? null,
       source: body.data.source ?? null,
+      medium: medium.medium,
+      mediumDetail: medium.mediumDetail,
     })
     // El canal entra en el target porque entra en el índice único desde 014
     // (`contact_org_channel_identity_uq`). Postgres exige que el ON CONFLICT

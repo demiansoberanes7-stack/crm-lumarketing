@@ -44,3 +44,31 @@ export function zonedDisplayDate(date: Date | string, timeZone: string) {
   const p = zonedParts(date, timeZone);
   return new Date(p.year, p.month - 1, p.day, p.hour, p.minute);
 }
+
+/**
+ * Valor de un `<input type="datetime-local">` — hora en la zona del negocio —
+ * al instante real que se guarda en la BD.
+ *
+ * `new Date("2026-10-08T06:00")` lo interpretaría en la zona del NAVEGADOR, que
+ * no tiene por qué ser la del negocio; aquí se resta el offset de `timeZone`
+ * (dos pasadas por si el valor cruza un cambio de horario).
+ */
+export function zonedInputToUtc(value: string, timeZone: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second] = match;
+  const naive = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second ?? 0));
+
+  const offsetAt = (utcMs: number): number => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(utcMs));
+    const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value);
+    const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+    return asUtc - utcMs;
+  };
+
+  const once = naive - offsetAt(naive);
+  return new Date(naive - offsetAt(once));
+}

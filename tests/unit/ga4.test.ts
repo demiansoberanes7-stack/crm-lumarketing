@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import { Ga4Error, parseGa4Credentials, readGa4Metrics, testGa4Connection } from "@/server/analytics/ga4";
+import { Ga4Error, ga4ConnectionState, parseGa4Credentials, readGa4Metrics, testGa4Connection } from "@/server/analytics/ga4";
 
 /**
  * El cliente GA4 nació sin una sola prueba y el fallo pasó desapercibido:
@@ -265,5 +265,31 @@ describe("parseGa4Credentials", () => {
   it("el error del cliente sigue siendo un Ga4Error", () => {
     expect(new Ga4Error("x")).toBeInstanceOf(Error);
     expect(new Ga4Error("x").name).toBe("Ga4Error");
+  });
+});
+
+/**
+ * El Marketing Hub pintaba "Desconectado" con un Property ID ya guardado:
+ * decía que no había nada cuando faltaba UNA pieza, y el usuario terminaba
+ * reconfigurando desde cero algo que sí estaba a medias.
+ */
+describe("ga4ConnectionState", () => {
+  it("sin nada guardado sigue desconectado", () => {
+    expect(ga4ConnectionState({})).toEqual({ status: "disconnected" });
+    expect(ga4ConnectionState({ serviceAccountJson: "{}" })).toEqual({ status: "disconnected" });
+  });
+
+  it("Property ID sin service account dice exactamente qué falta", () => {
+    const state = ga4ConnectionState({ propertyId: "556920206" });
+    expect(state.status).toBe("configured");
+    expect(state.message).toMatch(/service account/i);
+    expect(state.message).toMatch(/Marketing/);
+  });
+
+  it("con las dos piezas queda configurado y sin aviso", () => {
+    expect(ga4ConnectionState({ propertyId: "556920206", serviceAccountJson: "{}" }))
+      .toEqual({ status: "configured" });
+    expect(ga4ConnectionState({ propertyId: "556920206", serviceAccountKey: "{}" }))
+      .toEqual({ status: "configured" });
   });
 });

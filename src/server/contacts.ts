@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { isMediumValue, isSocialNetwork } from "@/lib/contact-medium";
 import { effectiveSource } from "@/server/contact-source";
 import type { FichaDto, PriorityValue } from "@/lib/types";
 
@@ -17,6 +18,14 @@ export function serializeContact(
     stageName,
     archivedAt: c.archivedAt?.toISOString() ?? null,
     source: effectiveSource(c.source),
+    // Nace NULL como `source`: nadie captura a mano el medio de los cientos de
+    // contactos ya existentes, y un valor inventado en el listado sería peor
+    // que "sin capturar".
+    medium: isMediumValue(c.medium) ? c.medium : null,
+    mediumDetail:
+      c.medium === "red_social" && isSocialNetwork(c.mediumDetail)
+        ? c.mediumDetail
+        : null,
     priority,
     // Viaja siempre, aunque esté vacía: la pantalla necesita distinguir "aún
     // no la han llenado" de "este contacto no la trae".

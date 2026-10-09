@@ -125,6 +125,10 @@ export const contact = pgTable(
     notes: text("notes"),
     ficha: jsonb("ficha"),
     source: varchar("source", { length: 20 }),
+    /** Cómo se contactó: red social, llamada, correo o presencial (lib/contact-medium). */
+    medium: varchar("medium", { length: 30 }),
+    /** La red social elegida, solo cuando `medium = 'red_social'`. */
+    mediumDetail: varchar("medium_detail", { length: 60 }),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

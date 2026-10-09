@@ -120,6 +120,16 @@ function FieldHint({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Guarda las credenciales de un proveedor. Fuera del componente: no cierra estado. */
+async function persistIntegration(provider: string, body: unknown): Promise<boolean> {
+  const res = await fetch(`/api/integrations/${provider}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.ok;
+}
+
 export function MarketingClient() {
   const router = useRouter();
   const [googleAds, setGoogleAds] = useState<GoogleAdsCreds>({
@@ -172,6 +182,22 @@ export function MarketingClient() {
     }
 
     if (testSeq.current[provider] !== seq) return;
+
+    // Probar NO es guardar: el Marketing Hub lee la base de datos, no el
+    // formulario, así que una prueba exitosa con los campos EN PANTALLA se
+    // persiste aquí. Sin esto el tilde quedaba verde con credenciales que
+    // nunca se guardaron y el Hub seguía diciendo "Desconectado".
+    if (values && (next.state === "connected" || next.state === "saved")) {
+      const persisted = await persistIntegration(provider, values);
+      if (testSeq.current[provider] !== seq) return;
+      next = persisted
+        ? { ...next, message: next.message ? `${next.message} · guardado` : "Credenciales guardadas." }
+        : { state: "error", message: "La conexión respondió, pero no se pudieron guardar las credenciales. Pulsa Guardar." };
+      if (persisted && provider === "ga4") {
+        setGa4((c) => ({ ...c, serviceAccountConfigured: true }));
+      }
+    }
+
     setTests((t) => ({ ...t, [provider]: next }));
   }, []);
 
@@ -201,24 +227,15 @@ export function MarketingClient() {
   const metaReady = !!(metaAds.accessToken && metaAds.adAccountId);
   const ga4Ready = !!ga4.propertyId && (ga4.serviceAccountConfigured === true || serviceAccountJson.trim().length > 0);
 
-  async function save(provider: string, body: unknown): Promise<boolean> {
-    const res = await fetch(`/api/integrations/${provider}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return res.ok;
-  }
-
   async function handleSave() {
     setSaving(true);
     setSaved(false);
     setSaveError(null);
     try {
       const results = await Promise.all([
-        save("google_ads", googleAds),
-        save("meta_ads", metaAds),
-        save("ga4", {
+        persistIntegration("google_ads", googleAds),
+        persistIntegration("meta_ads", metaAds),
+        persistIntegration("ga4", {
           propertyId: ga4.propertyId,
           ...(serviceAccountJson.trim() ? { serviceAccountJson } : {}),
         }),

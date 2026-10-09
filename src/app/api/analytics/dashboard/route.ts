@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/api";
 import { getIntegration } from "@/server/integrations";
-import { parseGa4Credentials, readGa4Metrics, type Ga4Metrics } from "@/server/analytics/ga4";
+import { ga4ConnectionState, parseGa4Credentials, readGa4Metrics, type Ga4Metrics } from "@/server/analytics/ga4";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +69,7 @@ export const GET = withAuth(async (session) => {
     googleCredentials.clientId,
     googleCredentials.clientSecret,
   ].every(hasText);
-  const ga4Configured = hasText(ga4Credentials.propertyId) &&
-    (hasText(ga4Credentials.serviceAccountJson) || hasText(ga4Credentials.serviceAccountKey));
+  const ga4Connection = ga4ConnectionState(ga4Credentials);
 
   const connections: Record<Source, SourceConnection> = {
     meta: { status: metaConfigured ? "configured" : "disconnected" },
@@ -78,7 +77,7 @@ export const GET = withAuth(async (session) => {
       status: googleConfigured ? "configured" : "disconnected",
       ...(googleConfigured ? { message: "Credenciales guardadas; no hay lectura de métricas activa." } : {}),
     },
-    ga4: { status: ga4Configured ? "configured" : "disconnected" },
+    ga4: ga4Connection,
   };
   const metrics: DashboardMetric[] = [];
   const campaigns: DashboardCampaign[] = [];
@@ -87,19 +86,17 @@ export const GET = withAuth(async (session) => {
 
   // GA4 sí tiene lectura real: la Data API corre del lado del servidor y su
   // fallo jamás bloquea el dashboard, solo cambia el estado de la conexión.
-  if (ga4Configured) {
-    const credentials = parseGa4Credentials(ga4Credentials);
-    if (!credentials) {
-      connections.ga4 = { status: "error", message: "Credenciales de GA4 incompletas o inválidas." };
-    } else {
-      try {
-        ga4Metrics = await readGa4Metrics(credentials);
-        connections.ga4 = { status: "connected" };
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        connections.ga4 = { status: "error", message: detail.slice(0, 300) };
-        console.error("[analytics] GA4 read failed", error);
-      }
+  // Sin service account no se intenta leer: `ga4ConnectionState` ya dejó el
+  // aviso de qué falta y un intento solo produciría un error confuso.
+  const ga4Parsed = parseGa4Credentials(ga4Credentials);
+  if (ga4Parsed) {
+    try {
+      ga4Metrics = await readGa4Metrics(ga4Parsed);
+      connections.ga4 = { status: "connected" };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      connections.ga4 = { status: "error", message: detail.slice(0, 300) };
+      console.error("[analytics] GA4 read failed", error);
     }
   }
 

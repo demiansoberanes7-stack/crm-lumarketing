@@ -27,7 +27,12 @@ export async function hasClientRepliedSince(conversationId: string, sinceDateIso
  * Invokes the AI agent to generate and send a follow up message, 
  * or directly sends a hardcoded follow up if configured.
  */
-export async function triggerAiFollowUp(conversationId: string, organizationId: string): Promise<void> {
+export async function triggerAiFollowUp(
+  conversationId: string,
+  organizationId: string,
+  /** La regla que manda: cada una tiene su texto y su canal. */
+  ruleId = "followup-3d"
+): Promise<void> {
   const db = getDb();
   const [conversation] = await db
     .select({ contactId: schema.contact.id, contactName: schema.contact.name, ficha: schema.contact.ficha, channel: schema.conversation.channel })
@@ -38,7 +43,7 @@ export async function triggerAiFollowUp(conversationId: string, organizationId: 
   if (!conversation) return;
 
   const integration = await getIntegration(organizationId, "automation_rules");
-  const rule = findAutomationRule(integration?.credentials?.rules, "followup-3d");
+  const rule = findAutomationRule(integration?.credentials?.rules, ruleId);
   const messageText = rule?.messageText ?? "Hola, espero que estés teniendo un excelente día. Solo quería dar seguimiento a nuestra conversación anterior. ¿Tienes alguna duda con la cotización?";
 
   // Guarda: el canal de la regla debe coincidir con el de la conversación.

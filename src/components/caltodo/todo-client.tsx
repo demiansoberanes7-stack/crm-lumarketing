@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, GripVertical, ChevronDown, ChevronUp, RotateCcw, Clock, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2, User, FolderKanban } from "lucide-react";
+import { Plus, GripVertical, ChevronDown, ChevronUp, RotateCcw, Clock, AlertTriangle, Loader2, RefreshCw, Pencil, Trash2, User, FolderKanban, CalendarDays } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { zonedDisplayDate, type CalTodoItem, type CalTodoPreferences } from "@/lib/caltodo";
+import { zonedDisplayDate, zonedParts, zonedInputToUtc, type CalTodoItem, type CalTodoPreferences } from "@/lib/caltodo";
 import { todoRequest } from "./request";
 import type { ContactDto } from "@/lib/types";
 
@@ -29,6 +29,8 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
   const [newDetails, setNewDetails] = useState("");
   const [newUrgent, setNewUrgent] = useState(false);
   const [newDuration, setNewDuration] = useState("default");
+  /** Valor del <input type="datetime-local">, hora local del negocio ("" = sin elegir). */
+  const [newStart, setNewStart] = useState("");
   const [newContactId, setNewContactId] = useState<string | null>(null);
   const [newProjectId, setNewProjectId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<ContactDto[]>([]);
@@ -53,13 +55,20 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
 
   const timezone = settings?.timezone ?? "America/Mexico_City";
   const dateLabel = (date: Date | string) => format(zonedDisplayDate(date, timezone), "EEE dd.MM HH:mm", { locale: es });
+  /** ISO del servidor → valor de un input datetime-local en la zona del negocio. */
+  const toInputValue = (iso: Date | string | null | undefined): string => {
+    if (!iso) return "";
+    const p = zonedParts(iso, timezone);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+  };
   async function run(action: () => Promise<void>) {
     setBusy(true); setError("");
     try { await action(); }
     catch (err) { setError(err instanceof Error ? err.message : "No se pudo completar la operación"); }
     finally { setBusy(false); }
   }
-  function resetForm() { setEditingId(null); setNewTitle(""); setNewDetails(""); setNewUrgent(false); setNewDuration("default"); setNewContactId(null); setNewProjectId(null); }
+  function resetForm() { setEditingId(null); setNewTitle(""); setNewDetails(""); setNewUrgent(false); setNewDuration("default"); setNewContactId(null); setNewProjectId(null); setNewStart(""); }
 
   const incomplete = tasks.filter((t) => !t.completed).sort((a, b) => a.priority - b.priority);
   const completed = tasks.filter((t) => t.completed).sort((a, b) => {
@@ -70,8 +79,23 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
 
   async function createTask() {
     if (!newTitle.trim()) return;
+    const start = newStart ? zonedInputToUtc(newStart, timezone) : null;
     await run(async () => {
-      await todoRequest(editingId ? `/api/caltodo/tasks?id=${editingId}` : "/api/caltodo/tasks", { method: editingId ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: newTitle, details: newDetails, urgent: newUrgent, duration: newDuration !== "default" ? Number(newDuration) : settings?.defaultDuration ?? 60, contactId: newContactId, projectId: newProjectId }) });
+      await todoRequest(editingId ? `/api/caltodo/tasks?id=${editingId}` : "/api/caltodo/tasks", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle,
+          details: newDetails,
+          urgent: newUrgent,
+          duration: newDuration !== "default" ? Number(newDuration) : settings?.defaultDuration ?? 60,
+          contactId: newContactId,
+          projectId: newProjectId,
+          // Crear sin elegir día y hora = siguiente hueco libre;
+          // editar sin elegir = dejarla sin programar.
+          scheduledStart: start ? start.toISOString() : editingId ? null : undefined,
+        }),
+      });
       resetForm(); await refresh();
     });
   }
@@ -135,6 +159,17 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-text-2" />
+                  <span className="text-sm text-text-2">Día y hora:</span>
+                  <input
+                    type="datetime-local"
+                    aria-label="Día y hora de la tarea"
+                    value={newStart}
+                    onChange={(e) => setNewStart(e.target.value)}
+                    className="rounded border bg-background p-1.5 text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-text-2" />
                   <select aria-label="Contacto asociado" value={newContactId ?? ""} onChange={(e) => setNewContactId(e.target.value || null)} className="rounded border bg-background p-1.5 text-sm">
                     <option value="">Sin contacto</option>
@@ -155,6 +190,11 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                </Button>
                {editingId && <Button variant="ghost" type="button" onClick={resetForm}>Cancelar edición</Button>}
             </div>
+            <p className="text-xs text-text-3">
+              {editingId
+                ? "Sin día y hora la tarea queda sin programar (aparece solo en la lista)."
+                : "Sin día y hora se agenda en el siguiente hueco libre del horario laboral."}
+            </p>
           </form>
         </CardContent>
       </Card>
@@ -206,7 +246,7 @@ export function TodoClient({ tasks, settings, onTasksChange, refresh }: { tasks:
                                 {task.urgent && <Badge variant="destructive" className="text-xs">Urgente</Badge>}
                                 {task.duration && <Badge variant="outline" className="gap-1 text-xs">{task.duration >= 60 ? `${task.duration / 60}h` : `${task.duration}m`}</Badge>}
                                 {task.scheduledStart && <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{dateLabel(task.scheduledStart)}</Badge>}
-                                <Button variant="ghost" size="icon" aria-label={`Editar ${task.title}`} disabled={busy} onClick={() => { setEditingId(task.id); setNewTitle(task.title); setNewDetails(task.details ?? ""); setNewUrgent(task.urgent); setNewDuration(task.duration ? String(task.duration) : "default"); setNewContactId(task.contactId); setNewProjectId(task.projectId); titleRef.current?.focus(); }}><Pencil className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" aria-label={`Editar ${task.title}`} disabled={busy} onClick={() => { setEditingId(task.id); setNewTitle(task.title); setNewDetails(task.details ?? ""); setNewUrgent(task.urgent); setNewDuration(task.duration ? String(task.duration) : "default"); setNewContactId(task.contactId); setNewProjectId(task.projectId); setNewStart(toInputValue(task.scheduledStart)); titleRef.current?.focus(); }}><Pencil className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" aria-label={`Eliminar ${task.title}`} disabled={busy} onClick={() => void removeTask(task)}><Trash2 className="h-4 w-4" /></Button>
                               </div>
                             </div>

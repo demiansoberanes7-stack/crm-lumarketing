@@ -98,6 +98,7 @@ export function AnalyticsClient() {
   const router = useRouter();
   const [dashData, setDashData] = useState<DashboardData | null>(null);
   const [pipeData, setPipeData] = useState<PipelineMetric | null>(null);
+  const [pipeState, setPipeState] = useState<"loading" | "ready" | "error">("loading");
   const [loadingDash, setLoadingDash] = useState(true);
 
   useEffect(() => {
@@ -110,9 +111,9 @@ export function AnalyticsClient() {
 
   useEffect(() => {
     fetch("/api/pipeline/stats")
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setPipeData(d as PipelineMetric); })
-      .catch(() => null);
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
+      .then(d => { setPipeData(d as PipelineMetric); setPipeState("ready"); })
+      .catch(() => setPipeState("error"));
   }, []);
 
   const ga4 = dashData?.ga4 ?? null;
@@ -417,6 +418,10 @@ export function AnalyticsClient() {
                   Tasa de conversión global: {pipeData.conversionRate.toFixed(1)}%
                 </p>
               </div>
+            ) : pipeState === "error" ? (
+              <p className="text-sm text-muted-foreground">
+                No se pudieron cargar las métricas del pipeline. Recarga la página para reintentar.
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">Cargando datos del pipeline…</p>
             )}

@@ -191,6 +191,24 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       toStageName: result.toStageName,
       source: input.source,
     });
+
+    // Reglas de automatización con trigger "cambió de etapa". Best-effort y con
+    // import dinámico: `automation-events` entra al mismo grafo por este lado y
+    // un ciclo estático dejaría módulos sin definir en el arranque. Un fallo
+    // aquí jamás debe deshacer el movimiento, que ya está en firme.
+    if (toStageKind !== null) {
+      try {
+        const { onStageChanged } = await import("@/server/automation-events");
+        await onStageChanged({
+          organizationId: input.organizationId,
+          contactId: result.lead.contactId,
+          toStageId: result.lead.stageId,
+          toStageKind,
+        });
+      } catch (err) {
+        console.error("[automations] No se pudo evaluar el cambio de etapa:", err);
+      }
+    }
   }
 
   return result;
