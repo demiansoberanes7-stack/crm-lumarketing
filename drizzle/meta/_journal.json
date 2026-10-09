@@ -204,6 +204,90 @@
       "when": 1791500371425,
       "tag": "0028_contact_medium",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791600000001,
+      "tag": "0029_quote_item_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791600000002,
+      "tag": "0030_lead_is_primary",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791600000003,
+      "tag": "0031_acquisition_channel",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791600000004,
+      "tag": "0032_campaign_ad_offer",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791600000005,
+      "tag": "0033_attribution_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791600000006,
+      "tag": "0034_activity_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791600000007,
+      "tag": "0035_service_cost",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791600000008,
+      "tag": "0036_sync_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791600000009,
+      "tag": "0037_experiment",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791600000010,
+      "tag": "0038_lead_qualification",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791600000011,
+      "tag": "0039_loss_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791600000012,
+      "tag": "0040_marketplace_order",
+      "breakpoints": true
     }
   ]
 }

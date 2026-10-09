@@ -133,6 +133,7 @@ export async function createQuote(
   for (const [i, item] of input.items.entries()) {
     await db.insert(schema.quoteItem).values({
       id: newId("quoteItem"),
+      organizationId,
       quoteId: id,
       productId: item.productId ?? null,
       name: item.name,
@@ -228,6 +229,7 @@ export async function updateQuote(
   for (const [i, item] of input.items!.entries()) {
     await db.insert(schema.quoteItem).values({
       id: newId("quoteItem"),
+      organizationId,
       quoteId,
       productId: item.productId ?? null,
       name: item.name,

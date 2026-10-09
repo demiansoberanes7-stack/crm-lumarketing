@@ -49,6 +49,22 @@ const prefixes = {
   supplier: "sup",
   integration: "int",
   automationExecution: "aex",
+  // Ciclo 1 — modelo comercial, atribución, métricas
+  acquisitionChannel: "ach",
+  campaign: "cmp",
+  adSet: "ads",
+  adCreative: "acr",
+  offer: "ofr",
+  attributionEvent: "aev",
+  activityEvent: "act",
+  serviceCost: "scst",
+  syncState: "syn",
+  experiment: "exp_",
+  experimentVariant: "exv",
+  experimentObservation: "exo",
+  qualificationCriteria: "qc",
+  lossReason: "lr",
+  marketplaceOrder: "mo",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

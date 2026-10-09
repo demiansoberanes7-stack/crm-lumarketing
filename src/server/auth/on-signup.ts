@@ -1,6 +1,8 @@
 import { count, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import { ACQUISITION_CHANNELS, UNKNOWN_CHANNEL } from "@/lib/acquisition-channel";
+import { LOSS_REASON_KEYS, LOSS_REASON_KEY_LABELS } from "@/lib/loss-reason";
 
 /** Etapas sembradas del pipeline (US2). */
 const SEED_STAGES: { name: string; kind: "open" | "won" | "lost" }[] = [
@@ -49,6 +51,26 @@ export async function onUserCreated(userId: string, userName: string) {
         name: s.name,
         position: i,
         kind: s.kind,
+      }))
+    );
+    // Catálogo de canales de adquisición (configuración, no datos de negocio).
+    await tx.insert(schema.acquisitionChannel).values(
+      [...ACQUISITION_CHANNELS, UNKNOWN_CHANNEL].map((c, i) => ({
+        id: newId("acquisitionChannel"),
+        organizationId: orgId,
+        name: c.name,
+        kind: c.kind,
+        sortOrder: i,
+      }))
+    );
+    // Catálogo normalizado de motivos de pérdida (configuración).
+    await tx.insert(schema.lossReasonCatalog).values(
+      LOSS_REASON_KEYS.map((key, i) => ({
+        id: newId("lossReason"),
+        organizationId: orgId,
+        key,
+        label: LOSS_REASON_KEY_LABELS[key],
+        sortOrder: i,
       }))
     );
     await tx.insert(schema.agentProfile).values({

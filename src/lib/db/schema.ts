@@ -1,9 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -129,6 +131,11 @@ export const contact = pgTable(
     medium: varchar("medium", { length: 30 }),
     /** La red social elegida, solo cuando `medium = 'red_social'`. */
     mediumDetail: varchar("medium_detail", { length: 60 }),
+    /** Canal de adquisición normalizado (catálogo `acquisition_channel`). */
+    acquisitionChannelId: varchar("acquisition_channel_id", { length: 255 }).references(
+      () => acquisitionChannel.id,
+      { onDelete: "set null" }
+    ),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -180,6 +187,12 @@ export const lead = pgTable(
     priority: varchar("priority", { length: 20 }),
     priorityUpdatedAt: timestamp("priority_updated_at"),
     lastActivityAt: timestamp("last_activity_at"),
+    /** Lead principal del contacto (las rutas 1:1 existentes operan sobre él). */
+    isPrimary: boolean("is_primary").notNull().default(true),
+    /** Cuándo se calificó, si lo estuvo. */
+    qualifiedAt: timestamp("qualified_at"),
+    /** Qué criterios de calificación se cumplieron (jsonb). */
+    qualificationData: jsonb("qualification_data"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1174,6 +1187,9 @@ export const quoteItem = pgTable(
   "quote_item",
   {
     id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
     quoteId: varchar("quote_id", { length: 255 })
       .notNull()
       .references(() => quote.id, { onDelete: "cascade" }),
@@ -1190,6 +1206,7 @@ export const quoteItem = pgTable(
   },
   (t) => [
     index("quote_item_quote_idx").on(t.quoteId),
+    index("quote_item_org_idx").on(t.organizationId),
   ]
 );
 
@@ -1493,5 +1510,448 @@ export const integration = pgTable(
   },
   (t) => [
     uniqueIndex("integration_org_provider_idx").on(t.organizationId, t.provider),
+  ]
+);
+
+/* ============================================================
+ * Ciclo 1 — Modelo comercial, atribución y métricas
+ * ============================================================ */
+
+/** Catálogo de canales de adquisición (orgánico, pagado, directo, marketplace…). */
+export const acquisitionChannel = pgTable(
+  "acquisition_channel",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 120 }).notNull(),
+    kind: varchar("kind", { length: 30 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("acquisition_channel_org_name_uq").on(t.organizationId, t.name)]
+);
+
+/** Campañas de marketing (plataforma discriminatoria: meta_ads, google_ads, manual…). */
+export const campaign = pgTable(
+  "campaign",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    platform: varchar("platform", { length: 30 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    externalId: varchar("external_id", { length: 255 }),
+    objective: varchar("objective", { length: 100 }),
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    budgetPlannedCents: integer("budget_planned_cents"),
+    startDate: timestamp("start_date"),
+    endDate: timestamp("end_date"),
+    raw: jsonb("raw"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("campaign_org_external_uq")
+      .on(t.organizationId, t.platform, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+    index("campaign_org_idx").on(t.organizationId),
+  ]
+);
+
+/** Conjuntos de anuncios dentro de una campaña. */
+export const adSet = pgTable(
+  "ad_set",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    campaignId: varchar("campaign_id", { length: 255 })
+      .notNull()
+      .references(() => campaign.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    externalId: varchar("external_id", { length: 255 }),
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ad_set_campaign_external_uq")
+      .on(t.campaignId, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+  ]
+);
+
+/** Creatividades (anuncios) asociadas a un conjunto o campaña. */
+export const adCreative = pgTable(
+  "ad_creative",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    adSetId: varchar("ad_set_id", { length: 255 }).references(() => adSet.id, {
+      onDelete: "cascade",
+    }),
+    campaignId: varchar("campaign_id", { length: 255 }).references(
+      () => campaign.id,
+      { onDelete: "cascade" }
+    ),
+    name: varchar("name", { length: 255 }).notNull(),
+    externalId: varchar("external_id", { length: 255 }),
+    creativeType: varchar("creative_type", { length: 50 }),
+    headline: varchar("headline", { length: 512 }),
+    body: text("body"),
+    mediaUrl: varchar("media_url", { length: 1024 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("ad_creative_campaign_idx").on(t.campaignId)]
+);
+
+/** Ofertas comerciales (descuentos, promociones) con vigencia. */
+export const offer = pgTable(
+  "offer",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    service: varchar("service", { length: 100 }),
+    discountType: varchar("discount_type", { length: 20 }),
+    discountValue: integer("discount_value"),
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    startDate: timestamp("start_date"),
+    endDate: timestamp("end_date"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("offer_org_idx").on(t.organizationId)]
+);
+
+/** Eventos de atribución first/last touch por contacto. */
+export const attributionEvent = pgTable(
+  "attribution_event",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    conversationId: varchar("conversation_id", { length: 255 }).references(
+      () => conversation.id,
+      { onDelete: "set null" }
+    ),
+    channelId: varchar("channel_id", { length: 255 }).references(
+      () => acquisitionChannel.id,
+      { onDelete: "set null" }
+    ),
+    campaignId: varchar("campaign_id", { length: 255 }).references(
+      () => campaign.id,
+      { onDelete: "set null" }
+    ),
+    offerId: varchar("offer_id", { length: 255 }).references(() => offer.id, {
+      onDelete: "set null",
+    }),
+    creativeId: varchar("creative_id", { length: 255 }).references(
+      () => adCreative.id,
+      { onDelete: "set null" }
+    ),
+    touchType: varchar("touch_type", { length: 10 }).notNull(),
+    attributionType: varchar("attribution_type", { length: 20 }).notNull(),
+    source: varchar("source", { length: 100 }),
+    medium: varchar("medium", { length: 100 }),
+    campaignName: varchar("campaign_name", { length: 255 }),
+    utmSource: varchar("utm_source", { length: 255 }),
+    utmMedium: varchar("utm_medium", { length: 255 }),
+    utmCampaign: varchar("utm_campaign", { length: 255 }),
+    utmContent: varchar("utm_content", { length: 255 }),
+    utmTerm: varchar("utm_term", { length: 255 }),
+    clickId: varchar("click_id", { length: 255 }),
+    occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("attribution_event_org_contact_idx").on(t.organizationId, t.contactId),
+    index("attribution_event_org_occurred_idx").on(t.organizationId, t.occurredAt),
+    index("attribution_event_org_touch_idx").on(
+      t.organizationId,
+      t.touchType,
+      t.occurredAt
+    ),
+  ]
+);
+
+/** Actividades comerciales de prospección (llamadas, correos, visitas…). */
+export const activityEvent = pgTable(
+  "activity_event",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    leadId: varchar("lead_id", { length: 255 }).references(() => lead.id, {
+      onDelete: "set null",
+    }),
+    conversationId: varchar("conversation_id", { length: 255 }).references(
+      () => conversation.id,
+      { onDelete: "set null" }
+    ),
+    type: varchar("type", { length: 30 }).notNull(),
+    direction: varchar("direction", { length: 10 }).notNull().default("outbound"),
+    outcome: varchar("outcome", { length: 50 }),
+    durationMinutes: integer("duration_minutes"),
+    actorUserId: varchar("actor_user_id", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    notes: text("notes"),
+    occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("activity_event_org_contact_idx").on(t.organizationId, t.contactId),
+    index("activity_event_org_occurred_idx").on(t.organizationId, t.occurredAt),
+    index("activity_event_org_type_idx").on(t.organizationId, t.type, t.occurredAt),
+    index("activity_event_org_actor_idx").on(t.organizationId, t.actorUserId),
+  ]
+);
+
+/** Costo de prestación por servicio/producto, con vigencia. */
+export const serviceCost = pgTable(
+  "service_cost",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    catalogProductId: varchar("catalog_product_id", { length: 255 }).references(
+      () => catalogProduct.id,
+      { onDelete: "set null" }
+    ),
+    service: varchar("service", { length: 100 }),
+    name: varchar("name", { length: 255 }).notNull(),
+    costCents: integer("cost_cents").notNull().default(0),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    effectiveFrom: timestamp("effective_from"),
+    effectiveTo: timestamp("effective_to"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("service_cost_org_idx").on(t.organizationId),
+    index("service_cost_org_service_idx").on(t.organizationId, t.service),
+  ]
+);
+
+/** Estado de sincronización por proveedor de integración. */
+export const syncState = pgTable(
+  "sync_state",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    lastSyncAt: timestamp("last_sync_at"),
+    lastStatus: varchar("last_status", { length: 20 }),
+    lastError: text("last_error"),
+    periodStart: timestamp("period_start"),
+    periodEnd: timestamp("period_end"),
+    recordsImported: integer("records_imported").notNull().default(0),
+    duplicatesDetected: integer("duplicates_detected").notNull().default(0),
+    currency: varchar("currency", { length: 10 }),
+    detail: jsonb("detail"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("sync_state_org_provider_uq").on(t.organizationId, t.provider)]
+);
+
+/** Experimentos A/B: hipótesis, variantes y evidencia. */
+export const experiment = pgTable(
+  "experiment",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    hypothesis: text("hypothesis"),
+    problem: text("problem"),
+    service: varchar("service", { length: 100 }),
+    channelId: varchar("channel_id", { length: 255 }).references(
+      () => acquisitionChannel.id,
+      { onDelete: "set null" }
+    ),
+    campaignId: varchar("campaign_id", { length: 255 }).references(
+      () => campaign.id,
+      { onDelete: "set null" }
+    ),
+    offerId: varchar("offer_id", { length: 255 }).references(() => offer.id, {
+      onDelete: "set null",
+    }),
+    primaryMetric: varchar("primary_metric", { length: 50 }),
+    status: varchar("status", { length: 20 }).notNull().default("borrador"),
+    evidenceStatus: varchar("evidence_status", { length: 20 })
+      .notNull()
+      .default("inconcluso"),
+    conclusion: text("conclusion"),
+    budgetPlannedCents: integer("budget_planned_cents"),
+    startDate: timestamp("start_date"),
+    endDate: timestamp("end_date"),
+    createdBy: varchar("created_by", { length: 255 }).references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("experiment_org_idx").on(t.organizationId)]
+);
+
+/** Variantes de un experimento (A/B). */
+export const experimentVariant = pgTable(
+  "experiment_variant",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    experimentId: varchar("experiment_id", { length: 255 })
+      .notNull()
+      .references(() => experiment.id, { onDelete: "cascade" }),
+    key: varchar("key", { length: 10 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    creativeId: varchar("creative_id", { length: 255 }).references(
+      () => adCreative.id,
+      { onDelete: "set null" }
+    ),
+    offerId: varchar("offer_id", { length: 255 }).references(() => offer.id, {
+      onDelete: "set null",
+    }),
+    message: text("message"),
+    isControl: boolean("is_control").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("experiment_variant_exp_key_uq").on(t.experimentId, t.key)]
+);
+
+/** Observaciones diarias de un experimento por variante. */
+export const experimentObservation = pgTable(
+  "experiment_observation",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    experimentId: varchar("experiment_id", { length: 255 })
+      .notNull()
+      .references(() => experiment.id, { onDelete: "cascade" }),
+    variantId: varchar("variant_id", { length: 255 })
+      .notNull()
+      .references(() => experimentVariant.id, { onDelete: "cascade" }),
+    observedOn: date("observed_on").notNull(),
+    impressions: integer("impressions").notNull().default(0),
+    clicks: integer("clicks").notNull().default(0),
+    leads: integer("leads").notNull().default(0),
+    qualifiedLeads: integer("qualified_leads").notNull().default(0),
+    quotes: integer("quotes").notNull().default(0),
+    sales: integer("sales").notNull().default(0),
+    revenueCents: integer("revenue_cents").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+    contributionCents: integer("contribution_cents").notNull().default(0),
+    sampleSize: integer("sample_size"),
+    confidenceLow: numeric("confidence_low"),
+    confidenceHigh: numeric("confidence_high"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("experiment_observation_unique_idx").on(
+      t.experimentId,
+      t.variantId,
+      t.observedOn
+    ),
+    index("experiment_observation_org_idx").on(t.organizationId, t.observedOn),
+  ]
+);
+
+/** Criterios de calificación configurables por organización. */
+export const qualificationCriteria = pgTable(
+  "qualification_criteria",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    definition: jsonb("definition").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("qualification_criteria_org_uq").on(t.organizationId)]
+);
+
+/** Catálogo normalizado de motivos de pérdida (configurable). */
+export const lossReasonCatalog = pgTable(
+  "loss_reason",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    key: varchar("key", { length: 50 }).notNull(),
+    label: varchar("label", { length: 120 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("loss_reason_org_key_uq").on(t.organizationId, t.key)]
+);
+
+/** Ventas de marketplace (Mercado Libre) registradas manualmente. */
+export const marketplaceOrder = pgTable(
+  "marketplace_order",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    platform: varchar("platform", { length: 30 }).notNull().default("mercado_libre"),
+    externalId: varchar("external_id", { length: 255 }),
+    orderNumber: varchar("order_number", { length: 100 }).notNull(),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    itemName: varchar("item_name", { length: 255 }).notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    amountCents: integer("amount_cents").notNull().default(0),
+    commissionCents: integer("commission_cents").notNull().default(0),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    status: varchar("status", { length: 30 }).notNull().default("completed"),
+    orderedAt: timestamp("ordered_at").notNull().defaultNow(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("marketplace_order_org_external_uq")
+      .on(t.organizationId, t.platform, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+    index("marketplace_order_org_idx").on(t.organizationId, t.orderedAt),
   ]
 );
