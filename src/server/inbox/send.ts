@@ -11,6 +11,7 @@ import { graphRequest, MetaApiError, normalizeRecipient } from "@/lib/meta/clien
 import { destinatarioMeta, type Destinatario } from "@/lib/meta/destinatario";
 import { publish } from "@/server/events/bus";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
+import { recordDiagnostic } from "@/server/diagnostics/logger";
 import {
   getCredentialsByOrg,
   markReconnectRequired,
@@ -62,11 +63,14 @@ export class SendError extends Error {
     | "upload_failed";
   /** 008: presente cuando el fallo ocurrió TRAS persistir el mensaje (failed). */
   messageId?: string;
+  /** Safe provider details retained for diagnostics and the failed-message record. */
+  details?: unknown;
 
-  constructor(code: SendError["code"], message: string) {
+  constructor(code: SendError["code"], message: string, details?: unknown) {
     super(message);
     this.name = "SendError";
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -591,6 +595,15 @@ export async function sendMediaMessage(input: {
         "No se pudo subir el adjunto a WhatsApp"
       );
     }
+    if (target.zernio) {
+      await recordDiagnostic({
+        organizationId: input.organizationId,
+        source: "whatsapp",
+        code: "send_failed",
+        error: sendErr,
+        metadata: { operation: "send-media", provider: "zernio", conversationId: input.conversationId },
+      });
+    }
     // El contenido NO se pierde: mensaje failed con el asset ya en disco.
     sendErr.messageId = await persistOutbound({
       organizationId: input.organizationId,
@@ -691,7 +704,19 @@ export async function sendStructured(
 async function callWhatsappZernio(target: SendTarget, body: Record<string, unknown>, key: string, file?: { data: Buffer; mimeType: string; fileName?: string }) {
   try { return await sendWhatsappZernio(target.zernio!, target.conversation.channelThreadRef, body, key, file); }
   catch (err) {
-    if (err instanceof MetaApiError) throw new SendError(err.isAuthError ? "reconnect_required" : err.status === 0 || err.status >= 500 ? "meta_unavailable" : "meta_error", err.isAuthError ? "Reconecta la API key de Zernio en Ajustes" : err.message);
+    if (err instanceof MetaApiError) {
+      const details = err.details && typeof err.details === "object" ? err.details as Record<string, unknown> : null;
+      const code = typeof details?.code === "string" ? ` · ${details.code}` : "";
+      const requestId = typeof details?.requestId === "string" ? ` · referencia ${details.requestId}` : "";
+      const message = err.isAuthError
+        ? "Reconecta la API key de Zernio en Ajustes"
+        : `${err.message}${code}${requestId}`;
+      throw new SendError(
+        err.isAuthError ? "reconnect_required" : err.status === 0 || err.status >= 500 ? "meta_unavailable" : "meta_error",
+        message,
+        err.details
+      );
+    }
     throw err;
   }
 }

@@ -14,10 +14,10 @@ import {
   ListTodo,
   LogOut,
   Settings,
+  Send,
   Truck,
   Users,
   X,
-  Zap,
 } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import type { ThemePreference } from "@/lib/theme";
@@ -43,7 +43,7 @@ const NAV: NavItem[] = [
   { href: "/balance", label: "Balance", icon: DollarSign },
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
-  { href: "/automations", label: "Automatizaciones", icon: Zap },
+  { href: "/broadcasts", label: "Envíos masivos", icon: Send },
   { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },

@@ -105,6 +105,11 @@ const config: Config = {
         sm: "var(--radius-sm)",
         md: "var(--radius)",
         lg: "var(--radius-lg)",
+        // Escala Vercel: tarjetas y paneles se quedan en el radio del token
+        // (12px) en vez de los 12/16px literales de Tailwind, para que todo el
+        // chrome comparta un radio uniforme sin editar cada call site.
+        xl: "var(--radius-lg)",
+        "2xl": "var(--radius-lg)",
       },
       boxShadow: {
         sm: "var(--shadow-sm)",

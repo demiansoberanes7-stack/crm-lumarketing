@@ -288,6 +288,13 @@
       "when": 1791600000012,
       "tag": "0040_marketplace_order",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791600000013,
+      "tag": "0041_bulk_campaigns_note_history",
+      "breakpoints": true
     }
   ]
 }

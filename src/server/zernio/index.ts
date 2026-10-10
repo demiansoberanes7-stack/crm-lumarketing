@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { MetaApiError } from "@/lib/meta/client";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 /**
  * 017 — Transporte de Zernio, compartido por los canales que lo usan.
@@ -220,15 +221,93 @@ export async function zernioFetch(
   }
 
   if (!res.ok) {
-    const err = json as { error?: { message?: string } | string } | null;
-    const message =
-      typeof err?.error === "string"
-        ? err.error
-        : (err?.error?.message ?? `HTTP ${res.status}`);
+    const err = json as {
+      error?: { message?: string } | string;
+      type?: string;
+      code?: string;
+      param?: string;
+      platform?: string;
+      platformError?: unknown;
+    } | null;
+    const rawMessage = typeof err?.error === "string"
+      ? err.error
+      : (err?.error?.message ?? `HTTP ${res.status}`);
+    const message = safeDiagnosticText(rawMessage, 600);
+    const safePlatformError = err?.platformError
+      ? safeDiagnosticText(JSON.stringify(err.platformError), 900)
+      : undefined;
     throw new MetaApiError(message, {
       status: res.status,
-      details: json ?? text,
+      type: err?.type ?? null,
+      details: {
+        status: res.status,
+        type: err?.type ?? null,
+        code: err?.code ?? null,
+        param: err?.param ?? null,
+        platform: err?.platform ?? null,
+        ...(safePlatformError ? { platformError: safePlatformError } : {}),
+        requestId: res.headers.get("x-request-id"),
+      },
     });
   }
   return json;
+}
+
+/** Upload binary media using Zernio's documented direct-upload endpoint. */
+export async function zernioUploadMediaDirect(input: {
+  token: string;
+  data: Buffer;
+  fileName: string;
+  mimeType: string;
+}): Promise<{ url: string; filename: string; contentType: string; size: number }> {
+  if (!input.fileName.trim()) throw new MetaApiError("Falta el nombre del archivo", { status: 400 });
+  if (!input.mimeType.trim() || input.mimeType === "application/octet-stream") {
+    throw new MetaApiError("Zernio requiere el tipo MIME real del adjunto", { status: 415 });
+  }
+
+  const form = new FormData();
+  form.set("file", new Blob([new Uint8Array(input.data)], { type: input.mimeType }), input.fileName);
+  form.set("contentType", input.mimeType);
+
+  let response: Response;
+  try {
+    response = await fetch(`${ZERNIO_BASE}/media/upload-direct`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}` },
+      body: form,
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch (cause) {
+    throw new MetaApiError("No se pudo subir el adjunto a Zernio", { status: 0, details: cause });
+  }
+
+  const text = await response.text();
+  let payload: Record<string, unknown> | null = null;
+  try { payload = text ? JSON.parse(text) as Record<string, unknown> : null; } catch { /* el envelope abajo reporta el status */ }
+  if (!response.ok) {
+    const rawMessage = typeof payload?.error === "string" ? payload.error : `Zernio rechazó la subida (HTTP ${response.status})`;
+    throw new MetaApiError(safeDiagnosticText(rawMessage, 600), {
+      status: response.status,
+      type: typeof payload?.type === "string" ? payload.type : null,
+      details: {
+        status: response.status,
+        type: payload?.type ?? null,
+        code: payload?.code ?? null,
+        param: payload?.param ?? null,
+        requestId: response.headers.get("x-request-id"),
+      },
+    });
+  }
+
+  const url = typeof payload?.url === "string" ? payload.url : "";
+  let parsedUrl: URL;
+  try { parsedUrl = new URL(url); } catch { throw new MetaApiError("Zernio no devolvió una URL válida para el adjunto", { status: 502 }); }
+  if (parsedUrl.protocol !== "https:") throw new MetaApiError("Zernio devolvió una URL de adjunto no segura", { status: 502 });
+
+  return {
+    url: parsedUrl.toString(),
+    filename: typeof payload?.filename === "string" ? safeDiagnosticText(payload.filename, 255) : input.fileName,
+    contentType: typeof payload?.contentType === "string" ? payload.contentType : input.mimeType,
+    size: typeof payload?.size === "number" && Number.isFinite(payload.size) ? payload.size : input.data.byteLength,
+  };
 }

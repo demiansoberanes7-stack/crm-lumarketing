@@ -11,6 +11,7 @@ const baseActions = [
   z.object({
     action: z.literal("update_lead"),
     note: z.string().min(1),
+    ficha: z.record(z.unknown()).optional(),
     reply: z.string().optional(),
   }),
   z.object({

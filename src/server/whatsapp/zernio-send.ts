@@ -1,4 +1,4 @@
-import { zernioFetch, ZERNIO_BASE } from "@/server/zernio";
+import { zernioFetch, zernioUploadMediaDirect } from "@/server/zernio";
 import { MetaApiError } from "@/lib/meta/client";
 import type { WhatsappZernioCredentials } from "./zernio-credentials";
 import { zernioWhatsappEnabled } from "./zernio-credentials";
@@ -14,13 +14,23 @@ export async function sendWhatsappZernio(creds: WhatsappZernioCredentials, threa
   if (!thread) throw new MetaApiError("Espera un mensaje entrante por Zernio para vincular esta conversación", { status: 409 });
   const endpoint = `/inbox/conversations/${encodeURIComponent(thread)}/messages`;
   if (!file) return zernioMessageId(await zernioFetch(endpoint, { method: "POST", token: creds.token, body: { ...body, accountId: creds.accountId }, headers: { "Idempotency-Key": idempotencyKey } }));
-  const form = new FormData();
-  form.set("accountId", creds.accountId);
-  for (const [key, value] of Object.entries(body)) if (value != null) form.set(key, String(value));
-  form.set("file", new Blob([new Uint8Array(file.data)], { type: file.mimeType }), file.fileName ?? "archivo");
-  let res: Response;
-  try { res = await fetch(`${ZERNIO_BASE}${endpoint}`, { method: "POST", headers: { Authorization: `Bearer ${creds.token}`, "Idempotency-Key": idempotencyKey }, body: form, signal: AbortSignal.timeout(60000) }); }
-  catch { throw new MetaApiError("No se pudo contactar Zernio", { status: 0 }); }
-  if (!res.ok) throw new MetaApiError(`Zernio rechazó el archivo (HTTP ${res.status})`, { status: res.status });
-  return zernioMessageId(await res.json());
+  const uploaded = await zernioUploadMediaDirect({
+    token: creds.token,
+    data: file.data,
+    fileName: file.fileName ?? "archivo",
+    mimeType: file.mimeType,
+  });
+  const attachmentType = String(body.attachmentType ?? "file");
+  return zernioMessageId(await zernioFetch(endpoint, {
+    method: "POST",
+    token: creds.token,
+    body: {
+      ...body,
+      accountId: creds.accountId,
+      attachmentUrl: uploaded.url,
+      attachmentType,
+      ...(attachmentType === "file" ? { attachmentName: uploaded.filename } : {}),
+    },
+    headers: { "Idempotency-Key": idempotencyKey },
+  }));
 }

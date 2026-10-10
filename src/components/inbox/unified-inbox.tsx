@@ -5,7 +5,7 @@ import { Mail } from "lucide-react";
 import type { Channel } from "@/lib/channels";
 import { CHANNEL_LABEL } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
-import { EmailClient } from "@/components/email/email-client";
+import { EmailChatClient } from "@/components/email/email-chat-client";
 import { InboxClient } from "./inbox-client";
 export function UnifiedInbox({ channels }: { channels: readonly Channel[] }) {
   const email = useSearchParams().get("channel") === "email";
@@ -16,6 +16,6 @@ export function UnifiedInbox({ channels }: { channels: readonly Channel[] }) {
       {channels.map((channel) => <Link key={channel} href={`/inbox?channel=${channel}`} title={CHANNEL_LABEL[channel]}><ChannelBadge channel={channel} /></Link>)}
       <span className="flex items-center gap-2 rounded-full bg-brand-tint px-3 py-1"><Mail size={16} /> Buzón</span>
     </nav>
-    <div className="min-h-0 flex-1"><EmailClient /></div>
+    <div className="min-h-0 flex-1"><EmailChatClient /></div>
   </div>;
 }

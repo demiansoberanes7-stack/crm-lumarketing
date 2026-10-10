@@ -9,5 +9,7 @@ export async function register(): Promise<void> {
     await cleanupOrphanRuns();
     const { startAutomationWorker } = await import("./server/automation-queue");
     await startAutomationWorker();
+    const { startBroadcastWorker } = await import("./server/broadcast-queue");
+    await startBroadcastWorker();
   }
 }

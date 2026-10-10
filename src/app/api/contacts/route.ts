@@ -168,6 +168,17 @@ export const POST = withAuth(async (session, req: Request) => {
     return apiError(409, "duplicate", "Ya existe un contacto con ese teléfono");
   }
 
+  if (body.data.notes?.trim()) {
+    await db.insert(schema.contactNote).values({
+      id: newId("contactNote"),
+      organizationId: session.organizationId,
+      contactId: existingContact.id,
+      body: body.data.notes,
+      source: "manual",
+      createdBy: session.userId,
+    });
+  }
+
   // Y su lead: un contacto sin lead es invisible en el Pipeline, que es la
   // pantalla donde se trabaja el embudo. Dar de alta a alguien y no verlo ahí
   // es la mitad de la función.

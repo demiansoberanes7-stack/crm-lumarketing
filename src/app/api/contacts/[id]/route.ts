@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
+import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import {
   getContactById,
@@ -49,6 +50,9 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   const body = await parseBody(req, patchSchema);
   if (!body.ok) return body.response;
 
+  const current = await getContactById(session.organizationId, id);
+  if (!current) return apiError(404, "not_found", "Contacto no encontrado");
+
   if (body.data.ficha !== undefined) {
     const res = await upsertFicha({
       organizationId: session.organizationId,
@@ -82,16 +86,28 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   }
 
   const db = getDb();
-  await db
-    .update(schema.contact)
-    .set(set)
-    .where(
-      scoped(
-        schema.contact.organizationId,
-        session.organizationId,
-        eq(schema.contact.id, id)
-      )
-    );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.contact)
+      .set(set)
+      .where(
+        scoped(
+          schema.contact.organizationId,
+          session.organizationId,
+          eq(schema.contact.id, id)
+        )
+      );
+    if (body.data.notes !== undefined && body.data.notes !== current.notes) {
+      await tx.insert(schema.contactNote).values({
+        id: newId("contactNote"),
+        organizationId: session.organizationId,
+        contactId: id,
+        body: body.data.notes ?? "",
+        source: "manual",
+        createdBy: session.userId,
+      });
+    }
+  });
   const contact = await getContactById(session.organizationId, id);
   if (!contact) return apiError(404, "not_found", "Contacto no encontrado");
   return Response.json({ contact: serializeContact(contact) });

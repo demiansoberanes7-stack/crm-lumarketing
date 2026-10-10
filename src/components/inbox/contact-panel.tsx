@@ -38,8 +38,15 @@ export function ContactPanel({
   }) => Promise<void>;
   onClose: () => void;
 }) {
+  type NoteHistoryItem = {
+    id: string;
+    body: string;
+    source: string;
+    createdAt: string;
+  };
   const [notes, setNotes] = useState("");
   const [ficha, setFicha] = useState<FichaDto>({});
+  const [noteHistory, setNoteHistory] = useState<NoteHistoryItem[]>([]);
   const [notesLoaded, setNotesLoaded] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
   const [stages, setStages] = useState<StageDto[]>([]);
@@ -58,13 +65,14 @@ export function ContactPanel({
   // así que el toggle opera siempre — `agentReady` solo matiza el texto.
   const aiActive = conversation.aiEnabled && !conversation.handoffAt;
 
-  // Carga inicial (incluye notas): se re-ejecuta al cambiar de contacto.
+  // Carga inicial (incluye notas e historial): se re-ejecuta al cambiar de contacto.
   const refetch = useCallback(async () => {
-    const [detail, stagesRes, agentRes] = await Promise.all([
+    const [detail, stagesRes, agentRes, historyRes] = await Promise.all([
       fetch(`/api/contacts/${contactId}`).then((r) => (r.ok ? r.json() : null)),
       fetch("/api/pipeline/stages").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/agent/profile").then((r) => (r.ok ? r.json() : null)),
-    ]).catch(() => [null, null, null]);
+      fetch(`/api/contacts/${contactId}/notes`).then((r) => (r.ok ? r.json() : null)),
+    ]).catch(() => [null, null, null, null]);
     if (detail) {
       setNotes(detail.contact?.notes ?? "");
       setFicha(detail.contact?.ficha ?? {});
@@ -72,6 +80,7 @@ export function ContactPanel({
       setLeadId(detail.lead?.id ?? null);
     }
     if (stagesRes) setStages(stagesRes.stages);
+    setNoteHistory(historyRes?.notes ?? []);
     setAgentEnabled(Boolean(agentRes?.profile?.enabled));
     setAiConfigured(Boolean(agentRes?.aiConfigured));
     setNotesLoaded(true);
@@ -144,6 +153,11 @@ export function ContactPanel({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ notes }),
     }).catch(() => null);
+    // El historial crece al guardar: refrescarlo sin tocar el textarea.
+    const history = await fetch(`/api/contacts/${contactId}/notes`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (history) setNoteHistory(history.notes ?? []);
     setSavingNotes(false);
   }
 
@@ -331,6 +345,32 @@ export function ContactPanel({
           >
             {savingNotes ? "Guardando…" : "Guardar notas"}
           </Button>
+
+          {noteHistory.length > 0 && (
+            <div className="mt-3 border-t pt-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                Historial ({noteHistory.length})
+              </p>
+              <ul className="space-y-1.5">
+                {noteHistory.slice(0, 8).map((entry) => (
+                  <li key={entry.id} className="rounded bg-subtle px-2 py-1.5 text-xs">
+                    <span
+                      className={cn(
+                        "mr-1.5 rounded px-1 py-0.5 text-[10px] font-semibold",
+                        entry.source === "ai"
+                          ? "bg-brand-tint text-brand-text"
+                          : "bg-accent text-text-3"
+                      )}
+                    >
+                      {entry.source === "ai" ? "IA" : entry.source === "legacy" ? "Antes" : "Manual"}
+                    </span>
+                    <span className="text-text-3">{new Date(entry.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}</span>
+                    <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-text-2">{entry.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       </div>
     </div>

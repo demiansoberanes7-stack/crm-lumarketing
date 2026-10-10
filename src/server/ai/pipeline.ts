@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -19,6 +19,7 @@ import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { bookSlot, offerSlots } from "@/server/agenda/agent";
 import { getOffers, mapaDeHuecosParaModelo } from "@/server/agenda/offers";
+import { upsertFicha } from "@/server/bot/ficha";
 
 /**
  * Turno del agente (FR-021..FR-025).
@@ -308,6 +309,13 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       return;
     case "update_lead": {
       await appendLeadNote(organizationId, conversation.contactId, action.note);
+      if (action.ficha) {
+        await upsertFicha({
+          organizationId,
+          contactId: conversation.contactId,
+          ficha: action.ficha,
+        });
+      }
       if (action.reply) await deliverReply(conversation, action.reply);
       return;
     }
@@ -459,19 +467,32 @@ async function appendLeadNote(
   note: string
 ): Promise<void> {
   const db = getDb();
-  const rows = await db
-    .select({ id: schema.contact.id, notes: schema.contact.notes })
-    .from(schema.contact)
-    .where(eq(schema.contact.id, contactId))
-    .limit(1);
-  const contact = rows[0];
-  if (!contact) return;
   const stamped = `[IA] ${note}`;
-  await db
-    .update(schema.contact)
-    .set({
-      notes: contact.notes ? `${contact.notes}\n${stamped}` : stamped,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.contact.id, contact.id));
+  await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(schema.contact)
+      .set({
+        notes: sql`CASE
+          WHEN ${schema.contact.notes} IS NULL OR ${schema.contact.notes} = '' THEN ${stamped}
+          ELSE ${schema.contact.notes} || E'\\n' || ${stamped}
+        END`,
+        updatedAt: new Date(),
+      })
+      .where(
+        scoped(
+          schema.contact.organizationId,
+          organizationId,
+          eq(schema.contact.id, contactId)
+        )
+      )
+      .returning({ id: schema.contact.id });
+    if (!updated[0]) return;
+    await tx.insert(schema.contactNote).values({
+      id: newId("contactNote"),
+      organizationId,
+      contactId,
+      body: note,
+      source: "ai",
+    });
+  });
 }

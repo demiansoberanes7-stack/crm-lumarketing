@@ -1,9 +1,5 @@
-import { AutomationsClient } from "@/components/automations/automations-client";
-
-export const metadata = {
-  title: "Automatizaciones | Zorro Tech CRM",
-};
+import { redirect } from "next/navigation";
 
 export default function AutomationsPage() {
-  return <AutomationsClient />;
+  redirect("/broadcasts");
 }

@@ -65,6 +65,9 @@ const prefixes = {
   qualificationCriteria: "qc",
   lossReason: "lr",
   marketplaceOrder: "mo",
+  contactNote: "ctn",
+  broadcastCampaign: "bcm",
+  broadcastRecipient: "bcr",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

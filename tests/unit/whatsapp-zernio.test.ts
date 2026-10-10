@@ -26,6 +26,54 @@ describe("WhatsApp Zernio", () => {
     expect(JSON.parse(opts.body)).toEqual({ accountId: "account", message: "Hola" });
     expect(opts.headers["Idempotency-Key"]).toBe("msg_1");
   });
+  it("sube adjuntos por upload-direct y envía la URL pública en el mensaje JSON", async () => {
+    vi.stubEnv("WHATSAPP_ZERNIO_ENABLED", "true");
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ url: "https://media.zernio.com/temp/banner.jpg", filename: "banner.jpg", contentType: "image/jpeg", size: 313000 }))
+      .mockResolvedValueOnce(Response.json({ success: true, data: { messageId: "wamid.media" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await sendWhatsappZernio(
+      creds,
+      "thread/1",
+      { message: "Servicio de mantenimiento", attachmentType: "image" },
+      "msg_media_1",
+      { data: Buffer.from("jpeg"), mimeType: "image/jpeg", fileName: "banner.jpg" }
+    );
+
+    expect(result).toBe("wamid.media");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(String(fetch.mock.calls[0]?.[0])).toContain("/media/upload-direct");
+    const upload = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(upload.body).toBeInstanceOf(FormData);
+    expect((upload.body as FormData).get("contentType")).toBe("image/jpeg");
+    expect(String(fetch.mock.calls[1]?.[0])).toContain("/inbox/conversations/thread%2F1/messages");
+    const send = fetch.mock.calls[1]?.[1] as RequestInit;
+    expect(JSON.parse(String(send.body))).toEqual({
+      accountId: "account",
+      message: "Servicio de mantenimiento",
+      attachmentType: "image",
+      attachmentUrl: "https://media.zernio.com/temp/banner.jpg",
+    });
+    expect((send.headers as Record<string, string>)["Idempotency-Key"]).toBe("msg_media_1");
+  });
+  it("preserva el código de error de Zernio cuando la subida o envío devuelve 400", async () => {
+    vi.stubEnv("WHATSAPP_ZERNIO_ENABLED", "true");
+    const fetch = vi.fn().mockResolvedValue(Response.json({ error: "Invalid attachment URL", type: "invalid_request_error", code: "invalid_field_value", param: "attachmentUrl" }, { status: 400 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(sendWhatsappZernio(
+      creds,
+      "thread/1",
+      { message: "caption", attachmentType: "image" },
+      "msg_media_2",
+      { data: Buffer.from("jpeg"), mimeType: "image/jpeg", fileName: "banner.jpg" }
+    )).rejects.toMatchObject({
+      status: 400,
+      message: "Invalid attachment URL",
+      details: { code: "invalid_field_value", param: "attachmentUrl" },
+    });
+  });
   it("apagado no toca red; sin hilo no inventa identificadores", async () => {
     vi.stubEnv("WHATSAPP_ZERNIO_ENABLED", "false");
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

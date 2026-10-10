@@ -3,10 +3,11 @@
 @tailwind utilities;
 
 /*
-  Sistema de diseño de LUMARK: marca LUMARK dentro del CRM.
-  Papel cálido (#faf8f5), tinta oscura, acento dorado luminoso,
-  tipografía Archivo para la interfaz, Instrument Serif itálica para los
-  acentos editoriales e IBM Plex Mono para etiquetas y horas.
+  Sistema de diseño de Zorro Tech: chrome estilo Vercel (Geist) con acento
+  white-label. Neutros grises puros, bordes de 1px de bajo contraste, radios
+  ajustados y sombras mínimas; el color solo aparece en el acento de marca y en
+  los estados semánticos. Tipografía Archivo para la interfaz, Instrument Serif
+  itálica para acentos editoriales e IBM Plex Mono para etiquetas y horas.
 
   El tema activo se selecciona con `data-theme` en <html> (ver src/lib/theme.ts):
   el servidor lo escribe desde la cookie, así que no hay parpadeo.
@@ -17,27 +18,27 @@
   :root {
     color-scheme: light;
 
-    /* Neutros: papel frío de la landing */
+    /* Neutros: escala zinc clara, chrome Vercel */
     --bg: #ffffff;
-    --bg-subtle: #f6f8fc;
-    --bg-panel: #eef2f9;
-    --bg-hover: #e9eef8;
-    --text: #0a1730;
-    --text-2: #42506b;
-    --text-3: #8391aa;
-    --text-4: #aab4c8;
-    --border: #e8edf6;
-    --border-strong: #dde5f1;
+    --bg-subtle: #fafafa;
+    --bg-panel: #f4f4f5;
+    --bg-hover: #f4f4f5;
+    --text: #0a0a0a;
+    --text-2: #52525b;
+    --text-3: #a1a1aa;
+    --text-4: #d4d4d8;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
 
-    /* Chat: el cliente entra en verde WhatsApp, el CRM contesta en el acento */
-    --chat-bg: #f6f8fc;
-    --bubble-in: #eaf7ef;
-    --bubble-in-border: #d7eede;
+    /* Chat: entrante en gris neutro, saliente en el acento de marca */
+    --chat-bg: #fafafa;
+    --bubble-in: #f4f4f5;
+    --bubble-in-border: #e4e4e7;
     --bubble-out: var(--accent-tint);
     --bubble-out-border: var(--accent-soft);
     --bubble-out-text: var(--text);
 
-    /* Acento (default: dorado LUMARK; el white-label lo sobreescribe) */
+    /* Acento (default: dorado Zorro Tech; el white-label lo sobreescribe) */
     --accent: #B8963E;
     --accent-hover: #A38535;
     --accent-soft: #E8D8B0;
@@ -49,20 +50,20 @@
     --bg-active: var(--accent-tint);
 
     /* Estado: color puro + tríada (tint = fondo, soft = borde, text = tinta) */
-    --success: #1fb35b;
-    --success-tint: #e9f7ee;
-    --success-soft: #c9ebd6;
-    --success-text: #157a41;
+    --success: #16a34a;
+    --success-tint: #f0fdf4;
+    --success-soft: #bbf7d0;
+    --success-text: #15803d;
 
-    --warning: #f2a71b;
-    --warning-tint: #fef6e6;
-    --warning-soft: #f8e3b5;
-    --warning-text: #935f0b;
+    --warning: #d97706;
+    --warning-tint: #fffbeb;
+    --warning-soft: #fde68a;
+    --warning-text: #b45309;
 
-    --danger: #d94a4a;
-    --danger-tint: #fdf0f0;
-    --danger-soft: #f5cccc;
-    --danger-text: #b73535;
+    --danger: #dc2626;
+    --danger-tint: #fef2f2;
+    --danger-soft: #fecaca;
+    --danger-text: #b91c1c;
     --danger-fg: #ffffff;
 
     --info: #B8963E;
@@ -71,17 +72,17 @@
     --info-text: #8B7230;
 
     /* Superficies auxiliares */
-    --overlay: rgba(4, 16, 46, 0.55);
+    --overlay: rgba(10, 10, 10, 0.5);
     --knob: #ffffff;
 
-    /* Radios y sombras (las de la landing, con tinte azul marino) */
-    --radius-sm: 9px;
-    --radius: 12px;
-    --radius-lg: 16px;
-    --shadow-sm: 0 1px 2px rgba(8, 27, 82, 0.06);
-    --shadow-md: 0 14px 40px -16px rgba(8, 27, 82, 0.16);
-    --shadow-pop: 0 30px 80px -20px rgba(8, 27, 82, 0.22),
-      0 8px 24px -12px rgba(8, 27, 82, 0.12);
+    /* Radios ajustados y sombras mínimas (chrome Vercel) */
+    --radius-sm: 6px;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.04);
+    --shadow-md: 0 4px 12px rgba(10, 10, 10, 0.06);
+    --shadow-pop: 0 16px 40px rgba(10, 10, 10, 0.1),
+      0 4px 12px rgba(10, 10, 10, 0.05);
 
     /* Densidad de filas de conversación */
     --row-py: 11px;
@@ -90,24 +91,24 @@
   :root[data-theme="dark"] {
     color-scheme: dark;
 
-    /* Neutros: el azul marino de las secciones oscuras de la landing */
-    --bg: #0b1327;
-    --bg-subtle: #070e20;
-    --bg-panel: #111b36;
-    --bg-hover: #172346;
-    --text: #e8eefc;
-    --text-2: #a9b8dc;
-    --text-3: #7688b0;
-    --text-4: #55648a;
-    --border: #1a2748;
-    --border-strong: #26376a;
+    /* Neutros: escala zinc oscura, chrome Vercel */
+    --bg: #0a0a0a;
+    --bg-subtle: #000000;
+    --bg-panel: #141414;
+    --bg-hover: #1a1a1a;
+    --text: #ededed;
+    --text-2: #a1a1aa;
+    --text-3: #71717a;
+    --text-4: #52525b;
+    --border: #262626;
+    --border-strong: #333333;
 
     /* Chat */
-    --chat-bg: #070e20;
-    --bubble-in: #0f2419;
-    --bubble-in-border: #1c3b2a;
+    --chat-bg: #000000;
+    --bubble-in: #1a1a1a;
+    --bubble-in-border: #262626;
 
-    /* Acento: respaldo con el dorado LUMARK aclarado para fondo oscuro; el
+    /* Acento: respaldo con el dorado aclarado para fondo oscuro; el
        white-label lo recalcula (ver resolveAccentSet en lib/branding). */
     --accent: #D4A843;
     --accent-hover: #E8C060;
@@ -118,35 +119,35 @@
     --accent-veil: rgba(0, 0, 0, 0.22);
 
     /* Estado sobre fondo oscuro */
-    --success: #4fd07f;
-    --success-tint: #0f2418;
-    --success-soft: #1c3d29;
-    --success-text: #7fe0a3;
+    --success: #4ade80;
+    --success-tint: #052e16;
+    --success-soft: #14532d;
+    --success-text: #86efac;
 
-    --warning: #f5b74a;
-    --warning-tint: #2a1f0c;
-    --warning-soft: #4a3714;
-    --warning-text: #f7c86f;
+    --warning: #fbbf24;
+    --warning-tint: #291c05;
+    --warning-soft: #453009;
+    --warning-text: #fcd34d;
 
-    --danger: #ef6b6b;
-    --danger-tint: #2a1216;
-    --danger-soft: #4a1f26;
-    --danger-text: #f59a9a;
-    --danger-fg: #1b0d10;
+    --danger: #f87171;
+    --danger-tint: #2a0f0f;
+    --danger-soft: #4a1515;
+    --danger-text: #fca5a5;
+    --danger-fg: #1a0a0a;
 
     --info: #D4A843;
     --info-tint: #2A2115;
     --info-soft: #3D3220;
     --info-text: #E8C060;
 
-    --overlay: rgba(2, 8, 24, 0.74);
-    --knob: #dfe6fa;
+    --overlay: rgba(0, 0, 0, 0.7);
+    --knob: #d4d4d8;
 
     /* Sombras: sobre oscuro necesitan más negro para leerse */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-    --shadow-md: 0 14px 40px -16px rgba(0, 0, 0, 0.6);
-    --shadow-pop: 0 30px 80px -20px rgba(0, 0, 0, 0.75),
-      0 8px 24px -12px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.6),
+      0 4px 12px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -182,13 +183,13 @@
     background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   }
 
-  /* Rejilla difuminada del hero de la landing (login) */
+  /* Rejilla sutil del fondo del login, en neutro (chrome Vercel) */
   .brand-grid {
     background-image:
-      linear-gradient(to right, var(--accent-soft) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--accent-soft) 1px, transparent 1px);
+      linear-gradient(to right, var(--border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px);
     background-size: 52px 52px;
-    opacity: 0.3;
+    opacity: 0.5;
     -webkit-mask-image: radial-gradient(
       ellipse 90% 80% at 50% 20%,
       #000 30%,
@@ -197,7 +198,7 @@
     mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, #000 30%, transparent 75%);
   }
 
-  /* Resplandores suaves que flotan detrás del formulario */
+  /* Resplandores suaves que flotan detrás del formulario (momento de marca) */
   .brand-glow {
     position: absolute;
     border-radius: 50%;
@@ -211,7 +212,7 @@
     top: -120px;
     background: radial-gradient(
       circle,
-      color-mix(in srgb, var(--accent) 16%, transparent),
+      color-mix(in srgb, var(--accent) 14%, transparent),
       transparent 65%
     );
     animation: brand-drift 14s ease-in-out infinite alternate;
@@ -221,7 +222,11 @@
     height: 460px;
     left: -140px;
     bottom: -180px;
-    background: radial-gradient(circle, rgba(212, 168, 67, 0.14), transparent 65%);
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--accent) 10%, transparent),
+      transparent 65%
+    );
     animation: brand-drift 18s ease-in-out infinite alternate-reverse;
   }
   @keyframes brand-drift {
@@ -233,15 +238,9 @@
     }
   }
 
-  /* Fondo del hilo: un leve resplandor del acento en la esquina, como en el
-     mockup de la landing. Si el navegador no sabe color-mix, queda el plano. */
+  /* Fondo del hilo: plano, chrome limpio (sin resplandor decorativo). */
   .thread-bg {
     background-color: var(--chat-bg);
-    background-image: radial-gradient(
-      circle at 82% 0%,
-      color-mix(in srgb, var(--accent) 7%, transparent),
-      transparent 55%
-    );
   }
 
   /* Etiqueta editorial en mono: "01 · BANDEJA", "ETAPA", "NOTAS" */

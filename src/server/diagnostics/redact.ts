@@ -1,7 +1,7 @@
 /** Diagnostics accept only operational metadata, never provider bodies or user content. */
 const allowed = new Set([
   "httpStatus", "status", "operation", "provider", "requestId", "durationMs", "state",
-  "taskId", "webhookId", "deliveryId", "accountId", "event", "attempts",
+  "taskId", "webhookId", "deliveryId", "accountId", "conversationId", "event", "attempts",
 ]);
 
 const sensitiveValue = /((?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|token|password|authorization)(\s*[:=]\s*))(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi;

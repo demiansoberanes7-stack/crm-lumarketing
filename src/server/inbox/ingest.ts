@@ -387,6 +387,13 @@ async function ingestManualEcho(
     `[webhook] respuesta manual del dueño en ${conversation.id} — IA pausada (manual_reply)`
   );
 
+  // La respuesta del dueño ES actividad del lead: sin esto, atender desde el
+  // teléfono dejaba el pipeline con un lastActivityAt viejo y el embudo
+  // mentía sobre a quién se le está siguiendo. Es seguro para el disparo de
+  // inactividad porque ese usa coalesce(lastInboundAt, …) y prioriza la última
+  // entrada del cliente, no la salida del negocio.
+  await onLeadActivity(organizationId, contact.id, waTimestamp);
+
   publish(organizationId, {
     type: "message.new",
     data: {

@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { describeSendError } from "@/lib/meta/send-errors";
 import { publish } from "@/server/events/bus";
 import type { WebhookStatus } from "@/server/inbox/webhook";
+import { applyBroadcastMessageStatus } from "@/server/broadcasts/metrics";
 
 /** Orden monotónico de estados: nunca degradar (un delivered tardío no pisa read). */
 const STATUS_RANK: Record<string, number> = {
@@ -58,6 +59,16 @@ export async function applyStatusUpdate(
     .update(schema.message)
     .set({ status: next as MessageStatus, error })
     .where(eq(schema.message.id, msg.id));
+
+  if (next === "delivered" || next === "read" || next === "failed") {
+    await applyBroadcastMessageStatus({
+      organizationId,
+      messageId: msg.id,
+      status: next,
+      errorCode: failure?.code == null ? null : String(failure.code),
+      errorMessage: error,
+    });
+  }
 
   publish(organizationId, {
     type: "message.status",

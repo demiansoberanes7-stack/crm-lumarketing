@@ -1955,3 +1955,99 @@ export const marketplaceOrder = pgTable(
     index("marketplace_order_org_idx").on(t.organizationId, t.orderedAt),
   ]
 );
+
+/** Historial append-only de notas manuales y capturadas por la IA. */
+export const contactNote = pgTable(
+  "contact_note",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    contactId: varchar("contact_id", { length: 255 })
+      .notNull()
+      .references(() => contact.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    source: varchar("source", { length: 20 }).notNull().default("manual"),
+    createdBy: varchar("created_by", { length: 255 }).references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("contact_note_org_contact_created_idx").on(t.organizationId, t.contactId, t.createdAt),
+    index("contact_note_org_created_idx").on(t.organizationId, t.createdAt),
+  ]
+);
+
+/** A persisted bulk-message campaign. Recipient snapshots live in their own rows. */
+export const broadcastCampaign = pgTable(
+  "broadcast_campaign",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    channel: varchar("channel", { length: 20 }).notNull(),
+    senderAccountId: varchar("sender_account_id", { length: 255 }),
+    subject: varchar("subject", { length: 1024 }),
+    messageText: text("message_text").notNull(),
+    templateName: varchar("template_name", { length: 255 }),
+    templateLanguage: varchar("template_language", { length: 20 }),
+    templateParams: jsonb("template_params"),
+    filters: jsonb("filters").notNull().default({}),
+    status: varchar("status", { length: 20 }).notNull().default("draft"),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    sentCount: integer("sent_count").notNull().default(0),
+    deliveredCount: integer("delivered_count").notNull().default(0),
+    readCount: integer("read_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+    createdBy: varchar("created_by", { length: 255 }).references(() => user.id, { onDelete: "set null" }),
+    scheduledAt: timestamp("scheduled_at"),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("broadcast_campaign_org_created_idx").on(t.organizationId, t.createdAt),
+    index("broadcast_campaign_status_schedule_idx").on(t.status, t.scheduledAt),
+  ]
+);
+
+/** Durable recipient-level queue, idempotency, and delivery audit for a campaign. */
+export const broadcastRecipient = pgTable(
+  "broadcast_recipient",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    campaignId: varchar("campaign_id", { length: 255 })
+      .notNull()
+      .references(() => broadcastCampaign.id, { onDelete: "cascade" }),
+    contactId: varchar("contact_id", { length: 255 }).references(() => contact.id, { onDelete: "set null" }),
+    conversationId: varchar("conversation_id", { length: 255 }).references(() => conversation.id, { onDelete: "set null" }),
+    channel: varchar("channel", { length: 20 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("queued"),
+    messageId: varchar("message_id", { length: 255 }),
+    providerMessageId: text("provider_message_id"),
+    errorCode: varchar("error_code", { length: 80 }),
+    errorMessage: text("error_message"),
+    skipReason: varchar("skip_reason", { length: 100 }),
+    attempts: integer("attempts").notNull().default(0),
+    scheduledAt: timestamp("scheduled_at").notNull().defaultNow(),
+    startedAt: timestamp("started_at"),
+    sentAt: timestamp("sent_at"),
+    deliveredAt: timestamp("delivered_at"),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("broadcast_recipient_campaign_contact_uq").on(t.campaignId, t.contactId),
+    index("broadcast_recipient_due_idx").on(t.status, t.scheduledAt),
+    index("broadcast_recipient_org_campaign_idx").on(t.organizationId, t.campaignId),
+    index("broadcast_recipient_conversation_idx").on(t.organizationId, t.conversationId, t.createdAt),
+  ]
+);
