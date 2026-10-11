@@ -8,6 +8,7 @@
 1. En `/agent`: encender el toggle global y agregar una entrada P/R al KB
    ("¿Hacen envíos?" → "Sí, a todo México en 2-5 días").
    ✅ El contador de tamaño del KB refleja la entrada.
+   ✅ En **Campos de ficha** se pueden definir claves/etiquetas y en **Reglas del agente** las cinco reglas aparecen activadas por defecto.
 
 ## Camino feliz
 
@@ -30,3 +31,16 @@
 8. **Sin token de IA (FR-026)**: pestañas Agente y Laboratorio muestran estado
    vacío explicativo con acciones deshabilitadas (verificado en el checkpoint
    de compose, donde el entorno arranca sin token).
+
+## Configuración de comportamiento
+
+9. **Campos de ficha**: configurar `zona` → “Zona de servicio” y `presupuesto`;
+   enviar un mensaje con solo una zona explícita. ✅ Se actualiza únicamente
+   `ficha.zona`, no aparecen claves que no estén configuradas.
+10. **Captura desactivada**: apagar “Guardar datos del cliente en su ficha” y
+    enviar nuevos datos. ✅ La nota puede guardarse, pero la ficha no cambia.
+11. **Reglas opcionales**: apagar envío de cotizaciones y movimiento automático
+    de etapa. ✅ El agente no envía la ficha de catálogo ni cambia la etapa por
+    intención; la respuesta de texto sigue funcionando.
+12. **Conocimiento estricto**: apagar la regla cambia la instrucción del prompt;
+    volverla a encender impide afirmar datos fuera del KB y catálogo.

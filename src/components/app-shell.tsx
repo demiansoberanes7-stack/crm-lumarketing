@@ -41,6 +41,24 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const [visibleHeight, setVisibleHeight] = useState<string | null>(null);
+
+  // El teclado virtual no siempre modifica 100dvh (especialmente iOS Safari).
+  // Sincronizar el shell con el viewport visual mantiene el composer visible.
+  useEffect(() => {
+    const visualViewport = window.visualViewport;
+    const updateHeight = () => {
+      const height = visualViewport?.height ?? window.innerHeight;
+      setVisibleHeight(`${Math.round(height)}px`);
+    };
+    updateHeight();
+    visualViewport?.addEventListener("resize", updateHeight);
+    window.addEventListener("resize", updateHeight);
+    return () => {
+      visualViewport?.removeEventListener("resize", updateHeight);
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, []);
 
   // Navegar = cerrar el cajón. Sin esto, tocar "Pipeline" deja el velo encima
   // de la pantalla recién cargada.
@@ -58,7 +76,10 @@ export function AppShell({
   }, [navOpen]);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
+    <div
+      className="flex h-dvh overflow-hidden bg-background"
+      style={visibleHeight ? { height: visibleHeight } : undefined}
+    >
       {navOpen && (
         <button
           aria-label="Cerrar el menú"
@@ -80,12 +101,12 @@ export function AppShell({
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-1.5 border-b bg-subtle px-2 lg:hidden">
+        <header className="flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-1.5 border-b bg-subtle px-2 pt-[env(safe-area-inset-top)] lg:hidden">
           <button
             onClick={() => setNavOpen(true)}
             aria-label="Abrir el menú"
             aria-expanded={navOpen}
-            className="rounded-md p-2 text-text-2 hover:bg-accent hover:text-foreground"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-text-2 hover:bg-accent hover:text-foreground"
           >
             <Menu className="h-5 w-5" strokeWidth={1.8} />
           </button>

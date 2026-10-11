@@ -105,13 +105,13 @@ export function NewContactDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-label="Nuevo contacto"
-        className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
+        className="my-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-1 font-semibold">Nuevo contacto</h3>
@@ -151,7 +151,7 @@ export function NewContactDialog({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="nc-source">
                 ¿De dónde salió?

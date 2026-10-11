@@ -216,7 +216,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                      <Button
                        variant="ghost"
                       size="icon"
-                      className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-9 w-9 shrink-0 opacity-100 transition-opacity sm:h-7 sm:w-7 sm:opacity-0 sm:group-hover:opacity-100"
                       onClick={() => void deleteProduct(p.id)}
                       aria-label="Eliminar producto"
                     >

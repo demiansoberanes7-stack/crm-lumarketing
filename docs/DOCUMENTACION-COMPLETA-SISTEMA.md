@@ -478,7 +478,7 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 
 | Tabla | Descripcion | Columnas clave |
 |-------|-------------|----------------|
-| `agent_profile` | Perfil del agente | organizationId, name, tone, instructions, aiTokenCipher/iv/tag (deprecated, usar env vars) |
+| `agent_profile` | Perfil del agente | organizationId, name, tone, instructions, fichaFields, rules, aiTokenCipher/iv/tag (deprecated, usar env vars) |
 | `kb_entry` | Base de conocimiento | organizationId, question, answer, category |
 | `agent_test_run` | Ejecuciones del Laboratorio | organizationId, status, score |
 | `agent_test_case` | Casos de prueba | runId, persona, verdict (verde/amarillo/rojo) |

@@ -3,6 +3,7 @@
 import { FileText } from "lucide-react";
 import { KpiCard, formatCurrency, formatPercent } from "../kpi-card";
 import { FunnelChart, LineChartCard, PieChartCard } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -27,23 +28,20 @@ export function QuotesSection({ data }: Props) {
         <KpiCard title="Enviadas" value={data.sent} />
       </div>
       <p className="mb-3 text-xs text-muted-foreground">Cohorte por fecha de creación, sin archivadas. Enviadas incluye aceptadas, rechazadas y expiradas. {data.excludedCurrency > 0 && `${data.excludedCurrency} cotizaciones en otras monedas excluidas de los KPIs MXN.`}</p>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Embudo de conversión</p>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+        <ChartCard title="Embudo de conversión">
           <FunnelChart data={[
             { stage: "Creadas", value: data.total },
             { stage: "Enviadas", value: data.sent },
             { stage: "Aprobadas", value: data.approved },
           ]} />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Cotizaciones por mes</p>
+        </ChartCard>
+        <ChartCard title="Cotizaciones por mes">
           <LineChartCard data={data.byMonth} xKey="month" yKeys={["sent", "approved"]} height={200} />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Por canal de envío</p>
+        </ChartCard>
+        <ChartCard title="Por canal de envío">
           <PieChartCard data={data.byChannel} nameKey="name" valueKey="count" inner />
-        </div>
+        </ChartCard>
       </div>
     </section>
   );

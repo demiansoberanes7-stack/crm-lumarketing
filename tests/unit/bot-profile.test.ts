@@ -2,6 +2,7 @@
 import { serializeBotProfile } from "@/server/bot/profile";
 import type { schema } from "@/lib/db";
 import { resetRateLimit } from "@/lib/rate-limit";
+import { DEFAULT_AGENT_FICHA_FIELDS, DEFAULT_AGENT_RULES } from "@/lib/agent-config";
 // Estático a propósito: `vi.mock` se hoistea por encima de los imports, así que
 // la ruta ya nace con la BD falsa. Importarla DENTRO de cada test cargaba la
 // cadena de módulos con el reloj corriendo y, con la suite completa en
@@ -47,6 +48,8 @@ function profileRow(overrides: Partial<AgentProfile> = {}): AgentProfile {
     aiTokenIv: null,
     aiTokenTag: null,
     pipelineKeywords: null,
+    fichaFields: DEFAULT_AGENT_FICHA_FIELDS,
+    rules: DEFAULT_AGENT_RULES,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -78,6 +81,8 @@ describe("serializeBotProfile", () => {
         instructions: "Vendemos limpiezas dentales.",
         escalationRules: "Urgencias de dolor → humano.",
         greeting: "¡Hola! Soy Sofi 🦷",
+        fichaFields: DEFAULT_AGENT_FICHA_FIELDS,
+        rules: DEFAULT_AGENT_RULES,
       },
       kb: "P: ¿Cuánto cuesta?\nR: $800.",
       resources: [],

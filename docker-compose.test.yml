@@ -54,8 +54,9 @@ services:
       ZERNIO_BASE_URL: http://localhost:3000/api/dev/zernio-mock
       # El E2E de webhooks de salida se apunta a sí mismo por http://localhost.
       WEBHOOK_TRUSTED_HOSTS: localhost,127.0.0.1,preview
-      # El navegador E2E entra por el alias con punto (ver servicio `browser`).
-      TRUSTED_ORIGINS: http://lumark.test:3000
+      # El navegador E2E entra por el alias con punto (ver servicio `browser`);
+      # los guiones corridos desde el host usan el puerto publicado.
+      TRUSTED_ORIGINS: http://lumark.test:3000,http://127.0.0.1:3101,http://localhost:3101
       MEDIA_DIR: /data/media
       CI: "true"
     networks:

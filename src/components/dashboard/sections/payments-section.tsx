@@ -3,6 +3,7 @@
 import { DollarSign } from "lucide-react";
 import { KpiCard, formatCurrency } from "../kpi-card";
 import { PieChartCard, AreaChartCard } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -24,15 +25,13 @@ export function PaymentsSection({ data }: Props) {
         <KpiCard title="Total Pagos" value={data.count} />
         <KpiCard title="Con Comprobante" value={`${data.withReceiptRate.toFixed(0)}%`} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Por método de pago</p>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <ChartCard title="Por método de pago">
           <PieChartCard data={data.byMethod.map((d) => ({ ...d, amount: d.amount / 100 }))} nameKey="name" valueKey="amount" inner />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Ingresos por mes</p>
+        </ChartCard>
+        <ChartCard title="Ingresos por mes">
           <AreaChartCard data={data.byMonth.map((d) => ({ ...d, MXN: d.amount / 100 }))} xKey="month" yKeys={["MXN"]} height={200} />
-        </div>
+        </ChartCard>
       </div>
     </section>
   );

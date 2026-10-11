@@ -173,7 +173,7 @@ export function CommercialHub() {
 
             {tab === "embudo" && (
               <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-xl border bg-card p-4 shadow-sm">
+                <div className="chart-card rounded-xl border p-4">
                   <h3 className="mb-4 text-sm font-semibold">Embudo del periodo</h3>
                   <FunnelChart data={data.embudo.stages} />
                 </div>
@@ -183,7 +183,7 @@ export function CommercialHub() {
                     <MetricCard title="Prospecto → cotizado" metric={data.embudo.leadToQuote} formatter={formatPercent} />
                     <MetricCard title="Cotizado → ganado" metric={data.embudo.quoteToWon} formatter={formatPercent} />
                   </div>
-                  <div className="rounded-xl border bg-card p-4 shadow-sm">
+                  <div className="chart-card rounded-xl border p-4">
                     <h3 className="mb-3 text-sm font-semibold">Motivos de pérdida</h3>
                     {data.embudo.lossByReason.length > 0 ? (
                       <HorizontalBarChart data={data.embudo.lossByReason.map((l) => ({ name: l.label, count: l.value }))} yKey="name" xKey="count" height={200} />
@@ -226,7 +226,7 @@ export function CommercialHub() {
             )}
 
             {tab === "adquisicion" && (
-              <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="chart-card rounded-xl border p-4">
                 <h3 className="mb-4 text-sm font-semibold">Primer toque por canal</h3>
                 {data.adquisicion.hasData ? (
                   <HorizontalBarChart data={data.adquisicion.byChannel.map((c) => ({ name: c.name, count: c.count }))} yKey="name" xKey="count" height={Math.max(200, data.adquisicion.byChannel.length * 28)} />

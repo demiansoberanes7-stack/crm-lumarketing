@@ -3,6 +3,7 @@
 import { FolderKanban, AlertTriangle } from "lucide-react";
 import { KpiCard } from "../kpi-card";
 import { BarChartCard, GaugeChart } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -26,19 +27,16 @@ export function ProjectsSection({ data }: Props) {
         <KpiCard title="Riesgo Alto" value={data.highRisk} icon={<AlertTriangle />}
           trend={data.highRisk > 0 ? "down" : "neutral"} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Tasa de terminación</p>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+        <ChartCard title="Tasa de terminación">
           <GaugeChart value={data.completionRate} label="Completados" />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Proyectos por etapa</p>
+        </ChartCard>
+        <ChartCard title="Proyectos por etapa">
           <BarChartCard data={data.projectsByStage} xKey="name" yKey="count" height={200} />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Tiempo promedio por etapa (días)</p>
+        </ChartCard>
+        <ChartCard title="Tiempo promedio por etapa (días)">
           <BarChartCard data={data.avgTimeByStage} xKey="stage" yKey="avgDays" height={200} />
-        </div>
+        </ChartCard>
       </div>
     </section>
   );

@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import type { AgentFichaField, AgentRules } from "@/lib/agent-config";
 import {
   boolean,
   date,
@@ -510,6 +511,8 @@ export const agentProfile = pgTable(
     escalationRules: text("escalation_rules"),
     greeting: text("greeting"),
     pipelineKeywords: text("pipeline_keywords"),
+    fichaFields: jsonb("ficha_fields").$type<AgentFichaField[]>().notNull().default(sql`'[{"key":"interes","label":"Interés"},{"key":"presupuesto","label":"Presupuesto"},{"key":"ubicacion","label":"Ubicación"},{"key":"plazo","label":"Plazo"},{"key":"preferencias","label":"Preferencias"}]'::jsonb`),
+    rules: jsonb("rules").$type<AgentRules>().notNull().default(sql`'{"captureLeadData":true,"sendProductQuotes":true,"handoffOnRequest":true,"moveStageOnIntent":true,"strictKnowledgeBase":true}'::jsonb`),
     aiToken: text("ai_token"),
     aiTokenCipher: text("ai_token_cipher"),
     aiTokenIv: text("ai_token_iv"),

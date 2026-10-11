@@ -18,8 +18,8 @@ Tres tamaños: teléfono 390×844, tableta 820×1180, escritorio 1440×900.
 
 ## AC-1 — Ninguna pantalla recorta contenido a lo ancho
 
-Recorre Bandeja, Pipeline, Contactos, Agente, Laboratorio y
-Ajustes → WhatsApp en los tres tamaños.
+Recorre Dashboard, Bandeja, Pipeline, Contactos, Agente, Envíos masivos,
+Laboratorio, Ajustes → Conexiones, Buzón y WhatsApp en los tres tamaños.
 
 Esperado: en cada una, el contenido de `main` cabe en su ancho visible
 (`scrollWidth == clientWidth`) y el documento no genera scroll horizontal. El
@@ -83,3 +83,41 @@ de detalles sigue siendo cajón.
 En 1440×900: lateral fijo de 224 px sin hamburguesa, Bandeja de tres columnas
 (lista 360 px + hilo + detalles 320 px) y la preferencia de "panel abierto"
 persistida como siempre.
+
+## AC-7 — Vistas largas y formularios mantienen un scroll alcanzable
+
+En 390×844:
+
+1. Abre **Envíos masivos** y baja hasta el listado de campañas y las acciones al final.
+2. Abre **Configuración → Agente**; el contenido utiliza el scroll de Ajustes,
+   sin encadenar un segundo scroll vertical dentro de la página.
+3. Abre el diálogo de nuevo contacto y un diálogo de finanzas con el teclado
+   abierto. El formulario se puede desplazar y el botón de guardar sigue accesible.
+4. En Agenda abre un día y edita sus horas. La página no genera scroll horizontal.
+
+Esperado: las vistas bajo el shell `overflow-hidden` habilitan scroll interno
+cuando el contenido lo requiere. El composer de Bandeja y correo queda por
+encima del teclado virtual y separado del safe area inferior.
+
+## AC-8 — Gráficas y conexiones se pueden usar con toque
+
+En 390×844:
+
+1. Recorre las gráficas del Dashboard: las tarjetas se apilan, las cifras largas
+   no empujan el ancho y los donuts usan leyenda en lugar de etiquetas cruzadas.
+2. Desliza las secciones de Ajustes hasta la pestaña activa.
+3. En Conexiones, cada canal activo tiene **Configurar**; los apagados explican
+   qué variable de despliegue hace falta. La API key se captura desde el
+   formulario del canal dentro del CRM.
+
+Esperado: no hay acciones importantes que dependan solo de hover y las tablas
+anchas se desplazan dentro de su propia tarjeta.
+
+## AC-9 — Teclado virtual en dispositivo real
+
+En Safari iOS y Chrome Android, toca el compositor de WhatsApp y el de correo.
+
+Esperado: el shell se ajusta al `visualViewport`, el compositor permanece
+visible por encima del teclado y el área de envío no queda bajo la home
+indicator. Playwright no simula el teclado nativo; este caso se confirma en un
+teléfono real.

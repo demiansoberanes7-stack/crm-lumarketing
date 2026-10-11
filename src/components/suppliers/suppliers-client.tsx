@@ -128,9 +128,9 @@ function SupplierDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-4 sm:items-center" onClick={onClose}>
       <div
-        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border bg-card p-5 shadow-lg"
+        className="my-auto max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -142,7 +142,7 @@ function SupplierDialog({
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Nombre *</label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nombre de la empresa" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">Nombre comercial</label>
               <Input value={form.tradeName} onChange={(e) => setForm({ ...form, tradeName: e.target.value })} placeholder="Alias" />
@@ -152,7 +152,7 @@ function SupplierDialog({
               <Input value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} placeholder="Persona de contacto" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">Telefono</label>
               <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Telefono" />
@@ -162,7 +162,7 @@ function SupplierDialog({
               <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="correo@ejemplo.com" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">RFC</label>
               <Input value={form.rfc} onChange={(e) => setForm({ ...form, rfc: e.target.value })} placeholder="RFC" />
@@ -176,7 +176,7 @@ function SupplierDialog({
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Direccion</label>
             <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Direccion completa" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">Categoria</label>
               <select
@@ -428,12 +428,12 @@ function SupplierDetailDialog({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center" onClick={onClose}>
       <section
         role="dialog"
         aria-modal="true"
         aria-label={`Ficha de proveedor ${supplier.name}`}
-        className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-xl border bg-card p-5 shadow-xl"
+          className="my-auto max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-xl border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="mb-5 flex items-start justify-between gap-3">

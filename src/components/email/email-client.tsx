@@ -343,9 +343,9 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className={settingsOnly ? "flex min-h-0 flex-1 flex-col sm:flex-row" : "flex flex-1 overflow-hidden"}>
         {/* ═══ LEFT SIDEBAR ═══ */}
-        <aside className="flex w-[260px] shrink-0 flex-col border-r">
+        <aside className={settingsOnly ? "flex w-full shrink-0 flex-col border-b sm:w-[260px] sm:border-b-0 sm:border-r" : "flex w-[260px] shrink-0 flex-col border-r"}>
           <div className="p-3">
             <Button
               className="w-full justify-start gap-2 rounded-full bg-blue-600 px-4 py-2.5 text-white hover:bg-blue-700 shadow-sm"
@@ -705,7 +705,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
       {showCompose && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
           <button aria-label="Cerrar" onClick={() => setShowCompose(false)} className="absolute inset-0 bg-black/30" />
-          <div className="relative z-10 w-full max-w-2xl rounded-t-2xl border bg-card shadow-2xl sm:rounded-2xl">
+          <div className="relative z-10 max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border bg-card pb-[env(safe-area-inset-bottom)] shadow-2xl sm:rounded-2xl">
             <div className="flex items-center justify-between border-b px-5 py-3">
               <h2 className="text-sm font-semibold">Nuevo mensaje</h2>
               <button onClick={() => setShowCompose(false)} className="text-muted-foreground hover:text-foreground">

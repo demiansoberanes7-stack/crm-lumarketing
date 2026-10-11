@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string };
@@ -18,6 +19,7 @@ const TABS: Tab[] = [
 ];
 
 const GOOGLE_TAB: Tab = { href: "/settings/google", label: "Google Calendar" };
+const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
 const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
 const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
 const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
@@ -41,7 +43,9 @@ export function SettingsNav({
   owner?: boolean;
 }) {
   const pathname = usePathname();
+  const activeTabRef = useRef<HTMLAnchorElement | null>(null);
   const tabs = [
+    ...(owner ? [CONNECTIONS_TAB] : []),
     TABS[0]!,
     TABS[1]!,
     ...(messenger ? [MESSENGER_TAB] : []),
@@ -58,14 +62,22 @@ export function SettingsNav({
     ...(atribucion ? [ADS_TAB] : []),
     ...(owner ? [DATA_CLEANUP_TAB] : []),
   ];
+
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 639px)").matches) {
+      activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+    }
+  }, [pathname]);
+
   return (
-    <nav className="flex shrink-0 gap-1 overflow-x-auto border-b p-2 sm:w-44 sm:flex-col sm:space-y-1 sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3">
+    <nav aria-label="Secciones de configuración" className="flex shrink-0 gap-1 overflow-x-auto scroll-smooth border-b p-2 sm:w-44 sm:flex-col sm:space-y-1 sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3">
       {tabs.map((t) => (
         <Link
           key={t.href}
           href={t.href}
+          ref={pathname.startsWith(t.href) ? activeTabRef : undefined}
           className={cn(
-            "block shrink-0 whitespace-nowrap rounded-sm px-3 py-2 text-[13.5px] font-semibold transition-colors",
+            "flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-sm px-3 text-[13.5px] font-semibold transition-colors",
             pathname.startsWith(t.href)
               ? "bg-brand-tint text-brand-text"
               : "text-text-2 hover:bg-accent hover:text-foreground"

@@ -127,13 +127,14 @@ function MediaBlock({ media }: { media: MessageMediaDto }) {
           alt={media.caption ?? mediaLabel(media.kind)}
           className="max-h-72 max-w-full rounded-md object-contain"
           loading="lazy"
+          onLoad={(event) => keepThreadAtBottomWhenMediaLoads(event.currentTarget)}
         />
       </a>
     );
   }
   if (media.kind === "video") {
     return (
-      <video controls preload="metadata" className="max-h-72 max-w-full rounded-md">
+      <video controls preload="metadata" className="max-h-72 max-w-full rounded-md" onLoadedMetadata={(event) => keepThreadAtBottomWhenMediaLoads(event.currentTarget)}>
         <source src={src} type={media.mimeType ?? undefined} />
       </video>
     );
@@ -182,6 +183,18 @@ function bubbleTime(iso: string): string {
   });
 }
 
+function keepThreadAtBottomWhenMediaLoads(target: HTMLElement) {
+  const container = target.closest<HTMLElement>("[data-message-thread]");
+  if (!container) return;
+  const distanceFromBottom =
+    container.scrollHeight - container.scrollTop - container.clientHeight;
+  if (distanceFromBottom <= 160) {
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }
+}
+
 export function MessageThread({ messages }: { messages: MessageDto[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -193,7 +206,8 @@ export function MessageThread({ messages }: { messages: MessageDto[] }) {
   return (
     <div
       ref={scrollRef}
-      className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto px-3 py-5 sm:px-[6%]"
+      data-message-thread
+      className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto overscroll-contain px-3 py-5 sm:px-[6%]"
     >
       {messages.map((m, i) => {
         const prev = messages[i - 1];

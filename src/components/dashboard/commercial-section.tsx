@@ -101,7 +101,7 @@ export function CommercialSection({ period }: { period: string }) {
           {/* Embudo */}
           <Subhead icon={<Target className="h-3.5 w-3.5" />}>Embudo de ventas</Subhead>
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border bg-card p-4 shadow-sm">
+            <div className="chart-card rounded-xl border p-4">
               <h4 className="mb-4 text-sm font-semibold">Embudo del periodo</h4>
               <FunnelChart data={data.embudo.stages} />
             </div>
@@ -112,7 +112,7 @@ export function CommercialSection({ period }: { period: string }) {
                 <MetricCard title="Cotizado → ganado" metric={data.embudo.quoteToWon} formatter={formatPercent} />
                 <MetricCard title="Tasa de cierre" metric={data.resumen.winRate} formatter={formatPercent} />
               </div>
-              <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="chart-card rounded-xl border p-4">
                 <h4 className="mb-3 text-sm font-semibold">Motivos de pérdida</h4>
                 {data.embudo.lossByReason.length > 0 ? (
                   <HorizontalBarChart data={data.embudo.lossByReason.map((l) => ({ name: l.label, count: l.value }))} yKey="name" xKey="count" height={200} />
@@ -137,7 +137,7 @@ export function CommercialSection({ period }: { period: string }) {
 
           {/* Adquisición */}
           <Subhead icon={<Compass className="h-3.5 w-3.5" />}>Adquisición</Subhead>
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
+          <div className="chart-card rounded-xl border p-4">
             <h4 className="mb-4 text-sm font-semibold">Primer toque por canal</h4>
             {data.adquisicion.hasData ? (
               <HorizontalBarChart data={data.adquisicion.byChannel.map((c) => ({ name: c.name, count: c.count }))} yKey="name" xKey="count" height={Math.max(200, data.adquisicion.byChannel.length * 28)} />

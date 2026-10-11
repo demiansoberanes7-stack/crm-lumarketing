@@ -1,4 +1,5 @@
 import type { schema } from "@/lib/db";
+import { normalizeAgentFichaFields, normalizeAgentRules } from "@/lib/agent-config";
 
 type AgentProfile = typeof schema.agentProfile.$inferSelect;
 type KbEntry = typeof schema.kbEntry.$inferSelect;
@@ -49,6 +50,9 @@ export function buildAgentSystemPrompt(input: {
 }): string {
   const { profile } = input;
   const stageNames = input.stages.map((s) => s.name).join(" | ");
+  const rules = normalizeAgentRules(profile.rules);
+  const fichaFields = normalizeAgentFichaFields(profile.fichaFields);
+  const fichaFieldList = fichaFields.map((field) => `${field.key} (${field.label})`).join(" · ");
   const agendaLines = input.agenda
     ? [
         '- {"action":"offer_slots","reply":"..."} — ofrecer horarios para agendar (reply es solo la frase de entrada; los horarios los pone el sistema).',
@@ -62,6 +66,41 @@ export function buildAgentSystemPrompt(input: {
         "- Si el cliente quiere CANCELAR una cita → handoff: esa decisión no es tuya.",
       ]
     : [];
+  const actionLines = [
+    "En cada turno respondes ÚNICAMENTE un objeto JSON con UNA acción:",
+    '- {"action":"none"} — no responder nada.',
+    '- {"action":"reply","text":"..."} — responder al cliente.',
+    rules.captureLeadData
+      ? `- {"action":"update_lead","note":"...","ficha":{"${fichaFields[0]?.key ?? "interes"}":"..."},"reply":"..."} — guardar una nota y los datos concretos revelados (ficha y reply opcionales).`
+      : '- {"action":"update_lead","note":"...","reply":"..."} — guardar una nota de contexto (reply opcional).',
+    ...(rules.sendProductQuotes
+      ? ['- {"action":"send_quote","item_id":"<ID del producto>","reply":"..."} — enviar la ficha oficial de un producto del catálogo.']
+      : []),
+    ...(rules.moveStageOnIntent
+      ? ['- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).']
+      : []),
+    '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano según las reglas del negocio.',
+    ...agendaLines,
+  ];
+
+  const configuredRules = [
+    ...(rules.captureLeadData
+      ? [`- Guarda datos explícitos del cliente en ficha usando solo estos campos: ${fichaFieldList}. No inventes valores ni borres campos no mencionados; resume también el contexto en note.`]
+      : []),
+    ...(rules.sendProductQuotes
+      ? ["- Si el cliente pregunta sobre un producto o servicio del catálogo, usa send_quote para enviar la ficha oficial, no respondas solo con texto."]
+      : []),
+    ...(rules.handoffOnRequest
+      ? ["- Si el cliente pide hablar con una persona, humano o asesor, usa handoff."]
+      : []),
+    ...(rules.strictKnowledgeBase
+      ? ["- El conocimiento configurado es la única fuente de verdad: si algo no está ahí ni en el catálogo, no inventes; di que lo confirmarás o escala."]
+      : []),
+    ...(rules.moveStageOnIntent
+      ? [`- Si detectas intención clara de compra, usa move_stage con el nombre exacto de una etapa disponible (${stageNames || "sin etapas configuradas"}); si no hay una etapa adecuada, responde sin inventar una.`]
+      : []),
+  ];
+
   return [
     `Eres "${profile.name}", el asistente de WhatsApp de este negocio. Respondes SIEMPRE en español neutro, con mensajes breves y naturales para chat.`,
     profile.tone ? `Tono: ${profile.tone}` : null,
@@ -70,29 +109,17 @@ export function buildAgentSystemPrompt(input: {
       ? `Reglas de escalado a humano:\n${profile.escalationRules}`
       : null,
     profile.greeting ? `Saludo sugerido para conversaciones nuevas: ${profile.greeting}` : null,
-    `CONOCIMIENTO DEL NEGOCIO (tu única fuente de verdad; si algo no está aquí, NO lo inventes — di que lo confirmarás con el equipo o escala):\n${renderKb(input.kb)}`,
+    rules.strictKnowledgeBase
+      ? `CONOCIMIENTO DEL NEGOCIO (tu única fuente de verdad; si algo no está aquí, NO lo inventes — di que lo confirmarás con el equipo o escala):\n${renderKb(input.kb)}`
+      : `CONOCIMIENTO DEL NEGOCIO (información de referencia):\n${renderKb(input.kb)}`,
+    rules.captureLeadData
+      ? `CAMPOS DISPONIBLES EN LA FICHA DEL CONTACTO (usa exactamente estas claves): ${fichaFieldList}`
+      : null,
     input.catalog.length > 0
       ? `CATÁLOGO DE PRODUCTOS (precios en centavos — al mostrar, divide entre 100):\n${renderCatalog(input.catalog)}`
       : null,
     `Etapas del pipeline disponibles: ${stageNames}`,
-    [
-      "En cada turno respondes ÚNICAMENTE un objeto JSON con UNA acción:",
-      '- {"action":"none"} — no responder nada.',
-      '- {"action":"reply","text":"..."} — responder al cliente.',
-      '- {"action":"update_lead","note":"...","ficha":{"interes":"..."},"reply":"..."} — guardar una nota y los datos concretos que el cliente reveló en la ficha (ficha y reply opcionales).',
-      '- {"action":"send_quote","item_id":"<ID del producto>","reply":"..."} — enviar la ficha o cotización de un servicio del catálogo (envía imagen y formato automáticamente).',
-      '- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).',
-      '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano (farewell opcional para despedirte).',
-      ...agendaLines,
-      "Reglas duras:",
-      "- Cuando el cliente comparta datos útiles sobre sí mismo, su necesidad, presupuesto, ubicación, plazo o preferencias, usa update_lead y guárdalos en ficha con claves cortas y descriptivas. Solo guarda hechos explícitos, en valores simples; no inventes datos ni borres campos que no se mencionaron. Resume también el contexto en note.",
-      "- Si el cliente pregunta sobre un producto/servicio, usa send_quote con el ID para enviarle la ficha técnica oficial en lugar de solo responder con texto.",
-      "- Si el cliente pide hablar con una persona/humano/asesor → handoff.",
-      "- Si la pregunta NO está cubierta por el conocimiento → NO inventes: responde que lo confirmarás o escala.",
-      "- Si detectas intención clara de compra → move_stage a la etapa de interesados y confirma al cliente.",
-      ...agendaRules,
-      "- JSON puro, sin markdown ni texto adicional.",
-    ].join("\n"),
+    [...actionLines, ...(configuredRules.length ? ["Reglas configuradas:", ...configuredRules] : []), ...agendaRules, "JSON puro, sin markdown ni texto adicional."].join("\n"),
   ]
     .filter(Boolean)
     .join("\n\n");

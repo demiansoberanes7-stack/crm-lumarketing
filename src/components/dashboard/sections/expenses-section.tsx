@@ -3,6 +3,7 @@
 import { Wallet } from "lucide-react";
 import { KpiCard, formatPercent } from "../kpi-card";
 import { PieChartCard, AreaChartCard, GaugeChart, HorizontalBarChart } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -23,25 +24,21 @@ export function ExpensesSection({ data }: Props) {
         <KpiCard title="% sobre Ingresos" value={formatPercent(data.expenseVsIncome)} />
         <KpiCard title="Categorías" value={data.byCategory.length} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Gasto vs Ingresos</p>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+        <ChartCard title="Gasto vs ingresos">
           {data.expenseVsIncome === null ? <p>N/D: sin ingresos en el período</p> : <GaugeChart value={data.expenseVsIncome} label="% gasto" />}
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Por categoría</p>
+        </ChartCard>
+        <ChartCard title="Por categoría">
           <PieChartCard data={data.byCategory.map((d) => ({ ...d, amount: d.amount / 100 }))} nameKey="name" valueKey="amount" inner />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Gastos por mes</p>
+        </ChartCard>
+        <ChartCard title="Gastos por mes">
           <AreaChartCard data={data.byMonth.map((d) => ({ ...d, MXN: d.amount / 100 }))} xKey="month" yKeys={["MXN"]} height={200} />
-        </div>
+        </ChartCard>
       </div>
       {data.bySupplier.length > 0 && (
-        <div className="mt-4">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Top proveedores</p>
+        <ChartCard title="Top proveedores" className="mt-4">
           <HorizontalBarChart data={data.bySupplier.map((d) => ({ ...d, amount: d.amount / 100 }))} yKey="name" xKey="amount" height={150} />
-        </div>
+        </ChartCard>
       )}
     </section>
   );

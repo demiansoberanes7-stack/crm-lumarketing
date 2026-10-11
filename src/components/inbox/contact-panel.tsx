@@ -170,13 +170,13 @@ export function ContactPanel({
         <button
           onClick={onClose}
           aria-label="Ocultar panel"
-          className="rounded p-1 text-text-3 hover:bg-accent hover:text-foreground"
+          className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 hover:bg-accent hover:text-foreground"
         >
           <ChevronRight className="h-4 w-4" strokeWidth={1.7} />
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
         {/* Contacto */}
         <section className="border-b p-4">
           <div className="flex items-center gap-3">
@@ -239,7 +239,7 @@ export function ContactPanel({
                   });
                 }}
                 className={cn(
-                  "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors",
+                  "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3 after:content-['']",
                   aiActive ? "bg-brand" : "bg-border-strong"
                 )}
               >
@@ -298,7 +298,7 @@ export function ContactPanel({
                       onClick={() => void moveToStage(s.id)}
                       aria-label={`Mover a ${s.name}`}
                       className={cn(
-                        "relative z-10 mt-0.5 flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-full transition-colors",
+                        "relative z-10 mt-0.5 flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-full transition-colors after:absolute after:-inset-3 after:content-['']",
                         done && "bg-brand text-brand-fg",
                         current && "bg-brand ring-4 ring-brand-soft",
                         !done && !current && "border border-border-strong bg-background hover:border-brand"

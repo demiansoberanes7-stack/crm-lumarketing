@@ -55,7 +55,7 @@ const NAV: NavItem[] = [
  */
 function navItemClass(active: boolean) {
   return cn(
-    "flex items-center gap-[10px] rounded-sm px-2.5 py-2.5 text-[13.5px] font-semibold transition-colors lg:py-2",
+    "flex min-h-11 items-center gap-[10px] rounded-sm px-2.5 py-2.5 text-[13.5px] font-semibold transition-colors lg:min-h-0 lg:py-2",
     active
       ? "bg-brand-tint text-brand-text"
       : "text-text-2 hover:bg-accent hover:text-foreground"
@@ -121,7 +121,7 @@ export function AppNav({
       // cajón visible mientras se desliza y recién entonces lo oculta, que es
       // lo que lo saca del orden de tabulación en móvil.
       className={cn(
-        "fixed inset-y-0 left-0 z-50 flex w-[17rem] shrink-0 flex-col overflow-y-auto border-r bg-subtle px-3 pb-3.5 pt-4 transition-[transform,visibility] duration-200",
+        "fixed inset-y-0 left-0 z-50 flex w-[17rem] shrink-0 flex-col overflow-y-auto border-r bg-subtle px-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] transition-[transform,visibility] duration-200",
         "lg:static lg:visible lg:z-auto lg:w-56 lg:translate-x-0 lg:overflow-visible lg:transition-none",
         open ? "visible translate-x-0 shadow-pop" : "invisible -translate-x-full"
       )}
@@ -187,7 +187,7 @@ export function AppNav({
         <button
           aria-label="Cerrar sesión"
           title="Cerrar sesión"
-          className="rounded p-1 text-text-3 hover:text-foreground"
+          className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 hover:text-foreground"
           onClick={async () => {
             await signOut();
             router.push("/login");

@@ -177,7 +177,7 @@ export function AgendaClient() {
             const intervals = settings.weeklyHours[day.key] ?? [];
             const open = intervals.length > 0;
             return (
-              <div key={day.key} className="flex items-start gap-3">
+              <div key={day.key} className="flex items-start gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => toggleDay(day.key)}
@@ -190,31 +190,33 @@ export function AgendaClient() {
                 >
                   {day.label}
                 </button>
-                <div className="flex-1 space-y-1.5">
+                <div className="min-w-0 flex-1 space-y-1.5">
                   {!open && <span className="text-sm text-text-3">Cerrado</span>}
                   {intervals.map((iv, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={i} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 sm:flex">
                       <Input
                         type="time"
                         value={iv.start}
                         onChange={(e) =>
                           setIntervalAt(day.key, i, { start: e.target.value })
                         }
-                        className="w-28"
+                        aria-label={`${day.label}: hora de inicio`}
+                        className="w-full min-w-0 sm:w-28"
                       />
-                      <span className="text-text-3">a</span>
+                      <span className="hidden text-text-3 sm:inline">a</span>
                       <Input
                         type="time"
                         value={iv.end}
                         onChange={(e) =>
                           setIntervalAt(day.key, i, { end: e.target.value })
                         }
-                        className="w-28"
+                        aria-label={`${day.label}: hora de cierre`}
+                        className="w-full min-w-0 sm:w-28"
                       />
                       <button
                         type="button"
                         onClick={() => removeInterval(day.key, i)}
-                        className="text-sm text-text-3 hover:text-foreground"
+                        className="col-span-2 flex min-h-11 min-w-11 items-center justify-center justify-self-end text-sm text-text-3 hover:text-foreground sm:col-span-1 sm:min-h-0 sm:min-w-0"
                         aria-label="Quitar franja"
                       >
                         ×
@@ -241,7 +243,7 @@ export function AgendaClient() {
         <CardHeader>
           <CardTitle>Cómo se generan los huecos</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="slot">Duración de la cita (min)</Label>
             <Input

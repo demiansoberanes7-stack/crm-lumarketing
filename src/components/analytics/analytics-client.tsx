@@ -228,7 +228,7 @@ export function AnalyticsClient() {
               <div className="grid gap-3 lg:grid-cols-2">
                 {/* Canales de tráfico */}
                 {ga4.sources.length > 0 && (
-                  <div className="rounded-xl border bg-card p-4 shadow-sm">
+                  <div className="chart-card rounded-xl border p-4">
                     <h3 className="mb-4 text-sm font-semibold">Canales de tráfico</h3>
                     <div className="space-y-2">
                       {ga4.sources.map(s => {
@@ -254,15 +254,16 @@ export function AnalyticsClient() {
 
                 {/* Serie diaria de sesiones */}
                 {ga4.daily.length > 0 && (
-                  <div className="rounded-xl border bg-card p-4 shadow-sm">
+                  <div className="chart-card rounded-xl border p-4">
                     <h3 className="mb-4 text-sm font-semibold">Sesiones diarias (últimos 30 días)</h3>
                     <div className="h-[240px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={ga4.daily.map(d => ({ name: d.date.slice(6) + "/" + d.date.slice(4, 6), sesiones: d.sessions }))}>
-                          <XAxis dataKey="name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
+                          <defs><linearGradient id="analytics-ga4-bar" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="var(--chart-3)" /><stop offset="100%" stopColor="var(--chart-3-end)" /></linearGradient></defs>
+                          <XAxis dataKey="name" interval={5} stroke="var(--chart-text)" fontSize={10} tickLine={false} axisLine={false} />
                           <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                           <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                          <Bar dataKey="sesiones" name="Sesiones" fill="#E87722" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="sesiones" name="Sesiones" fill="url(#analytics-ga4-bar)" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -282,19 +283,19 @@ export function AnalyticsClient() {
                     <span className="text-xs text-muted-foreground">· datos de los últimos 30 días</span>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
+                    <div className="chart-card rounded-xl border p-4">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <DollarSign className="h-3.5 w-3.5 text-emerald-500" /> Inversión
                       </div>
                       <div className="mt-1 text-xl font-bold">{fmt(m.spend, m.currency)}</div>
                     </div>
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
+                    <div className="chart-card rounded-xl border p-4">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Eye className="h-3.5 w-3.5 text-blue-500" /> Impresiones
                       </div>
                       <div className="mt-1 text-xl font-bold">{fmt(m.impressions)}</div>
                     </div>
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
+                    <div className="chart-card rounded-xl border p-4">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <MousePointerClick className="h-3.5 w-3.5 text-orange-500" /> Clics
                       </div>
@@ -328,7 +329,7 @@ export function AnalyticsClient() {
 
               {/* Campaigns Table */}
               {dashData.campaigns.length > 0 && (
-                <div className="rounded-xl border bg-card p-4 shadow-sm overflow-hidden">
+                <div className="chart-card overflow-hidden rounded-xl border p-4">
                   <h3 className="mb-4 text-sm font-semibold">Rendimiento por Campaña</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -361,15 +362,16 @@ export function AnalyticsClient() {
 
               {/* Serie diaria real de Meta; no se distribuyen totales artificialmente. */}
               {dashData.chartData.length > 0 && (
-                <div className="rounded-xl border bg-card p-4 shadow-sm">
+                <div className="chart-card rounded-xl border p-4">
                   <h3 className="mb-4 text-sm font-semibold">Clics diarios — Meta Ads (últimos 30 días)</h3>
                   <div className="h-[260px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={dashData.chartData}>
-                        <XAxis dataKey="name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
+                        <defs><linearGradient id="analytics-meta-bar" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="var(--chart-2)" /><stop offset="100%" stopColor="var(--chart-2-end)" /></linearGradient></defs>
+                        <XAxis dataKey="name" interval={5} stroke="var(--chart-text)" fontSize={10} tickLine={false} axisLine={false} />
                         <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                         <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                        <Bar dataKey="meta" name="Meta Ads" fill="#1877F2" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="meta" name="Meta Ads" fill="url(#analytics-meta-bar)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -389,7 +391,7 @@ export function AnalyticsClient() {
           )}
 
           {/* Pipeline metrics — always from DB */}
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
+          <div className="chart-card rounded-xl border p-4">
             <div className="flex items-center gap-2 mb-4">
               <h3 className="text-sm font-semibold">Conversión del Pipeline</h3>
               <span className="text-xs text-muted-foreground">(datos en tiempo real del CRM)</span>

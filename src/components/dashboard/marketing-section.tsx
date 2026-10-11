@@ -117,7 +117,7 @@ export function MarketingSection() {
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
             {ga4.sources.length > 0 && (
-              <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="chart-card rounded-xl border p-4">
                 <h3 className="mb-4 text-sm font-semibold">Canales de tráfico</h3>
                 <div className="space-y-2">
                   {ga4.sources.map((s) => {
@@ -129,7 +129,7 @@ export function MarketingSection() {
                           <span className="font-bold">{fmt(s.sessions)}</span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-orange-500 transition-all duration-700" style={{ width: `${Math.min(100, (s.sessions / max) * 100)}%` }} />
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (s.sessions / max) * 100)}%`, background: "linear-gradient(90deg, var(--chart-3), var(--chart-3-end))", boxShadow: "0 0 12px var(--chart-3)" }} />
                         </div>
                       </div>
                     );
@@ -138,15 +138,16 @@ export function MarketingSection() {
               </div>
             )}
             {ga4.daily.length > 0 && (
-              <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="chart-card rounded-xl border p-4">
                 <h3 className="mb-4 text-sm font-semibold">Sesiones diarias (30 días)</h3>
                 <div className="h-[220px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={ga4.daily.map((d) => ({ name: d.date.slice(6) + "/" + d.date.slice(4, 6), sesiones: d.sessions }))}>
-                      <XAxis dataKey="name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
+                      <defs><linearGradient id="dashboard-ga4-bar" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="var(--chart-3)" /><stop offset="100%" stopColor="var(--chart-3-end)" /></linearGradient></defs>
+                      <XAxis dataKey="name" interval={5} stroke="#888" fontSize={10} tickLine={false} axisLine={false} />
                       <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                      <Bar dataKey="sesiones" name="Sesiones" fill="#E87722" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="sesiones" name="Sesiones" fill="url(#dashboard-ga4-bar)" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -165,10 +166,10 @@ export function MarketingSection() {
             <KpiCard title="Clics" value={fmt(totalClicks)} icon={<MousePointerClick />} />
           </div>
           {data && data.campaigns.length > 0 && (
-            <div className="overflow-hidden rounded-xl border bg-card p-4 shadow-sm">
+            <div className="chart-card overflow-hidden rounded-xl border p-4">
               <h3 className="mb-4 text-sm font-semibold">Rendimiento por campaña</h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full min-w-[680px] text-left text-sm">
                   <thead className="bg-muted/50 text-xs text-muted-foreground">
                     <tr>
                       <th className="rounded-l-md px-4 py-2 font-medium">Campaña</th>
@@ -196,15 +197,16 @@ export function MarketingSection() {
             </div>
           )}
           {data && data.chartData.length > 0 && (
-            <div className="rounded-xl border bg-card p-4 shadow-sm">
+            <div className="chart-card rounded-xl border p-4">
               <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold"><BarChart3 className="h-4 w-4" /> Clics diarios — Meta Ads</h3>
               <div className="h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.chartData}>
-                    <XAxis dataKey="name" stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
+                    <defs><linearGradient id="dashboard-meta-bar" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="var(--chart-2)" /><stop offset="100%" stopColor="var(--chart-2-end)" /></linearGradient></defs>
+                    <XAxis dataKey="name" interval={5} stroke="var(--chart-text)" fontSize={10} tickLine={false} axisLine={false} />
                     <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
                     <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="meta" name="Meta Ads" fill="#1877F2" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="meta" name="Meta Ads" fill="url(#dashboard-meta-bar)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

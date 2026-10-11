@@ -3,6 +3,7 @@
 import { Clock, AlertTriangle } from "lucide-react";
 import { KpiCard, formatCurrency, formatPercent } from "../kpi-card";
 import { StackedBarChart, HorizontalBarChart } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -23,9 +24,8 @@ export function ReceivablesSection({ data }: Props) {
         <KpiCard title="Tasa de Mora" value={formatPercent(data.overdueRate)} subtitle="Saldo vencido / saldo pendiente" />
         <KpiCard title="Monto Vencido" value={formatCurrency(data.overdueAmount)} icon={<AlertTriangle />} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Aging de deuda (días vencida)</p>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <ChartCard title="Aging de deuda (días vencida)">
           <StackedBarChart
             data={[{
               bucket: "Vencido",
@@ -33,15 +33,14 @@ export function ReceivablesSection({ data }: Props) {
             }]}
             xKey="bucket" yKeys={["1-30", "31-60", "61-90", "91+"]} height={200}
           />
-          <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#B8963E]" /> 1-30 días</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#3b82f6]" /> 31-60</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#10b981]" /> 61-90</span>
-            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#f59e0b]" /> 91+</span>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[var(--chart-1)]" /> 1-30 días</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[var(--chart-2)]" /> 31-60</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[var(--chart-3)]" /> 61-90</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[var(--chart-4)]" /> 91+</span>
           </div>
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Cuentas con mayor saldo (MXN)</p>
+        </ChartCard>
+        <ChartCard title="Cuentas con mayor saldo (MXN)">
           {data.topDebtors.length > 0 ? (
             <HorizontalBarChart
               data={data.topDebtors.map((d) => ({ name: d.concept || d.id.slice(0, 12), amount: d.amount / 100 }))}
@@ -50,7 +49,7 @@ export function ReceivablesSection({ data }: Props) {
           ) : (
             <p className="text-sm text-muted-foreground py-8 text-center">Sin deudas pendientes</p>
           )}
-        </div>
+        </ChartCard>
       </div>
     </section>
   );

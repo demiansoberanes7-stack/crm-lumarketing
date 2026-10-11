@@ -18,13 +18,13 @@ interface KpiCardProps {
 export function KpiCard({ title, value, subtitle, icon, trend, trendValue, className }: KpiCardProps) {
   return (
     <Card className={cn("overflow-hidden", className)}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-xs font-medium text-muted-foreground">{title}</CardTitle>
-        {icon && <div className="h-4 w-4 text-muted-foreground">{icon}</div>}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-2 pt-4 sm:px-5">
+        <CardTitle title={title} className="line-clamp-2 min-w-0 leading-snug text-xs font-medium text-muted-foreground">{title}</CardTitle>
+        {icon && <div className="h-4 w-4 shrink-0 text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</div>}
       </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <div className="flex items-center gap-1.5 mt-1">
+      <CardContent className="min-w-0 px-3 pb-4 sm:px-5">
+        <div title={String(value)} className="truncate text-xl font-bold tabular-nums sm:text-2xl">{value}</div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
           {trend === "up" && <ArrowUp className="h-3 w-3 text-emerald-500" />}
           {trend === "down" && <ArrowDown className="h-3 w-3 text-red-500" />}
           {trend === "neutral" && <Minus className="h-3 w-3 text-muted-foreground" />}
@@ -34,7 +34,7 @@ export function KpiCard({ title, value, subtitle, icon, trend, trendValue, class
             </p>
           )}
           {subtitle && !trendValue && (
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
+            <p title={subtitle} className="line-clamp-2 min-w-0 text-xs leading-snug text-muted-foreground">{subtitle}</p>
           )}
         </div>
       </CardContent>

@@ -42,12 +42,12 @@ export function AmountDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label="Monto y prioridad"
     >
-      <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-pop">
+      <div className="my-auto max-h-[85dvh] w-full max-w-sm overflow-y-auto rounded-lg border bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-pop">
         <h3 className="font-semibold">Monto y prioridad</h3>
         <p className="mt-0.5 text-xs text-text-3">{leadName}</p>
 

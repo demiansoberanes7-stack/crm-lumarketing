@@ -2,6 +2,7 @@ import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { filterAgentFichaToConfiguredFields, normalizeAgentRules } from "@/lib/agent-config";
 import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-history";
 import { getEnv, isAiConfigured } from "@/lib/env";
 import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
@@ -122,6 +123,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .limit(1);
   const profile = profileRows[0];
   if (!profile) return;
+  const agentRules = normalizeAgentRules(profile.rules);
   // El toggle global aplica a conversaciones reales; el Laboratorio evalúa el
   // comportamiento configurado aunque el agente aún no esté encendido.
   if (!conversation.isTest && !profile.enabled) {
@@ -148,7 +150,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   }
 
   // Patrón de respaldo ANTES del LLM (FR-022).
-  if (lastInbound.text && matchesHandoffIntent(lastInbound.text)) {
+  if (agentRules.handoffOnRequest && lastInbound.text && matchesHandoffIntent(lastInbound.text)) {
     await applyHandoff(conversationId, organizationId, "cliente");
     return;
   }
@@ -170,7 +172,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
   // Pipeline keywords: si el mensaje contiene una keyword configurada,
   // mover directamente a la etapa sin pasar por el LLM.
-  if (lastInbound.text && profile.pipelineKeywords) {
+  if (agentRules.moveStageOnIntent && lastInbound.text && profile.pipelineKeywords) {
     const targetStage = matchesPipelineKeyword(lastInbound.text, profile.pipelineKeywords);
     if (targetStage) {
       const stage = resolveStage(targetStage, stages);
@@ -244,6 +246,18 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
   let action: AgentActionType = result.data;
 
+  // El servidor hace cumplir las preferencias aunque el modelo devuelva una
+  // acción desactivada por configuración.
+  if (!agentRules.sendProductQuotes && action.action === "send_quote") {
+    action = action.reply ? { action: "reply", text: action.reply } : { action: "none" };
+  }
+  if (!agentRules.moveStageOnIntent && action.action === "move_stage") {
+    action = degradeAction(action);
+  }
+  if (!agentRules.captureLeadData && action.action === "update_lead" && action.ficha) {
+    action = { ...action, ficha: undefined };
+  }
+
   // 015 — Agenda. Un fallo del motor degrada el turno (el agente responde sin
   // agendar), nunca lo tumba: quedarse callado es peor que no agendar.
   if (action.action === "offer_slots" || action.action === "book_slot") {
@@ -309,11 +323,14 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       return;
     case "update_lead": {
       await appendLeadNote(organizationId, conversation.contactId, action.note);
-      if (action.ficha) {
+      const ficha = action.ficha && agentRules.captureLeadData
+        ? filterAgentFichaToConfiguredFields(action.ficha, profile.fichaFields)
+        : {};
+      if (Object.keys(ficha).length > 0) {
         await upsertFicha({
           organizationId,
           contactId: conversation.contactId,
-          ficha: action.ficha,
+          ficha,
         });
       }
       if (action.reply) await deliverReply(conversation, action.reply);

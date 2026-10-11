@@ -3,6 +3,7 @@
 import { MessageSquare } from "lucide-react";
 import { KpiCard } from "../kpi-card";
 import { PieChartCard } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -17,15 +18,14 @@ export function InboxSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <MessageSquare className="h-4 w-4" /> Bandeja
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-2">
         <KpiCard title="Conversaciones Activas" value={data.active} icon={<MessageSquare />} />
         <KpiCard title="Canales" value={data.byChannel.length} />
       </div>
       {data.byChannel.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Distribución por canal</p>
+        <ChartCard title="Distribución por canal">
           <PieChartCard data={data.byChannel} nameKey="name" valueKey="count" inner />
-        </div>
+        </ChartCard>
       )}
     </section>
   );

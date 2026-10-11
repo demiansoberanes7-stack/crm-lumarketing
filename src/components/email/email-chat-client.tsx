@@ -121,8 +121,8 @@ export function EmailChatClient() {
     <div className="flex h-full min-h-0">
       {/* ═══ LISTA DE HILOS ═══ */}
       <aside className={cn(
-        "flex w-full flex-col border-r sm:w-[320px] sm:shrink-0",
-        mobileList && selected ? "hidden sm:flex" : "flex",
+        "flex w-full flex-col border-r md:w-[320px] md:shrink-0",
+        mobileList && selected ? "hidden md:flex" : "flex",
       )}>
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <select
@@ -133,11 +133,11 @@ export function EmailChatClient() {
           >
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.label ?? a.email}</option>)}
           </select>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void refetch()} aria-label="Actualizar">
+          <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => void refetch()} aria-label="Actualizar">
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
           {threads.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
               <Mail className="h-8 w-8 text-muted-foreground/50" />
@@ -178,7 +178,7 @@ export function EmailChatClient() {
       {/* ═══ HILO EN CHAT ═══ */}
       <section className={cn(
         "flex min-w-0 flex-1 flex-col",
-        mobileList && !selected ? "hidden sm:flex" : "flex",
+        mobileList && !selected ? "hidden md:flex" : "flex",
       )}>
         {!selected ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
@@ -188,7 +188,7 @@ export function EmailChatClient() {
         ) : (
           <>
             <header className="flex items-center gap-3 border-b px-4 py-3">
-              <button className="sm:hidden" onClick={() => { setMobileList(true); setSelectedId(null); }} aria-label="Volver">
+              <button className="flex min-h-11 min-w-11 shrink-0 items-center justify-center md:hidden" onClick={() => { setMobileList(true); setSelectedId(null); }} aria-label="Volver">
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <span className="grid h-9 w-9 place-items-center rounded-full bg-brand text-[11px] font-bold text-white">
@@ -198,7 +198,7 @@ export function EmailChatClient() {
                 <p className="truncate text-sm font-semibold">{selected.participant.name}</p>
                 <p className="truncate text-xs text-text-3">{selected.subject}</p>
               </span>
-              <span className="ml-auto shrink-0 text-xs text-text-3">{selected.participant.email}</span>
+              <span className="ml-auto hidden max-w-[40%] min-w-0 truncate text-xs text-text-3 sm:block">{selected.participant.email}</span>
             </header>
 
             {error && (
@@ -207,7 +207,7 @@ export function EmailChatClient() {
               </div>
             )}
 
-            <div ref={scrollRef} className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto px-3 py-5 sm:px-[6%]">
+            <div ref={scrollRef} className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto overscroll-contain px-3 py-5 sm:px-[6%]">
               {selected.messages.map((m, i) => {
                 const prev = selected.messages[i - 1];
                 const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
@@ -239,7 +239,7 @@ export function EmailChatClient() {
               })}
             </div>
 
-            <div className="border-t p-3">
+            <div className="border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               <div className="flex items-end gap-2">
                 <Textarea
                   rows={2}
@@ -249,13 +249,13 @@ export function EmailChatClient() {
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void sendReply();
                   }}
                   placeholder={`Responder a ${selected.participant.name}…`}
-                  className="min-h-[44px] flex-1 resize-none"
+                  className="min-h-[44px] min-w-0 flex-1 resize-none"
                 />
                 <Button onClick={() => void sendReply()} disabled={sending || !replyBody.trim()} className="h-[44px]">
                   <Send className="mr-1.5 h-4 w-4" /> {sending ? "Enviando…" : "Enviar"}
                 </Button>
               </div>
-              <p className="mt-1 text-[11px] text-text-3">Ctrl/Cmd + Enter para enviar.</p>
+              <p className="mt-1 hidden text-[11px] text-text-3 sm:block">Ctrl/Cmd + Enter para enviar.</p>
             </div>
           </>
         )}

@@ -118,7 +118,7 @@ export function BusinessSettingsClient() {
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={settings.logoUrl} alt="Logo" className="h-full w-full object-contain p-1" />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[9px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">Cambiar</span>
+                <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[9px] font-semibold text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">Cambiar</span>
               </button>
             ) : (
               <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-border-strong bg-secondary text-muted-foreground">

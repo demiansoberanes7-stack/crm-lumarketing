@@ -183,7 +183,7 @@ export function Composer({
 
   if (!conversation.windowOpen) {
     return (
-      <div className="border-t bg-background px-[18px] py-3.5">
+      <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3.5">
         <div className="mb-3 flex items-start gap-2 rounded-md border border-warning-soft bg-warning-tint p-3 text-sm text-warning-text">
           <Clock3 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
           <div>
@@ -203,7 +203,7 @@ export function Composer({
   const canAttach = conversation.channel === "whatsapp" || conversation.channel === "messenger";
 
   return (
-    <div className="border-t bg-background px-[18px] pb-3.5 pt-3">
+    <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3">
       {file && (
         <div className="mb-2.5 flex items-center gap-2.5 rounded-md border bg-subtle p-2.5">
           {filePreview ? (
@@ -225,7 +225,7 @@ export function Composer({
           <button
             onClick={() => pickFile(null)}
             aria-label="Quitar adjunto"
-            className="rounded p-1 text-text-3 hover:bg-secondary hover:text-foreground"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 hover:bg-secondary hover:text-foreground"
           >
             <X className="h-4 w-4" strokeWidth={1.7} />
           </button>
@@ -262,7 +262,7 @@ export function Composer({
           <button
             onClick={() => setPanel(null)}
             aria-label="Cancelar"
-            className="rounded p-1 text-text-3 hover:bg-secondary"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 hover:bg-secondary"
           >
             <X className="h-4 w-4" strokeWidth={1.7} />
           </button>
@@ -299,7 +299,7 @@ export function Composer({
           <button
             onClick={() => setPanel(null)}
             aria-label="Cancelar"
-            className="rounded p-1 text-text-3 hover:bg-secondary"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 hover:bg-secondary"
           >
             <X className="h-4 w-4" strokeWidth={1.7} />
           </button>
@@ -320,7 +320,7 @@ export function Composer({
               onClick={() => fileRef.current?.click()}
               aria-label="Adjuntar archivo"
               title="Adjuntar imagen, video, audio o documento"
-              className="rounded p-1.5 text-text-3 transition-colors hover:bg-secondary hover:text-foreground"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground"
             >
               <Paperclip className="h-[18px] w-[18px]" strokeWidth={1.7} />
             </button>
@@ -330,7 +330,7 @@ export function Composer({
             aria-label="Enviar ubicación"
             title="Enviar ubicación"
             className={cn(
-              "rounded p-1.5 text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
+              "flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
               panel === "location" && "bg-secondary text-brand"
             )}
           >
@@ -341,7 +341,7 @@ export function Composer({
             aria-label="Compartir contacto"
             title="Compartir contacto"
             className={cn(
-              "rounded p-1.5 text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
+              "flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
               panel === "contact" && "bg-secondary text-brand"
             )}
           >
@@ -353,6 +353,10 @@ export function Composer({
           placeholder={file ? "Pie del adjunto (opcional)…" : "Escribe una respuesta…"}
           value={text}
           rows={1}
+          onFocus={(event) => {
+            const textarea = event.currentTarget;
+            window.setTimeout(() => textarea.scrollIntoView({ block: "nearest" }), 120);
+          }}
           onChange={(e) => {
             setText(e.target.value);
             autogrow();
@@ -363,14 +367,14 @@ export function Composer({
               void submit();
             }
           }}
-          className="max-h-[120px] w-full resize-none self-center bg-transparent py-1 text-sm leading-relaxed outline-none placeholder:text-text-3"
+          className="max-h-[120px] min-w-0 flex-1 resize-none self-center bg-transparent py-1 text-sm leading-relaxed outline-none placeholder:text-text-3"
         />
         <button
           onClick={() => void submit()}
           disabled={sending || !canSubmit}
           aria-label="Enviar"
           className={cn(
-            "flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-[opacity,background-color] hover:bg-brand-hover",
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-[opacity,background-color] hover:bg-brand-hover",
             (sending || !canSubmit) && "opacity-40"
           )}
         >

@@ -11,6 +11,7 @@
  *  - en escritorio NADA de lo anterior cambia (el lateral sigue fijo).
  *
  * Uso: node scripts/e2e-responsive.mjs
+ * Fases: FASES=phone,tablet,desktop (default: las tres).
  * Requiere: app corriendo (pnpm dev) con WA_MOCK_ENABLED=true y Playwright.
  */
 import { chromium } from "playwright";
@@ -46,13 +47,20 @@ const PHONE = { width: 390, height: 844 };
 const TABLET = { width: 820, height: 1180 };
 const DESKTOP = { width: 1440, height: 900 };
 const RUTAS = [
+  "/dashboard",
   "/inbox",
   "/pipeline",
   "/contacts",
   "/agent",
+  "/broadcasts",
   "/lab",
+  "/settings/connections",
+  "/settings/email",
   "/settings/whatsapp",
 ];
+// Fases del guion; `FASES=desktop` corre solo escritorio (útil cuando el
+// dev server no aguanta las tres corridas completas seguidas).
+const FASES = new Set((process.env.FASES ?? "phone,tablet,desktop").split(","));
 
 mkdirSync(SHOTS, { recursive: true });
 
@@ -105,7 +113,7 @@ ok("conversación de prueba creada", listo);
 // los 30 s por defecto de Playwright. Se calientan por HTTP, sin navegador: un
 // `page.goto` abriría además el canal SSE de la app, y varias páginas con SSE
 // vivo a la vez dejan clavado al servidor de desarrollo.
-ctx.setDefaultNavigationTimeout(120000);
+ctx.setDefaultNavigationTimeout(180000);
 ctx.setDefaultTimeout(30000);
 for (const ruta of RUTAS) {
   await req.get(`${BASE}${ruta}`, { timeout: 180000 });
@@ -144,176 +152,204 @@ async function recorrer(page, etiqueta) {
 console.log("\n== 1. Teléfono (390×844): ninguna pantalla se recorta ==");
 const phone = await ctx.newPage();
 await phone.setViewportSize(PHONE);
-await recorrer(phone, "phone");
+if (FASES.has("phone")) {
+  await recorrer(phone, "phone");
 
-console.log("\n== 2. Teléfono: el lateral es un cajón con hamburguesa ==");
-await phone.goto(`${BASE}/pipeline`);
-const hamburguesa = phone.getByRole("button", { name: "Abrir el menú" });
-await hamburguesa.waitFor({ timeout: 20000 });
-ok("la hamburguesa se ve", await hamburguesa.isVisible());
-const linkBandeja = phone.getByRole("link", { name: /Bandeja/ });
-ok(
-  "el lateral arranca oculto (sus enlaces no son alcanzables)",
-  !(await linkBandeja.isVisible())
-);
-await hamburguesa.click();
-ok(
-  "al tocar la hamburguesa el cajón abre",
-  await until(async () => await linkBandeja.isVisible(), 3000)
-);
-// El cajón NO debe empujar el contenido: sale encima.
-const encima = await phone.evaluate(() => {
-  const aside = document.querySelector("aside");
-  const main = document.querySelector("main");
-  if (!aside || !main) return null;
-  const a = aside.getBoundingClientRect();
-  const m = main.getBoundingClientRect();
-  return { asideLeft: Math.round(a.left), mainLeft: Math.round(m.left) };
-});
-ok(
-  "el cajón flota encima del contenido (no lo empuja)",
-  encima !== null && encima.asideLeft <= 1 && encima.mainLeft <= 1,
-  JSON.stringify(encima)
-);
-await phone.screenshot({ path: `${SHOTS}/phone-cajon-abierto.png` });
-await linkBandeja.click();
-await until(async () => phone.url().includes("/inbox"), 15000);
-ok("navegar desde el cajón lleva a la Bandeja", phone.url().includes("/inbox"));
-ok(
-  "el cajón se cierra solo al navegar",
-  await until(async () => !(await linkBandeja.isVisible()), 5000)
-);
+  console.log("\n== 1b. Teléfono: Envíos masivos tiene contenedor vertical desplazable ==");
+  await phone.goto(`${BASE}/broadcasts`);
+  const broadcastOverflowY = await phone.locator("main > div").first().evaluate((el) => getComputedStyle(el).overflowY);
+  ok("Envíos masivos permite desplazamiento vertical", broadcastOverflowY === "auto", broadcastOverflowY);
+  await phone.goto(`${BASE}/agent`);
+  const agentScrollLayers = await phone.locator("main").evaluate((main) =>
+    [...main.querySelectorAll("*")].filter((el) => {
+      const style = getComputedStyle(el);
+      return (style.overflowY === "auto" || style.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 1;
+    }).length
+  );
+  ok("Configuración del agente evita scroll vertical anidado", agentScrollLayers <= 1, `${agentScrollLayers} contenedor(es)`);
 
-console.log("\n== 3. Teléfono: la Bandeja es maestro-detalle ==");
-await phone.goto(`${BASE}/inbox`);
-const fila = phone.getByText(NAME).first();
-await fila.waitFor({ timeout: 20000 });
-ok("la lista de conversaciones ocupa la pantalla", await fila.isVisible());
-const anchoLista = await phone.evaluate(() => {
-  const sec = document.querySelector("main > div > section");
-  return sec ? Math.round(sec.getBoundingClientRect().width) : 0;
-});
-ok(
-  "la lista usa el ancho completo del teléfono",
-  anchoLista >= PHONE.width - 8,
-  `${anchoLista}px de ${PHONE.width}`
-);
-await fila.click();
-const composer = phone.getByPlaceholder("Escribe una respuesta");
-ok(
-  "al elegir una conversación se abre el hilo",
-  await until(async () => await composer.isVisible(), 15000)
-);
-ok("la lista cede la pantalla al hilo", !(await fila.isVisible()));
-const volver = phone.getByRole("button", { name: "Volver a las conversaciones" });
-ok("aparece el botón de volver", await volver.isVisible());
-await phone.screenshot({ path: `${SHOTS}/phone-hilo.png` });
-
-// El compositor debe quedar DENTRO de la pantalla (100dvh, no 100vh).
-const compBox = await composer.boundingBox();
-ok(
-  "el compositor queda dentro de la pantalla",
-  compBox !== null && compBox.y + compBox.height <= PHONE.height,
-  compBox ? `borde inferior en ${Math.round(compBox.y + compBox.height)}px` : "sin caja"
-);
-// iOS: menos de 16px = zoom automático al enfocar.
-const fuenteComp = await composer.evaluate((el) =>
-  parseFloat(getComputedStyle(el).fontSize)
-);
-ok(
-  "el compositor usa ≥16px (iOS no hace zoom al enfocar)",
-  fuenteComp >= 16,
-  `${fuenteComp}px`
-);
-
-console.log("\n== 4. Teléfono: los detalles flotan sobre el hilo ==");
-const abrirDetalles = phone.getByRole("button", { name: "Mostrar detalles" });
-ok("el panel de detalles arranca cerrado en el teléfono", await abrirDetalles.isVisible());
-await abrirDetalles.click();
-await sleep(500);
-const cajonDetalles = await phone.evaluate(() => {
-  const secs = [...document.querySelectorAll("main > div > section")];
-  const panel = secs[secs.length - 1];
-  if (!panel) return null;
-  const r = panel.getBoundingClientRect();
-  return {
-    right: Math.round(r.right),
-    width: Math.round(r.width),
-    fixed: getComputedStyle(panel).position === "fixed",
-  };
-});
-ok(
-  "los detalles entran como cajón pegado al borde derecho",
-  cajonDetalles !== null &&
-    cajonDetalles.fixed &&
-    Math.abs(cajonDetalles.right - PHONE.width) <= 2 &&
-    cajonDetalles.width <= PHONE.width,
-  JSON.stringify(cajonDetalles)
-);
-const dEnDetalles = await desborde(phone);
-ok(
-  "con los detalles abiertos la pantalla sigue sin recortarse",
-  dEnDetalles.docOver <= 1,
-  `documento +${dEnDetalles.docOver}px`
-);
-await phone.screenshot({ path: `${SHOTS}/phone-detalles.png` });
-await phone
-  .getByRole("button", { name: "Cerrar los detalles" })
-  .click()
-  .catch(() => null);
-await sleep(400);
-
-console.log("\n== 5. Tableta (820×1180) ==");
-const tablet = phone;
-await tablet.setViewportSize(TABLET);
-await recorrer(tablet, "tablet");
-await tablet.goto(`${BASE}/inbox`);
-await tablet.getByText(NAME).first().click();
-await tablet.getByPlaceholder("Escribe una respuesta").waitFor({ timeout: 20000 });
-const dosColumnas = await tablet.evaluate(() => {
-  const secs = [...document.querySelectorAll("main > div > section")];
-  return secs.slice(0, 2).map((s) => Math.round(s.getBoundingClientRect().width));
-});
-ok(
-  "en tableta conviven lista e hilo (dos columnas)",
-  dosColumnas.length === 2 && dosColumnas[0] > 200 && dosColumnas[1] > 300,
-  JSON.stringify(dosColumnas)
-);
-await tablet.screenshot({ path: `${SHOTS}/tablet-inbox.png` });
-
-console.log("\n== 6. Escritorio (1440×900): nada cambió ==");
-const desk = tablet;
-await desk.setViewportSize(DESKTOP);
-await recorrer(desk, "desktop");
-await desk.goto(`${BASE}/inbox`);
-await desk.getByText(NAME).first().click();
-await desk.getByPlaceholder("Escribe una respuesta").waitFor({ timeout: 20000 });
-ok(
-  "el lateral sigue fijo (sin hamburguesa)",
-  !(await desk.getByRole("button", { name: "Abrir el menú" }).isVisible()) &&
-    (await desk.getByRole("link", { name: /Bandeja/ }).isVisible())
-);
-const medirColumnas = () =>
-  desk.evaluate(() => {
+  console.log("\n== 2. Teléfono: el lateral es un cajón con hamburguesa ==");
+  await phone.goto(`${BASE}/pipeline`);
+  const hamburguesa = phone.getByRole("button", { name: "Abrir el menú" });
+  await hamburguesa.waitFor({ timeout: 20000 });
+  ok("la hamburguesa se ve", await hamburguesa.isVisible());
+  const linkBandeja = phone.getByRole("link", { name: /Bandeja/ });
+  ok(
+    "el lateral arranca oculto (sus enlaces no son alcanzables)",
+    !(await linkBandeja.isVisible())
+  );
+  await hamburguesa.click();
+  // En `pnpm dev` el click puede llegar antes de que React hidrate y el
+  // handler aún no esté adjunto: se reintenta el toque hasta que el cajón
+  // responda de verdad.
+  ok(
+    "al tocar la hamburguesa el cajón abre",
+    await until(async () => {
+      if (await linkBandeja.isVisible()) return true;
+      await hamburguesa.click().catch(() => null);
+      return false;
+    }, 15000)
+  );
+  // El cajón NO debe empujar el contenido: sale encima.
+  const encima = await phone.evaluate(() => {
     const aside = document.querySelector("aside");
+    const main = document.querySelector("main");
+    if (!aside || !main) return null;
+    const a = aside.getBoundingClientRect();
+    const m = main.getBoundingClientRect();
+    return { asideLeft: Math.round(a.left), mainLeft: Math.round(m.left) };
+  });
+  ok(
+    "el cajón flota encima del contenido (no lo empuja)",
+    encima !== null && encima.asideLeft <= 1 && encima.mainLeft <= 1,
+    JSON.stringify(encima)
+  );
+  await phone.screenshot({ path: `${SHOTS}/phone-cajon-abierto.png` });
+  await linkBandeja.click();
+  // La navegación client-side pasa por el RSC del dev server, que puede tardar
+  // varios segundos bajo carga; 15 s se quedaba corto en esta máquina.
+  await until(async () => phone.url().includes("/inbox"), 45000);
+  ok("navegar desde el cajón lleva a la Bandeja", phone.url().includes("/inbox"));
+  ok(
+    "el cajón se cierra solo al navegar",
+    await until(async () => !(await linkBandeja.isVisible()), 10000)
+  );
+
+  console.log("\n== 3. Teléfono: la Bandeja es maestro-detalle ==");
+  await phone.goto(`${BASE}/inbox`);
+  const fila = phone.getByText(NAME).first();
+  await fila.waitFor({ timeout: 20000 });
+  ok("la lista de conversaciones ocupa la pantalla", await fila.isVisible());
+  const anchoLista = await phone.evaluate(() => {
+    const sec = document.querySelector("main > div > section");
+    return sec ? Math.round(sec.getBoundingClientRect().width) : 0;
+  });
+  ok(
+    "la lista usa el ancho completo del teléfono",
+    anchoLista >= PHONE.width - 8,
+    `${anchoLista}px de ${PHONE.width}`
+  );
+  await fila.click();
+  const composer = phone.getByPlaceholder("Escribe una respuesta");
+  ok(
+    "al elegir una conversación se abre el hilo",
+    await until(async () => await composer.isVisible(), 15000)
+  );
+  ok("la lista cede la pantalla al hilo", !(await fila.isVisible()));
+  const volver = phone.getByRole("button", { name: "Volver a las conversaciones" });
+  ok("aparece el botón de volver", await volver.isVisible());
+  await phone.screenshot({ path: `${SHOTS}/phone-hilo.png` });
+
+  // El compositor debe quedar DENTRO de la pantalla (100dvh, no 100vh).
+  const compBox = await composer.boundingBox();
+  ok(
+    "el compositor queda dentro de la pantalla",
+    compBox !== null && compBox.y + compBox.height <= PHONE.height,
+    compBox ? `borde inferior en ${Math.round(compBox.y + compBox.height)}px` : "sin caja"
+  );
+  // iOS: menos de 16px = zoom automático al enfocar.
+  const fuenteComp = await composer.evaluate((el) =>
+    parseFloat(getComputedStyle(el).fontSize)
+  );
+  ok(
+    "el compositor usa ≥16px (iOS no hace zoom al enfocar)",
+    fuenteComp >= 16,
+    `${fuenteComp}px`
+  );
+
+  console.log("\n== 4. Teléfono: los detalles flotan sobre el hilo ==");
+  const abrirDetalles = phone.getByRole("button", { name: "Mostrar detalles" });
+  ok("el panel de detalles arranca cerrado en el teléfono", await abrirDetalles.isVisible());
+  await abrirDetalles.click();
+  await sleep(500);
+  const cajonDetalles = await phone.evaluate(() => {
     const secs = [...document.querySelectorAll("main > div > section")];
+    const panel = secs[secs.length - 1];
+    if (!panel) return null;
+    const r = panel.getBoundingClientRect();
     return {
-      aside: aside ? Math.round(aside.getBoundingClientRect().width) : 0,
-      secs: secs.map((s) => Math.round(s.getBoundingClientRect().width)),
+      right: Math.round(r.right),
+      width: Math.round(r.width),
+      fixed: getComputedStyle(panel).position === "fixed",
     };
   });
-// El panel abre con transición de 220 ms: medir apenas aparece el compositor
-// atraparía un ancho a medio camino.
-const columnasOk = (t) =>
-  t.aside === 224 && t.secs[0] === 360 && t.secs.at(-1) === 320;
-await until(async () => columnasOk(await medirColumnas()), 8000);
-const tres = await medirColumnas();
-ok(
-  "escritorio conserva lateral 224px + lista 360px + hilo + detalles 320px",
-  columnasOk(tres),
-  JSON.stringify(tres)
-);
-await desk.screenshot({ path: `${SHOTS}/desktop-inbox.png` });
+  ok(
+    "los detalles entran como cajón pegado al borde derecho",
+    cajonDetalles !== null &&
+      cajonDetalles.fixed &&
+      Math.abs(cajonDetalles.right - PHONE.width) <= 2 &&
+      cajonDetalles.width <= PHONE.width,
+    JSON.stringify(cajonDetalles)
+  );
+  const dEnDetalles = await desborde(phone);
+  ok(
+    "con los detalles abiertos la pantalla sigue sin recortarse",
+    dEnDetalles.docOver <= 1,
+    `documento +${dEnDetalles.docOver}px`
+  );
+  await phone.screenshot({ path: `${SHOTS}/phone-detalles.png` });
+  await phone
+    .getByRole("button", { name: "Cerrar los detalles" })
+    .click()
+    .catch(() => null);
+  await sleep(400);
+}
+
+if (FASES.has("tablet")) {
+  console.log("\n== 5. Tableta (820×1180) ==");
+  const tablet = phone;
+  await tablet.setViewportSize(TABLET);
+  await recorrer(tablet, "tablet");
+  await tablet.goto(`${BASE}/inbox`);
+  await tablet.getByText(NAME).first().click();
+  await tablet.getByPlaceholder("Escribe una respuesta").waitFor({ timeout: 20000 });
+  const dosColumnas = await tablet.evaluate(() => {
+    const secs = [...document.querySelectorAll("main > div > section")];
+    return secs.slice(0, 2).map((s) => Math.round(s.getBoundingClientRect().width));
+  });
+  ok(
+    "en tableta conviven lista e hilo (dos columnas)",
+    dosColumnas.length === 2 && dosColumnas[0] > 200 && dosColumnas[1] > 300,
+    JSON.stringify(dosColumnas)
+  );
+  await tablet.screenshot({ path: `${SHOTS}/tablet-inbox.png` });
+}
+
+if (FASES.has("desktop")) {
+  console.log("\n== 6. Escritorio (1440×900): nada cambió ==");
+  const desk = phone;
+  await desk.setViewportSize(DESKTOP);
+  await recorrer(desk, "desktop");
+  await desk.goto(`${BASE}/inbox`);
+  await desk.getByText(NAME).first().click();
+  await desk.getByPlaceholder("Escribe una respuesta").waitFor({ timeout: 20000 });
+  ok(
+    "el lateral sigue fijo (sin hamburguesa)",
+    !(await desk.getByRole("button", { name: "Abrir el menú" }).isVisible()) &&
+      (await desk.getByRole("link", { name: /Bandeja/ }).isVisible())
+  );
+  const medirColumnas = () =>
+    desk.evaluate(() => {
+      const aside = document.querySelector("aside");
+      const secs = [...document.querySelectorAll("main > div > section")];
+      return {
+        aside: aside ? Math.round(aside.getBoundingClientRect().width) : 0,
+        secs: secs.map((s) => Math.round(s.getBoundingClientRect().width)),
+      };
+    });
+  // El panel abre con transición de 220 ms: medir apenas aparece el compositor
+  // atraparía un ancho a medio camino.
+  const columnasOk = (t) =>
+    t.aside === 224 && t.secs[0] === 360 && t.secs.at(-1) === 320;
+  await until(async () => columnasOk(await medirColumnas()), 8000);
+  const tres = await medirColumnas();
+  ok(
+    "escritorio conserva lateral 224px + lista 360px + hilo + detalles 320px",
+    columnasOk(tres),
+    JSON.stringify(tres)
+  );
+  await desk.screenshot({ path: `${SHOTS}/desktop-inbox.png` });
+}
 
 console.log(
   failures === 0

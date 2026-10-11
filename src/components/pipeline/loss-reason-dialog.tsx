@@ -27,13 +27,13 @@ export function LossReasonDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center"
       onClick={onCancel}
     >
       <div
         role="dialog"
         aria-label="Motivo de pérdida"
-        className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl"
+        className="my-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-1 font-semibold">¿Por qué se perdió?</h3>
@@ -51,8 +51,8 @@ export function LossReasonDialog({
               aria-pressed={reason === r}
               className={
                 reason === r
-                  ? "w-full rounded-md border border-brand bg-brand-tint px-3 py-2 text-left text-sm font-medium"
-                  : "w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-subtle"
+                  ? "min-h-11 w-full rounded-md border border-brand bg-brand-tint px-3 py-2 text-left text-sm font-medium"
+                  : "min-h-11 w-full rounded-md border px-3 py-2 text-left text-sm hover:bg-subtle"
               }
             >
               {LOSS_REASON_LABEL[r]}

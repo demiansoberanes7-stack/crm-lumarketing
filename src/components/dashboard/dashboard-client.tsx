@@ -136,14 +136,14 @@ export function DashboardClient() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
         <h1 className="text-lg font-bold tracking-tight">Dashboard</h1>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
             <button
               key={p.value}
               onClick={() => setPeriod(p.value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`min-h-11 rounded-md px-3 text-xs font-medium transition-colors ${
                 period === p.value
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent"

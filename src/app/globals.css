@@ -71,6 +71,27 @@
     --info-soft: #E8D8B0;
     --info-text: #8B7230;
 
+    /* Gráficas: degradados vivos sobre tarjetas claras */
+    --chart-1: #8b5cf6;
+    --chart-1-end: #ec4899;
+    --chart-2: #2563eb;
+    --chart-2-end: #22d3ee;
+    --chart-3: #ec4899;
+    --chart-3-end: #f97316;
+    --chart-4: #f97316;
+    --chart-4-end: #facc15;
+    --chart-5: #14b8a6;
+    --chart-5-end: #3b82f6;
+    --chart-6: #6366f1;
+    --chart-6-end: #d946ef;
+    --chart-track: #f4f4f5;
+    --chart-grid: #e4e4e7;
+    --chart-text: #71717a;
+    --chart-area-opacity: 0.3;
+    --chart-card-bg: linear-gradient(145deg, #ffffff, #fcfcff);
+    --chart-card-border: #e4e4e7;
+    --chart-card-shadow: 0 2px 10px rgba(99, 102, 241, 0.06);
+
     /* Superficies auxiliares */
     --overlay: rgba(10, 10, 10, 0.5);
     --knob: #ffffff;
@@ -140,6 +161,27 @@
     --info-soft: #3D3220;
     --info-text: #E8C060;
 
+    /* Gráficas neón: degradados luminosos sobre superficies oscuras */
+    --chart-1: #a78bfa;
+    --chart-1-end: #f472b6;
+    --chart-2: #60a5fa;
+    --chart-2-end: #22d3ee;
+    --chart-3: #f472b6;
+    --chart-3-end: #fb7185;
+    --chart-4: #fb923c;
+    --chart-4-end: #facc15;
+    --chart-5: #2dd4bf;
+    --chart-5-end: #60a5fa;
+    --chart-6: #818cf8;
+    --chart-6-end: #e879f9;
+    --chart-track: #27272a;
+    --chart-grid: #3f3f46;
+    --chart-text: #a1a1aa;
+    --chart-area-opacity: 0.42;
+    --chart-card-bg: linear-gradient(145deg, #11111b, #10121c 58%, #151020);
+    --chart-card-border: #34314c;
+    --chart-card-shadow: 0 0 26px -14px rgba(168, 85, 247, 0.5);
+
     --overlay: rgba(0, 0, 0, 0.7);
     --knob: #d4d4d8;
 
@@ -181,6 +223,26 @@
   /* Mosaico de marca: degradado del acento, como el favicon */
   .brand-tile {
     background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  }
+
+  /* Panel de gráfica: canto superior sutil, con halo más visible en oscuro. */
+  .chart-card {
+    position: relative;
+    isolation: isolate;
+    border-color: var(--chart-card-border);
+    background: var(--chart-card-bg);
+    box-shadow: var(--chart-card-shadow);
+  }
+  .chart-card::before {
+    position: absolute;
+    top: 0;
+    left: 8%;
+    width: 84%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--chart-2), var(--chart-1-end), transparent);
+    opacity: 0.65;
+    content: "";
+    pointer-events: none;
   }
 
   /* Rejilla sutil del fondo del login, en neutro (chrome Vercel) */

@@ -8,6 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AGENT_FICHA_KEY_PATTERN,
+  AGENT_RULE_OPTIONS,
+  type AgentFichaField,
+  type AgentRules,
+} from "@/lib/agent-config";
 
 type Profile = {
   enabled: boolean;
@@ -17,6 +23,8 @@ type Profile = {
   escalationRules: string | null;
   greeting: string | null;
   pipelineKeywords: string | null;
+  fichaFields: AgentFichaField[];
+  rules: AgentRules;
 };
 
 type KbEntry = {
@@ -34,6 +42,7 @@ export function AgentClient() {
   const [kbSize, setKbSize] = useState<{ chars: number; warnAt: number; warning: boolean } | null>(null);
   const [catalogCount, setCatalogCount] = useState(0);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const refetch = useCallback(async () => {
     const [p, kb, size, cat] = await Promise.all([
@@ -64,18 +73,25 @@ export function AgentClient() {
   }
 
   async function saveProfile(patch: Partial<Profile>) {
-    await fetch("/api/agent/profile", {
+    setSaveError("");
+    const response = await fetch("/api/agent/profile", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
     }).catch(() => null);
+    if (!response?.ok) {
+      const data = await response?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setSaved(false);
+      setSaveError(data?.error?.message ?? "No se pudo guardar la configuración del agente.");
+      return;
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     void refetch();
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-6 sm:py-4">
         <h2 className="text-[17px] font-bold tracking-tight">Agente de IA</h2>
         <div className="flex items-center gap-3">
@@ -89,7 +105,7 @@ export function AgentClient() {
             aria-label="Agente encendido"
             disabled={!aiConfigured}
             onClick={() => void saveProfile({ enabled: !profile.enabled })}
-            className={`relative h-6 w-11 rounded-full transition-colors disabled:opacity-40 ${
+            className={`relative h-6 w-11 rounded-full transition-colors after:absolute after:-inset-x-2 after:-inset-y-2 after:content-[''] disabled:opacity-40 ${
               profile.enabled ? "bg-brand" : "bg-border-strong"
             }`}
           >
@@ -102,10 +118,17 @@ export function AgentClient() {
         </div>
       </header>
 
-      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-          <ProfileSection profile={profile} onSave={saveProfile} />
-          <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} onChanged={() => void refetch()} />
+      <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
+        {saveError && <p role="alert" className="rounded-md border border-danger-soft bg-danger-tint p-3 text-sm text-danger-text">{saveError}</p>}
+        <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
+          <div className="min-w-0 space-y-4 sm:space-y-6">
+            <ProfileSection profile={profile} onSave={saveProfile} />
+            <AgentRulesSection rules={profile.rules} onSave={saveProfile} />
+          </div>
+          <div className="min-w-0 space-y-4 sm:space-y-6">
+            <FichaFieldsSection fields={profile.fichaFields} onSave={saveProfile} />
+            <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} strictKnowledgeBase={profile.rules.strictKnowledgeBase} onChanged={() => void refetch()} />
+          </div>
         </div>
       </div>
     </div>
@@ -190,7 +213,127 @@ function ProfileSection({
             onChange={(e) => setForm({ ...form, greeting: e.target.value })}
           />
         </div>
-        <Button onClick={() => void onSave(form)}>Guardar comportamiento</Button>
+        <Button className="min-h-11" onClick={() => void onSave(form)}>Guardar comportamiento</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AgentRulesSection({
+  rules,
+  onSave,
+}: {
+  rules: AgentRules;
+  onSave: (patch: Partial<Profile>) => Promise<void>;
+}) {
+  const [form, setForm] = useState(rules);
+  useEffect(() => setForm(rules), [rules]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reglas del agente</CardTitle>
+        <CardDescription>Activa o pausa las decisiones automáticas del modelo.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {AGENT_RULE_OPTIONS.map((rule) => (
+          <label key={rule.key} className="flex min-w-0 items-start gap-3 rounded-md border p-3 transition-colors hover:bg-subtle">
+            <input
+              type="checkbox"
+              checked={form[rule.key]}
+              onChange={(event) => setForm({ ...form, [rule.key]: event.target.checked })}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{rule.title}</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{rule.description}</span>
+            </span>
+          </label>
+        ))}
+        <Button className="min-h-11" onClick={() => void onSave({ rules: form })}>Guardar reglas</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FichaFieldsSection({
+  fields,
+  onSave,
+}: {
+  fields: AgentFichaField[];
+  onSave: (patch: Partial<Profile>) => Promise<void>;
+}) {
+  const [form, setForm] = useState(fields);
+  useEffect(() => setForm(fields), [fields]);
+
+  const keys = form.map((field) => field.key);
+  const duplicateKeys = new Set(keys.filter((key, index) => keys.indexOf(key) !== index));
+  const invalid = form.some((field) => !AGENT_FICHA_KEY_PATTERN.test(field.key) || !field.label.trim()) || duplicateKeys.size > 0;
+
+  function updateField(index: number, patch: Partial<AgentFichaField>) {
+    setForm((current) => current.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field));
+  }
+
+  function addField() {
+    let number = form.length + 1;
+    let key = `campo_${number}`;
+    while (form.some((field) => field.key === key)) {
+      number += 1;
+      key = `campo_${number}`;
+    }
+    setForm([...form, { key, label: `Campo ${number}` }]);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Campos de ficha</CardTitle>
+        <CardDescription>Define qué datos recopila el agente en cada contacto. La clave se guarda en la ficha; la etiqueta se muestra aquí.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {form.map((field, index) => (
+          <div key={`${field.key}-${index}`} className="grid min-w-0 grid-cols-1 items-end gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor={`ficha-label-${index}`}>Nombre del campo</Label>
+              <Input
+                id={`ficha-label-${index}`}
+                value={field.label}
+                maxLength={60}
+                onChange={(event) => updateField(index, { label: event.target.value })}
+              />
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor={`ficha-key-${index}`}>Clave técnica</Label>
+              <Input
+                id={`ficha-key-${index}`}
+                value={field.key}
+                maxLength={40}
+                onChange={(event) => updateField(index, { key: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
+                aria-invalid={!AGENT_FICHA_KEY_PATTERN.test(field.key) || duplicateKeys.has(field.key)}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="min-h-11 min-w-11 justify-self-end text-muted-foreground hover:text-destructive"
+              aria-label={`Eliminar campo ${field.label}`}
+              title={form.length === 1 ? "Mantén al menos un campo" : `Eliminar ${field.label}`}
+              disabled={form.length === 1}
+              onClick={() => setForm((current) => current.filter((_, fieldIndex) => fieldIndex !== index))}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        {invalid && <p role="alert" className="text-xs text-danger-text">Corrige las claves duplicadas o inválidas antes de guardar.</p>}
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className="min-h-11" onClick={addField} disabled={form.length >= 12}>
+            <Plus className="h-4 w-4" /> Agregar campo
+          </Button>
+          <Button className="min-h-11" disabled={invalid} onClick={() => void onSave({ fichaFields: form })}>Guardar campos</Button>
+        </div>
+        <p className="text-xs text-muted-foreground">La clave usa minúsculas, números y guion bajo; por ejemplo, <code>presupuesto</code>.</p>
       </CardContent>
     </Card>
   );
@@ -200,11 +343,13 @@ function KbSection({
   entries,
   kbSize,
   catalogCount,
+  strictKnowledgeBase,
   onChanged,
 }: {
   entries: KbEntry[];
   kbSize: { chars: number; warnAt: number; warning: boolean } | null;
   catalogCount: number;
+  strictKnowledgeBase: boolean;
   onChanged: () => void;
 }) {
   const [question, setQuestion] = useState("");
@@ -246,8 +391,9 @@ function KbSection({
           <div>
             <CardTitle>Knowledge base</CardTitle>
             <CardDescription>
-              La única fuente de verdad del agente: lo que no está aquí, no lo
-              afirma.
+              {strictKnowledgeBase
+                ? "Fuente de verdad del agente: si un dato no está aquí ni en el catálogo, no lo afirma."
+                : "Referencia del negocio que el agente utiliza para responder."}
             </CardDescription>
           </div>
           {kbSize && (
@@ -288,6 +434,7 @@ function KbSection({
           />
           <Button
             size="sm"
+            className="min-h-11"
             onClick={() => void addQa()}
             disabled={!question.trim() || !answer.trim()}
           >
@@ -303,7 +450,7 @@ function KbSection({
             value={block}
             onChange={(e) => setBlock(e.target.value)}
           />
-          <Button size="sm" onClick={() => void addBlock()} disabled={!block.trim()}>
+          <Button size="sm" className="min-h-11" onClick={() => void addBlock()} disabled={!block.trim()}>
             <Plus className="h-4 w-4" /> Agregar bloque
           </Button>
         </div>

@@ -76,13 +76,13 @@ export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-4 sm:items-center">
       <button
         aria-label="Cerrar"
         onClick={onClose}
         className="absolute inset-0 bg-overlay"
       />
-      <div className="relative z-10 max-h-[90dvh] overflow-y-auto w-full max-w-md rounded-lg border border-border-strong bg-card p-6 shadow-lg">
+      <div className="relative z-10 my-auto max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-lg border border-border-strong bg-card p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-lg">
         <h2 className="text-lg font-bold">{initial ? "Editar cuenta de correo" : "Nueva Cuenta de Correo"}</h2>
         <p className="mb-4 mt-1 text-sm text-text-2">
           Configura una cuenta IMAP/SMTP para recibir y enviar correos.
@@ -108,8 +108,8 @@ export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="flex flex-col gap-1.5 col-span-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="col-span-2 flex min-w-0 flex-col gap-1.5">
               <Label htmlFor="imap-host">Servidor IMAP *</Label>
               <Input
                 id="imap-host"
@@ -119,7 +119,7 @@ export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
                 onChange={(e) => setImapHost(e.target.value)}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="col-span-2 flex min-w-0 flex-col gap-1.5 sm:col-span-1">
               <Label htmlFor="imap-port">Puerto</Label>
               <Input
                 id="imap-port"
@@ -130,8 +130,8 @@ export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
               />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="flex flex-col gap-1.5 col-span-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="col-span-2 flex min-w-0 flex-col gap-1.5">
               <Label htmlFor="smtp-host">Servidor SMTP *</Label>
               <Input
                 id="smtp-host"
@@ -141,7 +141,7 @@ export function NewAccountDialog({ open, onClose, onCreated, initial }: Props) {
                 onChange={(e) => setSmtpHost(e.target.value)}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="col-span-2 flex min-w-0 flex-col gap-1.5 sm:col-span-1">
               <Label htmlFor="smtp-port">Puerto</Label>
               <Input
                 id="smtp-port"

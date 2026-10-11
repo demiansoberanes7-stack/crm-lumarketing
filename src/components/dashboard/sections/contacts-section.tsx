@@ -3,6 +3,7 @@
 import { Users } from "lucide-react";
 import { KpiCard, formatPercent } from "../kpi-card";
 import { PieChartCard } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -24,10 +25,9 @@ export function ContactsSection({ data }: Props) {
         <KpiCard title="Contactos con proyecto activo" value={formatPercent(data.activityRate)} subtitle="Sobre contactos no archivados" />
       </div>
       {data.bySource.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Fuentes de contacto</p>
+        <ChartCard title="Fuentes de contacto">
           <PieChartCard data={data.bySource} nameKey="name" valueKey="count" inner />
-        </div>
+        </ChartCard>
       )}
     </section>
   );

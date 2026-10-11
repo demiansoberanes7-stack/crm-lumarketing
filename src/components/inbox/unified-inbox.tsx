@@ -11,10 +11,10 @@ export function UnifiedInbox({ channels }: { channels: readonly Channel[] }) {
   const email = useSearchParams().get("channel") === "email";
   if (!email) return <InboxClient channels={channels} />;
   return <div className="flex h-full min-h-0 flex-col">
-    <nav aria-label="Bandejas" className="flex items-center gap-3 border-b p-3">
-      <Link href="/inbox">Bandeja</Link>
-      {channels.map((channel) => <Link key={channel} href={`/inbox?channel=${channel}`} title={CHANNEL_LABEL[channel]}><ChannelBadge channel={channel} /></Link>)}
-      <span className="flex items-center gap-2 rounded-full bg-brand-tint px-3 py-1"><Mail size={16} /> Buzón</span>
+    <nav aria-label="Bandejas" className="flex shrink-0 items-center gap-3 overflow-x-auto border-b px-3 py-2">
+      <Link className="flex min-h-11 shrink-0 items-center" href="/inbox">Bandeja</Link>
+      {channels.map((channel) => <Link className="flex min-h-11 min-w-11 shrink-0 items-center justify-center" key={channel} href={`/inbox?channel=${channel}`} title={CHANNEL_LABEL[channel]} aria-label={CHANNEL_LABEL[channel]}><ChannelBadge channel={channel} /></Link>)}
+      <span className="flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-brand-tint px-3 py-1"><Mail size={16} /> Buzón</span>
     </nav>
     <div className="min-h-0 flex-1"><EmailChatClient /></div>
   </div>;

@@ -134,11 +134,11 @@ export function FichaPanel({
                     >
                       {fichaValueText(valor)}
                     </button>
-                    <span className="flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    <span className="flex shrink-0 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                       <button
                         onClick={() => setEditando(clave)}
                         aria-label={`Editar ${fichaLabel(clave)}`}
-                        className="rounded p-1 text-text-3 hover:bg-accent hover:text-foreground"
+                        className="flex min-h-9 min-w-9 items-center justify-center rounded text-text-3 hover:bg-accent hover:text-foreground"
                       >
                         <Pencil className="h-3 w-3" />
                       </button>
@@ -146,7 +146,7 @@ export function FichaPanel({
                         disabled={guardando}
                         onClick={() => void guardar({ [clave]: null })}
                         aria-label={`Quitar ${fichaLabel(clave)}`}
-                        className="rounded p-1 text-text-3 hover:bg-accent hover:text-danger"
+                        className="flex min-h-9 min-w-9 items-center justify-center rounded text-text-3 hover:bg-accent hover:text-danger"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>

@@ -410,11 +410,11 @@ function EditDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-overlay p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center"
       onClick={onClose}
     >
       <div
-        className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
+        className="my-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-4 font-semibold">Editar contacto</h3>

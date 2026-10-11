@@ -140,7 +140,7 @@ export function BroadcastsClient() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto h-full w-full max-w-6xl space-y-6 overflow-y-auto p-4 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="kicker">Contactos segmentados</p>

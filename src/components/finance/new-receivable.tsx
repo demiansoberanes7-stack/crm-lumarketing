@@ -7,7 +7,7 @@ export function NewReceivable({ onSaved, onClose }: { onSaved: () => void; onClo
   const [concept, setConcept] = useState(""); const [amount, setAmount] = useState("");
   const [contactId, setContactId] = useState<string | null>(null);
   const [date, setDate] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"><form className="w-full max-w-md space-y-3 rounded-lg border bg-card p-5" onSubmit={async (e) => {
+  return <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center"><form className="my-auto max-h-[85dvh] w-full max-w-md space-y-3 overflow-y-auto rounded-lg border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]" onSubmit={async (e) => {
     e.preventDefault(); setBusy(true); setError("");
     const res = await fetch("/api/finances/receivables", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ concept, totalAmount: Math.round(Number(amount) * 100), contactId, dueDate: date ? new Date(`${date}T12:00:00Z`).toISOString() : undefined }) }).catch(() => null);
     setBusy(false); if (res?.ok) onSaved(); else setError((await res?.json())?.error?.message ?? "No se pudo guardar");

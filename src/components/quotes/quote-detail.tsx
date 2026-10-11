@@ -253,7 +253,8 @@ export function QuoteDetail({
           {quote.contactName ?? "Sin contacto"} · {formatDate(quote.createdAt)}
         </div>
 
-        <table className="mb-4 w-full text-sm">
+        <div className="mb-4 overflow-x-auto">
+        <table className="w-full min-w-[28rem] text-sm">
           <caption className="sr-only">Artículos de la cotización</caption>
           <thead>
             <tr className="border-b text-left text-muted-foreground">
@@ -274,6 +275,7 @@ export function QuoteDetail({
             ))}
           </tbody>
         </table>
+        </div>
 
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">

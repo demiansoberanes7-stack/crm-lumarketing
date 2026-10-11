@@ -3,6 +3,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
+import { normalizeAgentFichaFields, normalizeAgentRules, AGENT_FICHA_KEY_PATTERN } from "@/lib/agent-config";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,8 @@ export const GET = withAuth(async (session) => {
       escalationRules: p.escalationRules,
       greeting: p.greeting,
       pipelineKeywords: p.pipelineKeywords,
+      fichaFields: normalizeAgentFichaFields(p.fichaFields),
+      rules: normalizeAgentRules(p.rules),
     },
     aiConfigured: isAiConfigured(),
   });
@@ -38,6 +41,17 @@ const putSchema = z.object({
   escalationRules: z.string().max(4000).nullable().optional(),
   greeting: z.string().max(1000).nullable().optional(),
   pipelineKeywords: z.string().max(2000).nullable().optional(),
+  fichaFields: z.array(z.object({
+    key: z.string().regex(AGENT_FICHA_KEY_PATTERN, "La clave debe empezar con letra y contener solo minúsculas, números o _ (máximo 40 caracteres)"),
+    label: z.string().trim().min(1).max(60),
+  })).min(1).max(12).refine((fields) => new Set(fields.map((field) => field.key)).size === fields.length, "Las claves de ficha no se pueden repetir").optional(),
+  rules: z.object({
+    captureLeadData: z.boolean(),
+    sendProductQuotes: z.boolean(),
+    handoffOnRequest: z.boolean(),
+    moveStageOnIntent: z.boolean(),
+    strictKnowledgeBase: z.boolean(),
+  }).optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {
@@ -50,7 +64,11 @@ export const PUT = withAuth(async (session, req: Request) => {
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   for (const [key, val] of Object.entries(body.data)) {
     if (val !== undefined) {
-      patch[key] = val;
+      patch[key] = key === "rules"
+        ? normalizeAgentRules(val)
+        : key === "fichaFields"
+          ? normalizeAgentFichaFields(val)
+          : val;
     }
   }
 

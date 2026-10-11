@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import { accentCssVariables, DEFAULT_BRANDING } from "@/lib/branding";
@@ -35,6 +35,10 @@ const plexMono = localFont({
 });
 
 export const dynamic = "force-dynamic";
+
+export const viewport: Viewport = {
+  viewportFit: "cover",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getBranding().catch(() => DEFAULT_BRANDING);

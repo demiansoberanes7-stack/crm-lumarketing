@@ -62,7 +62,7 @@ export function PdfPreview({
     // stopPropagation: el modal puede vivir dentro de una fila/clickable y los
     // clics sobre él no deben navegar ni seleccionar el elemento de atrás.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay p-4 sm:items-center"
       onClick={(e) => {
         e.stopPropagation();
         onClose();
@@ -72,7 +72,7 @@ export function PdfPreview({
         role="dialog"
         aria-modal="true"
         aria-label={`Vista previa de ${filename}`}
-        className="flex h-[90dvh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-card shadow-xl"
+        className="my-auto flex h-[90dvh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-card pb-[env(safe-area-inset-bottom)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5 sm:px-4">

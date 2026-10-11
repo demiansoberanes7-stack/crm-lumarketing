@@ -1,4 +1,5 @@
 import type { schema } from "@/lib/db";
+import { normalizeAgentFichaFields, normalizeAgentRules } from "@/lib/agent-config";
 import { renderKb } from "@/server/ai/prompts";
 
 type AgentProfile = typeof schema.agentProfile.$inferSelect;
@@ -20,6 +21,8 @@ export function serializeBotProfile(profile: AgentProfile, kb: KbEntry[]) {
       instructions: profile.instructions ?? null,
       escalationRules: profile.escalationRules ?? null,
       greeting: profile.greeting ?? null,
+      fichaFields: normalizeAgentFichaFields(profile.fichaFields),
+      rules: normalizeAgentRules(profile.rules),
     },
     kb: renderKb(kb),
     resources: [] as { label: string; url: string }[],

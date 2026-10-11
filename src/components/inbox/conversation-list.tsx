@@ -135,12 +135,12 @@ export function ConversationList({
   return (
     <div className="flex h-full flex-col">
       <header className="border-b px-4 pb-3 pt-4">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="text-[17px] font-bold tracking-tight">Bandeja</h2>
           <span className="font-mono text-[12px] text-text-3">{conversations.length}</span>
           {multiChannel && (
-            <div className="ml-auto flex items-center gap-1">
-              <Link href="/inbox?channel=email" title="Ver buzón de correo" aria-label="Ver buzón de correo" className="rounded-full border p-1.5 text-text-3 hover:bg-accent"><Mail size={14} /></Link>
+            <div className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto">
+              <Link href="/inbox?channel=email" title="Ver buzón de correo" aria-label="Ver buzón de correo" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border text-text-3 hover:bg-accent"><Mail size={14} /></Link>
               {channels.map((ch) => {
                 const on = inbox === ch;
                 return (
@@ -154,7 +154,7 @@ export function ConversationList({
                         : `Ver solo ${CHANNEL_LABEL[ch]}`
                     }
                     className={cn(
-                      "flex items-center gap-1 rounded-full border py-[3px] pl-[5px] pr-2 text-[11.5px] font-medium transition-colors",
+                      "flex min-h-11 shrink-0 items-center gap-1 rounded-full border px-2 text-[11.5px] font-medium transition-colors",
                       on
                         ? "border-brand bg-brand-veil text-foreground"
                         : "text-text-3 hover:bg-accent",
@@ -186,7 +186,7 @@ export function ConversationList({
             <button
               onClick={clearQuery}
               aria-label="Limpiar búsqueda"
-              className="shrink-0 rounded-full p-0.5 text-text-3 hover:bg-accent hover:text-foreground"
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-text-3 hover:bg-accent hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
@@ -194,7 +194,7 @@ export function ConversationList({
         </div>
       </header>
 
-      <div className="flex items-center gap-1.5 border-b px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2.5">
         {(
           [
             { id: "all", label: "Todas", count: inInbox.length },
@@ -205,7 +205,7 @@ export function ConversationList({
             key={f.id}
             onClick={() => setFilter(f.id)}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-[5px] text-[12.5px] font-semibold transition-colors",
+              "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[12.5px] font-semibold transition-colors",
               filter === f.id
                 ? "border-brand bg-brand text-brand-fg"
                 : "border-border-strong bg-background text-text-2 hover:border-text-3"
@@ -229,7 +229,7 @@ export function ConversationList({
             onChange={(e) => setStage(e.target.value)}
             aria-label="Filtrar por etapa del embudo"
             className={cn(
-              "ml-auto min-w-0 max-w-[42%] truncate rounded-full border px-2 py-[5px] text-[12.5px] font-semibold transition-colors",
+              "ml-auto min-h-11 min-w-[110px] max-w-[42%] truncate rounded-full border px-2 text-[12.5px] font-semibold transition-colors",
               stage === "all"
                 ? "border-border-strong bg-background text-text-2 hover:border-text-3"
                 : "border-brand bg-brand text-brand-fg"
@@ -245,7 +245,7 @@ export function ConversationList({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-contain">
         {loading ? (
           <p className="p-6 text-center text-xs text-text-3">Cargando…</p>
         ) : conversations.length === 0 ? (

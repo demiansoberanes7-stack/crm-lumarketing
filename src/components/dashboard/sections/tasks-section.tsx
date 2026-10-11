@@ -3,6 +3,7 @@
 import { CheckCircle2, Clock, UserX } from "lucide-react";
 import { KpiCard } from "../kpi-card";
 import { PieChartCard } from "../charts";
+import { ChartCard } from "../chart-card";
 
 interface Props {
   data: {
@@ -18,7 +19,7 @@ export function TasksSection({ data }: Props) {
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground flex items-center gap-2">
         <CheckCircle2 className="h-4 w-4" /> Tareas
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6 mb-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-7">
         <KpiCard title="Terminadas actualizadas esta semana" value={data.completedThisWeek} subtitle="Por última actualización; lunes a hoy (UTC)" icon={<CheckCircle2 />} />
         <KpiCard title="Por vencer en 7 días" value={data.pendingDueSoon} icon={<Clock />}
           trend={data.pendingDueSoon > 5 ? "down" : "neutral"} />
@@ -29,13 +30,11 @@ export function TasksSection({ data }: Props) {
         <KpiCard title="Completadas" value={data.completed} />
         <KpiCard title="No empezadas" value={data.notStarted} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Distribución por prioridad</p>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <ChartCard title="Distribución por prioridad">
           <PieChartCard data={data.byPriority} nameKey="name" valueKey="count" inner />
-        </div>
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Resumen de estados</p>
+        </ChartCard>
+        <ChartCard title="Resumen de estados">
           <PieChartCard
             data={[
               { name: "Terminado", count: data.completed },
@@ -44,7 +43,7 @@ export function TasksSection({ data }: Props) {
             ]}
             nameKey="name" valueKey="count" inner
           />
-        </div>
+        </ChartCard>
       </div>
     </section>
   );
