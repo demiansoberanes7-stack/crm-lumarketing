@@ -314,7 +314,21 @@
       "idx": 44,
       "version": "7",
       "when": 1791600000016,
+      "tag": "0044_integration_credentials_encrypted",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791600000017,
       "tag": "0045_watsi_copilot",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791600000018,
+      "tag": "0046_google_business",
       "breakpoints": true
     }
   ]

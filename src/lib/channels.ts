@@ -9,7 +9,17 @@
  * mintiendo.
  */
 
-export type Channel = "whatsapp" | "instagram" | "messenger" | "tiktok";
+export type Channel =
+  | "whatsapp"
+  | "instagram"
+  | "messenger"
+  | "tiktok"
+  /**
+   * Reseñas de Google Business Profile: cada reseña es un hilo en la Bandeja
+   * y la respuesta del operador se publica como reply público del negocio.
+   * Detrás de la bandera GOOGLE_BUSINESS.
+   */
+  | "google_business";
 
 /**
  * Orden en que los canales se presentan al operador. WhatsApp primero: es el
@@ -20,6 +30,7 @@ export const CHANNEL_ORDER: readonly Channel[] = [
   "instagram",
   "messenger",
   "tiktok",
+  "google_business",
 ];
 
 /** Nombre visible del canal, para la interfaz y para los errores del operador. */
@@ -30,6 +41,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   // porque es lo que el cliente ve en su teléfono cuando escribe.
   messenger: "Messenger",
   tiktok: "TikTok",
+  google_business: "Google Business",
 };
 
 export function isChannel(value: string): value is Channel {

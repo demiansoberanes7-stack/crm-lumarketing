@@ -19,6 +19,7 @@ const TABS: Tab[] = [
 ];
 
 const GOOGLE_TAB: Tab = { href: "/settings/google", label: "Google Calendar" };
+const GOOGLE_BUSINESS_TAB: Tab = { href: "/settings/google-business", label: "Google Business" };
 const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
 const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
 const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
@@ -30,6 +31,7 @@ const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza
 export function SettingsNav({
   agenda = false,
   atribucion = false,
+  googleBusiness = false,
   messenger = false,
   instagram = false,
   tiktok = false,
@@ -37,6 +39,7 @@ export function SettingsNav({
 }: {
   agenda?: boolean;
   atribucion?: boolean;
+  googleBusiness?: boolean;
   messenger?: boolean;
   instagram?: boolean;
   tiktok?: boolean;
@@ -59,6 +62,7 @@ export function SettingsNav({
     ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
     ...(owner ? [MARKETING_TAB] : []),
     ...(agenda ? [GOOGLE_TAB] : []),
+    ...(googleBusiness ? [GOOGLE_BUSINESS_TAB] : []),
     ...(atribucion ? [ADS_TAB] : []),
     ...(owner ? [DATA_CLEANUP_TAB] : []),
   ];

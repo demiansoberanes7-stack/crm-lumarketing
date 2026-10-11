@@ -71,6 +71,10 @@ const prefixes = {
   // Watsi — copiloto interno
   watsiConversation: "wac",
   watsiMessage: "wam",
+  // Reseñas de Google Business Profile (bandera GOOGLE_BUSINESS)
+  googleBusinessCredentials: "gbc",
+  googleBusinessLocation: "gbl",
+  googleBusinessReview: "gbr",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

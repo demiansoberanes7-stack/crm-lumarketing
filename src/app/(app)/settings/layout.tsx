@@ -1,6 +1,7 @@
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { atribucionEnabled } from "@/server/attribution/flag";
+import { googleBusinessEnabled } from "@/server/google-business/flag";
 import { isChannelEnabled } from "@/server/channels/enabled";
 import { requireSession } from "@/lib/auth/session";
 
@@ -20,6 +21,7 @@ export default async function SettingsLayout({
           owner={session.role === "owner"}
           agenda={agendaEnabled()}
           atribucion={atribucionEnabled()}
+          googleBusiness={googleBusinessEnabled()}
           messenger={isChannelEnabled("messenger")}
           instagram={isChannelEnabled("instagram")}
           tiktok={isChannelEnabled("tiktok")}

@@ -1,5 +1,6 @@
 import { getEnv } from "@/lib/env";
 import { isChannel, type Channel } from "@/lib/channels";
+import { googleBusinessEnabled } from "@/server/google-business/flag";
 
 /**
  * 014 — Qué canales están encendidos en esta instancia.
@@ -34,7 +35,11 @@ export function parseChannels(raw: string | undefined): Set<Channel> {
 }
 
 export function enabledChannels(): Set<Channel> {
-  return parseChannels(getEnv().CHANNELS);
+  const enabled = parseChannels(getEnv().CHANNELS);
+  // Reseñas de Google Business tiene bandera PROPIA (GOOGLE_BUSINESS), no
+  // viaja en CHANNELS: es un módulo con UI, poller y credenciales propias.
+  if (googleBusinessEnabled()) enabled.add("google_business");
+  return enabled;
 }
 
 export function isChannelEnabled(channel: Channel): boolean {

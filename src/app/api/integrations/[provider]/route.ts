@@ -17,6 +17,8 @@ const PROVIDER_SCHEMAS = {
     developerToken: z.string().max(4096),
     clientId: z.string().max(512),
     clientSecret: z.string().max(1024),
+    /** Opcional: pegado tras autorizar una vez con scope adwords (patrón Calendar). */
+    refreshToken: z.string().max(1024).optional(),
   }),
   meta_ads: z.object({
     accessToken: z.string().max(4096),

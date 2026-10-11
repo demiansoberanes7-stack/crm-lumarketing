@@ -21,6 +21,7 @@ type ConnectionsStatus = {
   ga4_property: string | null;
   google_ads_customer: string | null;
   calendar_id: string | null;
+  google_business_last_sync: string | null;
   email_accounts: string[];
 };
 
@@ -68,6 +69,18 @@ const DATA_CONNECTIONS = [
     activationSetting: "AGENDA=on",
     hint: null,
     account: (s: ConnectionsStatus) => s.calendar_id,
+  },
+  {
+    key: "google_business",
+    name: "Google Business Profile",
+    href: "/settings/google-business",
+    detail: "Cuenta del negocio para leer reseñas y responderlas desde la Bandeja.",
+    activationSetting: "GOOGLE_BUSINESS=on",
+    hint: null,
+    account: (s: ConnectionsStatus) =>
+      s.google_business_last_sync
+        ? `Última lectura ${new Date(s.google_business_last_sync).toLocaleString("es-MX")}`
+        : null,
   },
   {
     key: "capi",

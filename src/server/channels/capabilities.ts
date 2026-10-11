@@ -79,6 +79,17 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     outboundMedia: false,
     deliveryReceipts: true,
   },
+  // Reseñas de Google Business: la respuesta es un reply público del negocio
+  // sobre la reseña — no un mensaje privado—, así que no hay ventana de 24 h,
+  // no hay adjuntos y no hay recibos. Google corta el reply en 4096 caracteres.
+  google_business: {
+    label: CHANNEL_LABEL.google_business,
+    windowMs: null,
+    outsideWindow: "none",
+    maxTextBytes: 4096,
+    outboundMedia: false,
+    deliveryReceipts: false,
+  },
 };
 
 export function capabilitiesFor(channel: Channel): ChannelCapabilities {

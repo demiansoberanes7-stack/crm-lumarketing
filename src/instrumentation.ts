@@ -11,5 +11,9 @@ export async function register(): Promise<void> {
     await startAutomationWorker();
     const { startBroadcastWorker } = await import("./server/broadcast-queue");
     await startBroadcastWorker();
+    // Reseñas de Google Business: el poller checa su propia bandera en cada
+    // barrido, así que registrarlo es inofensivo en instancias sin el módulo.
+    const { startGoogleBusinessWorker } = await import("./server/google-business/poller");
+    await startGoogleBusinessWorker();
   }
 }

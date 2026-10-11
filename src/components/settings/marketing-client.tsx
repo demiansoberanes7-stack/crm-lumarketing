@@ -16,6 +16,8 @@ interface GoogleAdsCreds {
   developerToken: string;
   clientId: string;
   clientSecret: string;
+  /** Opcional: pegado tras autorizar una vez con scope adwords (patrón Calendar). */
+  refreshToken?: string;
 }
 interface MetaAdsCreds {
   accessToken: string;
@@ -133,7 +135,7 @@ async function persistIntegration(provider: string, body: unknown): Promise<bool
 export function MarketingClient() {
   const router = useRouter();
   const [googleAds, setGoogleAds] = useState<GoogleAdsCreds>({
-    customerId: "", developerToken: "", clientId: "", clientSecret: "",
+    customerId: "", developerToken: "", clientId: "", clientSecret: "", refreshToken: "",
   });
   const [metaAds, setMetaAds] = useState<MetaAdsCreds>({ accessToken: "", adAccountId: "" });
   const [ga4, setGa4] = useState<Ga4Creds>({ propertyId: "" });
@@ -351,6 +353,18 @@ export function MarketingClient() {
               Mismo panel de Google Cloud → se genera junto al Client ID.
             </FieldHint>
           </div>
+          <div className="sm:col-span-2">
+            <Label>Refresh Token (opcional, scope adwords)</Label>
+            <Input
+              type="password"
+              placeholder="1//0g… (opcional)"
+              value={googleAds.refreshToken ?? ""}
+              onChange={e => setGoogleAds(c => ({ ...c, refreshToken: e.target.value }))}
+            />
+            <FieldHint>
+              Con él el CRM puede leer tus cuentas de verdad (listAccessibleCustomers). Autoriza una vez en <code>developers.google.com/oauthplayground</code> con el alcance <code>https://www.googleapis.com/auth/adwords</code> y pega el token aquí. Sin él, la prueba solo verifica el par Client ID/Secret.
+            </FieldHint>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <TestButton
@@ -361,7 +375,7 @@ export function MarketingClient() {
           <TestMessage status={tests.google_ads} />
         </div>
         <p className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-          Guardado: la lectura de métricas de Google Ads aún no está activa; las credenciales quedan listas para su módulo.
+          Guardado: con Refresh Token la prueba confirma el acceso real a tus cuentas; sin él, queda como credenciales listas para su módulo.
         </p>
       </div>
 

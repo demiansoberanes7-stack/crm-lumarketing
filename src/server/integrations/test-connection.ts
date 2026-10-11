@@ -139,25 +139,51 @@ export function normalizeCustomerId(raw: string): string | null {
 }
 
 /**
- * Verifica el par Client ID/Client Secret contra el endpoint de tokens.
+ * Intercambia el refresh token pegado por un access token de Google Ads.
  *
- * No se puede ir más lejos: leer la cuenta exige un access token que solo sale
- * del flujo OAuth con consentimiento del dueño, y ese flujo todavía no existe
- * en el producto. Por eso el resultado de una pareja válida es `saved` y nunca
- * `connected`.
+ * El patrón es el mismo que Google Calendar (ADR-002): el dueño crea la app
+ * OAuth en Google Cloud, autoriza una vez con scope `adwords` y pega el
+ * refresh token en el formulario; el CRM nunca ve un callback OAuth. Con el
+ * refresh token el CRM puede mintear access tokens cuando quiera.
+ */
+async function exchangeGoogleAdsAccessToken(creds: {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+}): Promise<{ accessToken: string } | { error: string }> {
+  const response = await fetchJson("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: creds.clientId.trim(),
+      client_secret: creds.clientSecret.trim(),
+      refresh_token: creds.refreshToken.trim(),
+      grant_type: "refresh_token",
+    }).toString(),
+  });
+  const accessToken = typeof response.body?.access_token === "string" ? response.body.access_token : "";
+  if (response.ok && accessToken) return { accessToken };
+  const error = typeof response.body?.error === "string" ? response.body.error : `HTTP ${response.status}`;
+  return { error };
+}
+
+/**
+ * Prueba REAL de Google Ads: con refresh token, obtiene un access token y
+ * llama `customers:listAccessibleCustomers` — la lista de cuentas a las que
+ * el usuario realmente tiene acceso. Solo entonces el estado es `connected`.
  *
- * El truco está en el refresh token de mentira: con credenciales malas Google
- * devuelve `invalid_client`, y con credenciales buenas `invalid_grant` (el
- * refresh token —inexistente— es el que falla). Ese segundo caso es la
- * confirmación de que el par es bueno.
+ * Sin refresh token se conserva el sondeo legado (verificar el par
+ * Client ID/Client Secret con un refresh token ficticio): `saved`, porque
+ * leer la cuenta exige el token de acceso que solo produce el flujo OAuth.
  */
 export async function testGoogleAdsConnection(creds: {
   customerId: string;
   developerToken: string;
   clientId: string;
   clientSecret: string;
+  refreshToken?: string;
 }): Promise<ConnectionTest> {
-  const { customerId, developerToken, clientId, clientSecret } = creds;
+  const { customerId, developerToken, clientId, clientSecret, refreshToken } = creds;
   if (!customerId.trim() || !developerToken.trim() || !clientId.trim() || !clientSecret.trim()) {
     return { status: "missing", message: "Faltan datos: completa Customer ID, Developer Token y las credenciales OAuth." };
   }
@@ -165,11 +191,53 @@ export async function testGoogleAdsConnection(creds: {
     return { status: "error", message: "El Customer ID debe ser de 10 dígitos (123-456-7890)." };
   }
 
+  // ── Ruta real: hay refresh token → access token → listAccessibleCustomers ──
+  if (refreshToken?.trim()) {
+    const token = await exchangeGoogleAdsAccessToken({ clientId, clientSecret, refreshToken });
+    if ("error" in token) {
+      if (token.error === "invalid_grant") {
+        return {
+          status: "error",
+          message: "El refresh token ya no es válido (invalid_grant): el dueño revocó el acceso o el consentimiento expiró. Autoriza de nuevo y pega el token nuevo.",
+        };
+      }
+      if (token.error === "invalid_client" || token.error === "unauthorized_client") {
+        return { status: "error", message: "El Client ID o el Client Secret no son válidos (Google respondió invalid_client)." };
+      }
+      return { status: "error", message: `Google rechazó el refresh token: ${token.error}` };
+    }
+
+    const list = await fetchJson("https://googleads.googleapis.com/v21/customers:listAccessibleCustomers", {
+      headers: {
+        Authorization: `Bearer ${token.accessToken}`,
+        "developer-token": developerToken.trim(),
+        "login-customer-id": normalizeCustomerId(customerId) ?? "",
+      },
+    });
+    if (!list.ok) {
+      const status = list.status;
+      const detail = typeof list.body?.message === "string" ? list.body.message : `HTTP ${status}`;
+      if (status === 401 || status === 403) {
+        return {
+          status: "error",
+          message: `Google Ads rechazó el acceso (HTTP ${status}): el Developer Token no tiene acceso o el usuario no autorizó el scope adwords. Detalle: ${detail}`,
+        };
+      }
+      return { status: "error", message: `Google Ads respondió mal: ${detail}` };
+    }
+    const resources = Array.isArray(list.body?.resourceNames) ? list.body.resourceNames as string[] : [];
+    return {
+      status: "connected",
+      message: `Conectado: el usuario tiene acceso a ${resources.length} cuenta(s) de Google Ads${resources.length ? ` (incluye customers/${normalizeCustomerId(customerId)})` : ""}.`,
+    };
+  }
+
+  // ── Ruta legada: solo verificar el par Client ID/Client Secret ──
   const response = await fetchJson("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: creds.clientId.trim(),
+      client_id: clientId.trim(),
       client_secret: clientSecret.trim(),
       refresh_token: "no-existe-probe-de-credenciales",
       grant_type: "refresh_token",
@@ -184,7 +252,7 @@ export async function testGoogleAdsConnection(creds: {
   if (response.ok || error === "invalid_grant") {
     return {
       status: "saved",
-      message: `Credenciales OAuth verificadas. Falta el token de acceso (flujo OAuth) para leer la cuenta ${customerId}; el Developer Token no se pudo validar todavía.`,
+      message: `Credenciales OAuth verificadas. Falta el Refresh Token (scope adwords) para leer la cuenta ${customerId}; el Developer Token no se pudo validar todavía.`,
     };
   }
   if (error === "invalid_client" || error === "unauthorized_client" || response.status === 401) {

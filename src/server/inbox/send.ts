@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { whatsappProvider } from "@/server/whatsapp/provider";
 import { getWhatsappZernio, zernioWhatsappEnabled, type WhatsappZernioCredentials } from "@/server/whatsapp/zernio-credentials";
 import { sendWhatsappZernio } from "@/server/whatsapp/zernio-send";
@@ -38,6 +38,8 @@ import {
   type TikTokCredentials,
 } from "@/server/tiktok/credentials";
 import { sendTikTokText } from "@/server/tiktok/send";
+import { getGoogleBusinessCredentials } from "@/server/google-business/credentials";
+import { exchangeAccessToken, updateReviewReply } from "@/server/google-business/google-api";
 import {
   capabilitiesFor,
   textFits,
@@ -90,6 +92,8 @@ type SendTarget = {
   messenger?: MessengerCredentials;
   /** Presente solo en conversaciones de TikTok. */
   tiktok?: TikTokCredentials;
+  /** Presente solo en conversaciones de reseñas de Google Business. */
+  googleBusiness?: { clientId: string; clientSecret: string; refreshToken: string; reviewName: string };
   waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
   zernio?: WhatsappZernioCredentials;
 };
@@ -232,6 +236,45 @@ async function prepareSend(
       destinatario: { to: ttRecipient },
       recipient: ttRecipient,
       tiktok: ttCreds,
+    };
+  }
+
+  // Reseñas de Google Business: la "respuesta" es un reply público sobre la
+  // reseña (resource name en channelThreadRef). Transporte propio, sin
+  // ventana de 24 h, sin media, sin recibos.
+  if (row.conversation.channel === "google_business") {
+    if (!isChannelEnabled("google_business")) {
+      throw new SendError(
+        "not_connected",
+        "El módulo de Google Business está desactivado en esta instancia"
+      );
+    }
+    const gbCreds = await getGoogleBusinessCredentials(organizationId);
+    if (!gbCreds) {
+      throw new SendError(
+        "not_connected",
+        "No hay credenciales de Google Business: configúralas en Ajustes → Google Business"
+      );
+    }
+    if (gbCreds.status === "error") {
+      throw new SendError(
+        "reconnect_required",
+        "Google Business rechazó las credenciales: vuelve a pegar el refresh token en Configuración"
+      );
+    }
+    const reviewName = row.conversation.channelThreadRef;
+    if (!reviewName) {
+      throw new SendError(
+        "meta_error",
+        "Esta conversación no tiene una reseña asociada para responder"
+      );
+    }
+    return {
+      conversation: row.conversation,
+      credentials: null,
+      destinatario: { to: reviewName },
+      recipient: reviewName,
+      googleBusiness: { ...gbCreds, reviewName },
     };
   }
 
@@ -382,7 +425,9 @@ export async function sendText(input: {
   // Pre-generate message ID for Zernio idempotent sends (Instagram, TikTok).
   const preGenId = (target.instagram || target.tiktok || target.zernio) ? newId("message") : undefined;
 
-  const waMessageId = target.zernio
+  const waMessageId = target.googleBusiness
+    ? await callGoogleBusinessReply(target, input.text)
+    : target.zernio
     ? await callWhatsappZernio(target, { message: input.text }, preGenId!)
     : target.waha
     ? (await wahaText(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, input.text)).key.id
@@ -950,4 +995,53 @@ async function callTikTokSend(
     }
     throw err;
   }
+}
+
+/**
+ * Reply de una reseña de Google Business: el texto del operador se publica
+ * como respuesta PÚBLICA del negocio sobre la reseña (hasta 4096 chars, sin
+ * ventana de 24 h). El "id de mensaje" devuelto es el resource name de la
+ * reseña: la respuesta no genera un mensaje nuevo en Google.
+ */
+async function callGoogleBusinessReply(target: SendTarget, text: string): Promise<string> {
+  const creds = target.googleBusiness!;
+
+  const caps = capabilitiesFor("google_business");
+  if (!textFits("google_business", text)) {
+    throw new SendError(
+      "meta_error",
+      `${caps.label} no acepta replies de más de ${caps.maxTextBytes} bytes: acorta el texto`
+    );
+  }
+
+  const token = await exchangeAccessToken(creds);
+  if ("error" in token) {
+    throw new SendError(
+      "reconnect_required",
+      `Google rechazó el refresh token (${token.error}): vuelve a conectar Google Business en Configuración`
+    );
+  }
+
+  const result = await updateReviewReply(token, creds.reviewName, text);
+  if ("error" in result) {
+    throw new SendError("meta_error", `Google Business rechazó el reply: ${result.error}`);
+  }
+
+  // Refleja el reply en la tabla local (la UI lo muestra y el poller no lo pisa:
+  // el próximo sync leerá el mismo reply de la API).
+  await getDb()
+    .update(schema.googleBusinessReview)
+    .set({
+      replyComment: text,
+      repliedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.googleBusinessReview.organizationId, target.conversation.organizationId),
+        eq(schema.googleBusinessReview.reviewName, creds.reviewName)
+      )
+    );
+
+  return creds.reviewName;
 }

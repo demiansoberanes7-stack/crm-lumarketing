@@ -22,6 +22,7 @@ const Body = z.object({
   developerToken: z.string().max(4096).optional(),
   clientId: z.string().max(512).optional(),
   clientSecret: z.string().max(1024).optional(),
+  refreshToken: z.string().max(1024).optional(),
   accessToken: z.string().max(4096).optional(),
   adAccountId: z.string().max(128).optional(),
   propertyId: z.string().max(64).optional(),
@@ -89,6 +90,7 @@ export const POST = withAuth(
               developerToken: creds.developerToken ?? "",
               clientId: creds.clientId ?? "",
               clientSecret: creds.clientSecret ?? "",
+              refreshToken: creds.refreshToken ?? "",
             })
           : await testGa4ConnectionState({
               propertyId: creds.propertyId ?? "",

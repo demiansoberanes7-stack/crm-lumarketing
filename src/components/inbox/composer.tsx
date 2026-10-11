@@ -201,6 +201,10 @@ export function Composer({
 
   const canSubmit = file !== null || text.trim().length > 0;
   const canAttach = conversation.channel === "whatsapp" || conversation.channel === "messenger";
+  // Reseñas de Google Business: solo texto (el reply público), sin adjuntos
+  // ni mensajes estructurados.
+  const isReview = conversation.channel === "google_business";
+  const canStructured = !isReview;
 
   return (
     <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3">
@@ -325,32 +329,42 @@ export function Composer({
               <Paperclip className="h-[18px] w-[18px]" strokeWidth={1.7} />
             </button>
           )}
-          <button
-            onClick={() => setPanel(panel === "location" ? null : "location")}
-            aria-label="Enviar ubicación"
-            title="Enviar ubicación"
-            className={cn(
-              "flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
-              panel === "location" && "bg-secondary text-brand"
-            )}
-          >
-            <MapPin className="h-[18px] w-[18px]" strokeWidth={1.7} />
-          </button>
-          <button
-            onClick={() => setPanel(panel === "contact" ? null : "contact")}
-            aria-label="Compartir contacto"
-            title="Compartir contacto"
-            className={cn(
-              "flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
-              panel === "contact" && "bg-secondary text-brand"
-            )}
-          >
-            <UserRound className="h-[18px] w-[18px]" strokeWidth={1.7} />
-          </button>
+          {canStructured && (
+            <button
+              onClick={() => setPanel(panel === "location" ? null : "location")}
+              aria-label="Enviar ubicación"
+              title="Enviar ubicación"
+              className={cn(
+                "flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
+                panel === "location" && "bg-secondary text-brand"
+              )}
+            >
+              <MapPin className="h-[18px] w-[18px]" strokeWidth={1.7} />
+            </button>
+          )}
+          {canStructured && (
+            <button
+              onClick={() => setPanel(panel === "contact" ? null : "contact")}
+              aria-label="Compartir contacto"
+              title="Compartir contacto"
+              className={cn(
+                "flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground",
+                panel === "contact" && "bg-secondary text-brand"
+              )}
+            >
+              <UserRound className="h-[18px] w-[18px]" strokeWidth={1.7} />
+            </button>
+          )}
         </div>
         <textarea
           ref={taRef}
-          placeholder={file ? "Pie del adjunto (opcional)…" : "Escribe una respuesta…"}
+          placeholder={
+            file
+              ? "Pie del adjunto (opcional)…"
+              : isReview
+                ? "Escribe la respuesta pública del negocio (máx. 4096 caracteres)…"
+                : "Escribe una respuesta…"
+          }
           value={text}
           rows={1}
           onFocus={(event) => {

@@ -1534,6 +1534,95 @@ export const integration = pgTable(
 );
 
 /* ============================================================
+ * Reseñas de Google Business Profile (bandera GOOGLE_BUSINESS)
+ * ============================================================ */
+
+/**
+ * Credenciales de la app OAuth de Google Cloud del negocio, con scope
+ * `business.manage`. Mismo patrón que google_credentials (015): el dueño pega
+ * clientId, clientSecret y refreshToken una sola vez; los secretos viajan
+ * cifrados (AES-256-GCM, triple cipher/iv/tag).
+ */
+export const googleBusinessCredentials = pgTable(
+  "google_business_credentials",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    clientId: varchar("client_id", { length: 512 }).notNull(),
+    clientSecretCipher: text("client_secret_cipher").notNull(),
+    clientSecretIv: text("client_secret_iv").notNull(),
+    clientSecretTag: text("client_secret_tag").notNull(),
+    refreshTokenCipher: text("refresh_token_cipher").notNull(),
+    refreshTokenIv: text("refresh_token_iv").notNull(),
+    refreshTokenTag: text("refresh_token_tag").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("connected"),
+    lastSyncedAt: timestamp("last_synced_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("gb_credentials_org_uq").on(t.organizationId)]
+);
+
+/** Ubicaciones (locales) del negocio en Google Business Profile. */
+export const googleBusinessLocation = pgTable(
+  "google_business_location",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** Resource name: `accounts/{a}/locations/{l}`. */
+    name: varchar("name", { length: 255 }).notNull(),
+    displayName: varchar("display_name", { length: 255 }),
+    averageRating: numeric("average_rating", { precision: 3, scale: 2 }),
+    reviewCount: integer("review_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("gb_location_org_name_uq").on(t.organizationId, t.name),
+    index("gb_location_org_idx").on(t.organizationId),
+  ]
+);
+
+/**
+ * Reseñas públicas. Cada reseña es un mensaje entrante en la conversación del
+ * reviewer (canal google_business); `reviewName` es el resource name y la
+ * llave de idempotencia del poller.
+ */
+export const googleBusinessReview = pgTable(
+  "google_business_review",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    locationId: varchar("location_id", { length: 255 })
+      .notNull()
+      .references(() => googleBusinessLocation.id, { onDelete: "cascade" }),
+    /** Resource name: `accounts/{a}/locations/{l}/reviews/{r}`. */
+    reviewName: varchar("review_name", { length: 255 }).notNull(),
+    reviewerName: varchar("reviewer_name", { length: 255 }),
+    /** Estrellas 1-5 de la API (ONE..FIVE normalizado a entero). */
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    createTime: timestamp("create_time").notNull(),
+    updateTime: timestamp("update_time"),
+    /** Reply público actual (null = sin respuesta). */
+    replyComment: text("reply_comment"),
+    repliedAt: timestamp("replied_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("gb_review_org_name_uq").on(t.organizationId, t.reviewName),
+    index("gb_review_org_location_idx").on(t.organizationId, t.locationId),
+  ]
+);
+
+/* ============================================================
  * Ciclo 1 — Modelo comercial, atribución y métricas
  * ============================================================ */
 

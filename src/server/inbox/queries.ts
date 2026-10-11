@@ -2,6 +2,7 @@ import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isWindowOpen, windowRemainingMs } from "@/server/inbox/window";
+import { capabilitiesFor } from "@/server/channels/capabilities";
 import type { Channel } from "@/lib/channels";
 import type { ConversationDto } from "@/lib/types";
 
@@ -107,6 +108,10 @@ export function serializeConversation(
   preview: string | null = null,
   stageName: string | null = null
 ): ConversationDto {
+  // Un canal sin ventana (reseñas de Google Business) siempre cuenta como
+  // "abierta": no hay límite de 24 h que aplicar.
+  const windowMs = capabilitiesFor(c.channel as Channel).windowMs;
+  const windowOpen = windowMs === null ? true : isWindowOpen(c.lastInboundAt);
   return {
     id: c.id,
     channel: c.channel as Channel,
@@ -118,8 +123,8 @@ export function serializeConversation(
     lastInboundAt: c.lastInboundAt?.toISOString() ?? null,
     lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
     unreadCount: c.unreadCount,
-    windowOpen: isWindowOpen(c.lastInboundAt),
-    windowRemainingMs: windowRemainingMs(c.lastInboundAt),
+    windowOpen,
+    windowRemainingMs: windowMs === null ? 0 : windowRemainingMs(c.lastInboundAt),
     preview,
   };
 }
