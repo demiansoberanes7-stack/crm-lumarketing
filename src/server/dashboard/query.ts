@@ -30,7 +30,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
     const [row] = await db.execute<{ data: DashboardData }>(sql`
       with
       p as (
-        select id, name, estado, avance, archived_at, riesgo, stage_id, assigned_user_id, contact_id, created_at, start_date, end_date
+        select id, name, estado, avance, archived_at, riesgo, stage_id, assigned_user_id, contact_id, created_at, updated_at, start_date, end_date
         from project where ${scope(schema.project)} and created_at <= ${to}
       ),
       ps as (select id, name from project_stage where ${scope(schema.projectStage)}),
