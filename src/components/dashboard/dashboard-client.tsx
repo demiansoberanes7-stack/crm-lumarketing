@@ -21,6 +21,8 @@ import { InboxSection } from "./sections/inbox-section";
 import { ContactsSection } from "./sections/contacts-section";
 import { MarketingSection } from "./marketing-section";
 import { CommercialSection } from "./commercial-section";
+import { GanttSection } from "./gantt-section";
+import { LeadFunnelSection } from "./lead-funnel-section";
 
 function CategoryGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -84,6 +86,10 @@ interface DashboardData {
   contacts: {
     total: number; active: number; newThisPeriod: number; activityRate: number | null;
     bySource: { name: string; count: number }[];
+  };
+  gantt: {
+    projects: { id: string; name: string; progress: number; startDate: string; endDate: string | null; status: string; risk: string | null }[];
+    tasks: { id: string; title: string; status: string; priority: string | null; startDate: string; endDate: string | null }[];
   };
 }
 
@@ -170,6 +176,25 @@ export function DashboardClient() {
           <KpiCard title="Proyectos" value={data.projects.active} icon={<FolderKanban />}
             subtitle={`${data.projects.archived} archivados`} />
         </div>
+
+        {/* ── CRONOGRAMA Y EMBUDO ─────────────── */}
+        <CategoryGroup title="Cronograma y embudo">
+          <GanttSection
+            projects={data.gantt.projects.map((p) => ({
+              id: p.id, name: p.name, startDate: p.startDate, endDate: p.endDate, progress: p.progress, status: p.status,
+            }))}
+            tasks={data.gantt.tasks.map((t) => ({
+              id: t.id, name: t.title, startDate: t.startDate, endDate: t.endDate, status: t.status, priority: t.priority,
+            }))}
+          />
+          <LeadFunnelSection
+            contacts={data.contacts.total}
+            leads={data.projects.total + data.contacts.active}
+            quotes={data.quotes.sent}
+            approved={data.quotes.approved}
+            projects={data.projects.completed}
+          />
+        </CategoryGroup>
 
         {/* ── SECCIONES POR CATEGORÍA ──────────── */}
         <CategoryGroup title="Marketing y publicidad">

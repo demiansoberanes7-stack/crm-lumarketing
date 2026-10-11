@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   Archive,
   ArchiveRestore,
+  Download,
   MessageSquareText,
   Search,
   Trash2,
+  Upload,
   UserPlus,
   X,
 } from "lucide-react";
@@ -25,6 +27,7 @@ import { MediumPicker } from "./medium-picker";
 import { priorityRank } from "@/server/leads/priority";
 import { PriorityBadge } from "@/components/pipeline/priority-picker";
 import { NewContactDialog } from "./new-contact-dialog";
+import { ImportContactsDialog } from "./import-contacts-dialog";
 
 export function ContactsClient() {
   const router = useRouter();
@@ -36,6 +39,7 @@ export function ContactsClient() {
   const [editing, setEditing] = useState<ContactDto | null>(null);
   const [viewing, setViewing] = useState<ContactDto | null>(null);
   const [creando, setCreando] = useState(false);
+  const [importando, setImportando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Mismo rescate que en la Bandeja: lo tecleado antes de que hidrate el JS
@@ -100,6 +104,24 @@ export function ContactsClient() {
           <Button size="sm" onClick={() => setCreando(true)}>
             <UserPlus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
             Nuevo contacto
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setImportando(true)}>
+            <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Importar
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (query.trim()) params.set("q", query.trim());
+              if (stage !== "all") params.set("stage", stage);
+              if (showArchived) params.set("archived", "true");
+              window.open(`/api/contacts/export?${params}`, "_blank");
+            }}
+          >
+            <Download className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Exportar
           </Button>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
@@ -264,6 +286,13 @@ export function ContactsClient() {
           contact={viewing}
           onClose={() => setViewing(null)}
           onEdit={(contact) => { setViewing(null); setEditing(contact); }}
+        />
+      )}
+
+      {importando && (
+        <ImportContactsDialog
+          onClose={() => setImportando(false)}
+          onImported={() => void refetch()}
         />
       )}
 

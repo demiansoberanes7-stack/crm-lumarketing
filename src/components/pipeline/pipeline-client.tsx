@@ -13,12 +13,13 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { MessageSquareText, Settings2, Trophy, XCircle } from "lucide-react";
+import { MessageSquareText, Settings2, Trophy, XCircle, Calendar, Filter } from "lucide-react";
 import type { LossReason, PriorityValue, StageDto } from "@/lib/types";
 import { formatMoneyCents, sumable } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { formatTime } from "@/components/inbox/helpers";
 import { StageManager } from "./stage-manager";
 import { LossReasonDialog } from "./loss-reason-dialog";
@@ -31,12 +32,22 @@ export type BoardLead = {
   stageId: string;
   position: number;
   lastActivityAt: string | null;
+  createdAt: string;
+  channel: string;
   contact: { id: string; name: string; phone: string | null };
   conversationId: string | null;
   amountCents: number | null;
   currency: string | null;
   priority: PriorityValue | null;
 };
+
+const CHANNEL_FILTERS = [
+  { value: "all", label: "Todos" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "instagram", label: "Instagram" },
+  { value: "messenger", label: "Messenger" },
+  { value: "tiktok", label: "TikTok" },
+] as const;
 
 export function PipelineClient() {
   const [stages, setStages] = useState<StageDto[]>([]);
@@ -60,9 +71,22 @@ export function PipelineClient() {
   const [abiertoId, setAbiertoId] = useState<string | null>(null);
   const abierto = leads.find((l) => l.id === abiertoId) ?? null;
 
+  // Filtros del tablero
+  const [channelFilter, setChannelFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
+
+  // Leads filtrados por canal y fechas (client-side, preserva el DnD optimista)
+  const filteredLeads = leads.filter((l) => {
+    if (channelFilter !== "all" && l.channel !== channelFilter) return false;
+    if (dateFrom && l.createdAt.slice(0, 10) < dateFrom) return false;
+    if (dateTo && l.createdAt.slice(0, 10) > dateTo) return false;
+    return true;
+  });
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/pipeline/board").catch(() => null);
@@ -172,11 +196,59 @@ export function PipelineClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-6 sm:py-4">
-        <h2 className="text-[17px] font-bold tracking-tight">Pipeline</h2>
-        <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
-          <Settings2 className="h-4 w-4" /> Gestionar etapas
-        </Button>
+      <header className="border-b px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[17px] font-bold tracking-tight">Pipeline</h2>
+          <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
+            <Settings2 className="h-4 w-4" /> Gestionar etapas
+          </Button>
+        </div>
+        {/* Barra de filtros: canal + fechas */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <div className="flex flex-wrap gap-1">
+            {CHANNEL_FILTERS.map((cf) => (
+              <button
+                key={cf.value}
+                onClick={() => setChannelFilter(cf.value)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                  channelFilter === cf.value
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border-strong text-muted-foreground hover:bg-accent"
+                )}
+              >
+                {cf.label}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              aria-label="Desde"
+              className="h-8 w-36 text-xs"
+            />
+            <span className="text-xs text-muted-foreground">—</span>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              aria-label="Hasta"
+              className="h-8 w-36 text-xs"
+            />
+            {(channelFilter !== "all" || dateFrom || dateTo) && (
+              <button
+                onClick={() => { setChannelFilter("all"); setDateFrom(""); setDateTo(""); }}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+        </div>
       </header>
 
       {/* El tablero se arrastra en horizontal; en el teléfono cada columna
@@ -195,7 +267,7 @@ export function PipelineClient() {
                 currency={currency}
                 onEditAmount={setEditandoMonto}
                 onOpen={(l) => setAbiertoId(l.id)}
-                leads={leads
+                leads={filteredLeads
                   .filter((l) => l.stageId === stage.id)
                   .sort((a, b) => a.position - b.position)}
               />

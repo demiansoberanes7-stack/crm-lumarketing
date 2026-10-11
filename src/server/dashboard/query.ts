@@ -30,7 +30,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
     const [row] = await db.execute<{ data: DashboardData }>(sql`
       with
       p as (
-        select id, estado, avance, archived_at, riesgo, stage_id, assigned_user_id, contact_id, created_at
+        select id, name, estado, avance, archived_at, riesgo, stage_id, assigned_user_id, contact_id, created_at, start_date, end_date
         from project where ${scope(schema.project)} and created_at <= ${to}
       ),
       ps as (select id, name from project_stage where ${scope(schema.projectStage)}),
@@ -52,7 +52,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         window w as (partition by project_id order by created_at, id)
       ),
       t as (
-        select estado, updated_at, due_date, assignee_id, priority from project_task
+        select id, title, estado, updated_at, created_at, due_date, assignee_id, priority from project_task
         where ${scope(schema.projectTask)} and created_at <= ${to}
           and project_id in (select id from p where archived_at is null)
       ),
@@ -179,7 +179,24 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
           'newThisPeriod', count(*) filter (where created_at >= ${from}),
           'activityRate', 100.0 * count(*) filter (where id in (select contact_id from active_p)) / nullif(count(*), 0),
           'bySource', ${list(sql`select coalesce(source, 'directo') as name, count(*) as count from ct group by 1 order by count desc, name`)}
-        ) from ct)
+        ) from ct),
+        'gantt', jsonb_build_object(
+          'projects', ${list(sql`
+            select id, name, avance as progress,
+              coalesce(to_char(start_date, 'YYYY-MM-DD'), to_char(created_at, 'YYYY-MM-DD')) as "startDate",
+              case when end_date is not null then to_char(end_date, 'YYYY-MM-DD')
+                   when estado = 'cerrado' then to_char(updated_at, 'YYYY-MM-DD')
+                   else null end as "endDate",
+              estado as status, riesgo as risk
+            from active_p order by coalesce(start_date, created_at) desc limit 30`)},
+          'tasks', ${list(sql`
+            select id, title, estado as status, priority,
+              to_char(created_at, 'YYYY-MM-DD') as "startDate",
+              case when estado = 'terminado' then to_char(updated_at, 'YYYY-MM-DD')
+                   when due_date is not null then to_char(due_date, 'YYYY-MM-DD')
+                   else null end as "endDate"
+            from t where estado <> 'terminado' order by due_date nulls last, created_at limit 50`)}
+        )
       ) as data from cash
     `);
     if (!row) throw new Error("Dashboard aggregation returned no result");

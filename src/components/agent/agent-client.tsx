@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Package, Plus, Trash2 } from "lucide-react";
+import { Package, Plus, Trash2, Clock, Globe, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,14 @@ type Profile = {
   pipelineKeywords: string | null;
   fichaFields: AgentFichaField[];
   rules: AgentRules;
+  maxResponseWaitSeconds: number;
+  responseLanguage: string;
+  fallbackLanguage: string;
+  reactWithEmoji: boolean;
+  activeInNewConversations: boolean;
+  businessIndustry: string | null;
+  businessLocation: string | null;
+  businessDescription: string | null;
 };
 
 type KbEntry = {
@@ -123,9 +131,11 @@ export function AgentClient() {
         <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
           <div className="min-w-0 space-y-4 sm:space-y-6">
             <ProfileSection profile={profile} onSave={saveProfile} />
+            <ResponseSection profile={profile} onSave={saveProfile} />
             <AgentRulesSection rules={profile.rules} onSave={saveProfile} />
           </div>
           <div className="min-w-0 space-y-4 sm:space-y-6">
+            <BusinessInfoSection profile={profile} onSave={saveProfile} />
             <FichaFieldsSection fields={profile.fichaFields} onSave={saveProfile} />
             <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} strictKnowledgeBase={profile.rules.strictKnowledgeBase} onChanged={() => void refetch()} />
           </div>
@@ -214,6 +224,225 @@ function ProfileSection({
           />
         </div>
         <Button className="min-h-11" onClick={() => void onSave(form)}>Guardar comportamiento</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ResponseSection({
+  profile,
+  onSave,
+}: {
+  profile: Profile;
+  onSave: (patch: Partial<Profile>) => Promise<void>;
+}) {
+  const [wait, setWait] = useState(profile.maxResponseWaitSeconds);
+  const [lang, setLang] = useState(profile.responseLanguage);
+  const [fallback, setFallback] = useState(profile.fallbackLanguage);
+  const [emoji, setEmoji] = useState(profile.reactWithEmoji);
+  const [newConv, setNewConv] = useState(profile.activeInNewConversations);
+  useEffect(() => {
+    setWait(profile.maxResponseWaitSeconds);
+    setLang(profile.responseLanguage);
+    setFallback(profile.fallbackLanguage);
+    setEmoji(profile.reactWithEmoji);
+    setNewConv(profile.activeInNewConversations);
+  }, [profile]);
+
+  const dirty =
+    wait !== profile.maxResponseWaitSeconds ||
+    lang !== profile.responseLanguage ||
+    fallback !== profile.fallbackLanguage ||
+    emoji !== profile.reactWithEmoji ||
+    newConv !== profile.activeInNewConversations;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Clock className="h-4 w-4" /> Respuesta
+        </CardTitle>
+        <CardDescription>
+          Controla cuándo y cómo responde el agente a tus clientes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="agent-wait">Espera máxima antes de responder</Label>
+            <span className="text-sm font-medium tabular-nums">{wait} s</span>
+          </div>
+          <input
+            id="agent-wait"
+            type="range"
+            min={0}
+            max={30}
+            step={1}
+            value={wait}
+            onChange={(e) => setWait(Number(e.target.value))}
+            className="w-full accent-primary"
+          />
+          <p className="text-xs text-muted-foreground">
+            El agente espera este tiempo antes de responder para que la conversación se sienta natural.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="agent-lang">Idioma de respuesta</Label>
+            <select
+              id="agent-lang"
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-card px-2 text-sm"
+            >
+              <option value="auto">Automático — el del cliente</option>
+              <option value="es">Español</option>
+              <option value="en">English</option>
+              <option value="pt">Português</option>
+              <option value="fr">Français</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="agent-fallback-lang">Idioma de respaldo</Label>
+            <select
+              id="agent-fallback-lang"
+              value={fallback}
+              onChange={(e) => setFallback(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-card px-2 text-sm"
+            >
+              <option value="es">Español</option>
+              <option value="en">English</option>
+              <option value="pt">Português</option>
+              <option value="fr">Français</option>
+            </select>
+          </div>
+        </div>
+        <label className="flex items-center justify-between rounded-md border p-3">
+          <span className="text-sm font-medium">Reaccionar con emoji</span>
+          <input
+            type="checkbox"
+            checked={emoji}
+            onChange={(e) => setEmoji(e.target.checked)}
+            className="h-5 w-5 accent-primary"
+          />
+        </label>
+        <label className="flex items-center justify-between rounded-md border p-3">
+          <span className="text-sm font-medium">Activo en conversaciones nuevas</span>
+          <input
+            type="checkbox"
+            checked={newConv}
+            onChange={(e) => setNewConv(e.target.checked)}
+            className="h-5 w-5 accent-primary"
+          />
+        </label>
+        {dirty && (
+          <Button
+            className="min-h-11"
+            onClick={() =>
+              void onSave({
+                maxResponseWaitSeconds: wait,
+                responseLanguage: lang,
+                fallbackLanguage: fallback,
+                reactWithEmoji: emoji,
+                activeInNewConversations: newConv,
+              })
+            }
+          >
+            Guardar respuesta
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BusinessInfoSection({
+  profile,
+  onSave,
+}: {
+  profile: Profile;
+  onSave: (patch: Partial<Profile>) => Promise<void>;
+}) {
+  const [industry, setIndustry] = useState(profile.businessIndustry ?? "");
+  const [location, setLocation] = useState(profile.businessLocation ?? "");
+  const [description, setDescription] = useState(profile.businessDescription ?? "");
+  useEffect(() => {
+    setIndustry(profile.businessIndustry ?? "");
+    setLocation(profile.businessLocation ?? "");
+    setDescription(profile.businessDescription ?? "");
+  }, [profile]);
+
+  const dirty =
+    industry !== (profile.businessIndustry ?? "") ||
+    location !== (profile.businessLocation ?? "") ||
+    description !== (profile.businessDescription ?? "");
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" /> Información de negocio
+            </CardTitle>
+            <CardDescription>
+              El agente usa estos datos para contextualizar sus respuestas.
+            </CardDescription>
+          </div>
+          <a
+            href="/settings/agenda"
+            className="flex items-center gap-1 text-xs text-primary underline hover:no-underline"
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Configurar horario
+          </a>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="biz-industry">Industria</Label>
+            <Input
+              id="biz-industry"
+              placeholder="p. ej. Belleza, Construcción, Tecnología"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="biz-location">Ubicación</Label>
+            <Input
+              id="biz-location"
+              placeholder="p. ej. Colonia Roma, CDMX"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="biz-description">Descripción de la empresa</Label>
+          <Textarea
+            id="biz-description"
+            rows={4}
+            placeholder="Somos un salón de belleza en la Colonia Roma. Te atendemos por WhatsApp para agendar tu cita…"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        {dirty && (
+          <Button
+            className="min-h-11"
+            onClick={() =>
+              void onSave({
+                businessIndustry: industry || null,
+                businessLocation: location || null,
+                businessDescription: description || null,
+              })
+            }
+          >
+            Guardar información
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

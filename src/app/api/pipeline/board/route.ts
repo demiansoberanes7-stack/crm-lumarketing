@@ -21,6 +21,7 @@ export const GET = withAuth(async (session) => {
       lead: schema.lead,
       contact: schema.contact,
       conversationId: schema.conversation.id,
+      conversationChannel: schema.conversation.channel,
     })
     .from(schema.lead)
     .innerJoin(schema.contact, eq(schema.lead.contactId, schema.contact.id))
@@ -51,9 +52,13 @@ export const GET = withAuth(async (session) => {
       stageId: r.lead.stageId,
       position: r.lead.position,
       lastActivityAt: r.lead.lastActivityAt?.toISOString() ?? null,
+      createdAt: r.lead.createdAt.toISOString(),
       amountCents: r.lead.amountCents,
       currency: r.lead.currency,
       priority: r.lead.priority,
+      // Canal del lead: preferimos la conversación real; si no tiene, el canal
+      // del contacto (siempre no-null, default whatsapp).
+      channel: r.conversationChannel ?? r.contact.channel,
       contact: {
         id: r.contact.id,
         name: r.contact.name,

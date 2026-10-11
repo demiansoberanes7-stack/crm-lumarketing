@@ -28,6 +28,15 @@ export const GET = withAuth(async (session) => {
       pipelineKeywords: p.pipelineKeywords,
       fichaFields: normalizeAgentFichaFields(p.fichaFields),
       rules: normalizeAgentRules(p.rules),
+      // LUMARK — configuraciones extra
+      maxResponseWaitSeconds: p.maxResponseWaitSeconds,
+      responseLanguage: p.responseLanguage,
+      fallbackLanguage: p.fallbackLanguage,
+      reactWithEmoji: p.reactWithEmoji,
+      activeInNewConversations: p.activeInNewConversations,
+      businessIndustry: p.businessIndustry,
+      businessLocation: p.businessLocation,
+      businessDescription: p.businessDescription,
     },
     aiConfigured: isAiConfigured(),
   });
@@ -52,6 +61,15 @@ const putSchema = z.object({
     moveStageOnIntent: z.boolean(),
     strictKnowledgeBase: z.boolean(),
   }).optional(),
+  // LUMARK — configuraciones extra del bot
+  maxResponseWaitSeconds: z.number().int().min(0).max(60).optional(),
+  responseLanguage: z.enum(["auto", "es", "en", "pt", "fr"]).optional(),
+  fallbackLanguage: z.enum(["es", "en", "pt", "fr"]).optional(),
+  reactWithEmoji: z.boolean().optional(),
+  activeInNewConversations: z.boolean().optional(),
+  businessIndustry: z.string().trim().max(100).nullable().optional(),
+  businessLocation: z.string().trim().max(255).nullable().optional(),
+  businessDescription: z.string().trim().max(2000).nullable().optional(),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {

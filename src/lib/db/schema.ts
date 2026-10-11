@@ -518,6 +518,15 @@ export const agentProfile = pgTable(
     aiTokenIv: text("ai_token_iv"),
     aiTokenTag: text("ai_token_tag"),
     aiModel: varchar("ai_model", { length: 255 }),
+    // LUMARK — configuraciones extra del bot
+    maxResponseWaitSeconds: integer("max_response_wait_seconds").notNull().default(12),
+    responseLanguage: varchar("response_language", { length: 20 }).notNull().default("auto"),
+    fallbackLanguage: varchar("fallback_language", { length: 20 }).notNull().default("es"),
+    reactWithEmoji: boolean("react_with_emoji").notNull().default(false),
+    activeInNewConversations: boolean("active_in_new_conversations").notNull().default(true),
+    businessIndustry: varchar("business_industry", { length: 100 }),
+    businessLocation: varchar("business_location", { length: 255 }),
+    businessDescription: text("business_description"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -1507,7 +1516,15 @@ export const integration = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     provider: varchar("provider", { length: 50 }).notNull(), // 'google_ads', 'meta_ads', 'ga4'
-    credentials: jsonb("credentials").notNull(), // Encrypted or plain tokens depending on implementation
+    /**
+     * Legado en claro: se conserva como fallback de lectura hasta correr
+     * `scripts/encrypt-integrations.mjs`. Las escrituras nuevas van al triple
+     * cifrado de abajo (AES-256-GCM, patrón 0007).
+     */
+    credentials: jsonb("credentials").notNull(),
+    credentialsCipher: text("credentials_cipher"),
+    credentialsIv: text("credentials_iv"),
+    credentialsTag: text("credentials_tag"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -2052,5 +2069,45 @@ export const broadcastRecipient = pgTable(
     index("broadcast_recipient_due_idx").on(t.status, t.scheduledAt),
     index("broadcast_recipient_org_campaign_idx").on(t.organizationId, t.campaignId),
     index("broadcast_recipient_conversation_idx").on(t.organizationId, t.conversationId, t.createdAt),
+  ]
+);
+
+/** Watsi — conversaciones del copiloto interno de métricas. */
+export const watsiConversation = pgTable(
+  "watsi_conversation",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 255 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 255 }).notNull().default("Nueva conversación"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("watsi_conversation_org_user_idx").on(t.organizationId, t.userId, t.updatedAt),
+  ]
+);
+
+/** Watsi — mensajes del copiloto. */
+export const watsiMessage = pgTable(
+  "watsi_message",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    conversationId: varchar("conversation_id", { length: 255 })
+      .notNull()
+      .references(() => watsiConversation.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 20 }).notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("watsi_message_conversation_idx").on(t.conversationId, t.createdAt),
   ]
 );

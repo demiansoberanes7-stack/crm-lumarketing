@@ -320,3 +320,124 @@ export function FunnelChart({ data, height = 200 }: { data: { stage: string; val
     </div>
   );
 }
+
+/** Fila del Gantt: una barra horizontal con rango de fechas y barra de progreso. */
+export interface GanttItem {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string | null;
+  progress?: number;
+  status?: string;
+  priority?: string | null;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  activo: "var(--chart-1)",
+  en_proceso: "var(--chart-2)",
+  completado: "var(--chart-3)",
+  cerrado: "var(--chart-3)",
+  terminado: "var(--chart-3)",
+  pendiente: "var(--chart-4)",
+  no_empezado: "var(--chart-5)",
+  borrador: "var(--chart-5)",
+  en_revision: "var(--chart-2)",
+  cancelado: "var(--chart-track)",
+};
+
+function statusColor(status?: string) {
+  return STATUS_COLORS[status ?? ""] ?? "var(--chart-1)";
+}
+
+/**
+ * Diagrama de Gantt en SVG puro: eje X con fechas, barras por fila, y una
+ * barra de progreso interior cuando el ítem tiene `progress` (0-100).
+ */
+export function GanttChart({ items, height = 280 }: { items: GanttItem[]; height?: number }) {
+  if (items.length === 0) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">Sin datos para el cronograma.</p>;
+  }
+
+  // Calcular rango de fechas: si todos tienen endDate, usar min/max; si no,
+  // usar startDate min → hoy + 14 días de holgura.
+  const today = new Date();
+  const startDates = items.map((i) => new Date(i.startDate).getTime());
+  const endDates = items
+    .map((i) => (i.endDate ? new Date(i.endDate).getTime() : today.getTime() + 14 * 86_400_000));
+  const minTime = Math.min(...startDates);
+  const maxTime = Math.max(...endDates, today.getTime());
+  const range = Math.max(1, maxTime - minTime);
+
+  // Etiquetas del eje: 5 marcas equidistantes
+  const ticks = Array.from({ length: 6 }, (_, i) => new Date(minTime + (range * i) / 5));
+  const tickLabel = (d: Date) => d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+
+  const rowH = 28;
+  const padLeft = 120;
+  const padRight = 16;
+
+  return (
+    <div className="overflow-x-auto" style={{ maxHeight: height }}>
+      <div className="min-w-[500px]">
+        {/* Eje X */}
+        <div className="relative mb-1 h-5" style={{ paddingLeft: padLeft, paddingRight: padRight }}>
+          {ticks.map((d, i) => (
+            <span
+              key={i}
+              className="absolute text-[10px] text-muted-foreground"
+              style={{ left: `calc(${padLeft}px + (100% - ${padLeft + padRight}px) * ${i / 5})` }}
+            >
+              {tickLabel(d)}
+            </span>
+          ))}
+        </div>
+        {/* Filas */}
+        <div className="space-y-1">
+          {items.map((item, idx) => {
+            const s = new Date(item.startDate).getTime();
+            const e = item.endDate ? new Date(item.endDate).getTime() : today.getTime() + 7 * 86_400_000;
+            const leftPct = ((s - minTime) / range) * 100;
+            const widthPct = Math.max(2, ((e - s) / range) * 100);
+            const color = statusColor(item.status);
+            return (
+              <div key={item.id} className="flex items-center gap-2" style={{ height: rowH }}>
+                <span className="w-28 shrink-0 truncate text-xs text-muted-foreground" title={item.name}>
+                  {item.name}
+                </span>
+                <div className="relative h-5 min-w-0 flex-1 rounded bg-[var(--chart-track)]">
+                  <div
+                    className="absolute inset-y-0.5 rounded"
+                    style={{
+                      left: `${leftPct}%`,
+                      width: `${widthPct}%`,
+                      background: `linear-gradient(90deg, ${color}, ${color})`,
+                      opacity: 0.85,
+                    }}
+                  >
+                    {/* Barra de progreso interior */}
+                    {item.progress != null && item.progress > 0 && (
+                      <div
+                        className="absolute inset-y-0 left-0 rounded"
+                        style={{ width: `${Math.min(100, item.progress)}%`, background: color, opacity: 0.4 }}
+                      />
+                    )}
+                  </div>
+                  {/* Línea de hoy */}
+                  {idx === 0 && (
+                    <div
+                      className="absolute inset-y-0 w-px bg-muted-foreground/40"
+                      style={{ left: `${((today.getTime() - minTime) / range) * 100}%` }}
+                    />
+                  )}
+                </div>
+                <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
+                  {item.progress != null ? `${item.progress}%` : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

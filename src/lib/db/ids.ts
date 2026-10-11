@@ -68,6 +68,9 @@ const prefixes = {
   contactNote: "ctn",
   broadcastCampaign: "bcm",
   broadcastRecipient: "bcr",
+  // Watsi — copiloto interno
+  watsiConversation: "wac",
+  watsiMessage: "wam",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

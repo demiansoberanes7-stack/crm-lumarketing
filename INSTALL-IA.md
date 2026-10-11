@@ -52,6 +52,24 @@
 
 `DOMAIN` solo aplica en la Ruta B (para Caddy).
 
+### Variables opcionales (módulos apagados por defecto)
+
+Solo agrega estas variables si el usuario pidió el módulo. Cada una enciende
+una superficie completa (pestaña en Configuración + sus rutas); sin ella, esa
+superficie responde 404 y la instancia queda más liviana:
+
+| Variable | Enciende |
+|---|---|
+| `CHANNELS=whatsapp,instagram,messenger,tiktok` | Canales de mensajería adicionales (Instagram, Messenger, TikTok) |
+| `AGENDA=on` | Motor de citas + Google Calendar |
+| `ATRIBUCION=on` | Atribución de anuncios + Meta Conversions API |
+| `GOOGLE_BUSINESS=on` | Reseñas de Google Business en la Bandeja |
+
+Tras el primer arranque con datos previos al cifrado de credenciales de
+integraciones (0044), corre una vez desde la app:
+`node scripts/encrypt-integrations.mjs` (idempotente; requiere
+`DATABASE_URL` y `ENCRYPTION_KEY`).
+
 ## Ruta A — Coolify (con el MCP de Coolify)
 
 1. **Base de datos**: crea un servicio PostgreSQL 16 en el proyecto

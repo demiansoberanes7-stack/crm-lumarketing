@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { decryptSecret } from "@/lib/crypto";
 import { getIntegration } from "@/server/integrations";
 import {
   listAutomationRules,
@@ -217,12 +218,23 @@ export async function scanInactivity(): Promise<void> {
       .select({
         organizationId: schema.integration.organizationId,
         credentials: schema.integration.credentials,
+        credentialsCipher: schema.integration.credentialsCipher,
+        credentialsIv: schema.integration.credentialsIv,
+        credentialsTag: schema.integration.credentialsTag,
       })
       .from(schema.integration)
       .where(eq(schema.integration.provider, "automation_rules"));
 
     for (const integration of integrations) {
-      const credentials = integration.credentials as { rules?: unknown } | null;
+      // 0044: las reglas se guardan cifradas (triple AES-256-GCM); el jsonb
+      // legado queda como fallback para filas escritas antes del cifrado.
+      const credentials = integration.credentialsCipher && integration.credentialsIv && integration.credentialsTag
+        ? JSON.parse(decryptSecret({
+            cipher: integration.credentialsCipher,
+            iv: integration.credentialsIv,
+            tag: integration.credentialsTag,
+          })) as { rules?: unknown } | null
+        : integration.credentials as { rules?: unknown } | null;
       const rules = listAutomationRules(credentials?.rules)
         .filter((rule) => rule.enabled === true)
         .map((rule) => ({ ...rule, triggers: resolveAutomationTriggers(rule) }))

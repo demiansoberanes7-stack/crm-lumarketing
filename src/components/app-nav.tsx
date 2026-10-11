@@ -15,6 +15,7 @@ import {
   LogOut,
   Settings,
   Send,
+  Sparkles,
   Truck,
   Users,
   X,
@@ -164,6 +165,14 @@ export function AppNav({
       </nav>
 
       <div className="flex-1" />
+
+      <Link href="/watsi" className={navItemClass(pathname === "/watsi" || pathname.startsWith("/watsi/"))}>
+        <Sparkles
+          className={cn("h-[17px] w-[17px]", pathname === "/watsi" ? "text-brand" : "text-text-3")}
+          strokeWidth={1.8}
+        />
+        watsi
+      </Link>
 
       <Link href="/settings" className={navItemClass(settingsActive)}>
         <Settings

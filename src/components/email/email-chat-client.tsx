@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Mail, RefreshCw, Send } from "lucide-react";
+import { ArrowLeft, Mail, Paperclip, Pencil, RefreshCw, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { EmailChatThread } from "@/app/api/email/threads/route";
+import { EmailComposeDialog, type EmailAttachment } from "./email-compose-dialog";
 
 type EmailAccount = { id: string; label: string | null; email: string; enabled: boolean };
 
@@ -47,6 +48,9 @@ export function EmailChatClient() {
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
   const [mobileList, setMobileList] = useState(true);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [replyAttachments, setReplyAttachments] = useState<EmailAttachment[]>([]);
+  const replyFileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,16 +101,34 @@ export function EmailChatClient() {
         subject: selected.subject.startsWith("Re:") ? selected.subject : `Re: ${selected.subject}`,
         text: replyBody.trim(),
         inReplyTo: last?.from === selected.participant.email ? last.id : null,
+        attachments: replyAttachments.length > 0 ? replyAttachments : undefined,
       }),
     }).catch(() => null);
     setSending(false);
     if (res?.ok) {
       setReplyBody("");
+      setReplyAttachments([]);
       await refetch();
     } else {
       const data = await res?.json().catch(() => null);
       setError(data?.error?.message ?? "No se pudo enviar la respuesta.");
     }
+  }
+
+  async function handleReplyFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    const next: EmailAttachment[] = [];
+    for (const file of Array.from(files)) {
+      if (file.size > 10 * 1024 * 1024) {
+        setError(`El archivo ${file.name} supera 10MB`);
+        continue;
+      }
+      const buffer = await file.arrayBuffer();
+      next.push({ filename: file.name, content: btoa(String.fromCharCode(...new Uint8Array(buffer))), contentType: file.type || "application/octet-stream" });
+    }
+    setReplyAttachments((prev) => [...prev, ...next]);
+    if (replyFileRef.current) replyFileRef.current.value = "";
   }
 
   if (accounts.length > 1 && !accountId) {
@@ -121,21 +143,30 @@ export function EmailChatClient() {
     <div className="flex h-full min-h-0">
       {/* ═══ LISTA DE HILOS ═══ */}
       <aside className={cn(
-        "flex w-full flex-col border-r md:w-[320px] md:shrink-0",
-        mobileList && selected ? "hidden md:flex" : "flex",
+        "w-full flex-col border-r md:w-[320px] md:shrink-0",
+        mobileList ? "flex" : "hidden md:flex",
       )}>
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <select
-            value={accountId ?? ""}
-            onChange={(e) => { setAccountId(e.target.value); setSelectedId(null); }}
-            className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
-            aria-label="Cuenta de correo"
+        <div className="flex flex-col gap-2 border-b p-3">
+          <Button
+            onClick={() => setComposeOpen(true)}
+            disabled={!accountId}
+            className="h-11 w-full rounded-full bg-blue-600 text-white hover:bg-blue-700"
           >
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.label ?? a.email}</option>)}
-          </select>
-          <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => void refetch()} aria-label="Actualizar">
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <Pencil className="mr-1.5 h-4 w-4" /> Redactar
           </Button>
+          <div className="flex items-center gap-2">
+            <select
+              value={accountId ?? ""}
+              onChange={(e) => { setAccountId(e.target.value); setSelectedId(null); }}
+              className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
+              aria-label="Cuenta de correo"
+            >
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.label ?? a.email}</option>)}
+            </select>
+            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => void refetch()} aria-label="Actualizar">
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain">
           {threads.length === 0 ? (
@@ -177,8 +208,8 @@ export function EmailChatClient() {
 
       {/* ═══ HILO EN CHAT ═══ */}
       <section className={cn(
-        "flex min-w-0 flex-1 flex-col",
-        mobileList && !selected ? "hidden md:flex" : "flex",
+        "min-w-0 flex-1 flex-col",
+        mobileList ? "hidden md:flex" : "flex",
       )}>
         {!selected ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
@@ -240,7 +271,42 @@ export function EmailChatClient() {
             </div>
 
             <div className="border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+              {replyAttachments.length > 0 && (
+                <ul className="mb-2 space-y-1">
+                  {replyAttachments.map((a, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-xs">
+                      <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate">{a.filename}</span>
+                      <button
+                        type="button"
+                        onClick={() => setReplyAttachments((prev) => prev.filter((_, j) => j !== i))}
+                        aria-label={`Quitar ${a.filename}`}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="flex items-end gap-2">
+                <input
+                  ref={replyFileRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => void handleReplyFiles(e)}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11 shrink-0"
+                  aria-label="Adjuntar archivo"
+                  onClick={() => replyFileRef.current?.click()}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
                 <Textarea
                   rows={2}
                   value={replyBody}
@@ -260,6 +326,14 @@ export function EmailChatClient() {
           </>
         )}
       </section>
+
+      {composeOpen && accountId && (
+        <EmailComposeDialog
+          accountId={accountId}
+          onClose={() => setComposeOpen(false)}
+          onSent={() => void refetch()}
+        />
+      )}
     </div>
   );
 }

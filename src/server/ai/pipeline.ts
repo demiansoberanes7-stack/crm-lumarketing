@@ -258,6 +258,13 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     action = { ...action, ficha: undefined };
   }
 
+  // LUMARK — espera humana antes de responder (solo conversaciones reales).
+  // El Laboratorio (is_test) no espera: su objetivo es evaluar el modelo, no
+  // simular tiempos de escritura.
+  if (!conversation.isTest && profile.maxResponseWaitSeconds > 0 && action.action !== "none") {
+    await new Promise((resolve) => setTimeout(resolve, profile.maxResponseWaitSeconds * 1000));
+  }
+
   // 015 — Agenda. Un fallo del motor degrada el turno (el agente responde sin
   // agendar), nunca lo tumba: quedarse callado es peor que no agendar.
   if (action.action === "offer_slots" || action.action === "book_slot") {

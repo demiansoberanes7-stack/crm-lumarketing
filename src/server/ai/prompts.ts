@@ -101,8 +101,35 @@ export function buildAgentSystemPrompt(input: {
       : []),
   ];
 
+  const languageLine = (() => {
+    switch (profile.responseLanguage) {
+      case "en":
+        return "You are ALWAYS responding in English, with short natural chat messages.";
+      case "pt":
+        return "Você responde SEMPRE em português, com mensagens curtas e naturais para chat.";
+      case "fr":
+        return "Vous répondez TOUJOURS en français, avec des messages courts et naturels pour le chat.";
+      case "auto":
+      default:
+        return profile.fallbackLanguage === "en"
+          ? "Respond in the customer's language; if unsure, respond in English. Keep messages short and natural for chat."
+          : profile.fallbackLanguage === "pt"
+            ? "Responda no idioma do cliente; se não tiver certeza, responda em português. Mensagens curtas e naturais."
+            : profile.fallbackLanguage === "fr"
+              ? "Répondez dans la langue du client ; en cas de doute, répondez en français. Messages courts et naturels."
+              : "Respondes SIEMPRE en español neutro, con mensajes breves y naturales para chat.";
+    }
+  })();
+
+  const businessLines = [
+    profile.businessIndustry ? `Industria del negocio: ${profile.businessIndustry}` : null,
+    profile.businessLocation ? `Ubicación del negocio: ${profile.businessLocation}` : null,
+    profile.businessDescription ? `Descripción del negocio:\n${profile.businessDescription}` : null,
+  ].filter(Boolean);
+
   return [
-    `Eres "${profile.name}", el asistente de WhatsApp de este negocio. Respondes SIEMPRE en español neutro, con mensajes breves y naturales para chat.`,
+    `Eres "${profile.name}", el asistente de WhatsApp de este negocio. ${languageLine}`,
+    ...businessLines,
     profile.tone ? `Tono: ${profile.tone}` : null,
     profile.instructions ? `Instrucciones del negocio:\n${profile.instructions}` : null,
     profile.escalationRules
