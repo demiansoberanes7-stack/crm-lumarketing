@@ -87,6 +87,60 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         select fecha, monto, categoria, proveedor from expense
         where ${scope(schema.expense)} and fecha between ${from} and ${to}
       ),
+      msg_in as (
+        select message.conversation_id, message.created_at, conversation.channel
+        from message join conversation on conversation.id = message.conversation_id
+        where ${scope(schema.message)} and message.direction = 'inbound' and message.created_at between ${from} and ${to}
+      ),
+      camp as (
+        select platform, coalesce(budget_planned_cents, 0) as spend
+        from campaign
+        where ${scope(schema.campaign)} and currency = 'MXN'
+          and (start_date is null or start_date <= ${to}) and (end_date is null or end_date >= ${from})
+      ),
+      attr as (
+        select distinct contact_id from attribution_event
+        where ${scope(schema.attributionEvent)} and campaign_id is not null
+          and contact_id is not null and occurred_at between ${from} and ${to}
+      ),
+      attr_conv as (
+        select distinct conversation_id from attribution_event
+        where ${scope(schema.attributionEvent)} and campaign_id is not null
+          and conversation_id is not null and occurred_at between ${from} and ${to}
+      ),
+      won as (
+        select p.id, p.contact_id, p.updated_at as closed_at, contact.created_at as contact_created
+        from p join contact on contact.id = p.contact_id and ${scope(schema.contact)}
+        where p.archived_at is null and p.estado = 'cerrado' and p.updated_at between ${from} and ${to}
+      ),
+      svc as (
+        select service, cost_cents from service_cost
+        where ${scope(schema.serviceCost)} and (effective_to is null or effective_to >= ${from})
+      ),
+      auto_err as (
+        select count(*) as n from automation_execution
+        where ${scope(schema.automationExecution)} and created_at >= ${to} - interval '24 hours'
+          and (error is not null or status in ('failed', 'error'))
+      ),
+      ob_fail as (
+        select count(*) as n from outbound_delivery
+        where ${scope(schema.outboundDelivery)} and created_at >= ${to} - interval '24 hours'
+          and (status = 'failed' or (last_status_code is not null and last_status_code >= 400) or last_error is not null)
+      ),
+      capi_fail as (
+        select count(*) as n from conversion_event
+        where ${scope(schema.conversionEvent)} and created_at >= ${to} - interval '24 hours'
+          and (error is not null or status = 'error')
+      ),
+      msg_fail as (
+        select count(*) as n from message
+        where ${scope(schema.message)} and created_at between ${from} and ${to}
+          and (error is not null or status in ('failed', 'error'))
+      ),
+      sync_bad as (
+        select count(*) as n from sync_state
+        where ${scope(schema.syncState)} and last_status in ('error', 'failed')
+      ),
       conv as (
         select channel from conversation where ${scope(schema.conversation)}
           and is_test = false and last_message_at between ${from} and ${to}
@@ -196,6 +250,65 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
                    when due_date is not null then to_char(due_date, 'YYYY-MM-DD')
                    else null end as "endDate"
             from t where estado <> 'terminado' order by due_date nulls last, created_at limit 50`)}
+        ),
+        'ads', jsonb_build_object(
+          'adSpendCents', (select coalesce(sum(spend), 0) from camp),
+          'byPlatform', ${list(sql`select platform as name, sum(spend) as amount from camp group by 1 order by amount desc, name`)},
+          'attributedLeads', (select count(*) from attr),
+          'attributedConversations', (select count(*) from attr_conv),
+          'convertedFromAds', (select count(*) from won where contact_id in (select contact_id from attr)),
+          'conversions', (select jsonb_build_object(
+            'sent', count(*) filter (where status = 'sent'),
+            'pending', count(*) filter (where status = 'pending'),
+            'failed', count(*) filter (where status = 'error' or error is not null)
+          ) from conversion_event where ${scope(schema.conversionEvent)} and created_at between ${from} and ${to})
+        ),
+        'velocity', jsonb_build_object(
+          'closedThisPeriod', (select count(*) from won),
+          'avgDaysToClose', coalesce((select avg(extract(epoch from (closed_at - contact_created)) / 86400) from won where closed_at >= contact_created), 0),
+          'fastestCloseDays', coalesce((select min(extract(epoch from (closed_at - contact_created)) / 86400) from won where closed_at >= contact_created), 0),
+          'slowestCloseDays', coalesce((select max(extract(epoch from (closed_at - contact_created)) / 86400) from won where closed_at >= contact_created), 0)
+        ),
+        'margin', jsonb_build_object(
+          'serviceCostTotal', (select coalesce(sum(cost_cents), 0) from svc),
+          'contribution', cash.gross - (select coalesce(sum(cost_cents), 0) from svc),
+          'contributionPct', 100.0 * (cash.gross - (select coalesce(sum(cost_cents), 0) from svc)) / nullif(cash.gross, 0),
+          'byService', ${list(sql`select coalesce(nullif(trim(service), ''), 'Sin servicio') as name, sum(cost_cents) as amount from svc group by 1 order by amount desc, name`)}
+        ),
+        'funnels', jsonb_build_object(
+          'commercial', jsonb_build_array(
+            jsonb_build_object('stage', 'Nuevos prospectos', 'value', (select count(*) from ct where created_at >= ${from})),
+            jsonb_build_object('stage', 'Leads activos', 'value', (select count(*) from active_p)),
+            jsonb_build_object('stage', 'Cotización enviada', 'value', (select count(*) from q where status in ('sent', 'accepted', 'rejected', 'expired'))),
+            jsonb_build_object('stage', 'Cotización aprobada', 'value', (select count(*) from q where status = 'accepted')),
+            jsonb_build_object('stage', 'Cliente activo', 'value', (select count(*) from active_p) + (select count(*) from won))
+          ),
+          'channel', jsonb_build_array(
+            jsonb_build_object('stage', 'Mensajes entrantes', 'value', (select count(*) from msg_in)),
+            jsonb_build_object('stage', 'Conversaciones activas', 'value', (select count(*) from conv)),
+            jsonb_build_object('stage', 'Contactos con proyecto', 'value', (select count(*) from active_p where contact_id is not null)),
+            jsonb_build_object('stage', 'Cierre exitoso', 'value', (select count(*) from won))
+          ),
+          'byChannel', ${list(sql`select channel as name, count(*) as count from msg_in group by 1 order by count desc, name`)}
+        ),
+        'health', jsonb_build_object(
+          'integrations', ${list(sql`
+            select provider as name,
+              case when last_status = 'error' or last_status = 'failed' then 'error'
+                   when last_sync_at is null then 'never'
+                   when last_sync_at < ${to} - interval '48 hours' then 'stale'
+                   else 'ok' end as status,
+              to_char(last_sync_at, 'YYYY-MM-DD"T"HH24:MI:SS') as "lastSyncAt",
+              case when last_error is not null then left(last_error, 200) else null end as "lastError"
+            from sync_state where ${scope(schema.syncState)} order by provider`)},
+          'errors24h', jsonb_build_object(
+            'automations', (select n from auto_err),
+            'webhooks', (select n from ob_fail),
+            'capi', (select n from capi_fail),
+            'messages', (select n from msg_fail),
+            'total', (select n from auto_err) + (select n from ob_fail) + (select n from capi_fail) + (select n from msg_fail)
+          ),
+          'syncFailures', (select n from sync_bad)
         )
       ) as data from cash
     `);
