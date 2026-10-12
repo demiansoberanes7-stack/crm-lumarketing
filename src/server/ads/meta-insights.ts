@@ -52,6 +52,9 @@ export interface NormalizedMetaCampaignInsight {
   conversionValueCents: number;
   videoViews: number;
   thruplay: number;
+  videoPlays: number;
+  uniqueVideoViews: number;
+  videoPlays2s: number;
   avgWatchTimeMs: number;
   videoP25: number;
   videoP50: number;
@@ -73,6 +76,9 @@ interface GraphInsight {
   action_values?: RawAction[];
   video_views?: string | RawAction[];
   thruplay_actions?: string | RawAction[];
+  video_play_actions?: string | RawAction[];
+  unique_video_3_sec_watched_actions?: string | RawAction[];
+  video_continuous_2_sec_watched_actions?: string | RawAction[];
   average_watch_time?: string;
   video_p25_watched_actions?: RawAction[];
   video_p50_watched_actions?: RawAction[];
@@ -136,7 +142,7 @@ export function normalizeAccountId(raw: string): string {
   return raw.startsWith("act_") ? raw : `act_${raw}`;
 }
 
-const INSIGHT_FIELDS = [
+const BASE_INSIGHT_FIELDS = [
   "campaign_id",
   "campaign_name",
   "spend",
@@ -155,7 +161,28 @@ const INSIGHT_FIELDS = [
   "video_p100_watched_actions",
   "date_start",
   "date_stop",
-].join(",");
+];
+
+// Métricas de video que pide el explorador: Reproducciones (video plays),
+// Espectadores (visualizadores únicos) y Reproducciones de video continuas de
+// 2 segundos. Si Meta rechaza alguno de estos campos (p. ej. por versión de la
+// API), la consulta se reintenta solo con BASE para no tumbar el resto.
+const EXTRA_VIDEO_FIELDS = [
+  "video_play_actions",
+  "unique_video_3_sec_watched_actions",
+  "video_continuous_2_sec_watched_actions",
+];
+
+function buildInsightsUrl(graphRoot: string, accountId: string, fields: string[], datePreset: string): URL {
+  const url = new URL(`${graphRoot}/${accountId}/insights`);
+  url.search = new URLSearchParams({
+    fields: fields.join(","),
+    level: "campaign",
+    time_increment: "1",
+    date_preset: datePreset,
+  }).toString();
+  return url;
+}
 
 /**
  * Lee las insights diarias por campaña y el metadato (objetivo/estado) de las
@@ -178,19 +205,22 @@ export async function fetchMetaCampaignInsights(
   const graphRoot = buildGraphRoot();
   const datePreset = options.datePreset ?? "last_30d";
 
-  const insightsUrl = new URL(`${graphRoot}/${accountId}/insights`);
-  insightsUrl.search = new URLSearchParams({
-    fields: INSIGHT_FIELDS,
-    level: "campaign",
-    time_increment: "1",
-    date_preset: datePreset,
-  }).toString();
-
   const campaignsUrl = new URL(`${graphRoot}/${accountId}/campaigns`);
   campaignsUrl.search = new URLSearchParams({ fields: "id,name,objective,status" }).toString();
 
+  // Pide primero con los campos de video nuevos; si Meta los rechaza, repite
+  // con los campos base para no perder el resto de métricas.
+  const fetchInsightsWithFallback = async () => {
+    const full = await graphFetch(
+      buildInsightsUrl(graphRoot, accountId, [...BASE_INSIGHT_FIELDS, ...EXTRA_VIDEO_FIELDS], datePreset),
+      accessToken
+    );
+    if (full.ok) return full;
+    return graphFetch(buildInsightsUrl(graphRoot, accountId, BASE_INSIGHT_FIELDS, datePreset), accessToken);
+  };
+
   const [insightsResult, campaignsResult] = await Promise.all([
-    graphFetch(insightsUrl, accessToken),
+    fetchInsightsWithFallback(),
     graphFetch(campaignsUrl, accessToken),
   ]);
 
@@ -237,6 +267,9 @@ export async function fetchMetaCampaignInsights(
         ),
         videoViews: firstValue(row.video_views),
         thruplay: firstValue(row.thruplay_actions),
+        videoPlays: firstValue(row.video_play_actions),
+        uniqueVideoViews: firstValue(row.unique_video_3_sec_watched_actions),
+        videoPlays2s: firstValue(row.video_continuous_2_sec_watched_actions),
         avgWatchTimeMs: Math.round(num(row.average_watch_time) * 1000),
         videoP25: sumActions(row.video_p25_watched_actions, () => true),
         videoP50: sumActions(row.video_p50_watched_actions, () => true),

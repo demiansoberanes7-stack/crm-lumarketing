@@ -101,7 +101,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .from(schema.conversation)
     .where(eq(schema.conversation.id, conversationId))
     .limit(1);
-  const conversation = convRows[0];
+  let conversation = convRows[0];
   if (!conversation) return;
   const organizationId = conversation.organizationId;
 
@@ -111,6 +111,21 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       `[agente] sin OPENROUTER_API_TOKEN en el runtime: los mensajes entran pero nadie responde (org ${organizationId})`
     );
     return;
+  }
+
+  // Un handoff por 'ventana' no debe dejar la conversación muda para siempre:
+  // cuando el cliente vuelve a escribir (ventana reabierta) el agente se
+  // reactiva solo, en cualquier canal.
+  if (
+    conversation.handoffAt &&
+    conversation.handoffReason === "ventana" &&
+    isWindowOpen(conversation.lastInboundAt)
+  ) {
+    await db
+      .update(schema.conversation)
+      .set({ handoffAt: null, handoffReason: null, updatedAt: new Date() })
+      .where(eq(schema.conversation.id, conversationId));
+    conversation = { ...conversation, handoffAt: null, handoffReason: null };
   }
 
   // Condiciones de silencio: handoff activo o IA apagada en la conversación.
@@ -143,9 +158,10 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const lastInbound = [...history].reverse().find((m) => m.direction === "in");
   if (!lastInbound) return;
 
-  // Ventana cerrada: el agente JAMÁS envía texto libre → handoff 'ventana'.
+  // Ventana cerrada: no hay mensaje reciente del cliente que responder. NO se
+  // hace handoff (eso dejaba la conversación muda para siempre); el agente se
+  // activa solo cuando el cliente vuelve a escribir.
   if (!conversation.isTest && !isWindowOpen(conversation.lastInboundAt)) {
-    await applyHandoff(conversationId, organizationId, "ventana");
     return;
   }
 

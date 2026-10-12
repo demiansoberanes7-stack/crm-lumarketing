@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  RefreshCw, Target, Compass, Percent, Headphones, ShieldCheck,
+  RefreshCw, Target, Percent, Headphones, ShieldCheck,
 } from "lucide-react";
-import { KpiCard, formatCurrency, formatNumber, formatPercent } from "./kpi-card";
+import { KpiCard, formatNumber, formatPercent } from "./kpi-card";
 import { FunnelChart, HorizontalBarChart } from "./charts";
 import { CampaignExplorer } from "./campaign-explorer";
 import { MetricBadge, type MetricOrigin } from "./metric-badge";
@@ -80,9 +79,6 @@ export function CommercialSection({ period }: { period: string }) {
       <section>
       <div className="mb-3 flex justify-end">
         <div className="flex items-center gap-3">
-          <Link href="/commercial" className="text-xs font-medium text-primary underline-offset-4 hover:underline">
-            Registrar datos comerciales
-          </Link>
           <button onClick={load} disabled={loading} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">
             <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} /> Actualizar
           </button>
@@ -128,37 +124,13 @@ export function CommercialSection({ period }: { period: string }) {
           <Subhead icon={<Target className="h-3.5 w-3.5" />} origin="external">Publicidad</Subhead>
           <CampaignExplorer period={period} />
 
-          {/* Adquisición */}
-          <Subhead icon={<Compass className="h-3.5 w-3.5" />} origin="system">Adquisición</Subhead>
-          <div className="chart-card rounded-xl border p-4">
-            <h4 className="mb-4 text-sm font-semibold">Primer toque por canal</h4>
-            {data.adquisicion.hasData ? (
-              <HorizontalBarChart data={data.adquisicion.byChannel.map((c) => ({ name: c.name, count: c.count }))} yKey="name" xKey="count" height={Math.max(200, data.adquisicion.byChannel.length * 28)} />
-            ) : (
-              <p className="text-sm text-muted-foreground">Sin eventos de atribución en el periodo.</p>
-            )}
-          </div>
-
-          {/* Rentabilidad */}
-          <Subhead icon={<Percent className="h-3.5 w-3.5" />} origin="system">Rentabilidad de prestación</Subhead>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MetricCard title="Contribución" metric={data.rentabilidad.contribution} formatter={formatCurrency} />
-            <MetricCard title="Margen de contribución" metric={data.rentabilidad.contributionMargin} formatter={formatPercent} />
-            <MetricCard title="Órdenes de Marketplace" metric={data.rentabilidad.mlOrders} formatter={formatNumber} />
-          </div>
-          <p className="text-xs text-muted-foreground">La contribución descuenta los costos de prestación; no descuenta publicidad porque falta gasto real atribuible.</p>
-          {!data.rentabilidad.hasCosts && (
-            <p className="text-xs text-muted-foreground">
-              Registra el costo de prestación de tus servicios para calcular contribución y margen reales.
-            </p>
-          )}
-
           {/* Experimentos A/B — comparación de campañas */}
           <Subhead icon={<Percent className="h-3.5 w-3.5" />} origin="external">Experimentos A/B</Subhead>
           <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
             Compara tus campañas como un experimento A/B en el explorador de
             <span className="font-medium text-foreground"> Publicidad</span>: selecciona 2 o más campañas y revisa
-            gasto, CTR, CPC, ROAS y retención lado a lado para elegir ganadora. Las métricas se recalculan sobre la selección.
+            importe gastado, resultados, costo por resultado, impresiones, alcance, frecuencia, clics y CTR lado a lado
+            para elegir ganadora. Las métricas se recalculan sobre la selección.
           </div>
 
           {/* Operaciones + Calidad */}

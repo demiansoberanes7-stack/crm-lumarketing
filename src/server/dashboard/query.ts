@@ -90,7 +90,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
       msg_in as (
         select message.conversation_id, message.created_at, conversation.channel
         from message join conversation on conversation.id = message.conversation_id
-        where ${scope(schema.message)} and message.direction = 'inbound' and message.created_at between ${from} and ${to}
+        where ${scope(schema.message)} and message.direction = 'in' and message.created_at between ${from} and ${to}
       ),
       attr as (
         select distinct contact_id from attribution_event

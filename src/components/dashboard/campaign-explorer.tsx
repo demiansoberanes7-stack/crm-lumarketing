@@ -2,17 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  BarChart3, CheckCircle2, CircleAlert, Eye, MousePointerClick, Percent,
-  PlayCircle, RefreshCw, Target, Timer, TrendingUp, Users, DollarSign,
+  BarChart3, CheckCircle2, CircleAlert, Eye, Film, MousePointerClick, Percent,
+  PlayCircle, RefreshCw, TrendingUp, Users, DollarSign,
 } from "lucide-react";
 import { KpiCard, formatCurrency, formatNumber, formatPercent } from "./kpi-card";
 import { HorizontalBarChart } from "./charts";
 
 /**
- * Campaign Explorer: métricas reales de Meta Ads por campaña con selección
- * múltiple. Los componentes vienen de `/api/ads/campaigns` (persistidos por el
- * poller); las razones (CTR, CPC, CPM, ROAS, frecuencia, retención) se
- * recalculan aquí sobre la selección para que agreguen correctamente.
+ * Campaign Explorer: las métricas que entrega Meta Ads por campaña. Los
+ * componentes vienen de `/api/ads/campaigns` (persistidos por el poller); las
+ * razones (CTR, frecuencia, costo por resultado) se recalculan aquí sobre la
+ * selección para que agreguen correctamente.
+ *
+ * Métricas mostradas (las que Meta entrega por campaña): Importe gastado,
+ * Resultados, Costo por resultado, Impresiones, Alcance, Frecuencia,
+ * Clics (todos), CTR, Reproducciones, Espectadores, ThruPlays y Reproducciones
+ * de video continuas de 2 segundos.
  */
 
 interface CampaignRow {
@@ -31,6 +36,9 @@ interface CampaignRow {
   conversionValueCents: number;
   videoViews: number;
   thruplay: number;
+  videoPlays: number;
+  uniqueVideoViews: number;
+  videoPlays2s: number;
   avgWatchTimeMs: number;
   videoP25: number;
   videoP50: number;
@@ -40,21 +48,17 @@ interface CampaignRow {
 
 interface Aggregates {
   spendCents: number;
+  conversions: number;
+  costPerResultCents: number | null;
   impressions: number;
   reach: number;
-  clicks: number;
-  conversions: number;
-  conversionValueCents: number;
-  videoViews: number;
-  avgWatchTimeMs: number;
-  ctr: number | null;
-  cpcCents: number | null;
-  cpmCents: number | null;
   frequency: number | null;
-  roas: number | null;
-  cacCents: number | null;
-  videoP50Rate: number | null;
-  videoP100Rate: number | null;
+  clicks: number;
+  ctr: number | null;
+  videoPlays: number;
+  uniqueVideoViews: number;
+  thruplay: number;
+  videoPlays2s: number;
 }
 
 interface ExplorerData {
@@ -70,35 +74,25 @@ function round2(n: number): number {
 /** Suma componentes de la selección y recalcula las razones. */
 function aggregate(rows: CampaignRow[]): Aggregates {
   let spendCents = 0, impressions = 0, reach = 0, clicks = 0, conversions = 0;
-  let conversionValueCents = 0, videoViews = 0, watchWeighted = 0;
+  let videoPlays = 0, uniqueVideoViews = 0, videoPlays2s = 0, thruplay = 0;
   for (const r of rows) {
     spendCents += r.spendCents;
     impressions += r.impressions;
     reach += r.reach;
     clicks += r.clicks;
     conversions += r.conversions;
-    conversionValueCents += r.conversionValueCents;
-    videoViews += r.videoViews;
-    watchWeighted += r.avgWatchTimeMs * r.videoViews;
+    videoPlays += r.videoPlays;
+    uniqueVideoViews += r.uniqueVideoViews;
+    videoPlays2s += r.videoPlays2s;
+    thruplay += r.thruplay;
   }
   const ctr = impressions > 0 ? round2((clicks / impressions) * 100) : null;
-  const cpcCents = clicks > 0 ? Math.round(spendCents / clicks) : null;
-  const cpmCents = impressions > 0 ? Math.round((spendCents / impressions) * 1000) : null;
   const frequency = reach > 0 ? round2(impressions / reach) : null;
-  const roas = spendCents > 0 ? round2(conversionValueCents / spendCents) : null;
-  const cacCents = conversions > 0 ? Math.round(spendCents / conversions) : null;
+  const costPerResultCents = conversions > 0 ? Math.round(spendCents / conversions) : null;
   return {
-    spendCents, impressions, reach, clicks, conversions, conversionValueCents,
-    videoViews,
-    avgWatchTimeMs: videoViews > 0 ? Math.round(watchWeighted / videoViews) : 0,
-    ctr, cpcCents, cpmCents, frequency, roas, cacCents,
-    videoP50Rate: null, videoP100Rate: null,
+    spendCents, conversions, costPerResultCents, impressions, reach, frequency,
+    clicks, ctr, videoPlays, uniqueVideoViews, thruplay, videoPlays2s,
   };
-}
-
-function fmtWatchTime(ms: number): string {
-  if (ms <= 0) return "—";
-  return `${(ms / 1000).toFixed(1)} s`;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -227,18 +221,18 @@ export function CampaignExplorer({ period }: { period: string }) {
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-            <KpiCard title="Gasto (selección)" value={formatCurrency(agg.spendCents)} icon={<DollarSign />} subtitle={`${selectedRows.length} campaña(s)`} />
+            <KpiCard title="Importe gastado" value={formatCurrency(agg.spendCents)} icon={<DollarSign />} subtitle={`${selectedRows.length} campaña(s)`} />
+            <KpiCard title="Resultados" value={formatNumber(agg.conversions)} icon={<CheckCircle2 />} />
+            <KpiCard title="Costo por resultado" value={agg.costPerResultCents != null ? formatCurrency(agg.costPerResultCents) : "N/D"} icon={<DollarSign />} subtitle="gasto por resultado" />
             <KpiCard title="Impresiones" value={formatNumber(agg.impressions)} icon={<Eye />} />
             <KpiCard title="Alcance" value={formatNumber(agg.reach)} icon={<Users />} />
-            <KpiCard title="CTR" value={formatPercent(agg.ctr)} icon={<Percent />} subtitle={agg.ctr == null ? "Sin impresiones" : `${formatNumber(agg.clicks)} clics`} />
-            <KpiCard title="CPC" value={agg.cpcCents != null ? formatCurrency(agg.cpcCents) : "N/D"} icon={<MousePointerClick />} />
-            <KpiCard title="CPM" value={agg.cpmCents != null ? formatCurrency(agg.cpmCents) : "N/D"} subtitle="por mil impresiones" />
             <KpiCard title="Frecuencia" value={agg.frequency != null ? agg.frequency.toFixed(2) : "N/D"} icon={<TrendingUp />} subtitle="impresiones / alcance" />
-            <KpiCard title="Conversiones" value={formatNumber(agg.conversions)} icon={<Target />} />
-            <KpiCard title="ROAS" value={agg.roas != null ? `${agg.roas.toFixed(2)}x` : "N/D"} subtitle="valor de conversión / gasto" />
-            <KpiCard title="CAC" value={agg.cacCents != null ? formatCurrency(agg.cacCents) : "N/D"} subtitle="gasto por conversión" />
-            <KpiCard title="Retención reels" value={fmtWatchTime(agg.avgWatchTimeMs)} icon={<Timer />} subtitle="tiempo prom. de visualización" />
-            <KpiCard title="Reels al 100%" value={agg.videoViews > 0 && selectedRows.some((r) => r.videoP100 > 0) ? `${round2((selectedRows.reduce((s, r) => s + r.videoP100, 0) / Math.max(1, agg.videoViews)) * 100).toFixed(0)}%` : "N/D"} icon={<PlayCircle />} subtitle="completaron el video" />
+            <KpiCard title="Clics (todos)" value={formatNumber(agg.clicks)} icon={<MousePointerClick />} />
+            <KpiCard title="CTR" value={formatPercent(agg.ctr)} icon={<Percent />} subtitle={agg.ctr == null ? "Sin impresiones" : `${formatNumber(agg.clicks)} clics`} />
+            <KpiCard title="Reproducciones" value={formatNumber(agg.videoPlays)} icon={<Film />} subtitle="video plays" />
+            <KpiCard title="Espectadores" value={formatNumber(agg.uniqueVideoViews)} icon={<Eye />} subtitle="visualizadores únicos" />
+            <KpiCard title="ThruPlays" value={formatNumber(agg.thruplay)} icon={<PlayCircle />} />
+            <KpiCard title="Reproducciones video 2s" value={formatNumber(agg.videoPlays2s)} icon={<Film />} subtitle="2 s continuos" />
           </div>
 
           {/* Gasto por campaña */}
@@ -253,22 +247,24 @@ export function CampaignExplorer({ period }: { period: string }) {
           <div className="chart-card overflow-hidden rounded-xl border p-4">
             <h4 className="mb-3 text-sm font-semibold">Detalle por campaña</h4>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
+              <table className="w-full min-w-[1300px] text-left text-sm">
                 <thead className="bg-muted/50 text-xs text-muted-foreground">
                   <tr>
                     <th className="px-2 py-2 font-medium"></th>
                     <th className="px-3 py-2 font-medium">Campaña</th>
                     <th className="px-3 py-2 font-medium">Estado</th>
-                    <th className="px-3 py-2 text-right font-medium">Gasto</th>
+                    <th className="px-3 py-2 text-right font-medium">Importe</th>
+                    <th className="px-3 py-2 text-right font-medium">Resultados</th>
+                    <th className="px-3 py-2 text-right font-medium">Costo/resultado</th>
                     <th className="px-3 py-2 text-right font-medium">Impresiones</th>
                     <th className="px-3 py-2 text-right font-medium">Alcance</th>
-                    <th className="px-3 py-2 text-right font-medium">CTR</th>
-                    <th className="px-3 py-2 text-right font-medium">CPC</th>
-                    <th className="px-3 py-2 text-right font-medium">CPM</th>
                     <th className="px-3 py-2 text-right font-medium">Frec.</th>
-                    <th className="px-3 py-2 text-right font-medium">Conv.</th>
-                    <th className="px-3 py-2 text-right font-medium">ROAS</th>
-                    <th className="px-3 py-2 text-right font-medium">Retención</th>
+                    <th className="px-3 py-2 text-right font-medium">Clics</th>
+                    <th className="px-3 py-2 text-right font-medium">CTR</th>
+                    <th className="px-3 py-2 text-right font-medium">Reproducc.</th>
+                    <th className="px-3 py-2 text-right font-medium">Espectadores</th>
+                    <th className="px-3 py-2 text-right font-medium">ThruPlays</th>
+                    <th className="px-3 py-2 text-right font-medium">Reproducc. 2s</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -286,15 +282,17 @@ export function CampaignExplorer({ period }: { period: string }) {
                         </td>
                         <td className="px-3 py-2"><StatusBadge status={c.status} /></td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(c.spendCents)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.conversions)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{m.costPerResultCents != null ? formatCurrency(m.costPerResultCents) : "—"}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.impressions)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.reach)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{formatPercent(m.ctr)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{m.cpcCents != null ? formatCurrency(m.cpcCents) : "—"}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{m.cpmCents != null ? formatCurrency(m.cpmCents) : "—"}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{m.frequency != null ? m.frequency.toFixed(2) : "—"}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.conversions)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{m.roas != null ? `${m.roas.toFixed(2)}x` : "—"}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtWatchTime(c.avgWatchTimeMs)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.clicks)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatPercent(m.ctr)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.videoPlays)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.uniqueVideoViews)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.thruplay)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatNumber(c.videoPlays2s)}</td>
                       </tr>
                     );
                   })}
@@ -302,7 +300,7 @@ export function CampaignExplorer({ period }: { period: string }) {
               </table>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-              Métricas reales de Meta Ads (impresiones, alcance, CTR, CPC, CPM, frecuencia, conversiones, ROAS y retención de reels). Selecciona campañas para agregar sus métricas. El gasto es el que registra Meta; no hay presupuesto planeado.
+              Métricas reales de Meta Ads: importe gastado, resultados, costo por resultado, impresiones, alcance, frecuencia, clics, CTR, reproducciones, espectadores, ThruPlays y reproducciones de video continuas de 2 segundos. Selecciona campañas para agregar sus métricas. El gasto es el que registra Meta; no hay presupuesto planeado.
             </p>
           </div>
         </>

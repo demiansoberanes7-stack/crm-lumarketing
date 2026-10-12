@@ -351,6 +351,13 @@
       "when": 1791600000021,
       "tag": "0049_social_comment",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791600000022,
+      "tag": "0050_campaign_metric_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -30,6 +30,9 @@ export interface CampaignRow {
   conversionValueCents: number;
   videoViews: number;
   thruplay: number;
+  videoPlays: number;
+  uniqueVideoViews: number;
+  videoPlays2s: number;
   avgWatchTimeMs: number;
   videoP25: number;
   videoP50: number;
@@ -47,6 +50,9 @@ export interface AggregatedMetrics {
   conversionValueCents: number;
   videoViews: number;
   thruplay: number;
+  videoPlays: number;
+  uniqueVideoViews: number;
+  videoPlays2s: number;
   avgWatchTimeMs: number;
   // razones recalculadas
   ctr: number | null; // clicks / impressions
@@ -88,7 +94,8 @@ function round2(n: number): number {
 type Components = {
   spendCents: number; impressions: number; reach: number; clicks: number;
   uniqueClicks: number; conversions: number; conversionValueCents: number;
-  videoViews: number; thruplay: number; avgWatchTimeMs: number;
+  videoViews: number; thruplay: number; videoPlays: number;
+  uniqueVideoViews: number; videoPlays2s: number; avgWatchTimeMs: number;
   videoP25: number; videoP50: number; videoP75: number; videoP100: number;
 };
 
@@ -122,7 +129,8 @@ export function metricsFromComponents(c: Components): AggregatedMetrics {
 const EMPTY_COMPONENTS: Components = {
   spendCents: 0, impressions: 0, reach: 0, clicks: 0, uniqueClicks: 0,
   conversions: 0, conversionValueCents: 0, videoViews: 0, thruplay: 0,
-  avgWatchTimeMs: 0, videoP25: 0, videoP50: 0, videoP75: 0, videoP100: 0,
+  videoPlays: 0, uniqueVideoViews: 0, videoPlays2s: 0, avgWatchTimeMs: 0,
+  videoP25: 0, videoP50: 0, videoP75: 0, videoP100: 0,
 };
 
 /** Suma componentes de un conjunto de filas y recalcula las razones. */
@@ -139,6 +147,9 @@ function aggregateComponents(rows: CampaignRow[]): AggregatedMetrics {
     sum.conversionValueCents += r.conversionValueCents;
     sum.videoViews += r.videoViews;
     sum.thruplay += r.thruplay;
+    sum.videoPlays += r.videoPlays;
+    sum.uniqueVideoViews += r.uniqueVideoViews;
+    sum.videoPlays2s += r.videoPlays2s;
     sum.videoP25 += r.videoP25;
     sum.videoP50 += r.videoP50;
     sum.videoP75 += r.videoP75;
@@ -201,6 +212,9 @@ export async function getMetaCampaigns(
         conversionValueCents: row.conversionValueCents,
         videoViews: row.videoViews,
         thruplay: row.thruplay,
+        videoPlays: row.videoPlays,
+        uniqueVideoViews: row.uniqueVideoViews,
+        videoPlays2s: row.videoPlays2s,
         avgWatchTimeMs: row.avgWatchTimeMs,
         videoP25: row.videoP25,
         videoP50: row.videoP50,
@@ -217,6 +231,9 @@ export async function getMetaCampaigns(
       existing.conversionValueCents += row.conversionValueCents;
       existing.videoViews += row.videoViews;
       existing.thruplay += row.thruplay;
+      existing.videoPlays += row.videoPlays;
+      existing.uniqueVideoViews += row.uniqueVideoViews;
+      existing.videoPlays2s += row.videoPlays2s;
       existing.videoP25 += row.videoP25;
       existing.videoP50 += row.videoP50;
       existing.videoP75 += row.videoP75;
