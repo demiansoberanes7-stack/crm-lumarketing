@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  RefreshCw, Target, DollarSign, Megaphone, Compass, Percent,
-  FlaskConical, Headphones, ShieldCheck,
+  RefreshCw, Target, Compass, Percent, Headphones, ShieldCheck,
 } from "lucide-react";
 import { KpiCard, formatCurrency, formatNumber, formatPercent } from "./kpi-card";
 import { FunnelChart, HorizontalBarChart } from "./charts";
+import { CampaignExplorer } from "./campaign-explorer";
 
 type MetricValue = { value: number | null; availability: "available" | "no_data" | "not_applicable" | "pending"; formatted: string | null };
 
@@ -17,7 +17,6 @@ interface CommercialData {
   resumen: Record<string, MetricValue>;
   ventas: Record<string, MetricValue>;
   embudo: { stages: { stage: string; value: number }[]; leadToWon: MetricValue; leadToQuote: MetricValue; quoteToWon: MetricValue; lossByReason: { key: string; label: string; value: number }[] };
-  publicidad: Record<string, MetricValue>;
   trafico: Record<string, MetricValue>;
   adquisicion: { byChannel: { name: string; kind: string; count: number }[]; hasData: boolean };
   rentabilidad: Record<string, MetricValue> & { hasCosts: boolean };
@@ -123,17 +122,9 @@ export function CommercialSection({ period }: { period: string }) {
             </div>
           </div>
 
-          {/* Publicidad */}
-          <Subhead icon={<Megaphone className="h-3.5 w-3.5" />}>Publicidad</Subhead>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard title="Presupuesto planeado" metric={data.publicidad.plannedBudget} formatter={formatCurrency} icon={<DollarSign className="h-4 w-4" />} />
-            <MetricCard title="ROAS" metric={data.publicidad.roas} formatter={(n) => `${n.toFixed(2)}x`} />
-            <MetricCard title="ROMI" metric={data.publicidad.romi} formatter={formatPercent} />
-            <MetricCard title="CAC" metric={data.publicidad.cac} formatter={formatCurrency} />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            ROAS, ROMI y CAC requieren gasto real y atribución por campaña. El gasto real de las plataformas aparece en Marketing digital; el presupuesto planeado se captura en Registros comerciales.
-          </p>
+          {/* Publicidad — métricas reales de Meta Ads por campaña */}
+          <Subhead icon={<Target className="h-3.5 w-3.5" />}>Publicidad</Subhead>
+          <CampaignExplorer period={period} />
 
           {/* Adquisición */}
           <Subhead icon={<Compass className="h-3.5 w-3.5" />}>Adquisición</Subhead>
@@ -160,30 +151,18 @@ export function CommercialSection({ period }: { period: string }) {
             </p>
           )}
 
-          {/* Experimentos */}
-          <Subhead icon={<FlaskConical className="h-3.5 w-3.5" />}>Experimentos A/B ({data.experimentos.total})</Subhead>
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
-            {data.experimentos.items.length > 0 ? (
-              <div className="space-y-2">
-                {data.experimentos.items.map((e) => (
-                  <div key={e.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                    <span className="font-medium">{e.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${e.evidenceStatus === "concluyente" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                      {e.evidenceStatus === "concluyente" ? "Concluyente" : "Inconcluso"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Aún no hay experimentos. Documenta una hipótesis y compara variantes con evidencia.</p>
-            )}
+          {/* Experimentos A/B — comparación de campañas */}
+          <Subhead icon={<Percent className="h-3.5 w-3.5" />}>Experimentos A/B</Subhead>
+          <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+            Compara tus campañas como un experimento A/B en el explorador de
+            <span className="font-medium text-foreground"> Publicidad</span>: selecciona 2 o más campañas y revisa
+            gasto, CTR, CPC, ROAS y retención lado a lado para elegir ganadora. Las métricas se recalculan sobre la selección.
           </div>
 
           {/* Operaciones + Calidad */}
           <Subhead icon={<Headphones className="h-3.5 w-3.5" />}>Operaciones y calidad de datos</Subhead>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard title="Actividades registradas" metric={data.operaciones.activitiesLogged} formatter={formatNumber} />
-            <MetricCard title="Tiempo de respuesta" metric={data.operaciones.responseTimeHours} formatter={(n) => `${n.toFixed(1)} h`} />
             <MetricCard title="Contactos con canal" metric={data.calidad.contactsWithChannel} formatter={formatPercent} icon={<ShieldCheck className="h-4 w-4" />} />
             <MetricCard title="Con canal capturado" metric={data.calidad.contactsWithChannelCount} formatter={formatNumber} />
           </div>

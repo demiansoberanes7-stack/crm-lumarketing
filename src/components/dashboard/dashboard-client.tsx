@@ -17,8 +17,6 @@ import { ProjectsSection } from "./sections/projects-section";
 import { TasksSection } from "./sections/tasks-section";
 import { QuotesSection } from "./sections/quotes-section";
 import { ReceivablesSection } from "./sections/receivables-section";
-import { PaymentsSection } from "./sections/payments-section";
-import { ExpensesSection } from "./sections/expenses-section";
 import { ProfitabilitySection } from "./sections/profitability-section";
 import { InboxSection } from "./sections/inbox-section";
 import { ContactsSection } from "./sections/contacts-section";
@@ -112,7 +110,6 @@ interface DashboardData {
     tasks: { id: string; title: string; status: string; priority: string | null; startDate: string; endDate: string | null }[];
   };
   ads: {
-    adSpendCents: number; byPlatform: { name: string; amount: number }[];
     attributedLeads: number; attributedConversations: number; convertedFromAds: number;
     conversions: { sent: number; pending: number; failed: number };
   };
@@ -124,9 +121,7 @@ interface DashboardData {
     byChannel: { name: string; count: number }[];
   };
   health: {
-    integrations: { name: string; status: string; lastSyncAt: string | null; lastError: string | null }[];
     errors24h: { automations: number; webhooks: number; capi: number; messages: number; total: number };
-    syncFailures: number;
   };
 }
 
@@ -260,8 +255,6 @@ export function DashboardClient() {
         {/* ── INFRAESTRUCTURA / CALIDAD ────────── */}
         <Department id="infra" title="Infraestructura · Calidad" icon={<Server className="h-4 w-4" />} defaultOpen={false}>
           <HealthSection health={data.health} />
-          <ExpensesSection data={data.expenses} />
-          <PaymentsSection data={data.payments} />
         </Department>
       </div>
     </div>

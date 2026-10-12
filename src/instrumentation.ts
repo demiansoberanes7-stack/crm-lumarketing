@@ -15,5 +15,9 @@ export async function register(): Promise<void> {
     // barrido, así que registrarlo es inofensivo en instancias sin el módulo.
     const { startGoogleBusinessWorker } = await import("./server/google-business/poller");
     await startGoogleBusinessWorker();
+    // Insights de Meta Ads: persiste gasto/métricas reales por campaña; solo
+    // sincroniza orgs con credenciales guardadas.
+    const { startMetaAdsWorker } = await import("./server/ads/poller");
+    await startMetaAdsWorker();
   }
 }

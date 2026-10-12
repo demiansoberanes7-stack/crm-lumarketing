@@ -143,7 +143,6 @@ export function buildDashboard(input: DashboardInput, period: string, now = new 
     contacts: { total: contacts.length, active: activeContactIds.size, newThisPeriod: contacts.filter((c) => within(c.createdAt)).length, activityRate: percent(activeContactIds.size, contacts.length), bySource: counts(contacts, (c) => c.source ?? "directo") },
     gantt: { projects: [] as { id: string; name: string; progress: number; startDate: string; endDate: string | null; status: string; risk: string | null }[], tasks: [] as { id: string; title: string; status: string; priority: string | null; startDate: string; endDate: string | null }[] },
     ads: {
-      adSpendCents: 0, byPlatform: [] as { name: string; amount: number }[],
       attributedLeads: 0, attributedConversations: 0, convertedFromAds: 0,
       conversions: { sent: 0, pending: 0, failed: 0 },
     },
@@ -155,9 +154,7 @@ export function buildDashboard(input: DashboardInput, period: string, now = new 
       byChannel: [] as { name: string; count: number }[],
     },
     health: {
-      integrations: [] as { name: string; status: string; lastSyncAt: string | null; lastError: string | null }[],
       errors24h: { automations: 0, webhooks: 0, capi: 0, messages: 0, total: 0 },
-      syncFailures: 0,
     },
   };
 }

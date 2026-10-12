@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ResponsiveContainer, Tooltip, XAxis, YAxis, Bar, BarChart } from "recharts";
-import { MousePointerClick, RefreshCw, Eye, DollarSign, AlertCircle, Users, BarChart3, Megaphone } from "lucide-react";
+import { RefreshCw, Eye, AlertCircle, Users, Megaphone } from "lucide-react";
 import { KpiCard, formatNumber } from "./kpi-card";
 
 interface AdsMetric {
@@ -82,10 +82,6 @@ export function MarketingSection() {
   }
 
   const ga4 = data?.ga4 ?? null;
-  const metrics = data?.metrics ?? [];
-  const totalSpend = metrics.reduce((s, m) => s + m.spend, 0);
-  const totalClicks = metrics.reduce((s, m) => s + m.clicks, 0);
-  const totalImpr = metrics.reduce((s, m) => s + m.impressions, 0);
   const anyConnected = data ? Object.values(data.connections).some((c) => c.status !== "disconnected") : false;
 
   return (
@@ -157,63 +153,7 @@ export function MarketingSection() {
         </div>
       )}
 
-      {/* Ads */}
-      {metrics.length > 0 && (
-        <div className="mb-5 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <KpiCard title="Inversión total" value={fmt(totalSpend, "MXN")} icon={<DollarSign />} />
-            <KpiCard title="Impresiones" value={fmt(totalImpr)} icon={<Eye />} />
-            <KpiCard title="Clics" value={fmt(totalClicks)} icon={<MousePointerClick />} />
-          </div>
-          {data && data.campaigns.length > 0 && (
-            <div className="chart-card overflow-hidden rounded-xl border p-4">
-              <h3 className="mb-4 text-sm font-semibold">Rendimiento por campaña</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[680px] text-left text-sm">
-                  <thead className="bg-muted/50 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="rounded-l-md px-4 py-2 font-medium">Campaña</th>
-                      <th className="px-4 py-2 font-medium">Fuente</th>
-                      <th className="px-4 py-2 text-right font-medium">Inversión</th>
-                      <th className="px-4 py-2 text-right font-medium">Impresiones</th>
-                      <th className="px-4 py-2 text-right font-medium">Clics</th>
-                      <th className="rounded-r-md px-4 py-2 text-right font-medium">CPC</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {data.campaigns.map((c) => (
-                      <tr key={c.id} className="transition-colors hover:bg-muted/30">
-                        <td className="px-4 py-3 font-medium">{c.name}</td>
-                        <td className="px-4 py-3 text-xs uppercase">{c.source}</td>
-                        <td className="px-4 py-3 text-right">{fmt(c.spend, c.currency)}</td>
-                        <td className="px-4 py-3 text-right">{fmt(c.impressions)}</td>
-                        <td className="px-4 py-3 text-right">{fmt(c.clicks)}</td>
-                        <td className="px-4 py-3 text-right">{c.clicks > 0 ? fmt(c.spend / c.clicks, c.currency) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          {data && data.chartData.length > 0 && (
-            <div className="chart-card rounded-xl border p-4">
-              <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold"><BarChart3 className="h-4 w-4" /> Clics diarios — Meta Ads</h3>
-              <div className="h-[240px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.chartData}>
-                    <defs><linearGradient id="dashboard-meta-bar" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stopColor="var(--chart-2)" /><stop offset="100%" stopColor="var(--chart-2-end)" /></linearGradient></defs>
-                    <XAxis dataKey="name" interval={5} stroke="var(--chart-text)" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888" fontSize={11} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="meta" name="Meta Ads" fill="url(#dashboard-meta-bar)" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Ads — las métricas de Meta Ads viven en Comercial · Publicidad (Campaign Explorer). */}
 
       {/* Estado de integraciones */}
       {data && (

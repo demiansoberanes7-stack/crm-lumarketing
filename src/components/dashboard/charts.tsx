@@ -187,14 +187,12 @@ export function LineChartCard({ data, xKey, yKeys, height = 250 }: ChartProps & 
   );
 }
 
-/** Pie / donut with gradient sectors and a compact legend showing % + value per sector. */
+/** Pie / donut with solid per-sector colors and a compact legend showing % + value per sector. */
 export function PieChartCard({ data, nameKey, valueKey, height = 250, inner = false }: ChartProps & { nameKey: string; valueKey: string; inner?: boolean }) {
-  const id = useChartId();
   const total = data.reduce((sum, entry) => sum + (Number(entry[valueKey]) || 0), 0);
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
-        <ChartDefs id={id} />
         <Pie
           data={data}
           cx="50%"
@@ -208,7 +206,7 @@ export function PieChartCard({ data, nameKey, valueKey, height = 250, inner = fa
           strokeWidth={2}
         >
           {data.map((_, index) => (
-            <Cell key={index} fill={`url(#${gradientId(id, index)})`} />
+            <Cell key={index} fill={`var(--chart-${(index % SERIES_COUNT) + 1})`} />
           ))}
         </Pie>
         <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "var(--text)", fontWeight: 600 }} />

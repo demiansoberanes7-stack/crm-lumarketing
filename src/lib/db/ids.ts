@@ -75,6 +75,8 @@ const prefixes = {
   googleBusinessCredentials: "gbc",
   googleBusinessLocation: "gbl",
   googleBusinessReview: "gbr",
+  // Insights de campañas de anuncios (Meta Ads)
+  campaignInsight: "cmi",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

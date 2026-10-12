@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { AgentFichaField, AgentRules } from "@/lib/agent-config";
 import {
+  bigint,
   boolean,
   date,
   index,
@@ -2205,5 +2206,52 @@ export const watsiMessage = pgTable(
   },
   (t) => [
     index("watsi_message_conversation_idx").on(t.conversationId, t.createdAt),
+  ]
+);
+
+/**
+ * Insights diarios de campañas de anuncios (Meta Ads), sincronizados por el
+ * poller. Guarda componentes atómicos (gasto, impresiones, alcance, clics,
+ * conversiones y métricas de video/reels); las razones (CTR, CPC, CPM, ROAS,
+ * frecuencia, retención) se recalculan al consultar para que la agregación por
+ * selección múltiple sea correcta.
+ */
+export const campaignInsight = pgTable(
+  "campaign_insight",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    platform: varchar("platform", { length: 30 }).notNull().default("meta_ads"),
+    campaignExternalId: varchar("campaign_external_id", { length: 255 }).notNull(),
+    campaignName: varchar("campaign_name", { length: 500 }),
+    campaignObjective: varchar("campaign_objective", { length: 100 }),
+    status: varchar("status", { length: 30 }),
+    dateStart: date("date_start"),
+    dateStop: date("date_stop"),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    spendCents: bigint("spend_cents", { mode: "number" }).notNull().default(0),
+    impressions: bigint("impressions", { mode: "number" }).notNull().default(0),
+    reach: bigint("reach", { mode: "number" }).notNull().default(0),
+    clicks: bigint("clicks", { mode: "number" }).notNull().default(0),
+    uniqueClicks: bigint("unique_clicks", { mode: "number" }).notNull().default(0),
+    conversions: bigint("conversions", { mode: "number" }).notNull().default(0),
+    conversionValueCents: bigint("conversion_value_cents", { mode: "number" }).notNull().default(0),
+    videoViews: bigint("video_views", { mode: "number" }).notNull().default(0),
+    thruplay: bigint("thruplay", { mode: "number" }).notNull().default(0),
+    avgWatchTimeMs: bigint("avg_watch_time_ms", { mode: "number" }).notNull().default(0),
+    videoP25: bigint("video_p25", { mode: "number" }).notNull().default(0),
+    videoP50: bigint("video_p50", { mode: "number" }).notNull().default(0),
+    videoP75: bigint("video_p75", { mode: "number" }).notNull().default(0),
+    videoP100: bigint("video_p100", { mode: "number" }).notNull().default(0),
+    actions: jsonb("actions"),
+    raw: jsonb("raw"),
+    syncedAt: timestamp("synced_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("campaign_insight_org_platform_camp_day_uq")
+      .on(t.organizationId, t.platform, t.campaignExternalId, t.dateStart),
+    index("campaign_insight_org_date_idx").on(t.organizationId, t.dateStart),
   ]
 );

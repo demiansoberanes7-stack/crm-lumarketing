@@ -92,12 +92,6 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         from message join conversation on conversation.id = message.conversation_id
         where ${scope(schema.message)} and message.direction = 'inbound' and message.created_at between ${from} and ${to}
       ),
-      camp as (
-        select platform, coalesce(budget_planned_cents, 0) as spend
-        from campaign
-        where ${scope(schema.campaign)} and currency = 'MXN'
-          and (start_date is null or start_date <= ${to}) and (end_date is null or end_date >= ${from})
-      ),
       attr as (
         select distinct contact_id from attribution_event
         where ${scope(schema.attributionEvent)} and campaign_id is not null
@@ -136,10 +130,6 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         select count(*) as n from message
         where ${scope(schema.message)} and created_at between ${from} and ${to}
           and (error is not null or status in ('failed', 'error'))
-      ),
-      sync_bad as (
-        select count(*) as n from sync_state
-        where ${scope(schema.syncState)} and last_status in ('error', 'failed')
       ),
       conv as (
         select channel from conversation where ${scope(schema.conversation)}
@@ -252,8 +242,6 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
             from t where estado <> 'terminado' order by due_date nulls last, created_at limit 50`)}
         ),
         'ads', jsonb_build_object(
-          'adSpendCents', (select coalesce(sum(spend), 0) from camp),
-          'byPlatform', ${list(sql`select platform as name, sum(spend) as amount from camp group by 1 order by amount desc, name`)},
           'attributedLeads', (select count(*) from attr),
           'attributedConversations', (select count(*) from attr_conv),
           'convertedFromAds', (select count(*) from won where contact_id in (select contact_id from attr)),
@@ -292,23 +280,13 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
           'byChannel', ${list(sql`select channel as name, count(*) as count from msg_in group by 1 order by count desc, name`)}
         ),
         'health', jsonb_build_object(
-          'integrations', ${list(sql`
-            select provider as name,
-              case when last_status = 'error' or last_status = 'failed' then 'error'
-                   when last_sync_at is null then 'never'
-                   when last_sync_at < ${to} - interval '48 hours' then 'stale'
-                   else 'ok' end as status,
-              to_char(last_sync_at, 'YYYY-MM-DD"T"HH24:MI:SS') as "lastSyncAt",
-              case when last_error is not null then left(last_error, 200) else null end as "lastError"
-            from sync_state where ${scope(schema.syncState)} order by provider`)},
           'errors24h', jsonb_build_object(
             'automations', (select n from auto_err),
             'webhooks', (select n from ob_fail),
             'capi', (select n from capi_fail),
             'messages', (select n from msg_fail),
             'total', (select n from auto_err) + (select n from ob_fail) + (select n from capi_fail) + (select n from msg_fail)
-          ),
-          'syncFailures', (select n from sync_bad)
+          )
         )
       ) as data from cash
     `);
