@@ -7,63 +7,35 @@ import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string };
 
-const TABS: Tab[] = [
-  { href: "/settings/whatsapp", label: "WhatsApp · Zernio" },
-  { href: "/settings/waha", label: "WAHA" },
+// Núcleo de configuración: siempre visible en el nav lateral.
+const CORE_TABS: Tab[] = [
   { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },
   { href: "/settings/business", label: "Datos de Empresa" },
   { href: "/settings/agent", label: "Agente" },
-  { href: "/settings/webhooks", label: "Webhooks" },
   { href: "/settings/team", label: "Equipo" },
 ];
 
-const GOOGLE_TAB: Tab = { href: "/settings/google", label: "Google Calendar" };
-const GOOGLE_BUSINESS_TAB: Tab = { href: "/settings/google-business", label: "Google Business" };
-const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
-const ADS_TAB: Tab = { href: "/settings/ads", label: "Anuncios" };
-const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
-const MESSENGER_TAB: Tab = { href: "/settings/messenger", label: "Messenger" };
-const INSTAGRAM_TAB: Tab = { href: "/settings/instagram", label: "Instagram" };
-const TIKTOK_TAB: Tab = { href: "/settings/tiktok", label: "TikTok" };
-const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
+// Transporte alterno de WhatsApp (no tiene tarjeta en Conexiones, se queda en el nav).
+const WAHA_TAB: Tab = { href: "/settings/waha", label: "WAHA" };
 
-export function SettingsNav({
-  agenda = false,
-  atribucion = false,
-  googleBusiness = false,
-  messenger = false,
-  instagram = false,
-  tiktok = false,
-  owner = false,
-}: {
-  agenda?: boolean;
-  atribucion?: boolean;
-  googleBusiness?: boolean;
-  messenger?: boolean;
-  instagram?: boolean;
-  tiktok?: boolean;
-  owner?: boolean;
-}) {
+const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
+const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
+const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
+const DIAGNOSTICS_TAB: Tab = { href: "/settings/diagnostics", label: "Diagnóstico" };
+const WEBHOOKS_TAB: Tab = { href: "/settings/webhooks", label: "Webhooks" };
+
+export function SettingsNav({ owner = false }: { owner?: boolean }) {
   const pathname = usePathname();
   const activeTabRef = useRef<HTMLAnchorElement | null>(null);
   const tabs = [
     ...(owner ? [CONNECTIONS_TAB] : []),
-    TABS[0]!,
-    TABS[1]!,
-    ...(messenger ? [MESSENGER_TAB] : []),
-    ...(instagram ? [INSTAGRAM_TAB] : []),
-    ...(tiktok ? [TIKTOK_TAB] : []),
-    // Webhooks es territorio del dueño, igual que su panel: la API responde
-    // 403 a cualquier otro rol y enseñarle la pestaña solo lo lleva a un 404.
-    ...(owner
-      ? TABS.slice(2)
-      : TABS.slice(2).filter((t) => t.href !== "/settings/webhooks")),
-    ...(owner ? [{ href: "/settings/diagnostics", label: "Diagnóstico" }] : []),
     ...(owner ? [MARKETING_TAB] : []),
-    ...(agenda ? [GOOGLE_TAB] : []),
-    ...(googleBusiness ? [GOOGLE_BUSINESS_TAB] : []),
-    ...(atribucion ? [ADS_TAB] : []),
+    WAHA_TAB,
+    ...CORE_TABS,
+    // Webhooks es territorio del dueño: la API responde 403 a cualquier otro rol.
+    ...(owner ? [WEBHOOKS_TAB] : []),
+    ...(owner ? [DIAGNOSTICS_TAB] : []),
     ...(owner ? [DATA_CLEANUP_TAB] : []),
   ];
 
