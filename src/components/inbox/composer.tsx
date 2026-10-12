@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Clock3,
   FileText,
   MapPin,
   Paperclip,
@@ -12,7 +11,6 @@ import {
 } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { capabilitiesFor } from "@/server/channels/capabilities";
 import { formatBytes, formatRemaining } from "./helpers";
 
 /** 008 — Panel secundario del clip: formulario de ubicación o contacto. */
@@ -182,24 +180,7 @@ export function Composer({
     onSent();
   }
 
-  if (!conversation.windowOpen) {
-    const caps = capabilitiesFor(conversation.channel);
-    return (
-      <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3.5">
-        <div className="mb-3 flex items-start gap-2 rounded-md border border-warning-soft bg-warning-tint p-3 text-sm text-warning-text">
-          <Clock3 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
-          <div>
-            <p className="font-medium">La ventana de {caps.label} está cerrada.</p>
-            <p className="opacity-80">
-              {conversation.channel === "whatsapp"
-                ? "WhatsApp solo permite texto libre dentro de las 24 horas siguientes al último mensaje del cliente. Espera a que el cliente escriba para poder responderle."
-                : `Pasaron los 7 días que ${caps.label} permite responder con agente humano. Espera a que el cliente vuelva a escribir.`}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!conversation.windowOpen) return null;
 
   const canSubmit = file !== null || text.trim().length > 0;
   const canAttach = conversation.channel === "whatsapp" || conversation.channel === "messenger";
