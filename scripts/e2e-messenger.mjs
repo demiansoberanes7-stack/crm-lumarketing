@@ -467,6 +467,31 @@ async function main() {
   const outZ = (msgsZ2.json?.messages ?? []).find((m) => m.direction === "out");
   ok("el saliente queda como 'sent'", outZ?.status === "sent", outZ?.status);
 
+  const zernioPdf = new FormData();
+  zernioPdf.set(
+    "file",
+    new Blob([new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52])], { type: "application/pdf" }),
+    "cotizacion-e2e.pdf"
+  );
+  const pdfSend = await fetch(`${BASE}/api/conversations/${convZ?.id}/messages/media`, {
+    method: "POST",
+    headers: { cookie },
+    body: zernioPdf,
+  });
+  ok("Messenger vía Zernio acepta adjuntar el PDF de una cotización", pdfSend.status === 201, String(pdfSend.status));
+  const sentWithPdf = await fetch(`${BASE}/api/dev/zernio-mock/_sent`).then((r) => r.json());
+  const lastPdf = (sentWithPdf.sent ?? []).at(-1);
+  ok(
+    "sube el PDF a Zernio y envía attachmentUrl con idempotencia",
+      lastPdf?.conversationId === "zconv-001" &&
+      lastPdf?.accountId === ACCOUNT &&
+      lastPdf?.attachmentName === "cotizacion-e2e.pdf" &&
+      lastPdf?.attachmentType === "file" &&
+      lastPdf?.attachmentUrl?.startsWith("https://media.zernio.test/") &&
+      Boolean(lastPdf?.idempotencyKey),
+    JSON.stringify(lastPdf)
+  );
+
   console.log("\n===== COMENTARIOS: TIKTOK VÍA ZERNIO =====");
   const tiktokConn = await api("/api/settings/tiktok", {
     method: "PUT",

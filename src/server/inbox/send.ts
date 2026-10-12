@@ -676,6 +676,7 @@ export async function sendMediaMessage(input: {
     .limit(1);
 
   if (target.messenger) {
+    const preGeneratedId = target.messenger.source === "zernio" ? newId("message") : undefined;
     let mediaPlatformId: string;
     try {
       mediaPlatformId = await callMessengerMedia(target, {
@@ -683,6 +684,7 @@ export async function sendMediaMessage(input: {
         mimeType: input.file.mimeType,
         fileName: input.file.fileName,
         kind,
+        idempotencyKey: preGeneratedId,
       });
     } catch (err) {
       const sendErr = err instanceof SendError
@@ -699,6 +701,7 @@ export async function sendMediaMessage(input: {
         origin: "operator",
         mediaAssetId: assetId,
         media: asset!,
+        preGeneratedId,
       });
       throw sendErr;
     }
@@ -713,6 +716,7 @@ export async function sendMediaMessage(input: {
       origin: "operator",
       mediaAssetId: assetId,
       media: asset!,
+      preGeneratedId,
     });
 
     if (input.caption?.trim()) {
@@ -1074,6 +1078,7 @@ async function callMessengerMedia(
     mimeType: string;
     fileName?: string;
     kind: "image" | "video" | "audio" | "document";
+    idempotencyKey?: string;
   }
 ): Promise<string> {
   const creds = target.messenger!;
@@ -1088,6 +1093,7 @@ async function callMessengerMedia(
       fileName: input.fileName,
       attachmentType,
       humanAgentTag: requireReplyWindow("messenger", target.conversation.lastInboundAt),
+      idempotencyKey: input.idempotencyKey,
     });
     return result.platformMessageId;
   } catch (err) {

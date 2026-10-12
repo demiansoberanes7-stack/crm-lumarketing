@@ -12,6 +12,10 @@ export type ZernioSentMessage = {
   /** Presente solo fuera de la ventana de 24 h. */
   messagingType?: string;
   messageTag?: string;
+  attachmentName?: string;
+  attachmentType?: string;
+  attachmentUrl?: string;
+  attachmentSize?: number;
   /** Llave de idempotencia con la que llegó, si la hubo. */
   idempotencyKey: string | null;
   at: string;

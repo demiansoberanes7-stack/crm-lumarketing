@@ -1,6 +1,10 @@
 import { graphRequest, MetaApiError } from "@/lib/meta/client";
 import type { MessengerCredentials } from "@/server/messenger/credentials";
-import { sendZernioMessage, ZERNIO_BASE } from "@/server/zernio";
+import {
+  sendZernioMessage,
+  zernioFetch,
+  zernioUploadMediaDirect,
+} from "@/server/zernio";
 
 /**
  * 017 — Frontera de salida del canal de Messenger (Constitución II: todo
@@ -95,35 +99,41 @@ export async function sendMessengerMedia(input: {
   fileName?: string;
   attachmentType: "image" | "video" | "audio" | "file";
   humanAgentTag: boolean;
+  idempotencyKey?: string;
 }): Promise<MessengerSendResult> {
   if (input.credentials.source === "zernio") {
     if (!input.threadRef) {
       throw new MetaApiError("La conversación no tiene referencia de hilo en Zernio", { status: 400 });
     }
-    const form = new FormData();
-    form.set("accountId", input.credentials.accountRef ?? "");
-    form.set("message", "");
-    form.set("attachmentType", input.attachmentType);
-    form.set("file", new Blob([new Uint8Array(input.data)], { type: input.mimeType }), input.fileName ?? "archivo");
-    let response: Response;
-    try {
-      response = await fetch(`${ZERNIO_BASE}/inbox/conversations/${encodeURIComponent(input.threadRef)}/messages`, {
+    // Zernio mantiene un upload temporal público y luego recibe attachmentUrl
+    // en JSON. El contrato de mensajes no usa los campos multipart `file` ni
+    // `attachmentType`; ese formato provocaba 400 al enviar PDFs de cotización.
+    const uploaded = await zernioUploadMediaDirect({
+      token: input.credentials.token,
+      data: input.data,
+      fileName: input.fileName ?? "archivo",
+      mimeType: input.mimeType,
+    });
+    const response = (await zernioFetch(
+      `/inbox/conversations/${encodeURIComponent(input.threadRef)}/messages`,
+      {
         method: "POST",
-        headers: { Authorization: `Bearer ${input.credentials.token}` },
-        body: form,
-        signal: AbortSignal.timeout(60_000),
-      });
-    } catch (cause) {
-      throw new MetaApiError("No se pudo contactar la API de Zernio", { status: 0, details: cause });
-    }
-    const text = await response.text();
-    type ZernioMediaResponse = { data?: { messageId?: string }; message?: { id?: string }; id?: string };
-    let payload: ZernioMediaResponse | null = null;
-    try { payload = text ? JSON.parse(text) as ZernioMediaResponse : null; } catch { /* respuesta no JSON */ }
-    if (!response.ok) {
-      throw new MetaApiError(`Zernio rechazó el adjunto (HTTP ${response.status})`, { status: response.status, details: payload ?? text });
-    }
-    const id = payload?.data?.messageId ?? payload?.message?.id ?? payload?.id;
+        token: input.credentials.token,
+        body: {
+          accountId: input.credentials.accountRef,
+          attachmentUrl: uploaded.url,
+          attachmentType: input.attachmentType,
+          ...(input.attachmentType === "file" ? { attachmentName: uploaded.filename } : {}),
+          ...(input.humanAgentTag
+            ? { messagingType: "MESSAGE_TAG", messageTag: "HUMAN_AGENT" }
+            : {}),
+        },
+        ...(input.idempotencyKey
+          ? { headers: { "Idempotency-Key": input.idempotencyKey } }
+          : {}),
+      }
+    )) as { data?: { messageId?: string }; message?: { id?: string }; id?: string };
+    const id = response.data?.messageId ?? response.message?.id ?? response.id;
     if (!id) throw new MetaApiError("Zernio no devolvió el identificador del adjunto", { status: 502 });
     return { platformMessageId: String(id) };
   }

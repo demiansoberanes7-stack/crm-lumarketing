@@ -93,6 +93,19 @@ export async function POST(req: Request, ctx: Ctx) {
   }
   if (zernioTokenIsBad(req.headers.get("authorization"))) return unauthorized();
 
+  // POST /media/upload-direct — direct API-key upload returns a public URL.
+  if (path.join("/") === "media/upload-direct") {
+    const form = await req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) return Response.json({ error: "Missing file" }, { status: 400 });
+    return Response.json({
+      url: `https://media.zernio.test/${encodeURIComponent(file.name)}`,
+      filename: file.name,
+      contentType: file.type,
+      size: file.size,
+    });
+  }
+
   // POST /inbox/conversations/{id}/messages
   if (
     path.length === 4 &&
@@ -100,7 +113,26 @@ export async function POST(req: Request, ctx: Ctx) {
     path[1] === "conversations" &&
     path[3] === "messages"
   ) {
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    let body: Record<string, unknown>;
+    if (req.headers.get("content-type")?.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const attachment = form.get("attachment");
+      body = {
+        accountId: form.get("accountId"),
+        message: form.get("message"),
+        messagingType: form.get("messagingType"),
+        messageTag: form.get("messageTag"),
+        ...(attachment instanceof File
+          ? {
+              attachmentName: attachment.name,
+              attachmentType: attachment.type,
+              attachmentSize: attachment.size,
+            }
+          : {}),
+      };
+    } else {
+      body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    }
     const state = zernioMockState();
     const id = nextZernioMessageId();
     state.sent.push({
@@ -110,6 +142,10 @@ export async function POST(req: Request, ctx: Ctx) {
       message: String(body.message ?? ""),
       ...(body.messagingType ? { messagingType: String(body.messagingType) } : {}),
       ...(body.messageTag ? { messageTag: String(body.messageTag) } : {}),
+      ...(body.attachmentName ? { attachmentName: String(body.attachmentName) } : {}),
+      ...(body.attachmentType ? { attachmentType: String(body.attachmentType) } : {}),
+      ...(body.attachmentUrl ? { attachmentUrl: String(body.attachmentUrl) } : {}),
+      ...(typeof body.attachmentSize === "number" ? { attachmentSize: body.attachmentSize } : {}),
       idempotencyKey: req.headers.get("idempotency-key"),
       at: new Date().toISOString(),
     });
