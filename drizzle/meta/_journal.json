@@ -344,6 +344,13 @@
       "when": 1791600000020,
       "tag": "0048_campaign_insight",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791600000021,
+      "tag": "0049_social_comment",
+      "breakpoints": true
     }
   ]
 }

@@ -19,5 +19,10 @@ export async function register(): Promise<void> {
     // sincroniza orgs con credenciales guardadas.
     const { startMetaAdsWorker } = await import("./server/ads/poller");
     await startMetaAdsWorker();
+    // Comentarios de publicaciones (canal `comments`): el poller checa su
+    // propio canal en cada barrido, así que registrarlo es inofensivo en
+    // instancias sin el módulo encendido.
+    const { startCommentsWorker } = await import("./server/comments/poller");
+    await startCommentsWorker();
   }
 }

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { whatsappProvider } from "@/server/whatsapp/provider";
 import { getWhatsappZernio, zernioWhatsappEnabled, type WhatsappZernioCredentials } from "@/server/whatsapp/zernio-credentials";
 import { sendWhatsappZernio } from "@/server/whatsapp/zernio-send";
@@ -94,6 +94,13 @@ type SendTarget = {
   tiktok?: TikTokCredentials;
   /** Presente solo en conversaciones de reseñas de Google Business. */
   googleBusiness?: { clientId: string; clientSecret: string; refreshToken: string; reviewName: string };
+  /** Presente solo en conversaciones de comentarios de publicaciones. */
+  comments?: {
+    platform: "instagram" | "messenger";
+    /** Último comentario del autor sobre el post: a ese se responde. */
+    replyCommentId: string;
+    token: string;
+  };
   waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
   zernio?: WhatsappZernioCredentials;
 };
@@ -278,6 +285,79 @@ async function prepareSend(
     };
   }
 
+  // Comentarios de publicaciones: la "respuesta" es un reply PÚBLICO al
+  // comentario (igc/fbc:post en channelThreadRef). Transporte propio, sin
+  // ventana de 24 h, sin media, sin recibos.
+  if (row.conversation.channel === "comments") {
+    if (!isChannelEnabled("comments")) {
+      throw new SendError(
+        "not_connected",
+        "El canal de Comentarios está desactivado en esta instancia"
+      );
+    }
+    // La identidad del contacto es `{igc|fbc}:{post}:{author}`: de ahí se
+    // obtiene el autor y el post para localizar el último comentario a responder.
+    const identityParts = row.contact.waIdentity.split(":");
+    const prefix = identityParts[0];
+    const postExternalId = identityParts[1];
+    const authorExternalId = identityParts[2];
+    const platform = prefix === "igc" ? "instagram" : "messenger";
+    if (!postExternalId || !authorExternalId) {
+      throw new SendError(
+        "meta_error",
+        "Esta conversación no tiene un comentario asociado para responder"
+      );
+    }
+    const latestRows = await getDb()
+      .select({ externalCommentId: schema.socialComment.externalCommentId })
+      .from(schema.socialComment)
+      .where(
+        and(
+          eq(schema.socialComment.organizationId, organizationId),
+          eq(schema.socialComment.platform, platform),
+          eq(schema.socialComment.postExternalId, postExternalId),
+          eq(schema.socialComment.authorExternalId, authorExternalId)
+        )
+      )
+      .orderBy(desc(schema.socialComment.commentTime))
+      .limit(1);
+    const replyCommentId = latestRows[0]?.externalCommentId;
+    if (!replyCommentId) {
+      throw new SendError(
+        "meta_error",
+        "No se encontró el comentario al que responder en esta conversación"
+      );
+    }
+    // Solo las cuentas conectadas vía Meta pueden publicar replies (Zernio no).
+    let token: string;
+    if (platform === "instagram") {
+      const igCreds = await getInstagramCredentialsByOrg(organizationId);
+      if (!igCreds || igCreds.source !== "meta" || igCreds.status !== "connected") {
+        throw new SendError(
+          "not_connected",
+          "No hay cuenta de Instagram conectada vía Meta para responder comentarios"
+        );
+      }
+      token = igCreds.token;
+    } else {
+      const msCreds = await getMessengerCredentialsByOrg(organizationId);
+      if (!msCreds || msCreds.source !== "meta" || msCreds.status !== "connected") {
+        throw new SendError(
+          "not_connected",
+          "No hay página de Facebook conectada vía Meta para responder comentarios"
+        );
+      }
+      token = msCreds.token;
+    }
+    return {
+      conversation: row.conversation,
+      credentials: null,
+      destinatario: { to: replyCommentId },
+      recipient: replyCommentId,
+      comments: { platform, replyCommentId, token },
+    };
+  }
+
   // El nucleo no decide la politica: la consulta. En WhatsApp fuera de ventana
   // no hay salida; Instagram y Messenger etiquetan y siguen; otro canal podria
   // no tener ventana en absoluto.
@@ -427,6 +507,8 @@ export async function sendText(input: {
 
   const waMessageId = target.googleBusiness
     ? await callGoogleBusinessReply(target, input.text)
+    : target.comments
+    ? await callCommentsReply(target, input.text)
     : target.zernio
     ? await callWhatsappZernio(target, { message: input.text }, preGenId!)
     : target.waha
@@ -1047,4 +1129,70 @@ async function callGoogleBusinessReply(target: SendTarget, text: string): Promis
   // una reseña, así que el reviewName se repetiría y el UNIQUE de
   // wa_message_id reventaría DESPUÉS de publicar. Un id único por envío.
   return newId("message");
+}
+
+/**
+ * Reply a un comentario de publicación (Instagram / página de Facebook): el
+ * texto del operador se publica como respuesta PÚBLICA del negocio sobre el
+ * comentario (igc/fbc). Sin ventana de 24 h, sin media, sin recibos. El "id
+ * de mensaje" devuelto es el id del reply en la plataforma.
+ */
+async function callCommentsReply(target: SendTarget, text: string): Promise<string> {
+  const { platform, replyCommentId, token } = target.comments!;
+
+  const caps = capabilitiesFor("comments");
+  if (!textFits("comments", text)) {
+    throw new SendError(
+      "meta_error",
+      `${caps.label} no acepta replies de más de ${caps.maxTextBytes} bytes: acorta el texto`
+    );
+  }
+
+  try {
+    // Instagram y la página de Facebook publican replies igual: POST al
+    // comentario con { message }. El token va en el header (graphRequest).
+    const res = await graphRequest<{ id?: string }>(`${replyCommentId}/replies`, {
+      method: "POST",
+      token,
+      body: { message: text },
+    });
+
+    // Refleja el reply en la tabla local (el poller no lo pisa: el próximo sync
+    // no reingerirá el comentario original porque externalCommentId ya existe).
+    await getDb()
+      .update(schema.socialComment)
+      .set({ replyText: text, repliedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.socialComment.organizationId, target.conversation.organizationId),
+          eq(schema.socialComment.externalCommentId, replyCommentId)
+        )
+      );
+
+    return res.id ?? newId("message");
+  } catch (err) {
+    if (err instanceof MetaApiError) {
+      if (err.isAuthError) {
+        if (platform === "instagram") {
+          await markInstagramReconnectRequired(target.conversation.organizationId);
+        } else {
+          await markMessengerReconnectRequired(target.conversation.organizationId);
+        }
+        throw new SendError(
+          "reconnect_required",
+          platform === "instagram"
+            ? "El token de Instagram expiró: reconecta la cuenta"
+            : "El token de la página expiró: reconecta Messenger"
+        );
+      }
+      if (err.status === 0 || err.status >= 500) {
+        throw new SendError(
+          "meta_unavailable",
+          "La plataforma no está disponible en este momento; intenta de nuevo"
+        );
+      }
+      throw new SendError("meta_error", err.message);
+    }
+    throw err;
+  }
 }

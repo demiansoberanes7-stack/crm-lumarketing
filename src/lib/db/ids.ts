@@ -77,6 +77,8 @@ const prefixes = {
   googleBusinessReview: "gbr",
   // Insights de campañas de anuncios (Meta Ads)
   campaignInsight: "cmi",
+  // Comentarios públicos de publicaciones (canal comments)
+  socialComment: "soc",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

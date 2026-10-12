@@ -2255,3 +2255,44 @@ export const campaignInsight = pgTable(
     index("campaign_insight_org_date_idx").on(t.organizationId, t.dateStart),
   ]
 );
+
+/**
+ * Comentarios públicos de publicaciones (Instagram / página de Facebook),
+ * sincronizados por el poller de `comments`. Cada comentario es un mensaje
+ * entrante en la conversación del autor sobre ese post (hebra por autor/post).
+ * `externalCommentId` es la llave de idempotencia del poller (mismo criterio
+ * que `reviewName` en Google Business).
+ */
+export const socialComment = pgTable(
+  "social_comment",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** "instagram" | "messenger". */
+    platform: varchar("platform", { length: 20 }).notNull(),
+    /** Id del comentario en la plataforma. */
+    externalCommentId: varchar("external_comment_id", { length: 255 }).notNull(),
+    /** Id de la publicación (media de IG / post de la página). */
+    postExternalId: varchar("post_external_id", { length: 255 }).notNull(),
+    postCaption: varchar("post_caption", { length: 500 }),
+    /** Id del autor del comentario (ig userId / PSID de la página). */
+    authorExternalId: varchar("author_external_id", { length: 255 }).notNull(),
+    authorName: varchar("author_name", { length: 255 }),
+    body: text("body").notNull(),
+    /** Comentario padre cuando es una respuesta dentro de la misma hebra. */
+    parentExternalId: varchar("parent_external_id", { length: 255 }),
+    commentTime: timestamp("comment_time").notNull(),
+    /** Reply público del negocio (null = sin responder). */
+    replyText: text("reply_text"),
+    repliedAt: timestamp("replied_at"),
+    raw: jsonb("raw"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("social_comment_org_ext_uq").on(t.organizationId, t.externalCommentId),
+    index("social_comment_org_platform_post_idx").on(t.organizationId, t.platform, t.postExternalId),
+  ]
+);

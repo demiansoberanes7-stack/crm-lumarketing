@@ -19,7 +19,14 @@ export type Channel =
    * y la respuesta del operador se publica como reply público del negocio.
    * Detrás de la bandera GOOGLE_BUSINESS.
    */
-  | "google_business";
+  | "google_business"
+  /**
+   * Comentarios públicos de publicaciones (Instagram / página de Facebook).
+   * Cada autor sobre un post forma su propia hebra; la respuesta del operador
+   * se publica como reply al comentario. Se ingesta vía poller (API oficial),
+   * no por webhook. Detrás de la bandera CHANNELS (canal `comments`).
+   */
+  | "comments";
 
 /**
  * Orden en que los canales se presentan al operador. WhatsApp primero: es el
@@ -31,6 +38,7 @@ export const CHANNEL_ORDER: readonly Channel[] = [
   "messenger",
   "tiktok",
   "google_business",
+  "comments",
 ];
 
 /** Nombre visible del canal, para la interfaz y para los errores del operador. */
@@ -42,6 +50,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   messenger: "Messenger",
   tiktok: "TikTok",
   google_business: "Google Business",
+  comments: "Comentarios",
 };
 
 export function isChannel(value: string): value is Channel {

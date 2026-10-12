@@ -90,6 +90,17 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     outboundMedia: false,
     deliveryReceipts: false,
   },
+  // Comentarios de publicaciones: la respuesta es un reply público al
+  // comentario — no un DM—, así que tampoco hay ventana de 24 h ni adjuntos.
+  // Instagram corta la respuesta a un comentario en ~2000 caracteres.
+  comments: {
+    label: CHANNEL_LABEL.comments,
+    windowMs: null,
+    outsideWindow: "none",
+    maxTextBytes: 2000,
+    outboundMedia: false,
+    deliveryReceipts: false,
+  },
 };
 
 export function capabilitiesFor(channel: Channel): ChannelCapabilities {
