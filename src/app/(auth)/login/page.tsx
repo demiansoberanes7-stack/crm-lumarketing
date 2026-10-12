@@ -4,11 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "@/lib/auth/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
+/**
+ * Inicio de sesión de Zorro Tech.
+ *
+ * Solo cambia la CAPA VISUAL (tarjeta y campos de la plantilla oficial). La
+ * autenticación es la misma de siempre: `signIn.email` de Better Auth, con su
+ * manejo de errores (429 = rate limit) y el redirect a /inbox al entrar. El
+ * enlace de registro conserva su ruta original (/register).
+ */
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -35,46 +39,46 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="shadow-md">
-      <CardHeader>
-        <CardTitle>Iniciar sesión</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Correo</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Entrando…" : "Entrar"}
-          </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            ¿Primera vez aquí?{" "}
-            <Link href="/register" className="text-primary hover:underline">
-              Crear la cuenta inicial
-            </Link>
+    <div className="zx-card">
+      <h1 className="zx-title">Iniciar sesión</h1>
+      <form onSubmit={onSubmit} className="zx-form">
+        <div className="zx-field">
+          <label htmlFor="email">Correo</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+        <div className="zx-field">
+          <label htmlFor="password">Contraseña</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <button className="zx-submit" type="submit" disabled={loading}>
+          {loading ? "Entrando…" : "Entrar"}
+        </button>
+        {error && (
+          <p className="zx-error" role="alert">
+            {error}
           </p>
-        </form>
-      </CardContent>
-    </Card>
+        )}
+      </form>
+      <p className="zx-signup">
+        ¿Primera vez aquí?{" "}
+        <Link href="/register">Crear la cuenta inicial</Link>
+      </p>
+    </div>
   );
 }

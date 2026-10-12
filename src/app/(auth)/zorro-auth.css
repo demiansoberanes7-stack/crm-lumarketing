@@ -1,0 +1,395 @@
+/*
+ * Zorro Tech — pantalla de inicio de sesión.
+ *
+ * Puerto casi literal de la plantilla oficial (zorro-tech-login-responsive),
+ * con las clases renombradas a `zx-` para no chocar con las utilidades de
+ * Tailwind ni con otras pantallas del CRM. Solo la usa el layout (auth).
+ *
+ * Fidelidad: colores exactos, puntos de adaptación (1100 / 780 / 420 y
+ * altura corta) y el zorro sentado sobre el borde superior de la tarjeta.
+ */
+
+.zx-page {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.92fr) minmax(550px, 1.08fr);
+  align-items: center;
+  gap: clamp(38px, 5vw, 84px);
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: clamp(42px, 5.4vw, 86px) clamp(52px, 7.8vw, 125px);
+  overflow: hidden;
+  border-radius: 0 0 34px 34px;
+  background-color: #fffdfc;
+  background-image:
+    linear-gradient(rgba(219, 220, 225, 0.48) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(219, 220, 225, 0.48) 1px, transparent 1px),
+    radial-gradient(ellipse at 83% 28%, rgba(255, 218, 194, 0.36), transparent 45%),
+    radial-gradient(ellipse at 4% 91%, rgba(255, 225, 207, 0.28), transparent 38%);
+  background-size:
+    81px 81px,
+    81px 81px,
+    auto,
+    auto;
+  color: #101820;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+/* ── Panel de marca ── */
+.zx-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+.zx-brand-inner {
+  width: 100%;
+}
+.zx-name {
+  display: block;
+  color: #101820;
+  font-size: clamp(43px, 4.1vw, 64px);
+  font-weight: 850;
+  line-height: 1.08;
+  letter-spacing: -0.065em;
+  white-space: nowrap;
+}
+.zx-name .zx-tech {
+  color: #f56600;
+}
+.zx-tagline {
+  margin: 22px 0 0;
+  color: #9ca3b2;
+  font-size: clamp(17px, 1.55vw, 23px);
+  line-height: 1.4;
+  letter-spacing: -0.035em;
+}
+.zx-accent {
+  display: block;
+  width: 74px;
+  height: 5px;
+  margin-top: 22px;
+  border-radius: 999px;
+  background: #f56600;
+}
+
+/* ── Panel del formulario ── */
+.zx-form-panel {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  max-width: 680px;
+  justify-self: end;
+  margin-top: 76px;
+}
+.zx-card {
+  position: relative;
+  z-index: 1;
+  padding: 28px 36px 32px;
+  border: 1.5px solid rgba(212, 216, 225, 0.98);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.91);
+  box-shadow: 0 7px 24px rgba(34, 32, 30, 0.035);
+  backdrop-filter: blur(8px);
+}
+.zx-title {
+  margin: 0 0 35px;
+  color: #111;
+  font-size: clamp(23px, 1.8vw, 27px);
+  line-height: 1.25;
+  font-weight: 780;
+  letter-spacing: -0.055em;
+}
+.zx-form {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+.zx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.zx-field label {
+  color: #151515;
+  font-size: clamp(17px, 1.5vw, 23px);
+  line-height: 1.25;
+  font-weight: 450;
+}
+.zx-field input {
+  width: 100%;
+  min-width: 0;
+  height: 59px;
+  padding: 0 16px;
+  border: 1.5px solid #d5d9e2;
+  border-radius: 15px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.92);
+  color: #101820;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.035);
+  transition: border-color 0.18s, box-shadow 0.18s;
+  font: inherit;
+  font-size: 16px;
+}
+.zx-field input:focus {
+  border-color: #f56600;
+  box-shadow: 0 0 0 4px rgba(245, 102, 0, 0.12);
+}
+.zx-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 58px;
+  margin-top: -4px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f76b00, #f05c00);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 760;
+  cursor: pointer;
+  transition: background 0.18s, transform 0.18s, opacity 0.18s;
+}
+.zx-submit:hover {
+  background: #db5700;
+}
+.zx-submit:active {
+  transform: translateY(1px);
+}
+.zx-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.zx-submit:focus-visible,
+.zx-page a:focus-visible {
+  outline: 3px solid rgba(245, 102, 0, 0.35);
+  outline-offset: 3px;
+}
+.zx-signup {
+  margin: 25px 0 0;
+  color: #9ca3b2;
+  text-align: center;
+  font-size: clamp(15px, 1.25vw, 19px);
+  line-height: 1.6;
+}
+.zx-signup a {
+  color: #f56600;
+  text-decoration: none;
+}
+.zx-signup a:hover {
+  text-decoration: underline;
+}
+.zx-error {
+  margin: 0;
+  color: #9b3c12;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── El zorro, sentado sobre el borde superior de la tarjeta ── */
+.zx-fox {
+  position: absolute;
+  z-index: 2;
+  top: -191px;
+  right: -7%;
+  display: block;
+  width: clamp(205px, 19vw, 285px);
+  height: auto;
+  filter: drop-shadow(0 5px 5px rgba(71, 40, 20, 0.08));
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Tablet ── */
+@media (max-width: 1100px) {
+  .zx-page {
+    grid-template-columns: minmax(290px, 0.85fr) minmax(465px, 1.15fr);
+    gap: 36px;
+    padding-right: 5vw;
+    padding-left: 5vw;
+  }
+  .zx-name {
+    font-size: clamp(38px, 4vw, 51px);
+  }
+  .zx-card {
+    padding: 27px 30px 30px;
+  }
+  .zx-fox {
+    right: -3%;
+    width: 220px;
+    top: -154px;
+  }
+}
+
+/* ── Móvil: la marca gana presencia y el formulario ocupa casi todo el ancho ── */
+@media (max-width: 780px) {
+  .zx-page {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    justify-items: center;
+    gap: 0;
+    min-height: 100svh;
+    padding: 42px 24px 52px;
+    border-radius: 0;
+    background-size: 48px 48px, 48px 48px, auto, auto;
+  }
+  .zx-brand {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    padding: 0;
+    margin: 0 0 40px;
+    align-self: stretch;
+  }
+  .zx-name {
+    font-size: clamp(40px, 8.2vw, 60px);
+    letter-spacing: -0.06em;
+  }
+  .zx-tagline {
+    max-width: 100%;
+    margin-top: 16px;
+    font-size: clamp(18px, 3.4vw, 23px);
+    line-height: 1.35;
+    letter-spacing: -0.025em;
+  }
+  .zx-accent {
+    width: 74px;
+    height: 5px;
+    margin-top: 18px;
+  }
+  .zx-form-panel {
+    width: 100%;
+    max-width: 570px;
+    justify-self: center;
+    margin: 100px 0 0;
+  }
+  .zx-fox {
+    width: 185px;
+    top: -129px;
+    right: -4px;
+  }
+  .zx-card {
+    padding: 26px 28px 29px;
+    border-radius: 18px;
+  }
+  .zx-title {
+    margin-bottom: 28px;
+    font-size: 23px;
+  }
+  .zx-form {
+    gap: 24px;
+  }
+  .zx-field label {
+    font-size: 18px;
+  }
+  .zx-field input {
+    height: 54px;
+    border-radius: 13px;
+  }
+  .zx-submit {
+    min-height: 54px;
+    font-size: 18px;
+  }
+  .zx-signup {
+    margin-top: 21px;
+    font-size: 15px;
+  }
+}
+
+/* ── Móvil estrecho ── */
+@media (max-width: 420px) {
+  .zx-page {
+    padding: 30px 16px 34px;
+  }
+  .zx-brand {
+    margin-bottom: 30px;
+  }
+  .zx-name {
+    font-size: clamp(33px, 10vw, 42px);
+    letter-spacing: -0.06em;
+  }
+  .zx-tagline {
+    margin-top: 14px;
+    font-size: clamp(16px, 4.6vw, 19px);
+    line-height: 1.35;
+  }
+  .zx-form-panel {
+    margin-top: 88px;
+  }
+  .zx-fox {
+    width: 157px;
+    top: -105px;
+    right: -3px;
+  }
+  .zx-card {
+    padding: 23px 19px 24px;
+  }
+  .zx-title {
+    margin-bottom: 23px;
+    font-size: 21px;
+  }
+  .zx-form {
+    gap: 21px;
+  }
+  .zx-field label {
+    font-size: 16px;
+  }
+  .zx-field input {
+    height: 49px;
+  }
+  .zx-submit {
+    min-height: 50px;
+    font-size: 17px;
+  }
+  .zx-signup {
+    font-size: 13px;
+  }
+}
+
+/* ── Escritorio de poca altura ── */
+@media (max-height: 720px) and (min-width: 781px) {
+  .zx-page {
+    padding-top: 35px;
+    padding-bottom: 35px;
+  }
+  .zx-form-panel {
+    margin-top: 50px;
+  }
+  .zx-fox {
+    top: -143px;
+    width: 220px;
+  }
+  .zx-card {
+    padding-top: 22px;
+    padding-bottom: 23px;
+  }
+  .zx-title {
+    margin-bottom: 22px;
+  }
+  .zx-form {
+    gap: 20px;
+  }
+  .zx-field input {
+    height: 51px;
+  }
+  .zx-submit {
+    min-height: 50px;
+  }
+  .zx-signup {
+    margin-top: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zx-page *,
+  .zx-page *::before,
+  .zx-page *::after {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

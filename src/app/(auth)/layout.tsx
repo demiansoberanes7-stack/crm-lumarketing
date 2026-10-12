@@ -1,50 +1,44 @@
-import { isLumarkName } from "@/lib/brand";
-import { DEFAULT_BRANDING } from "@/lib/branding";
-import { getBranding } from "@/server/branding";
-import { BrandLogo } from "@/components/brand-mark";
+import type { ReactNode } from "react";
+import Image from "next/image";
+import "./zorro-auth.css";
 
 /**
- * Pantalla de entrada con la escenografía del hero de vocerocrm.com: papel
- * frío, rejilla difuminada y dos resplandores (azul y cian) detrás del
- * formulario. Con la marca Vocero se remata con el titular de la landing; una
- * instancia white-label ve su nombre y una descripción neutra.
+ * Pantalla de acceso de Zorro Tech.
+ *
+ * Rediseño visual (dos paneles: marca a la izquierda, formulario a la derecha,
+ * zorro sentado sobre el borde superior de la tarjeta). La autenticación real
+ * vive en cada página (login/register) y NO cambia aquí: este layout solo
+ * aporta la escenografía y el contorno responsivo.
  */
-export default async function AuthLayout({
+export default function AuthLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
-  const branding = await getBranding().catch(() => DEFAULT_BRANDING);
-  const vocero = isLumarkName(branding.name);
+}: Readonly<{ children: ReactNode }>) {
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-subtle p-4">
-      <div className="brand-grid absolute inset-0" aria-hidden />
-      <div className="brand-glow brand-glow-a" aria-hidden />
-      <div className="brand-glow brand-glow-b" aria-hidden />
-
-      <div className="relative w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-4 text-center">
-          <BrandLogo branding={branding} size="lg" />
-          {vocero ? (
-            <h1 className="text-[24px] font-bold leading-tight tracking-[-0.03em]">
-              El CRM{" "}
-              <span
-                className="bg-clip-text font-serif text-[1.18em] font-normal italic tracking-[-0.01em] text-transparent"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(92deg, var(--accent) 12%, #00b4f0 88%)",
-                }}
-              >
-                que es tuyo.
-              </span>
-            </h1>
-          ) : (
-            <div>
-              <h1 className="sr-only">{branding.name}</h1>
-              <p className="text-sm text-text-3">CRM de WhatsApp con agente de IA</p>
-            </div>
-          )}
+    <main className="zx-page">
+      <section className="zx-brand" aria-label="Zorro Tech">
+        <div className="zx-brand-inner">
+          <span className="zx-name" aria-label="Zorro Tech">
+            ZORRO <span className="zx-tech">TECH</span>
+          </span>
+          <p className="zx-tagline">CRM multicanal de venta</p>
+          <span className="zx-accent" aria-hidden="true" />
         </div>
+      </section>
+
+      <section className="zx-form-panel" aria-label="Acceso a tu cuenta">
+        {/* Sentado sobre el borde superior de la tarjeta (z-index 2 sobre la
+            tarjeta z-index 1). Sin interacción: es decoración. El tamaño real
+            lo manda el CSS (.zx-fox); width/height solo fijan la proporción. */}
+        <Image
+          className="zx-fox"
+          src="/zorro-fox.png"
+          alt="Zorro naranja con lentes, sudadera negra y pantalón azul, sentado"
+          width={640}
+          height={471}
+          priority
+        />
         {children}
-      </div>
+      </section>
     </main>
   );
 }
