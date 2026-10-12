@@ -26,6 +26,7 @@ import { GanttSection } from "./gantt-section";
 import { FunnelSection } from "./funnel-section";
 import { HealthSection } from "./health-section";
 import { AdsMetricsSection } from "./ads-section";
+import { OriginLegend, OriginGroup } from "./metric-badge";
 
 /** Sección colapsable por departamento. */
 function Department({ id, title, icon, defaultOpen = true, children }: {
@@ -195,6 +196,7 @@ export function DashboardClient() {
         <p className="text-xs text-muted-foreground">
           {data.period}: {data.range.from.slice(0, 10)} a {data.range.to.slice(0, 10)} (UTC). Importes en MXN.
         </p>
+        <OriginLegend />
 
         {/* ── DIRECCIÓN / GENERAL ─────────────── */}
         <Department id="dir" title="Dirección · General" icon={<Building2 className="h-4 w-4" />}>
@@ -230,9 +232,15 @@ export function DashboardClient() {
 
         {/* ── MARKETING / PUBLICIDAD ───────────── */}
         <Department id="mkt" title="Marketing · Publicidad" icon={<LineChart className="h-4 w-4" />} defaultOpen={false}>
-          <AdsMetricsSection ads={data.ads} />
-          <ContactsSection data={data.contacts} />
-          <MarketingSection />
+          <OriginGroup origin="external" label="Datos de la plataforma (GA4)">
+            <MarketingSection />
+          </OriginGroup>
+          <OriginGroup origin="mixed" label="Atribución ads → CRM">
+            <AdsMetricsSection ads={data.ads} />
+          </OriginGroup>
+          <OriginGroup origin="system" label="Contactos del CRM">
+            <ContactsSection data={data.contacts} />
+          </OriginGroup>
         </Department>
 
         {/* ── OPERACIONES / PROYECTOS ──────────── */}

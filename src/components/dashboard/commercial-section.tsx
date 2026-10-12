@@ -8,6 +8,7 @@ import {
 import { KpiCard, formatCurrency, formatNumber, formatPercent } from "./kpi-card";
 import { FunnelChart, HorizontalBarChart } from "./charts";
 import { CampaignExplorer } from "./campaign-explorer";
+import { MetricBadge, type MetricOrigin } from "./metric-badge";
 
 type MetricValue = { value: number | null; availability: "available" | "no_data" | "not_applicable" | "pending"; formatted: string | null };
 
@@ -42,10 +43,11 @@ function MetricCard({ title, metric, formatter, icon }: { title: string; metric:
   return <KpiCard title={title} value={value} subtitle={subtitle} icon={icon} className={unavailable ? "opacity-70" : undefined} />;
 }
 
-function Subhead({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function Subhead({ icon, origin, children }: { icon: React.ReactNode; origin?: MetricOrigin; children: React.ReactNode }) {
   return (
     <h3 className="mb-3 mt-6 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground first:mt-0">
       {icon} {children}
+      {origin && <MetricBadge origin={origin} className="ml-1 normal-case tracking-normal" />}
     </h3>
   );
 }
@@ -98,7 +100,7 @@ export function CommercialSection({ period }: { period: string }) {
         {data && !loading && (
           <div className="space-y-2">
           {/* Embudo */}
-          <Subhead icon={<Target className="h-3.5 w-3.5" />}>Embudo de ventas</Subhead>
+          <Subhead icon={<Target className="h-3.5 w-3.5" />} origin="system">Embudo de ventas</Subhead>
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="chart-card rounded-xl border p-4">
               <h4 className="mb-4 text-sm font-semibold">Embudo del periodo</h4>
@@ -123,11 +125,11 @@ export function CommercialSection({ period }: { period: string }) {
           </div>
 
           {/* Publicidad — métricas reales de Meta Ads por campaña */}
-          <Subhead icon={<Target className="h-3.5 w-3.5" />}>Publicidad</Subhead>
+          <Subhead icon={<Target className="h-3.5 w-3.5" />} origin="external">Publicidad</Subhead>
           <CampaignExplorer period={period} />
 
           {/* Adquisición */}
-          <Subhead icon={<Compass className="h-3.5 w-3.5" />}>Adquisición</Subhead>
+          <Subhead icon={<Compass className="h-3.5 w-3.5" />} origin="system">Adquisición</Subhead>
           <div className="chart-card rounded-xl border p-4">
             <h4 className="mb-4 text-sm font-semibold">Primer toque por canal</h4>
             {data.adquisicion.hasData ? (
@@ -138,7 +140,7 @@ export function CommercialSection({ period }: { period: string }) {
           </div>
 
           {/* Rentabilidad */}
-          <Subhead icon={<Percent className="h-3.5 w-3.5" />}>Rentabilidad de prestación</Subhead>
+          <Subhead icon={<Percent className="h-3.5 w-3.5" />} origin="system">Rentabilidad de prestación</Subhead>
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard title="Contribución" metric={data.rentabilidad.contribution} formatter={formatCurrency} />
             <MetricCard title="Margen de contribución" metric={data.rentabilidad.contributionMargin} formatter={formatPercent} />
@@ -152,7 +154,7 @@ export function CommercialSection({ period }: { period: string }) {
           )}
 
           {/* Experimentos A/B — comparación de campañas */}
-          <Subhead icon={<Percent className="h-3.5 w-3.5" />}>Experimentos A/B</Subhead>
+          <Subhead icon={<Percent className="h-3.5 w-3.5" />} origin="external">Experimentos A/B</Subhead>
           <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
             Compara tus campañas como un experimento A/B en el explorador de
             <span className="font-medium text-foreground"> Publicidad</span>: selecciona 2 o más campañas y revisa
@@ -160,7 +162,7 @@ export function CommercialSection({ period }: { period: string }) {
           </div>
 
           {/* Operaciones + Calidad */}
-          <Subhead icon={<Headphones className="h-3.5 w-3.5" />}>Operaciones y calidad de datos</Subhead>
+          <Subhead icon={<Headphones className="h-3.5 w-3.5" />} origin="system">Operaciones y calidad de datos</Subhead>
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard title="Actividades registradas" metric={data.operaciones.activitiesLogged} formatter={formatNumber} />
             <MetricCard title="Contactos con canal" metric={data.calidad.contactsWithChannel} formatter={formatPercent} icon={<ShieldCheck className="h-4 w-4" />} />
