@@ -81,6 +81,7 @@ export function ConversationList({
   const channelParam = useSearchParams().get("channel");
   const [inbox, setInbox] = useState<Channel | "all">(channels.includes(channelParam as Channel) ? channelParam as Channel : "all");
   const inputRef = useRef<HTMLInputElement>(null);
+  const [emailUnread, setEmailUnread] = useState(0);
 
   /**
    * Rescate de lo tecleado ANTES de que hidratara el JS. La caja se pinta en
@@ -92,6 +93,28 @@ export function ConversationList({
   useEffect(() => {
     const typed = inputRef.current?.value ?? "";
     if (typed) setQuery(typed);
+  }, []);
+
+  /**
+   * Distintivo de correos sin leer sobre el ícono Mail. Se consulta al montar
+   * y cada minuto (el buzón sincroniza en segundo plano): no hay evento SSE de
+   * email, así que el refresco es por sondeo. Si la llamada falla (sin sesión,
+   * red caída) el contador simplemente no aparece — jamás tumba la bandeja.
+   */
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      const res = await fetch("/api/email/stats").catch(() => null);
+      if (!alive || !res?.ok) return;
+      const data = (await res.json().catch(() => null)) as { unread?: number } | null;
+      if (data && typeof data.unread === "number") setEmailUnread(data.unread);
+    }
+    void load();
+    const id = setInterval(() => void load(), 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
 
   const loading = conversationsProp === null;
@@ -140,7 +163,16 @@ export function ConversationList({
           <span className="font-mono text-[12px] text-text-3">{conversations.length}</span>
           {multiChannel && (
             <div className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto">
-              <Link href="/inbox?channel=email" title="Ver buzón de correo" aria-label="Ver buzón de correo" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border text-text-3 hover:bg-accent"><Mail size={14} /></Link>
+              <Link href="/inbox?channel=email" title={emailUnread > 0 ? `Ver buzón de correo · ${emailUnread} sin leer` : "Ver buzón de correo"} aria-label="Ver buzón de correo" className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border text-text-3 hover:bg-accent">
+                <span className="relative">
+                  <Mail size={14} />
+                  {emailUnread > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full border-[1.5px] border-background bg-brand px-0.5 text-[9px] font-bold leading-none text-brand-fg">
+                      {emailUnread > 99 ? "99+" : emailUnread}
+                    </span>
+                  )}
+                </span>
+              </Link>
               {channels.map((ch) => {
                 const on = inbox === ch;
                 return (
