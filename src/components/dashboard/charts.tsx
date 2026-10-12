@@ -187,9 +187,10 @@ export function LineChartCard({ data, xKey, yKeys, height = 250 }: ChartProps & 
   );
 }
 
-/** Pie / donut with gradient sectors and a compact legend instead of clipped radial labels. */
+/** Pie / donut with gradient sectors and a compact legend showing % + value per sector. */
 export function PieChartCard({ data, nameKey, valueKey, height = 250, inner = false }: ChartProps & { nameKey: string; valueKey: string; inner?: boolean }) {
   const id = useChartId();
+  const total = data.reduce((sum, entry) => sum + (Number(entry[valueKey]) || 0), 0);
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
@@ -211,7 +212,28 @@ export function PieChartCard({ data, nameKey, valueKey, height = 250, inner = fa
           ))}
         </Pie>
         <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "var(--text)", fontWeight: 600 }} />
-        <Legend verticalAlign="bottom" height={48} wrapperStyle={{ color: "var(--text-2)", fontSize: 10 }} />
+        <Legend
+          verticalAlign="bottom"
+          height={48}
+          content={() => (
+            <ul className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-2">
+              {data.map((entry, index) => {
+                const value = Number(entry[valueKey]) || 0;
+                const pct = total > 0 ? (value / total) * 100 : 0;
+                return (
+                  <li key={index} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: `var(--chart-${(index % SERIES_COUNT) + 1})` }}
+                    />
+                    <span className="truncate">{String(entry[nameKey])}</span>
+                    <span className="font-semibold tabular-nums text-foreground">{pct.toFixed(0)}%</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        />
       </PieChart>
     </ResponsiveContainer>
   );
@@ -295,13 +317,15 @@ export function StackedBarChart({ data, xKey, yKeys, height = 250 }: ChartProps 
   );
 }
 
-/** Funnel chart (horizontal neon bars). */
+/** Funnel chart (horizontal neon bars) with per-stage conversion %. */
 export function FunnelChart({ data, height = 200 }: { data: { stage: string; value: number }[]; height?: number }) {
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
     <div className="space-y-2" style={{ minHeight: height }}>
       {data.map((d, index) => {
         const color = (index % SERIES_COUNT) + 1;
+        const prev = index > 0 ? data[index - 1]!.value : null;
+        const conv = prev != null && prev > 0 ? (d.value / prev) * 100 : null;
         return (
           <div key={d.stage} className="flex min-w-0 items-center gap-2 sm:gap-3">
             <span title={d.stage} className="w-20 shrink-0 truncate text-right text-xs text-muted-foreground sm:w-24">{d.stage}</span>
@@ -316,6 +340,9 @@ export function FunnelChart({ data, height = 200 }: { data: { stage: string; val
               />
             </div>
             <span className="w-8 shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground">{d.value}</span>
+            <span className="w-10 shrink-0 text-right text-[10px] font-semibold tabular-nums text-foreground">
+              {conv != null ? `${conv.toFixed(0)}%` : "—"}
+            </span>
           </div>
         );
       })}

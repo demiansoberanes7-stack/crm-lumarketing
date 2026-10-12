@@ -143,7 +143,8 @@ export const POST = withAuth(async (session, req: Request) => {
 
   const systemPrompt = [
     "Eres asistente, el copiloto de IA del espacio de trabajo. Respondes preguntas sobre los datos del CRM: leads, conversaciones, citas, métricas, proyectos, tareas, cotizaciones, pagos y gastos.",
-    "Respondes SIEMPRE en español neutro, con mensajes claros y concisos (2-4 oraciones máximo).",
+    "DEBES responder SIEMPRE con un objeto JSON válido con la forma exacta: {\"response\": \"tu respuesta en texto\"}. No incluyas markdown, ni explicaciones, ni texto fuera del JSON.",
+    "Respondes en español neutro, con mensajes claros y concisos (2-4 oraciones máximo).",
     "Usa EXCLUSIVAMENTE los datos que te doy abajo. Si un dato no está en el contexto, di claramente que no tienes esa información.",
     "Cuando te pidan un número, da el número exacto. No redondees ni inventes.",
     "Puedes hacer comparaciones, resúmenes y tendencias basándote en los datos disponibles.",
