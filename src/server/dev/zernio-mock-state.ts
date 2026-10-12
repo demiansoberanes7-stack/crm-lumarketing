@@ -17,21 +17,34 @@ export type ZernioSentMessage = {
   at: string;
 };
 
+export type ZernioCommentReply = {
+  n: number;
+  postId: string;
+  commentId: string | null;
+  accountId: string | null;
+  message: string;
+  idempotencyKey: string | null;
+  at: string;
+};
+
 type ZernioMockState = {
   seq: number;
   sent: ZernioSentMessage[];
+  commentReplies: ZernioCommentReply[];
 };
 
 const g = globalThis as unknown as { __voceroZernioMock?: ZernioMockState };
 
 export function zernioMockState(): ZernioMockState {
-  if (!g.__voceroZernioMock) g.__voceroZernioMock = { seq: 0, sent: [] };
+  if (!g.__voceroZernioMock) g.__voceroZernioMock = { seq: 0, sent: [], commentReplies: [] };
+  g.__voceroZernioMock.commentReplies ??= [];
   return g.__voceroZernioMock;
 }
 
 /** Vacía lo enviado. El contador NO se reinicia: ver `nextZernioMessageId`. */
 export function resetZernioMock(): void {
   zernioMockState().sent = [];
+  zernioMockState().commentReplies = [];
 }
 
 /**

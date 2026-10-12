@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { whatsappProvider } from "@/server/whatsapp/provider";
 import { getWhatsappZernio, zernioWhatsappEnabled, type WhatsappZernioCredentials } from "@/server/whatsapp/zernio-credentials";
 import { sendWhatsappZernio } from "@/server/whatsapp/zernio-send";
@@ -17,7 +17,11 @@ import {
   markReconnectRequired,
   type Credentials,
 } from "@/server/whatsapp/credentials";
-import { isWindowOpen } from "@/server/inbox/window";
+import {
+  isHumanAgentWindowOpen,
+  isWindowOpenFor,
+  WINDOW_MS,
+} from "@/server/inbox/window";
 import { IG_PREFIX, TT_PREFIX } from "@/server/inbox/identity";
 import {
   getInstagramCredentialsByOrg,
@@ -38,6 +42,7 @@ import {
   type TikTokCredentials,
 } from "@/server/tiktok/credentials";
 import { sendTikTokText } from "@/server/tiktok/send";
+import { zernioFetch } from "@/server/zernio";
 import { getGoogleBusinessCredentials } from "@/server/google-business/credentials";
 import { exchangeAccessToken, updateReviewReply } from "@/server/google-business/google-api";
 import {
@@ -96,10 +101,12 @@ type SendTarget = {
   googleBusiness?: { clientId: string; clientSecret: string; refreshToken: string; reviewName: string };
   /** Presente solo en conversaciones de comentarios de publicaciones. */
   comments?: {
-    platform: "instagram" | "messenger";
+    platform: "instagram" | "messenger" | "tiktok";
     /** Último comentario del autor sobre el post: a ese se responde. */
     replyCommentId: string;
+    postExternalId: string;
     token: string;
+    accountRef?: string;
   };
   waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
   zernio?: WhatsappZernioCredentials;
@@ -127,7 +134,7 @@ async function prepareSend(
     )
     .where(eq(schema.conversation.id, conversationId))
     .limit(1);
-  const row = rows[0];
+  let row = rows[0];
   if (!row || row.conversation.organizationId !== organizationId) {
     throw new SendError("meta_error", "Conversación no encontrada");
   }
@@ -137,6 +144,57 @@ async function prepareSend(
       "sandbox_violation",
       "Conversación de prueba del Laboratorio: el envío real está prohibido"
     );
+  }
+
+  // Recuperación de conversaciones antiguas parcialmente ingeridas: si el
+  // marcador quedó vacío pero el mensaje entrante sí existe, reconstruirlo de
+  // la fecha original antes de calcular la ventana o enviar una respuesta.
+  if (!row.conversation.lastInboundAt) {
+    const [latestInbound] = await db
+      .select({ waTimestamp: schema.message.waTimestamp, createdAt: schema.message.createdAt })
+      .from(schema.message)
+      .where(
+        and(
+          eq(schema.message.organizationId, organizationId),
+          eq(schema.message.conversationId, conversationId),
+          eq(schema.message.direction, "in")
+        )
+      )
+      .orderBy(desc(sql`coalesce(${schema.message.waTimestamp}, ${schema.message.createdAt})`))
+      .limit(1);
+    const lastInboundAt = latestInbound?.waTimestamp ?? latestInbound?.createdAt;
+    if (lastInboundAt) {
+      const [repaired] = await db
+        .update(schema.conversation)
+        .set({
+          lastInboundAt,
+          ...(row.conversation.lastMessageAt ? {} : { lastMessageAt: lastInboundAt }),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.conversation.id, conversationId),
+            isNull(schema.conversation.lastInboundAt)
+          )
+        )
+        .returning({ lastInboundAt: schema.conversation.lastInboundAt });
+      const [current] = repaired
+        ? []
+        : await db
+            .select({ lastInboundAt: schema.conversation.lastInboundAt })
+            .from(schema.conversation)
+            .where(eq(schema.conversation.id, conversationId))
+            .limit(1);
+      const effectiveLastInboundAt =
+        repaired?.lastInboundAt ?? current?.lastInboundAt ?? lastInboundAt;
+      row = {
+        ...row,
+        conversation: {
+          ...row.conversation,
+          lastInboundAt: effectiveLastInboundAt,
+        },
+      };
+    }
   }
 
   // 014: Instagram tiene su propio transporte y su propia ventana. Se resuelve
@@ -286,7 +344,7 @@ async function prepareSend(
   }
 
   // Comentarios de publicaciones: la "respuesta" es un reply PÚBLICO al
-  // comentario (igc/fbc:post en channelThreadRef). Transporte propio, sin
+  // comentario (igc/fbc/ttc:post en la identidad). Transporte propio, sin
   // ventana de 24 h, sin media, sin recibos.
   if (row.conversation.channel === "comments") {
     if (!isChannelEnabled("comments")) {
@@ -301,8 +359,9 @@ async function prepareSend(
     const prefix = identityParts[0];
     const postExternalId = identityParts[1];
     const authorExternalId = identityParts[2];
-    const platform = prefix === "igc" ? "instagram" : "messenger";
-    if (!postExternalId || !authorExternalId) {
+    const platform =
+      prefix === "igc" ? "instagram" : prefix === "fbc" ? "messenger" : prefix === "ttc" ? "tiktok" : null;
+    if (!platform || !postExternalId || !authorExternalId) {
       throw new SendError(
         "meta_error",
         "Esta conversación no tiene un comentario asociado para responder"
@@ -328,8 +387,9 @@ async function prepareSend(
         "No se encontró el comentario al que responder en esta conversación"
       );
     }
-    // Solo las cuentas conectadas vía Meta pueden publicar replies (Zernio no).
+    // El reply público se enruta al transporte de la plataforma del comentario.
     let token: string;
+    let accountRef: string | undefined;
     if (platform === "instagram") {
       const igCreds = await getInstagramCredentialsByOrg(organizationId);
       if (!igCreds || igCreds.source !== "meta" || igCreds.status !== "connected") {
@@ -339,7 +399,7 @@ async function prepareSend(
         );
       }
       token = igCreds.token;
-    } else {
+    } else if (platform === "messenger") {
       const msCreds = await getMessengerCredentialsByOrg(organizationId);
       if (!msCreds || msCreds.source !== "meta" || msCreds.status !== "connected") {
         throw new SendError(
@@ -348,13 +408,25 @@ async function prepareSend(
         );
       }
       token = msCreds.token;
+    } else {
+      const ttCreds = await getTikTokCredentialsByOrg(organizationId);
+      if (!ttCreds || ttCreds.status !== "connected" || !ttCreds.accountRef) {
+        throw new SendError(
+          ttCreds?.status === "reconnect_required" ? "reconnect_required" : "not_connected",
+          ttCreds?.status === "reconnect_required"
+            ? "La API key de Zernio expiró: reconecta TikTok"
+            : "No hay cuenta de TikTok conectada vía Zernio para responder comentarios"
+        );
+      }
+      token = ttCreds.token;
+      accountRef = ttCreds.accountRef;
     }
     return {
       conversation: row.conversation,
       credentials: null,
       destinatario: { to: replyCommentId },
       recipient: replyCommentId,
-      comments: { platform, replyCommentId, token },
+      comments: { platform, replyCommentId, postExternalId, token, accountRef },
     };
   }
 
@@ -366,7 +438,7 @@ async function prepareSend(
   if (
     provider !== "waha" && caps.windowMs !== null &&
     caps.outsideWindow === "none" &&
-    !isWindowOpen(row.conversation.lastInboundAt)
+    !isWindowOpenFor(row.conversation.lastInboundAt, caps.windowMs)
   ) {
     throw new SendError(
       "window_closed",
@@ -503,12 +575,18 @@ export async function sendText(input: {
   const { credentials } = target;
 
   // Pre-generate message ID for Zernio idempotent sends (Instagram, TikTok).
-  const preGenId = (target.instagram || target.tiktok || target.zernio) ? newId("message") : undefined;
+  const preGenId =
+    target.instagram ||
+    target.tiktok ||
+    target.zernio ||
+    target.comments?.platform === "tiktok"
+      ? newId("message")
+      : undefined;
 
   const waMessageId = target.googleBusiness
     ? await callGoogleBusinessReply(target, input.text)
     : target.comments
-    ? await callCommentsReply(target, input.text)
+     ? await callCommentsReply(target, input.text, preGenId)
     : target.zernio
     ? await callWhatsappZernio(target, { message: input.text }, preGenId!)
     : target.waha
@@ -902,7 +980,7 @@ async function callInstagramSend(
 
   // Instagram: fuera de la ventana de 24 h la única vía es la etiqueta de
   // agente humano (hasta 7 días).
-  const humanAgentTag = !isWindowOpen(target.conversation.lastInboundAt);
+  const humanAgentTag = requireReplyWindow("instagram", target.conversation.lastInboundAt);
 
   try {
     const res = await sendInstagramText({
@@ -955,7 +1033,7 @@ async function callMessengerSend(
 
   // Messenger: fuera de la ventana de 24 h la única vía es la etiqueta de
   // agente humano (hasta 7 días).
-  const humanAgentTag = !isWindowOpen(target.conversation.lastInboundAt);
+  const humanAgentTag = requireReplyWindow("messenger", target.conversation.lastInboundAt);
 
   try {
     const res = await sendMessengerText({
@@ -1009,7 +1087,7 @@ async function callMessengerMedia(
       mimeType: input.mimeType,
       fileName: input.fileName,
       attachmentType,
-      humanAgentTag: !isWindowOpen(target.conversation.lastInboundAt),
+      humanAgentTag: requireReplyWindow("messenger", target.conversation.lastInboundAt),
     });
     return result.platformMessageId;
   } catch (err) {
@@ -1046,7 +1124,8 @@ async function callTikTokSend(
     );
   }
 
-  const humanAgentTag = !isWindowOpen(target.conversation.lastInboundAt);
+  const humanAgentTag = requireReplyWindow("tiktok", target.conversation.lastInboundAt);
+  await enforceTikTokReplyLimit(target.conversation.id, target.conversation.lastInboundAt);
 
   try {
     const res = await sendTikTokText({
@@ -1077,6 +1156,54 @@ async function callTikTokSend(
     }
     throw err;
   }
+}
+
+/** TikTok allows at most 10 outgoing replies after each customer message. */
+async function enforceTikTokReplyLimit(
+  conversationId: string,
+  lastInboundAt: Date | null
+): Promise<void> {
+  if (!lastInboundAt) return;
+  const replies = await getDb()
+    .select({ id: schema.message.id })
+    .from(schema.message)
+    .where(
+      and(
+        eq(schema.message.conversationId, conversationId),
+        eq(schema.message.direction, "out"),
+        gte(schema.message.createdAt, lastInboundAt)
+      )
+    )
+    .limit(10);
+  if (replies.length >= 10) {
+    throw new SendError(
+      "window_closed",
+      "TikTok permite hasta 10 respuestas por cada mensaje del cliente; espera a que vuelva a escribir"
+    );
+  }
+}
+
+/** Enforce the platform's real reply window; HUMAN_AGENT extends IG/Messenger only. */
+function requireReplyWindow(
+  channel: "instagram" | "messenger" | "tiktok",
+  lastInboundAt: Date | null
+): boolean {
+  const caps = capabilitiesFor(channel);
+  const windowMs = caps.windowMs ?? WINDOW_MS;
+  if (isWindowOpenFor(lastInboundAt, windowMs)) return false;
+
+  if (
+    caps.outsideWindow === "human_agent_tag" &&
+    isHumanAgentWindowOpen(lastInboundAt)
+  ) {
+    return true;
+  }
+
+  const message =
+    channel === "tiktok"
+      ? "La ventana de respuesta de TikTok dura 48 horas; espera a que el cliente vuelva a escribir"
+      : `Pasaron 7 días desde el último mensaje: ${caps.label} ya no permite responder con la etiqueta de agente humano`;
+  throw new SendError("window_closed", message);
 }
 
 /**
@@ -1132,13 +1259,17 @@ async function callGoogleBusinessReply(target: SendTarget, text: string): Promis
 }
 
 /**
- * Reply a un comentario de publicación (Instagram / página de Facebook): el
+ * Reply a un comentario de publicación (Instagram / Facebook / TikTok): el
  * texto del operador se publica como respuesta PÚBLICA del negocio sobre el
  * comentario (igc/fbc). Sin ventana de 24 h, sin media, sin recibos. El "id
  * de mensaje" devuelto es el id del reply en la plataforma.
  */
-async function callCommentsReply(target: SendTarget, text: string): Promise<string> {
-  const { platform, replyCommentId, token } = target.comments!;
+async function callCommentsReply(
+  target: SendTarget,
+  text: string,
+  idempotencyKey?: string
+): Promise<string> {
+  const { platform, replyCommentId, postExternalId, token, accountRef } = target.comments!;
 
   const caps = capabilitiesFor("comments");
   if (!textFits("comments", text)) {
@@ -1149,13 +1280,31 @@ async function callCommentsReply(target: SendTarget, text: string): Promise<stri
   }
 
   try {
-    // Instagram y la página de Facebook publican replies igual: POST al
-    // comentario con { message }. El token va en el header (graphRequest).
-    const res = await graphRequest<{ id?: string }>(`${replyCommentId}/replies`, {
-      method: "POST",
-      token,
-      body: { message: text },
-    });
+    let replyId: string | undefined;
+    if (platform === "tiktok") {
+      // Zernio publica la respuesta pública del negocio. La llave local de
+      // mensaje sirve como Idempotency-Key si la plataforma acepta el reply
+      // pero la respuesta HTTP se pierde.
+      const result = (await zernioFetch(
+        `/inbox/comments/${encodeURIComponent(postExternalId)}`,
+        {
+          method: "POST",
+          token,
+          body: { accountId: accountRef, message: text, commentId: replyCommentId },
+          headers: { "Idempotency-Key": idempotencyKey ?? newId("message") },
+        }
+      )) as { data?: { commentId?: string } };
+      replyId = result.data?.commentId;
+    } else {
+      // Instagram y Facebook publican replies vía Graph API, POST al
+      // comentario con { message }. El token va en el header Authorization.
+      const res = await graphRequest<{ id?: string }>(`${replyCommentId}/replies`, {
+        method: "POST",
+        token,
+        body: { message: text },
+      });
+      replyId = res.id;
+    }
 
     // Refleja el reply en la tabla local (el poller no lo pisa: el próximo sync
     // no reingerirá el comentario original porque externalCommentId ya existe).
@@ -1169,20 +1318,24 @@ async function callCommentsReply(target: SendTarget, text: string): Promise<stri
         )
       );
 
-    return res.id ?? newId("message");
+    return replyId ?? newId("message");
   } catch (err) {
     if (err instanceof MetaApiError) {
       if (err.isAuthError) {
         if (platform === "instagram") {
           await markInstagramReconnectRequired(target.conversation.organizationId);
-        } else {
+        } else if (platform === "messenger") {
           await markMessengerReconnectRequired(target.conversation.organizationId);
+        } else {
+          await markTikTokReconnectRequired(target.conversation.organizationId);
         }
         throw new SendError(
           "reconnect_required",
           platform === "instagram"
             ? "El token de Instagram expiró: reconecta la cuenta"
-            : "El token de la página expiró: reconecta Messenger"
+            : platform === "messenger"
+              ? "El token de la página expiró: reconecta Messenger"
+              : "La API key de Zernio expiró: reconecta TikTok"
         );
       }
       if (err.status === 0 || err.status >= 500) {

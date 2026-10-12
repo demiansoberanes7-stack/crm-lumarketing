@@ -405,7 +405,12 @@ async function ingestManualEcho(
   // mentía sobre a quién se le está siguiendo. Es seguro para el disparo de
   // inactividad porque ese usa coalesce(lastInboundAt, …) y prioriza la última
   // entrada del cliente, no la salida del negocio.
-  await onLeadActivity(organizationId, contact.id, waTimestamp);
+  // Un fallo al anotar actividad no debe descartar la confirmación del echo.
+  try {
+    await onLeadActivity(organizationId, contact.id, waTimestamp);
+  } catch (err) {
+    console.error(`[pipeline] no se pudo registrar actividad del contacto ${contact.id}:`, err);
+  }
 
   publish(organizationId, {
     type: "message.new",
@@ -490,6 +495,11 @@ export async function ingestInboundMessage(input: {
     ? await attachMediaAsset(organizationId, message.id, input.media)
     : null;
 
+  // Los valores interpolados directamente en `sql` usan el encoder noop de
+  // Drizzle. Postgres.js + el serializer transparente de Drizzle espera un
+  // string para OID 1184, así que una Date cruda termina en Buffer.byteLength
+  // y aborta la ingesta. Param con el encoder de timestamp la convierte a ISO.
+  const timestampParam = sql.param(waTimestamp, schema.conversation.lastInboundAt);
   await db
     .update(schema.conversation)
     .set({
@@ -497,14 +507,20 @@ export async function ingestInboundMessage(input: {
       // reintentados); sin esto un mensaje viejo retrocedía el marcador de
       // última entrada y el barrido de inactividad volvía a disparar
       // seguimientos que ya se habían cancelado.
-      lastInboundAt: sql`GREATEST(COALESCE(${schema.conversation.lastInboundAt}, ${waTimestamp}), ${waTimestamp})`,
-      lastMessageAt: sql`GREATEST(COALESCE(${schema.conversation.lastMessageAt}, ${waTimestamp}), ${waTimestamp})`,
+      lastInboundAt: sql`GREATEST(COALESCE(${schema.conversation.lastInboundAt}, ${timestampParam}), ${timestampParam})`,
+      lastMessageAt: sql`GREATEST(COALESCE(${schema.conversation.lastMessageAt}, ${timestampParam}), ${timestampParam})`,
       unreadCount: sql`${schema.conversation.unreadCount} + 1`,
       updatedAt: new Date(),
     })
     .where(eq(schema.conversation.id, conversation.id));
 
-  await onLeadActivity(organizationId, contact.id, waTimestamp);
+  // Si el pipeline tiene un problema, el mensaje entrante debe seguir hasta el
+  // agente y la bandeja: no se pierde la respuesta del CRM por una side effect.
+  try {
+    await onLeadActivity(organizationId, contact.id, waTimestamp);
+  } catch (err) {
+    console.error(`[pipeline] no se pudo registrar actividad del contacto ${contact.id}:`, err);
+  }
 
   publish(organizationId, {
     type: "message.new",

@@ -113,6 +113,14 @@ async function main() {
   }
   ok("registro o login del operador", su.res.ok, JSON.stringify(su.json));
 
+  // Aislar los checks del bot externo de un estado de agente in-process que
+  // pudiera haber dejado otra corrida del arnés.
+  const agentOff = await api("/api/agent/profile", {
+    method: "PUT",
+    body: JSON.stringify({ enabled: false }),
+  });
+  ok("agente in-process apagado para aislar el self-test", agentOff.res.ok);
+
   const conn = await api("/api/settings/whatsapp", {
     method: "PUT",
     body: JSON.stringify({

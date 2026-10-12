@@ -325,13 +325,15 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
                         : "text-text-3"
                     )}
                   >
-                    {selected.windowOpen
-                      ? "ventana abierta"
-                      : selected.contact.phone
-                        ? formatPhone(selected.contact.phone)
-                        : // Instagram no tiene teléfono: decir "Sin teléfono"
-                          // sería contestar una pregunta que nadie hizo.
-                          CHANNEL_LABEL[selected.channel]}
+                    {selected.humanAgentMode
+                      ? "respuesta con agente humano"
+                      : selected.windowOpen
+                        ? "ventana abierta"
+                        : selected.contact.phone
+                          ? formatPhone(selected.contact.phone)
+                          : // Instagram no tiene teléfono: decir "Sin teléfono"
+                            // sería contestar una pregunta que nadie hizo.
+                            CHANNEL_LABEL[selected.channel]}
                   </p>
                 </div>
               </div>

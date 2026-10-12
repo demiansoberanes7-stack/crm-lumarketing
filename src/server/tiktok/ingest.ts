@@ -1,6 +1,8 @@
 import { TT_PREFIX } from "@/server/inbox/identity";
 import { ingestInboundMessage } from "@/server/inbox/ingest";
 import { applyStatusUpdate } from "@/server/inbox/status";
+import { isChannelEnabled } from "@/server/channels/enabled";
+import { ingestTikTokCommentWebhook } from "@/server/comments/sync";
 import {
   getTikTokCredentialsByAccountRef,
 } from "@/server/tiktok/credentials";
@@ -47,6 +49,13 @@ export async function processZernioTikTokEvent(payload: unknown): Promise<void> 
     console.warn(
       `[tiktok] payload de Zernio en una instancia configurada como '${creds.source}': descartado`
     );
+    return;
+  }
+
+  if (evt.event === "comment.received") {
+    if (isChannelEnabled("comments")) {
+      await ingestTikTokCommentWebhook(creds.organizationId, payload);
+    }
     return;
   }
 

@@ -1,6 +1,8 @@
 import { graphRequest, MetaApiError } from "@/lib/meta/client";
 import type { InstagramCredentials } from "@/server/instagram/credentials";
 import type { MessengerCredentials } from "@/server/messenger/credentials";
+import type { TikTokCredentials } from "@/server/tiktok/credentials";
+import { zernioFetch } from "@/server/zernio";
 
 /**
  * Lector de comentarios públicos de publicaciones vía Graph API.
@@ -34,6 +36,7 @@ export interface RawSocialComment {
 /** Cuántas publicaciones recientes se revisan y cuántos comentarios por una. */
 const DEFAULT_MEDIA_LIMIT = 25;
 const DEFAULT_COMMENTS_LIMIT = 50;
+const MAX_TIKTOK_COMMENT_PAGES = 10;
 
 type IgMedia = { id: string; caption?: string; timestamp?: string };
 type IgComment = {
@@ -199,4 +202,99 @@ export async function fetchMessengerComments(
     }
     return { error: err instanceof Error ? err.message : "No se pudieron leer los comentarios de la página" };
   }
+}
+
+type ZernioTikTokComment = {
+  id?: string;
+  message?: string;
+  createdTime?: string;
+  parentId?: string | null;
+  from?: { id?: string; name?: string; username?: string };
+  replies?: ZernioTikTokComment[];
+};
+
+/**
+ * Comentarios de videos TikTok conectados a Zernio.
+ * Zernio exige una cuenta TikTok for Business para Inbox, y recomienda el
+ * webhook comment.received; este barrido cubre posts recientes como respaldo.
+ */
+export async function fetchTikTokComments(
+  creds: TikTokCredentials,
+  opts?: { postLimit?: number; commentsLimit?: number }
+): Promise<{ comments: RawSocialComment[] } | { error: string }> {
+  if (creds.source !== "zernio" || !creds.accountRef) {
+    return { error: "TikTok necesita una cuenta de Zernio para leer comentarios" };
+  }
+
+  const postLimit = Math.min(Math.max(opts?.postLimit ?? DEFAULT_MEDIA_LIMIT, 1), 100);
+  const commentsLimit = Math.min(Math.max(opts?.commentsLimit ?? DEFAULT_COMMENTS_LIMIT, 1), 100);
+
+  try {
+    const postsResponse = (await zernioFetch(
+      `/inbox/comments?platform=tiktok&accountId=${encodeURIComponent(creds.accountRef)}&limit=${postLimit}`,
+      { token: creds.token }
+    )) as { data?: Array<{ id?: string; platformPostId?: string; content?: string | null; commentCount?: number }> };
+
+    const comments: RawSocialComment[] = [];
+    for (const post of postsResponse.data ?? []) {
+      const postExternalId = post.platformPostId ?? post.id;
+      if (!postExternalId || (post.commentCount ?? 0) <= 0) continue;
+
+      let cursor: string | null = null;
+      for (let page = 0; page < MAX_TIKTOK_COMMENT_PAGES; page++) {
+        const query = new URLSearchParams({
+          accountId: creds.accountRef,
+          limit: String(commentsLimit),
+          ...(cursor ? { cursor } : {}),
+        });
+        const response = (await zernioFetch(
+          `/inbox/comments/${encodeURIComponent(postExternalId)}?${query}`,
+          { token: creds.token }
+        )) as {
+          comments?: ZernioTikTokComment[];
+          pagination?: { hasMore?: boolean; cursor?: string | null };
+        };
+
+        for (const comment of response.comments ?? []) {
+          appendTikTokComment(comments, comment, postExternalId, post.content ?? null, null);
+          for (const reply of comment.replies ?? []) {
+            appendTikTokComment(comments, reply, postExternalId, post.content ?? null, comment.id ?? null);
+          }
+        }
+
+        const nextCursor = response.pagination?.cursor;
+        if (!response.pagination?.hasMore || !nextCursor || nextCursor === cursor) break;
+        cursor = nextCursor;
+      }
+    }
+    return { comments };
+  } catch (err) {
+    if (err instanceof MetaApiError) {
+      return { error: err.isAuthError ? "La API key de Zernio expiró: reconecta TikTok" : err.message };
+    }
+    return { error: err instanceof Error ? err.message : "No se pudieron leer los comentarios de TikTok" };
+  }
+}
+
+function appendTikTokComment(
+  comments: RawSocialComment[],
+  comment: ZernioTikTokComment,
+  postExternalId: string,
+  postCaption: string | null,
+  parentExternalId: string | null
+): void {
+  const authorExternalId = comment.from?.id;
+  const body = comment.message?.trim();
+  if (!comment.id || !authorExternalId || !body) return;
+  const parsedAt = comment.createdTime ? new Date(comment.createdTime) : null;
+  comments.push({
+    externalCommentId: comment.id,
+    postExternalId,
+    postCaption,
+    authorExternalId,
+    authorName: firstNonEmpty(comment.from?.name, comment.from?.username),
+    body,
+    parentExternalId: parentExternalId ?? comment.parentId ?? null,
+    commentTime: parsedAt && Number.isFinite(parsedAt.getTime()) ? parsedAt : new Date(),
+  });
 }

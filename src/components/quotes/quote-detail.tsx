@@ -326,9 +326,13 @@ export function QuoteDetail({
                         <option key={c.id} value={c.id}>
                           {c.contact.name}
                           {c.contact.phone ? ` · ${c.contact.phone}` : ""}
-                          {c.windowOpen
-                            ? ` · ventana abierta (${formatRemaining(c.windowRemainingMs)})`
-                            : " · ventana cerrada"}
+                          {c.humanAgentMode
+                            ? " · respuesta con agente humano (hasta 7 días)"
+                            : c.channel === "google_business" || c.channel === "comments"
+                              ? " · respuesta pública"
+                              : c.windowOpen
+                                ? ` · ventana abierta (${formatRemaining(c.windowRemainingMs)})`
+                                : " · ventana cerrada"}
                         </option>
                       ))}
                     </optgroup>
@@ -350,9 +354,9 @@ export function QuoteDetail({
             )}
             {selectedChat && !selectedChat.windowOpen && selectedChat.channel !== "whatsapp" && (
               <p className="text-xs text-amber-600">
-                La ventana de 24 h de {CHANNEL_LABEL[selectedChat.channel as Channel]} está
-                cerrada: Meta sólo acepta la etiqueta de agente humano, y puede rechazarla
-                con el error #100. Pide al cliente que escriba primero.
+                {selectedChat.channel === "tiktok"
+                  ? "Pasaron 48 horas desde el último mensaje. TikTok requiere que el cliente vuelva a escribir para abrir otra ventana de respuesta."
+                  : `Pasaron 7 días desde el último mensaje. ${CHANNEL_LABEL[selectedChat.channel as Channel]} ya no admite la respuesta con etiqueta de agente humano; pide al cliente que vuelva a escribir.`}
               </p>
             )}
           </div>

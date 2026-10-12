@@ -19,7 +19,7 @@ export type ConversationDto = {
   windowRemainingMs: number;
   /**
    * True cuando la ventana de 24 h ya pasó pero el canal aún acepta respuesta
-   * con la etiqueta HUMAN_AGENT (Instagram/Messenger/TikTok, hasta 7 días).
+   * con la etiqueta HUMAN_AGENT (Instagram/Messenger, hasta 7 días).
    * El operador puede enviar; el envío sale etiquetado.
    */
   humanAgentMode: boolean;

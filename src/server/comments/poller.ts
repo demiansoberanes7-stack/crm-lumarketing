@@ -5,9 +5,9 @@ import { syncOrganizationComments } from "@/server/comments/sync";
 
 /**
  * Poller in-process de comentarios de publicaciones (patrón
- * google-business/poller): cada 5 minutos barre las organizaciones con
- * credenciales de Instagram/Messenger vía Meta y sincroniza sus comentarios
- * hacia la Bandeja. Singleton en globalThis — una instancia = un proceso. Su
+ * google-business/poller): cada 5 minutos barre organizaciones con credenciales
+ * Meta y TikTok/Zernio y sincroniza sus comentarios hacia la Bandeja. TikTok
+ * además recibe webhooks. Singleton en globalThis — una instancia = un proceso. Su
  * fallo jamás bloquea nada: cada org se intenta por su cuenta.
  */
 
@@ -40,7 +40,7 @@ export async function runCommentsWorkerOnce(): Promise<void> {
   workerState.__commentsTick = true;
   try {
     const db = getDb();
-    // Solo las cuentas conectadas vía Meta pueden leer comentarios (Zernio no).
+    // Instagram/Facebook con token Meta; TikTok Inbox con cuenta Zernio.
     const igOrgs = await db
       .select({ organizationId: schema.instagramCredentials.organizationId })
       .from(schema.instagramCredentials)
@@ -49,9 +49,16 @@ export async function runCommentsWorkerOnce(): Promise<void> {
       .select({ organizationId: schema.messengerCredentials.organizationId })
       .from(schema.messengerCredentials)
       .where(eq(schema.messengerCredentials.source, "meta"));
+    const tiktokOrgs = isChannelEnabled("tiktok")
+      ? await db
+          .select({ organizationId: schema.tiktokCredentials.organizationId })
+          .from(schema.tiktokCredentials)
+          .where(eq(schema.tiktokCredentials.status, "connected"))
+      : [];
     const orgIds = new Set([
       ...igOrgs.map((r) => r.organizationId),
       ...msOrgs.map((r) => r.organizationId),
+      ...tiktokOrgs.map((r) => r.organizationId),
     ]);
     for (const organizationId of orgIds) {
       try {

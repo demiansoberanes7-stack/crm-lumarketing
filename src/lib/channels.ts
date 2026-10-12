@@ -21,10 +21,10 @@ export type Channel =
    */
   | "google_business"
   /**
-   * Comentarios públicos de publicaciones (Instagram / página de Facebook).
+   * Comentarios públicos de publicaciones (Instagram / Facebook / TikTok).
    * Cada autor sobre un post forma su propia hebra; la respuesta del operador
-   * se publica como reply al comentario. Se ingesta vía poller (API oficial),
-   * no por webhook. Detrás de la bandera CHANNELS (canal `comments`).
+   * se publica como reply al comentario. Meta usa poller; TikTok usa Zernio,
+   * webhook en tiempo real y poller de respaldo. Detrás de CHANNELS.
    */
   | "comments";
 

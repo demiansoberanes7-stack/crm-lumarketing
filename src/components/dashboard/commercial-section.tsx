@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  RefreshCw, Target, Percent, Headphones, ShieldCheck,
+  RefreshCw, Target, Percent,
 } from "lucide-react";
-import { KpiCard, formatNumber, formatPercent } from "./kpi-card";
+import { KpiCard, formatPercent } from "./kpi-card";
 import { FunnelChart, HorizontalBarChart } from "./charts";
 import { CampaignExplorer } from "./campaign-explorer";
 import { MetricBadge, type MetricOrigin } from "./metric-badge";
@@ -131,14 +131,6 @@ export function CommercialSection({ period }: { period: string }) {
             <span className="font-medium text-foreground"> Publicidad</span>: selecciona 2 o más campañas y revisa
             importe gastado, resultados, costo por resultado, impresiones, alcance, frecuencia, clics y CTR lado a lado
             para elegir ganadora. Las métricas se recalculan sobre la selección.
-          </div>
-
-          {/* Operaciones + Calidad */}
-          <Subhead icon={<Headphones className="h-3.5 w-3.5" />} origin="system">Operaciones y calidad de datos</Subhead>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <MetricCard title="Actividades registradas" metric={data.operaciones.activitiesLogged} formatter={formatNumber} />
-            <MetricCard title="Contactos con canal" metric={data.calidad.contactsWithChannel} formatter={formatPercent} icon={<ShieldCheck className="h-4 w-4" />} />
-            <MetricCard title="Con canal capturado" metric={data.calidad.contactsWithChannelCount} formatter={formatNumber} />
           </div>
 
           <p className="pt-2 text-xs text-muted-foreground">

@@ -180,8 +180,6 @@ export function Composer({
     onSent();
   }
 
-  if (!conversation.windowOpen) return null;
-
   const canSubmit = file !== null || text.trim().length > 0;
   const canAttach = conversation.channel === "whatsapp" || conversation.channel === "messenger";
   // Reseñas de Google Business: solo texto (el reply público), sin adjuntos
@@ -388,10 +386,18 @@ export function Composer({
         {error ? <p className="text-xs text-destructive">{error}</p> : <span />}
         <p className="font-mono text-[10.5px] tracking-[0.04em] text-text-3">
           {conversation.humanAgentMode
-            ? "Fuera de 24 h · se enviará con etiqueta de agente humano"
+            ? "Fuera de 24 h · respuesta con etiqueta de agente humano"
             : conversation.windowRemainingMs > 0
               ? `Ventana abierta · quedan ${formatRemaining(conversation.windowRemainingMs)}`
-              : "Ventana abierta"}
+              : conversation.channel === "google_business" || conversation.channel === "comments"
+                ? "Respuesta pública · sin ventana de mensajería"
+                : conversation.windowOpen
+                  ? "Ventana abierta"
+                  : conversation.channel === "tiktok"
+                    ? "Ventana de TikTok cerrada · se requieren mensajes recientes del cliente"
+                    : conversation.channel === "whatsapp"
+                      ? "Ventana de WhatsApp cerrada · espera un nuevo mensaje del cliente"
+                      : "Ventana cerrada · el envío depende de las reglas de la plataforma"}
         </p>
       </div>
     </div>

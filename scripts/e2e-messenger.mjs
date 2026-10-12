@@ -19,6 +19,7 @@ const BASE = process.env.APP_BASE_URL ?? "http://localhost:3000";
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN;
 const PAGE = "page-demo-001";
 const ACCOUNT = "zernio-account-001";
+const TIKTOK_ACCOUNT = "zernio-tiktok-account-001";
 const SECRET = "secreto-del-webhook-de-zernio";
 const RUN = Date.now().toString(36);
 const PSID_META = `psid-meta-${RUN}`;
@@ -109,6 +110,28 @@ async function waitForConversation(pred, tries = 25) {
   return null;
 }
 
+async function waitForAiReply(conversationId, tries = 50) {
+  for (let i = 0; i < tries; i++) {
+    const { json } = await api(`/api/conversations/${conversationId}/messages`);
+    const reply = (json?.messages ?? []).find(
+      (message) => message.direction === "out" && message.aiGenerated === true
+    );
+    if (reply) return reply;
+    await sleep(300);
+  }
+  return null;
+}
+
+async function waitForPipelineLead(conversationId, tries = 25) {
+  for (let i = 0; i < tries; i++) {
+    const { json } = await api("/api/pipeline/board");
+    const lead = (json?.leads ?? []).find((item) => item.conversationId === conversationId);
+    if (lead) return lead;
+    await sleep(300);
+  }
+  return null;
+}
+
 async function main() {
   if (!VERIFY_TOKEN) {
     console.error("Falta META_WEBHOOK_VERIFY_TOKEN en el entorno");
@@ -129,6 +152,14 @@ async function main() {
     });
   }
   ok("registro o login del propietario", su.res.ok);
+
+  const agentProfileBefore = await api("/api/agent/profile");
+  const previousAgentEnabled = agentProfileBefore.json?.profile?.enabled ?? false;
+  const agentEnabled = await api("/api/agent/profile", {
+    method: "PUT",
+    body: JSON.stringify({ enabled: true }),
+  });
+  ok("el perfil del agente se activa para probar el turno completo", agentEnabled.res.ok);
 
   console.log("\n== Webhook: capas de seguridad ==");
   const wrong = await webhook(metaEvent([]), { token: "token-equivocado" });
@@ -198,6 +229,18 @@ async function main() {
     "la ventana de 24 h abre con el entrante",
     convMeta?.windowOpen === true,
     JSON.stringify({ lastInboundAt: convMeta?.lastInboundAt, windowRemainingMs: convMeta?.windowRemainingMs, now: Date.now() })
+  );
+  const leadMeta = convMeta ? await waitForPipelineLead(convMeta.id) : null;
+  ok(
+    "el primer mensaje carga automáticamente al contacto en el Pipeline",
+    Boolean(leadMeta?.id && leadMeta?.lastActivityAt),
+    JSON.stringify({ leadId: leadMeta?.id, lastActivityAt: leadMeta?.lastActivityAt })
+  );
+  const aiReply = convMeta ? await waitForAiReply(convMeta.id) : null;
+  ok(
+    "el agente responde automáticamente al mensaje entrante de Messenger",
+    aiReply?.aiGenerated === true && aiReply?.direction === "out",
+    JSON.stringify({ aiGenerated: aiReply?.aiGenerated, direction: aiReply?.direction, status: aiReply?.status })
   );
 
   console.log("\n== Idempotencia y ruido (Meta) ==");
@@ -381,6 +424,65 @@ async function main() {
   const msgsZ2 = await api(`/api/conversations/${convZ?.id}/messages`);
   const outZ = (msgsZ2.json?.messages ?? []).find((m) => m.direction === "out");
   ok("el saliente queda como 'sent'", outZ?.status === "sent", outZ?.status);
+
+  console.log("\n===== COMENTARIOS: TIKTOK VÍA ZERNIO =====");
+  const tiktokConn = await api("/api/settings/tiktok", {
+    method: "PUT",
+    body: JSON.stringify({
+      accountRef: TIKTOK_ACCOUNT,
+      tiktokUserId: "tiktok-user-001",
+      username: "lumark_tiktok",
+      token: "sk_test-ok",
+      webhookSecret: SECRET,
+    }),
+  });
+  ok("la cuenta TikTok de Zernio se conecta", tiktokConn.res.ok, JSON.stringify(tiktokConn.json));
+
+  const commentEvent = {
+    id: `tt-comment-event-${RUN}`,
+    event: "comment.received",
+    comment: {
+      id: `tt-comment-${RUN}`,
+      postId: null,
+      platformPostId: `tt-video-${RUN}`,
+      platform: "tiktok",
+      text: `¿Cuánto cuesta? ${MARCA}`,
+      createdAt: new Date().toISOString(),
+      isReply: false,
+      parentCommentId: null,
+      author: { id: `tt-author-${RUN}`, username: `cliente_${RUN}` },
+    },
+    post: { id: null, platformPostId: `tt-video-${RUN}`, content: `Post ${MARCA}` },
+    account: { id: TIKTOK_ACCOUNT, accountId: TIKTOK_ACCOUNT, platform: "tiktok", username: "lumark_tiktok" },
+    timestamp: new Date().toISOString(),
+  };
+  const commentHook = await webhook(commentEvent, { signature: sign(commentEvent) });
+  ok("el webhook comment.received de TikTok se acepta", commentHook.status === 200, String(commentHook.status));
+  const commentConversation = await waitForConversation((c) => c.channel === "comments" && c.preview?.includes(MARCA));
+  ok("el comentario aparece como conversación en la Bandeja", commentConversation?.channel === "comments", JSON.stringify(commentConversation));
+
+  const commentReply = await api(`/api/conversations/${commentConversation?.id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ text: `Te comparto el precio ${MARCA}` }),
+  });
+  ok("la Bandeja publica una respuesta al comentario de TikTok", commentReply.res.ok, JSON.stringify(commentReply.json));
+  const zernioState = await fetch(`${BASE}/api/dev/zernio-mock/_sent`).then((r) => r.json());
+  const postedCommentReply = (zernioState.commentReplies ?? []).at(-1);
+  ok(
+    "el reply usa el post, comentario y cuenta de TikTok correctos",
+    postedCommentReply?.postId === `tt-video-${RUN}` &&
+      postedCommentReply?.commentId === `tt-comment-${RUN}` &&
+      postedCommentReply?.accountId === TIKTOK_ACCOUNT &&
+      postedCommentReply?.message === `Te comparto el precio ${MARCA}` &&
+      Boolean(postedCommentReply?.idempotencyKey),
+    JSON.stringify(postedCommentReply)
+  );
+
+  const agentRestored = await api("/api/agent/profile", {
+    method: "PUT",
+    body: JSON.stringify({ enabled: previousAgentEnabled }),
+  });
+  ok("el test restaura el estado previo del agente", agentRestored.res.ok);
 
   console.log(`\n===== ${checks - failures}/${checks} checks OK, ${failures} fallos =====`);
   process.exit(failures ? 1 : 0);

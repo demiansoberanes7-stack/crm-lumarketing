@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWindowOpen, WINDOW_MS, windowRemainingMs } from "@/server/inbox/window";
+import { isWindowOpen, isWindowOpenFor, WINDOW_MS, windowRemainingMs } from "@/server/inbox/window";
 
 describe("ventana de 24 horas (FR-005)", () => {
   const now = new Date("2026-07-09T12:00:00Z");
@@ -35,5 +35,17 @@ describe("ventana de 24 horas (FR-005)", () => {
     expect(remaining).toBe(60 * 60 * 1000);
     const old = new Date(now.getTime() - 48 * 60 * 60 * 1000);
     expect(windowRemainingMs(old, now)).toBe(0);
+  });
+
+  it("una ventana específica de TikTok dura 48 horas", () => {
+    const last = new Date(now.getTime() - 36 * 60 * 60 * 1000);
+    expect(isWindowOpenFor(last, 48 * 60 * 60 * 1000, now)).toBe(true);
+    expect(
+      isWindowOpenFor(
+        new Date(now.getTime() - 48 * 60 * 60 * 1000),
+        48 * 60 * 60 * 1000,
+        now
+      )
+    ).toBe(false);
   });
 });

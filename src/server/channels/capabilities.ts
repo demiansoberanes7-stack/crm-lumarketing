@@ -1,4 +1,5 @@
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import { TIKTOK_WINDOW_MS } from "@/server/inbox/window";
 
 /**
  * 014 — Capacidades declaradas por canal.
@@ -73,8 +74,10 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
   },
   tiktok: {
     label: CHANNEL_LABEL.tiktok,
-    windowMs: DAY_MS,
-    outsideWindow: "human_agent_tag",
+    // TikTok Business Inbox allows replies for 48 h, but has no HUMAN_AGENT
+    // tag extension: Zernio documents a 10-message/48-hour reply limit.
+    windowMs: TIKTOK_WINDOW_MS,
+    outsideWindow: "none",
     maxTextBytes: 1000,
     outboundMedia: false,
     deliveryReceipts: true,

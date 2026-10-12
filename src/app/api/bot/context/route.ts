@@ -3,7 +3,10 @@ import { getDb, schema } from "@/lib/db";
 import { apiError } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
 import { serializeFicha } from "@/server/bot/ficha";
-import { isWindowOpen, windowRemainingMs } from "@/server/inbox/window";
+import { getConversation } from "@/server/inbox/queries";
+import { capabilitiesFor } from "@/server/channels/capabilities";
+import type { Channel } from "@/lib/channels";
+import { isHumanAgentWindowOpen, isWindowOpenFor, windowRemainingMsFor } from "@/server/inbox/window";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +97,20 @@ export async function GET(req: Request) {
     return apiError(404, "not_found", "Conversación no encontrada");
   }
 
+  // Igual que la Bandeja: reconstruye el marcador si una ingesta anterior
+  // guardó el mensaje pero no alcanzó a actualizar last_inbound_at.
+  const effectiveConversation = await getConversation(organizationId, conversation.id);
+  if (effectiveConversation) conversation = effectiveConversation.conversation;
+  const caps = capabilitiesFor(conversation.channel as Channel);
+  const withinChannelWindow = caps.windowMs === null
+    ? true
+    : isWindowOpenFor(conversation.lastInboundAt, caps.windowMs);
+  const humanAgentMode =
+    caps.windowMs !== null &&
+    caps.outsideWindow === "human_agent_tag" &&
+    !withinChannelWindow &&
+    isHumanAgentWindowOpen(conversation.lastInboundAt);
+
   const leadRows = await db
     .select({ lead: schema.lead, stage: schema.pipelineStage })
     .from(schema.lead)
@@ -127,8 +144,9 @@ export async function GET(req: Request) {
       // aunque el flag siga en true.
       aiEnabled: conversation.aiEnabled && !conversation.handoffAt,
       handoffAt: conversation.handoffAt?.toISOString() ?? null,
-      windowOpen: isWindowOpen(conversation.lastInboundAt),
-      windowRemainingMs: windowRemainingMs(conversation.lastInboundAt),
+      windowOpen: withinChannelWindow || humanAgentMode,
+      windowRemainingMs: caps.windowMs === null ? 0 : windowRemainingMsFor(conversation.lastInboundAt, caps.windowMs),
+      humanAgentMode,
     },
     lead: leadRows[0]
       ? { id: leadRows[0].lead.id, stageName: leadRows[0].stage.name }

@@ -33,7 +33,10 @@ export async function GET(req: Request, ctx: Ctx) {
   const route = path.join("/");
 
   if (route === "_sent") {
-    return Response.json({ sent: zernioMockState().sent });
+    return Response.json({
+      sent: zernioMockState().sent,
+      commentReplies: zernioMockState().commentReplies,
+    });
   }
   if (zernioTokenIsBad(req.headers.get("authorization"))) return unauthorized();
 
@@ -47,6 +50,34 @@ export async function GET(req: Request, ctx: Ctx) {
       display_phone_number: "+52 55 0000 0000",
       status: accountId?.endsWith("-disconnected") ? "DISCONNECTED" : "CONNECTED",
     } });
+  }
+  if (route === "inbox/comments") {
+    const url = new URL(req.url);
+    if (url.searchParams.get("platform") === "tiktok") {
+      return Response.json({
+        data: [{
+          id: "tt-video-mock-001",
+          platformPostId: "tt-video-mock-001",
+          platform: "tiktok",
+          accountId: url.searchParams.get("accountId"),
+          content: "Video de prueba TikTok",
+          commentCount: 1,
+        }],
+        pagination: { hasMore: false, nextCursor: null },
+      });
+    }
+  }
+  if (route === "inbox/comments/tt-video-mock-001") {
+    return Response.json({
+      comments: [{
+        id: "tt-comment-mock-001",
+        message: "Comentario de prueba TikTok",
+        createdTime: new Date().toISOString(),
+        from: { id: "tt-author-mock-001", username: "cliente_tiktok" },
+        replies: [],
+      }],
+      pagination: { hasMore: false, cursor: null },
+    });
   }
   return Response.json({});
 }
@@ -83,6 +114,23 @@ export async function POST(req: Request, ctx: Ctx) {
       at: new Date().toISOString(),
     });
     return Response.json({ message: { id } });
+  }
+
+  // POST /inbox/comments/{postId} — reply público del negocio a un comentario.
+  if (path.length === 3 && path[0] === "inbox" && path[1] === "comments") {
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const state = zernioMockState();
+    const id = nextZernioMessageId();
+    state.commentReplies.push({
+      n: state.seq,
+      postId: decodeURIComponent(path[2]!),
+      commentId: body.commentId ? String(body.commentId) : null,
+      accountId: body.accountId ? String(body.accountId) : null,
+      message: String(body.message ?? ""),
+      idempotencyKey: req.headers.get("idempotency-key"),
+      at: new Date().toISOString(),
+    });
+    return Response.json({ success: true, data: { commentId: id, isReply: true } });
   }
 
   return Response.json({});

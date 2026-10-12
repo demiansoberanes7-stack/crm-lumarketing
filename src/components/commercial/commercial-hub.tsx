@@ -275,16 +275,13 @@ export function CommercialHub() {
 
             {tab === "operaciones" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <MetricCard title="Actividades registradas" metric={data.operaciones.activitiesLogged} formatter={formatNumber} />
                 <MetricCard title="Tiempo de respuesta" metric={data.operaciones.responseTimeHours} formatter={(n) => `${n.toFixed(1)} h`} />
               </div>
             )}
 
             {tab === "calidad" && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <MetricCard title="Contactos con canal" metric={data.calidad.contactsWithChannel} formatter={formatPercent} />
                 <MetricCard title="Total de contactos" metric={data.calidad.totalContacts} formatter={formatNumber} />
-                <MetricCard title="Con canal capturado" metric={data.calidad.contactsWithChannelCount} formatter={formatNumber} />
               </div>
             )}
           </div>

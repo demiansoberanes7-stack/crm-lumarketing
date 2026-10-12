@@ -36,7 +36,8 @@ const HELP = {
     "La API key se crea en Zernio → Settings → API Keys y se muestra una sola vez (empieza con sk_).",
     "El mismo webhook de Zernio entrega Instagram, Messenger y TikTok si esas cuentas están conectadas; LUMARK filtra por plataforma. La URL de webhook es compartida con Instagram.",
     "El secreto del webhook es opcional pero recomendado: con él se verifica la firma de cada entrega.",
-    "TikTok DMs solo permiten responder a mensajes recibidos (no cold outreach). Soporta texto e imágenes (máx 3 MB).",
+    "TikTok DMs solo permiten responder a mensajes recibidos: hasta 10 respuestas dentro de 48 horas, sin etiqueta HUMAN_AGENT. Soporta texto e imágenes (máx 3 MB).",
+    "Las cuentas TikTok for Business también pueden recibir comentarios públicos: activa el canal Comentarios y suscribe comment.received.",
   ],
 };
 
@@ -226,8 +227,8 @@ export function TikTokClient() {
           <CardHeader>
             <CardTitle>Webhook de TikTok</CardTitle>
             <CardDescription>
-              En Zernio, da de alta este endpoint con el evento{" "}
-              <code>message.received</code> y, si usas secreto, el mismo que
+              En Zernio, da de alta este endpoint con los eventos{" "}
+              <code>message.received</code> y <code>comment.received</code> (si activas Comentarios), y el mismo secreto que
               pegaste arriba. Esta URL es compartida con Instagram (Zernio
               entrega todas las plataformas por un solo webhook).
             </CardDescription>

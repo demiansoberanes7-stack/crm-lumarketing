@@ -1,10 +1,23 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
-import { isHumanAgentWindowOpen, isWindowOpen, windowRemainingMs } from "@/server/inbox/window";
+import { isHumanAgentWindowOpen, isWindowOpenFor, windowRemainingMsFor } from "@/server/inbox/window";
 import { capabilitiesFor } from "@/server/channels/capabilities";
 import type { Channel } from "@/lib/channels";
 import type { ConversationDto } from "@/lib/types";
+
+function effectiveLastInboundAtSql() {
+  const latestInbound = sql<Date | null>`(
+    select coalesce(m.wa_timestamp, m.created_at)
+    from message m
+    where m.conversation_id = ${schema.conversation.id}
+      and m.direction = 'in'
+    order by coalesce(m.wa_timestamp, m.created_at) desc
+    limit 1
+  )`;
+  return sql<Date | null>`coalesce(${schema.conversation.lastInboundAt}, ${latestInbound})`
+    .mapWith(schema.conversation.lastInboundAt);
+}
 
 export async function listConversations(
   organizationId: string,
@@ -33,6 +46,7 @@ export async function listConversations(
       contact: schema.contact,
       preview: previewSql,
       stageName: stageSql,
+      effectiveLastInboundAt: effectiveLastInboundAtSql(),
     })
     .from(schema.conversation)
     .innerJoin(
@@ -50,9 +64,14 @@ export async function listConversations(
     )
     .orderBy(desc(sql`coalesce(${schema.conversation.lastMessageAt}, ${schema.conversation.createdAt})`));
 
-  return rows.map((r) =>
-    serializeConversation(r.conversation, r.contact, r.preview, r.stageName)
-  );
+  return rows.map((r) => {
+    // Recupera conversaciones antiguas donde el mensaje sí quedó persistido
+    // pero el marcador de ventana no (p. ej. una ingesta parcial previa).
+    const conversation = r.conversation.lastInboundAt || !r.effectiveLastInboundAt
+      ? r.conversation
+      : { ...r.conversation, lastInboundAt: r.effectiveLastInboundAt };
+    return serializeConversation(conversation, r.contact, r.preview, r.stageName);
+  });
 }
 
 export async function getConversation(
@@ -75,7 +94,25 @@ export async function getConversation(
       )
     )
     .limit(1);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row || row.conversation.lastInboundAt) return row ?? null;
+
+  const [latestInbound] = await db
+    .select({ waTimestamp: schema.message.waTimestamp, createdAt: schema.message.createdAt })
+    .from(schema.message)
+    .where(
+      and(
+        eq(schema.message.organizationId, organizationId),
+        eq(schema.message.conversationId, conversationId),
+        eq(schema.message.direction, "in")
+      )
+    )
+    .orderBy(desc(sql`coalesce(${schema.message.waTimestamp}, ${schema.message.createdAt})`))
+    .limit(1);
+  const lastInboundAt = latestInbound?.waTimestamp ?? latestInbound?.createdAt ?? null;
+  return lastInboundAt
+    ? { ...row, conversation: { ...row.conversation, lastInboundAt } }
+    : row;
 }
 
 export async function listMessages(
@@ -110,17 +147,19 @@ export function serializeConversation(
 ): ConversationDto {
   // Ventana según el canal, no un supuesto de WhatsApp:
   // - google_business (sin ventana): siempre enviable.
-  // - human_agent_tag (IG/Messenger/TikTok): enviable dentro de 24 h, y
+  // - human_agent_tag (IG/Messenger): enviable dentro de 24 h, y
   //   también fuera con la etiqueta HUMAN_AGENT hasta 7 días.
-  // - none (WhatsApp): solo dentro de 24 h.
+  // - TikTok: 48 h sin etiqueta; WhatsApp: 24 h.
   const caps = capabilitiesFor(c.channel as Channel);
-  const within24h = caps.windowMs === null ? true : isWindowOpen(c.lastInboundAt);
+  const withinWindow = caps.windowMs === null
+    ? true
+    : isWindowOpenFor(c.lastInboundAt, caps.windowMs);
   const humanAgentMode =
     caps.windowMs !== null &&
     caps.outsideWindow === "human_agent_tag" &&
-    !within24h &&
+    !withinWindow &&
     isHumanAgentWindowOpen(c.lastInboundAt);
-  const windowOpen = within24h || humanAgentMode;
+  const windowOpen = withinWindow || humanAgentMode;
   return {
     id: c.id,
     channel: c.channel as Channel,
@@ -133,7 +172,9 @@ export function serializeConversation(
     lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
     unreadCount: c.unreadCount,
     windowOpen,
-    windowRemainingMs: caps.windowMs === null ? 0 : windowRemainingMs(c.lastInboundAt),
+    windowRemainingMs: caps.windowMs === null
+      ? 0
+      : windowRemainingMsFor(c.lastInboundAt, caps.windowMs),
     humanAgentMode,
     preview,
   };

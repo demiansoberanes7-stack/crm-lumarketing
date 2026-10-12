@@ -6,14 +6,18 @@ import { getOrCreateConversation } from "@/server/inbox/ingest";
 import { publish } from "@/server/events/bus";
 import { getInstagramCredentialsByOrg } from "@/server/instagram/credentials";
 import { getMessengerCredentialsByOrg } from "@/server/messenger/credentials";
+import { isChannelEnabled } from "@/server/channels/enabled";
 import {
   fetchInstagramComments,
   fetchMessengerComments,
+  fetchTikTokComments,
   type RawSocialComment,
 } from "@/server/comments/fetch";
+import type { TikTokCredentials } from "@/server/tiktok/credentials";
+import { getTikTokCredentialsByOrg } from "@/server/tiktok/credentials";
 
 /**
- * Sync de comentarios de publicaciones (Instagram / página de Facebook) hacia
+ * Sync de comentarios de publicaciones (Instagram / Facebook / TikTok) hacia
  * la Bandeja como canal `comments`.
  *
  * Idempotencia (constitución IV): `external_comment_id` es UNIQUE por org; el
@@ -28,13 +32,15 @@ import {
 export type SyncResult = { comments: number; newComments: number };
 
 /** Prefijo de la identidad y del mensaje entrante según la plataforma. */
-function platformBits(platform: "instagram" | "messenger") {
-  return platform === "instagram"
-    ? { prefix: "igc", channel: "comments" as const }
-    : { prefix: "fbc", channel: "comments" as const };
+type SocialCommentPlatform = "instagram" | "messenger" | "tiktok";
+
+function platformBits(platform: SocialCommentPlatform) {
+  if (platform === "instagram") return { prefix: "igc", channel: "comments" as const };
+  if (platform === "messenger") return { prefix: "fbc", channel: "comments" as const };
+  return { prefix: "ttc", channel: "comments" as const };
 }
 
-function commentIdentity(platform: "instagram" | "messenger", c: RawSocialComment): string {
+function commentIdentity(platform: SocialCommentPlatform, c: RawSocialComment): string {
   return `${platformBits(platform).prefix}:${c.postExternalId}:${c.authorExternalId}`;
 }
 
@@ -52,7 +58,7 @@ export function commentMessageText(c: RawSocialComment): string {
  */
 async function upsertCommentIntoInbox(input: {
   organizationId: string;
-  platform: "instagram" | "messenger";
+  platform: SocialCommentPlatform;
   comment: RawSocialComment;
 }): Promise<boolean> {
   const db = getDb();
@@ -101,7 +107,7 @@ async function upsertCommentIntoInbox(input: {
     channel: "comments",
     // threadRef = plataforma:post (estable por hebra); el send path lo usa para
     // ubicar el comentario al que responder.
-    threadRef: `${platform === "instagram" ? "ig" : "fb"}:${comment.postExternalId}`,
+    threadRef: `${platform === "instagram" ? "ig" : platform === "messenger" ? "fb" : "tt"}:${comment.postExternalId}`,
   });
 
   // Los comentarios se responden a mano: el reply es PÚBLICO y el agente nunca
@@ -154,7 +160,7 @@ async function upsertCommentIntoInbox(input: {
 
 async function syncPlatform(
   organizationId: string,
-  platform: "instagram" | "messenger",
+  platform: SocialCommentPlatform,
   fetched: { comments: RawSocialComment[] } | { error: string }
 ): Promise<SyncResult | { error: string }> {
   if ("error" in fetched) return { error: fetched.error };
@@ -170,35 +176,97 @@ async function syncPlatform(
   return { comments: fetched.comments.length, newComments };
 }
 
-/** Sync completa de una organización: Instagram + Messenger. Nunca lanza. */
+/** Sync completa de una organización: Meta comments + TikTok vía Zernio. Nunca lanza. */
 export async function syncOrganizationComments(
   organizationId: string
 ): Promise<SyncResult | { error: string }> {
-  const [igCreds, msCreds] = await Promise.all([
+  const [igCreds, msCreds, ttCreds] = await Promise.all([
     getInstagramCredentialsByOrg(organizationId),
     getMessengerCredentialsByOrg(organizationId),
+    isChannelEnabled("tiktok") ? getTikTokCredentialsForComments(organizationId) : null,
   ]);
 
   const ig = igCreds ? await syncPlatform(organizationId, "instagram", await fetchInstagramComments(igCreds)) : null;
   const ms = msCreds ? await syncPlatform(organizationId, "messenger", await fetchMessengerComments(msCreds)) : null;
+  const tt = ttCreds ? await syncPlatform(organizationId, "tiktok", await fetchTikTokComments(ttCreds)) : null;
 
-  if (!ig && !ms) return { error: "Sin cuenta de Instagram ni de Messenger conectadas vía Meta" };
+  if (!ig && !ms && !tt) return { error: "Sin cuenta conectada con acceso a comentarios" };
 
-  const errors: string[] = [];
-  if (ig && "error" in ig) errors.push(`Instagram: ${ig.error}`);
-  if (ms && "error" in ms) errors.push(`Messenger: ${ms.error}`);
-
-  const igCount = ig && !("error" in ig) ? ig : { comments: 0, newComments: 0 };
-  const msCount = ms && !("error" in ms) ? ms : { comments: 0, newComments: 0 };
+  const results = [
+    ig ? { platform: "Instagram", result: ig } : null,
+    ms ? { platform: "Messenger", result: ms } : null,
+    tt ? { platform: "TikTok", result: tt } : null,
+  ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  const errors = results.flatMap((entry) =>
+    "error" in entry.result ? [`${entry.platform}: ${entry.result.error}`] : []
+  );
+  const counts = results.map((entry) =>
+    "error" in entry.result ? { comments: 0, newComments: 0 } : entry.result
+  );
   const total: SyncResult = {
-    comments: igCount.comments + msCount.comments,
-    newComments: igCount.newComments + msCount.newComments,
+    comments: counts.reduce((sum, count) => sum + count.comments, 0),
+    newComments: counts.reduce((sum, count) => sum + count.newComments, 0),
   };
 
   // Si ambas plataformas fallaron, reporta el error; si al menos una funcionó,
   // devuelve el conteo (el fallo parcial no esconde lo sincronizado).
-  if (errors.length === (ig ? 1 : 0) + (ms ? 1 : 0) && total.comments === 0) {
+  if (errors.length === results.length && total.comments === 0) {
     return { error: errors.join(" · ") };
   }
   return total;
+}
+
+/** Ingesta en tiempo real del webhook oficial `comment.received` de Zernio. */
+export async function ingestTikTokCommentWebhook(
+  organizationId: string,
+  payload: unknown
+): Promise<void> {
+  const event = payload as {
+    event?: string;
+    comment?: {
+      id?: string;
+      platform?: string;
+      platformPostId?: string;
+      text?: string;
+      createdAt?: string;
+      isReply?: boolean;
+      parentCommentId?: string | null;
+      author?: { id?: string; name?: string; username?: string; isOwnAccount?: boolean };
+    };
+    post?: { platformPostId?: string; content?: string | null };
+  } | null;
+  const comment = event?.comment;
+  const postExternalId = comment?.platformPostId ?? event?.post?.platformPostId;
+  if (
+    event?.event !== "comment.received" ||
+    comment?.platform !== "tiktok" ||
+    !comment.id ||
+    !comment.text?.trim() ||
+    !comment.author?.id ||
+    !postExternalId ||
+    comment.author.isOwnAccount === true
+  ) return;
+
+  const parsedAt = comment.createdAt ? new Date(comment.createdAt) : null;
+  await upsertCommentIntoInbox({
+    organizationId,
+    platform: "tiktok",
+    comment: {
+      externalCommentId: comment.id,
+      postExternalId,
+      postCaption: event.post?.content ?? null,
+      authorExternalId: comment.author.id,
+      authorName: comment.author.name ?? comment.author.username ?? null,
+      body: comment.text.trim(),
+      parentExternalId: comment.isReply ? comment.parentCommentId ?? null : null,
+      commentTime: parsedAt && Number.isFinite(parsedAt.getTime()) ? parsedAt : new Date(),
+    },
+  });
+}
+
+async function getTikTokCredentialsForComments(
+  organizationId: string
+): Promise<TikTokCredentials | null> {
+  const credentials = await getTikTokCredentialsByOrg(organizationId);
+  return credentials?.status === "connected" ? credentials : null;
 }

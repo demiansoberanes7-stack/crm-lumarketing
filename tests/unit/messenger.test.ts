@@ -67,6 +67,8 @@ describe("017 · Messenger en el catálogo de canales", () => {
     expect(caps.deliveryReceipts).toBe(false);
     // Fuera de ventana no se le pide nada al operador: sale etiquetado solo.
     expect(windowClosedMessage("messenger")).toBe("");
+    expect(capabilitiesFor("tiktok").windowMs).toBe(48 * 60 * 60 * 1000);
+    expect(capabilitiesFor("tiktok").outsideWindow).toBe("none");
   });
 
   it("el límite de texto es de 2000 y se cuenta en BYTES", () => {

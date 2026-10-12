@@ -1,5 +1,6 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import type { Channel } from "@/lib/channels";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { filterAgentFichaToConfiguredFields, normalizeAgentRules } from "@/lib/agent-config";
@@ -7,7 +8,8 @@ import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-
 import { getEnv, isAiConfigured } from "@/lib/env";
 import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
 import { publish } from "@/server/events/bus";
-import { isWindowOpen } from "@/server/inbox/window";
+import { isWindowOpenFor } from "@/server/inbox/window";
+import { capabilitiesFor } from "@/server/channels/capabilities";
 import { SendError, sendText } from "@/server/inbox/send";
 import {
   agentActionSchema,
@@ -116,10 +118,12 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   // Un handoff por 'ventana' no debe dejar la conversación muda para siempre:
   // cuando el cliente vuelve a escribir (ventana reabierta) el agente se
   // reactiva solo, en cualquier canal.
+  const replyWindowMs = capabilitiesFor(conversation.channel as Channel).windowMs;
   if (
     conversation.handoffAt &&
     conversation.handoffReason === "ventana" &&
-    isWindowOpen(conversation.lastInboundAt)
+    replyWindowMs !== null &&
+    isWindowOpenFor(conversation.lastInboundAt, replyWindowMs)
   ) {
     await db
       .update(schema.conversation)
@@ -161,7 +165,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   // Ventana cerrada: no hay mensaje reciente del cliente que responder. NO se
   // hace handoff (eso dejaba la conversación muda para siempre); el agente se
   // activa solo cuando el cliente vuelve a escribir.
-  if (!conversation.isTest && !isWindowOpen(conversation.lastInboundAt)) {
+  if (!conversation.isTest && (replyWindowMs === null || !isWindowOpenFor(conversation.lastInboundAt, replyWindowMs))) {
     return;
   }
 

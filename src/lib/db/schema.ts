@@ -2260,7 +2260,7 @@ export const campaignInsight = pgTable(
 );
 
 /**
- * Comentarios públicos de publicaciones (Instagram / página de Facebook),
+ * Comentarios públicos de publicaciones (Instagram / Facebook / TikTok),
  * sincronizados por el poller de `comments`. Cada comentario es un mensaje
  * entrante en la conversación del autor sobre ese post (hebra por autor/post).
  * `externalCommentId` es la llave de idempotencia del poller (mismo criterio
@@ -2273,7 +2273,7 @@ export const socialComment = pgTable(
     organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    /** "instagram" | "messenger". */
+    /** Plataforma de origen: "instagram" | "messenger" | "tiktok". */
     platform: varchar("platform", { length: 20 }).notNull(),
     /** Id del comentario en la plataforma. */
     externalCommentId: varchar("external_comment_id", { length: 255 }).notNull(),
