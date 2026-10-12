@@ -25,7 +25,9 @@ import {
 const SERIES_COUNT = 6;
 
 function useChartId() {
-  return useId().replace(/:/g, "");
+  // React 19 useId() devuelve «r0» (guillemets); los caracteres no-ASCII rompen
+  // la referencia SVG url(#…) y los rellenos con degradado salen transparentes.
+  return useId().replace(/[^a-zA-Z0-9_-]/g, "");
 }
 
 function gradientId(id: string, index: number, kind = "series") {

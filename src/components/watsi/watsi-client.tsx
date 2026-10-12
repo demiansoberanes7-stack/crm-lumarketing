@@ -169,7 +169,7 @@ export function WatsiClient() {
               <Sparkles className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h2 className="text-sm font-bold">watsi</h2>
+              <h2 className="text-sm font-bold">asistente</h2>
               <p className="text-[11px] text-muted-foreground">Tu copiloto del espacio de trabajo</p>
             </div>
           </div>
@@ -182,7 +182,7 @@ export function WatsiClient() {
                 <Sparkles className="h-6 w-6 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-lg font-semibold">Hola, soy watsi</p>
+                <p className="text-lg font-semibold">Hola, soy asistente</p>
                 <p className="max-w-md text-sm text-muted-foreground">
                   Pregúntame por tus leads, conversaciones, citas y métricas. Reviso tus datos reales antes de responderte.
                 </p>
@@ -224,7 +224,7 @@ export function WatsiClient() {
               {sending && (
                 <div className="flex justify-start">
                   <div className="rounded-2xl bg-muted px-4 py-2.5">
-                    <span className="animate-pulse text-sm text-muted-foreground">watsi está escribiendo…</span>
+                    <span className="animate-pulse text-sm text-muted-foreground">asistente está escribiendo…</span>
                   </div>
                 </div>
               )}

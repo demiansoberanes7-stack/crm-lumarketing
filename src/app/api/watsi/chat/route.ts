@@ -142,7 +142,7 @@ export const POST = withAuth(async (session, req: Request) => {
   const crmContext = await getCrmContext(session.organizationId);
 
   const systemPrompt = [
-    "Eres watsi, el copiloto de IA del espacio de trabajo. Respondes preguntas sobre los datos del CRM: leads, conversaciones, citas, métricas, proyectos, tareas, cotizaciones, pagos y gastos.",
+    "Eres asistente, el copiloto de IA del espacio de trabajo. Respondes preguntas sobre los datos del CRM: leads, conversaciones, citas, métricas, proyectos, tareas, cotizaciones, pagos y gastos.",
     "Respondes SIEMPRE en español neutro, con mensajes claros y concisos (2-4 oraciones máximo).",
     "Usa EXCLUSIVAMENTE los datos que te doy abajo. Si un dato no está en el contexto, di claramente que no tienes esa información.",
     "Cuando te pidan un número, da el número exacto. No redondees ni inventes.",

@@ -171,7 +171,7 @@ export function AppNav({
           className={cn("h-[17px] w-[17px]", pathname === "/watsi" ? "text-brand" : "text-text-3")}
           strokeWidth={1.8}
         />
-        watsi
+        asistente
       </Link>
 
       <Link href="/settings" className={navItemClass(settingsActive)}>
