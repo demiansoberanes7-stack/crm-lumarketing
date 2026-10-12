@@ -51,8 +51,10 @@ export function AgentClient() {
   const [catalogCount, setCatalogCount] = useState(0);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const refetch = useCallback(async () => {
+    setLoadFailed(false);
     const [p, kb, size, cat] = await Promise.all([
       fetch("/api/agent/profile").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/kb").then((r) => (r.ok ? r.json() : null)),
@@ -62,6 +64,8 @@ export function AgentClient() {
     if (p) {
       setProfile(p.profile);
       setAiConfigured(p.aiConfigured);
+    } else {
+      setLoadFailed(true);
     }
     if (kb) setEntries(kb.entries);
     if (size) setKbSize(size);
@@ -73,6 +77,20 @@ export function AgentClient() {
   }, [refetch]);
 
   if (!profile) {
+    if (loadFailed) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+          <span>No se pudo cargar la configuración del agente.</span>
+          <button
+            type="button"
+            className="rounded border px-3 py-1 hover:bg-accent"
+            onClick={() => void refetch()}
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         Cargando…
@@ -584,14 +602,21 @@ function KbSection({
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [block, setBlock] = useState("");
+  const [kbError, setKbError] = useState("");
 
   async function addQa() {
     if (!question.trim() || !answer.trim()) return;
-    await fetch("/api/kb", {
+    setKbError("");
+    const res = await fetch("/api/kb", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind: "qa", question, answer }),
     }).catch(() => null);
+    if (!res?.ok) {
+      // No vaciar los campos si el servidor no guardó: se pierde lo tecleado.
+      setKbError("No se pudo guardar la entrada. Revisa la conexión e inténtalo de nuevo.");
+      return;
+    }
     setQuestion("");
     setAnswer("");
     onChanged();
@@ -599,17 +624,26 @@ function KbSection({
 
   async function addBlock() {
     if (!block.trim()) return;
-    await fetch("/api/kb", {
+    setKbError("");
+    const res = await fetch("/api/kb", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind: "block", content: block }),
     }).catch(() => null);
+    if (!res?.ok) {
+      setKbError("No se pudo guardar el bloque. Revisa la conexión e inténtalo de nuevo.");
+      return;
+    }
     setBlock("");
     onChanged();
   }
 
   async function remove(id: string) {
-    await fetch(`/api/kb/${id}`, { method: "DELETE" }).catch(() => null);
+    const res = await fetch(`/api/kb/${id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) {
+      setKbError("No se pudo eliminar la entrada.");
+      return;
+    }
     onChanged();
   }
 
@@ -639,6 +673,9 @@ function KbSection({
         )}
       </CardHeader>
       <CardContent className="space-y-4">
+        {kbError && (
+          <p role="alert" className="text-xs text-danger-text">{kbError}</p>
+        )}
         {catalogCount > 0 && (
           <div className="flex items-center gap-2 rounded-md border border-brand-soft bg-brand-tint p-3 text-sm">
             <Package className="h-4 w-4 text-primary shrink-0" />

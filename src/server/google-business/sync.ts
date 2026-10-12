@@ -136,15 +136,20 @@ async function upsertReviewIntoInbox(input: {
   }
 
   // ── Ingest en la Bandeja ──
-  // Identidad: `gb:<nombre del reviewer>` (anónimos comparten "anonimo" — son
-  // pocas reseñas anónimas y el operador las distingue por el texto).
-  const identity = `gb:${(review.reviewerName ?? "anonimo").trim().toLowerCase()}`;
+  // Identidad POR RESEÑA (`gb:<reviewName>`, único por reseña): cada reseña
+  // es su propio contacto y su propia conversación. Antes la identidad era
+  // `gb:<nombre del reviewer>`, lo que fusionaba reseñas del mismo nombre (y
+  // TODAS las anónimas) en un solo hilo, y channelThreadRef se sobrescribía
+  // con la última reseña del lote: la respuesta PÚBLICA del operador iba a
+  // la reseña equivocada. Un reviewer con dos reseñas = dos contactos con su
+  // nombre; el trade-off es correcto para un reply público.
+  const identity = `gb:${review.name}`;
   const { contact } = await getOrCreateContactByIdentity(organizationId, {
     identity,
     channel: "google_business",
     phone: null,
     waUserId: null,
-    profileName: review.reviewerName,
+    profileName: review.reviewerName ?? "Reseña anónima",
   });
   const conversation = await getOrCreateConversation(organizationId, contact.id, {
     channel: "google_business",
@@ -226,10 +231,17 @@ export async function syncOrganization(organizationId: string): Promise<SyncResu
   let locationCount = 0;
   let reviewCount = 0;
   let newReviewCount = 0;
+  let locationListFailures = 0;
 
   for (const accountName of accounts.accounts) {
     const locations = await listLocations(token, accountName);
-    if ("error" in locations) continue; // una cuenta falla, el resto sigue
+    if ("error" in locations) {
+      // Una cuenta falla, el resto sigue — pero si NINGUNA pudo listar
+      // ubicaciones, el sync no hizo su trabajo y marcarlo como "synced"
+      // escondería el fallo hasta el siguiente poll.
+      locationListFailures += 1;
+      continue;
+    }
     for (const loc of locations.locations) {
       const locationId = await upsertLocation(organizationId, loc);
       locationCount += 1;
@@ -245,6 +257,19 @@ export async function syncOrganization(organizationId: string): Promise<SyncResu
         }
       }
     }
+  }
+
+  if (accounts.accounts.length > 0 && locationCount === 0 && locationListFailures > 0) {
+    const detail = `No se pudo listar ubicaciones en ${locationListFailures} cuenta(s)`;
+    await markGoogleBusinessError(organizationId);
+    await recordDiagnostic({
+      organizationId,
+      source: "google_business",
+      severity: "error",
+      code: "connection_failed",
+      metadata: { detail },
+    });
+    return { error: detail };
   }
 
   await markGoogleBusinessSynced(organizationId);

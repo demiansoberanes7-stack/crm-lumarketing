@@ -65,18 +65,45 @@ export async function enqueueFollowUp(input: {
 
   const id = newId("automationExecution");
   const now = new Date();
-  await db.insert(schema.automationExecution).values({
-    id,
-    organizationId: input.organizationId,
-    conversationId: input.conversationId,
-    ruleId,
-    triggeredBy: input.triggeredBy,
-    status: "queued",
-    scheduledAt: new Date(now.getTime() + input.delayHours * 60 * 60_000),
-    createdAt: now,
-    updatedAt: now,
-  });
+  try {
+    await db.insert(schema.automationExecution).values({
+      id,
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      ruleId,
+      triggeredBy: input.triggeredBy,
+      status: "queued",
+      scheduledAt: new Date(now.getTime() + input.delayHours * 60 * 60_000),
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch (err) {
+    // Carrera cerrada por el índice único parcial: otro proceso coló la misma
+    // ejecución entre el SELECT de dedup y este INSERT. Se devuelve la que ya
+    // existe — el efecto (un solo seguimiento activo) es el correcto.
+    if (!isUniqueViolation(err)) throw err;
+    const [existing] = await db
+      .select({ id: schema.automationExecution.id })
+      .from(schema.automationExecution)
+      .where(
+        scoped(
+          schema.automationExecution.organizationId,
+          input.organizationId,
+          eq(schema.automationExecution.conversationId, input.conversationId),
+          eq(schema.automationExecution.ruleId, ruleId),
+          inArray(schema.automationExecution.status, ["queued", "running"])
+        )
+      )
+      .limit(1);
+    return existing?.id ?? id;
+  }
   return id;
+}
+
+/** 23505 = unique_violation de Postgres. */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; cause?: { code?: unknown } };
+  return e.code === "23505" || e.cause?.code === "23505";
 }
 
 export function automationWorkerReady(): boolean {

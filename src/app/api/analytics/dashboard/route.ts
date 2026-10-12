@@ -42,8 +42,13 @@ function amount(value: string | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-async function readMetaInsights(url: URL): Promise<{ ok: true; data: MetaInsight[] } | { ok: false; status: number; detail: string }> {
-  const response = await fetch(url, { cache: "no-store" });
+async function readMetaInsights(url: URL, accessToken: string): Promise<{ ok: true; data: MetaInsight[] } | { ok: false; status: number; detail: string }> {
+  // El token viaja en el header y NO en la query: las URLs con
+  // access_token se filtran en logs de proxies, CDNs y referers.
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     return { ok: false, status: response.status, detail: detail.slice(0, 500) };
@@ -112,7 +117,6 @@ export const GET = withAuth(async (session) => {
       fields: "campaign_id,campaign_name,spend,impressions,clicks",
       date_preset: "last_30d",
       level: "campaign",
-      access_token: token,
     }).toString();
     const dailyUrl = new URL(`${graphRoot}/${accountId}/insights`);
     dailyUrl.search = new URLSearchParams({
@@ -120,13 +124,12 @@ export const GET = withAuth(async (session) => {
       date_preset: "last_30d",
       level: "account",
       time_increment: "1",
-      access_token: token,
     }).toString();
 
     try {
       const [campaignResult, dailyResult] = await Promise.all([
-        readMetaInsights(campaignUrl),
-        readMetaInsights(dailyUrl),
+        readMetaInsights(campaignUrl, token),
+        readMetaInsights(dailyUrl, token),
       ]);
       if (!campaignResult.ok) {
         connections.meta = {

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { ConversationDto } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { capabilitiesFor } from "@/server/channels/capabilities";
 import { formatBytes, formatRemaining } from "./helpers";
 
 /** 008 — Panel secundario del clip: formulario de ubicación o contacto. */
@@ -182,16 +183,17 @@ export function Composer({
   }
 
   if (!conversation.windowOpen) {
+    const caps = capabilitiesFor(conversation.channel);
     return (
       <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3.5">
         <div className="mb-3 flex items-start gap-2 rounded-md border border-warning-soft bg-warning-tint p-3 text-sm text-warning-text">
           <Clock3 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.7} />
           <div>
-            <p className="font-medium">La ventana de 24 horas está cerrada.</p>
+            <p className="font-medium">La ventana de {caps.label} está cerrada.</p>
             <p className="opacity-80">
-              WhatsApp solo permite texto libre dentro de las 24 horas
-              siguientes al último mensaje del cliente. Espera a que el
-              cliente escriba para poder responderle.
+              {conversation.channel === "whatsapp"
+                ? "WhatsApp solo permite texto libre dentro de las 24 horas siguientes al último mensaje del cliente. Espera a que el cliente escriba para poder responderle."
+                : `Pasaron los 7 días que ${caps.label} permite responder con agente humano. Espera a que el cliente vuelva a escribir.`}
             </p>
           </div>
         </div>
@@ -316,7 +318,13 @@ export function Composer({
           ref={fileRef}
           type="file"
           className="hidden"
-          onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            pickFile(e.target.files?.[0] ?? null);
+            // Reinicia el input: si no, volver a elegir EL MISMO archivo no
+            // dispara `change` (el valor no cambió) y el usuario creía que
+            // el adjunto no se había seleccionado.
+            e.target.value = "";
+          }}
         />
         <div className="flex shrink-0 items-center gap-0.5">
           {canAttach && (
@@ -398,7 +406,11 @@ export function Composer({
       <div className="mt-1.5 flex items-center justify-between">
         {error ? <p className="text-xs text-destructive">{error}</p> : <span />}
         <p className="font-mono text-[10.5px] tracking-[0.04em] text-text-3">
-          Ventana abierta · quedan {formatRemaining(conversation.windowRemainingMs)}
+          {conversation.humanAgentMode
+            ? "Fuera de 24 h · se enviará con etiqueta de agente humano"
+            : conversation.windowRemainingMs > 0
+              ? `Ventana abierta · quedan ${formatRemaining(conversation.windowRemainingMs)}`
+              : "Ventana abierta"}
         </p>
       </div>
     </div>

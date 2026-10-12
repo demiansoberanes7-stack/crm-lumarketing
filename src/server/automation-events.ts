@@ -228,13 +228,20 @@ export async function scanInactivity(): Promise<void> {
     for (const integration of integrations) {
       // 0044: las reglas se guardan cifradas (triple AES-256-GCM); el jsonb
       // legado queda como fallback para filas escritas antes del cifrado.
-      const credentials = integration.credentialsCipher && integration.credentialsIv && integration.credentialsTag
-        ? JSON.parse(decryptSecret({
-            cipher: integration.credentialsCipher,
-            iv: integration.credentialsIv,
-            tag: integration.credentialsTag,
-          })) as { rules?: unknown } | null
-        : integration.credentials as { rules?: unknown } | null;
+      // Una fila no descifrable (llave rotada) se salta: no debe abortar el
+      // barrido de TODAS las organizaciones por una sola fila corrupta.
+      let credentials: { rules?: unknown } | null;
+      try {
+        credentials = integration.credentialsCipher && integration.credentialsIv && integration.credentialsTag
+          ? JSON.parse(decryptSecret({
+              cipher: integration.credentialsCipher,
+              iv: integration.credentialsIv,
+              tag: integration.credentialsTag,
+            })) as { rules?: unknown } | null
+          : integration.credentials as { rules?: unknown } | null;
+      } catch {
+        continue;
+      }
       const rules = listAutomationRules(credentials?.rules)
         .filter((rule) => rule.enabled === true)
         .map((rule) => ({ ...rule, triggers: resolveAutomationTriggers(rule) }))

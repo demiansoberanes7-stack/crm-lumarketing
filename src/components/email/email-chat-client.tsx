@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { EmailChatThread } from "@/app/api/email/threads/route";
+import { bufferToBase64 } from "@/lib/base64";
 import { EmailComposeDialog, type EmailAttachment } from "./email-compose-dialog";
 
 type EmailAccount = { id: string; label: string | null; email: string; enabled: boolean };
@@ -100,7 +101,10 @@ export function EmailChatClient() {
         to: selected.participant.email,
         subject: selected.subject.startsWith("Re:") ? selected.subject : `Re: ${selected.subject}`,
         text: replyBody.trim(),
-        inReplyTo: last?.from === selected.participant.email ? last.id : null,
+        // El Message-ID RFC (no el id de BD): es lo que el cliente de correo
+        // usa para hilar. Apunta al último mensaje del hilo sin importar la
+        // dirección — así dos respuestas seguidas del agente no rompen el hilo.
+        inReplyTo: last?.messageId ?? null,
         attachments: replyAttachments.length > 0 ? replyAttachments : undefined,
       }),
     }).catch(() => null);
@@ -125,7 +129,7 @@ export function EmailChatClient() {
         continue;
       }
       const buffer = await file.arrayBuffer();
-      next.push({ filename: file.name, content: btoa(String.fromCharCode(...new Uint8Array(buffer))), contentType: file.type || "application/octet-stream" });
+      next.push({ filename: file.name, content: bufferToBase64(buffer), contentType: file.type || "application/octet-stream" });
     }
     setReplyAttachments((prev) => [...prev, ...next]);
     if (replyFileRef.current) replyFileRef.current.value = "";

@@ -36,10 +36,18 @@ export const GET = withAuth(async (session, req: Request, { params }: { params: 
 export const DELETE = withAuth(async (session, req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   const db = getDb();
+  // Mismo criterio que el GET: la conversación es del usuario que la creó.
+  // Sin el filtro por userId, cualquier miembro de la organización podía
+  // borrar el copiloto personal de otro.
   const deleted = await db
     .delete(schema.watsiConversation)
     .where(
-      scoped(schema.watsiConversation.organizationId, session.organizationId, eq(schema.watsiConversation.id, id))
+      scoped(
+        schema.watsiConversation.organizationId,
+        session.organizationId,
+        eq(schema.watsiConversation.id, id),
+        eq(schema.watsiConversation.userId, session.userId)
+      )
     )
     .returning({ id: schema.watsiConversation.id });
   if (deleted.length === 0) return apiError(404, "not_found", "Conversación no encontrada");

@@ -238,9 +238,24 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   });
   if (!result.ok) {
     if (result.error === "not_configured") return;
-    // Fallo persistente del proveedor o salida imposible → escalar (FR-022).
     console.error(`[agente] fallo del proveedor (raw): ${result.detail}`);
-    await applyHandoff(conversationId, organizationId, "error");
+    /**
+     * Escalar (FR-022) solo cuando un humano DEBE intervenir:
+     * - `invalid_output`: el modelo devolvió basura repetidamente en ESTA
+     *   conversación (se reintentó y no hubo forma).
+     * - Error de autenticación/config del proveedor (401/403): alguien tiene
+     *   que arreglar la configuración.
+     *
+     * Un 5xx transitorio, timeout o rate limit NO apaga el agente: antes
+     * fijaba `handoffAt` en TODAS las conversaciones activas de la org de
+     * golpe y nada lo limpiaba solo. Un hipo del proveedor nunca tumba el
+     * turno: falla este turno, se loguea, y el siguiente mensaje reintenta.
+     */
+    const esErrorDeConfig =
+      /\b(401|403|unauthorized|forbidden|invalid.?api.?key)\b/i.test(result.detail);
+    if (result.error === "invalid_output" || esErrorDeConfig) {
+      await applyHandoff(conversationId, organizationId, "error");
+    }
     throw new Error(result.detail || "El proveedor de IA no pudo completar el turno");
   }
 

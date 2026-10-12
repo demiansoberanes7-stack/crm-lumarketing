@@ -1,4 +1,4 @@
-import { count, eq, sql } from "drizzle-orm";
+import { asc, count, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { ACQUISITION_CHANNELS, UNKNOWN_CHANNEL } from "@/lib/acquisition-channel";
@@ -98,6 +98,9 @@ export async function resolveMembership(
     })
     .from(schema.member)
     .where(eq(schema.member.userId, userId))
+    // Orden determinista: con varias membresías, "la primera" sin ORDER BY
+    // dependía del plan de consulta y podía cambiar entre llamadas.
+    .orderBy(asc(schema.member.createdAt), asc(schema.member.id))
     .limit(1);
   return rows[0] ?? null;
 }

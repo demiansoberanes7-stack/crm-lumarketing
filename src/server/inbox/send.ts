@@ -1043,5 +1043,8 @@ async function callGoogleBusinessReply(target: SendTarget, text: string): Promis
       )
     );
 
-  return creds.reviewName;
+  // Cada reply es un mensaje saliente NUEVO: Google acepta editar el reply de
+  // una reseña, así que el reviewName se repetiría y el UNIQUE de
+  // wa_message_id reventaría DESPUÉS de publicar. Un id único por envío.
+  return newId("message");
 }

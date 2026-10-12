@@ -5,6 +5,7 @@ import { Paperclip, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { bufferToBase64 } from "@/lib/base64";
 
 export type EmailAttachment = { filename: string; content: string; contentType: string };
 
@@ -40,7 +41,7 @@ export function EmailComposeDialog({
         continue;
       }
       const buffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const base64 = bufferToBase64(buffer);
       next.push({ filename: file.name, content: base64, contentType: file.type || "application/octet-stream" });
     }
     setAttachments((prev) => [...prev, ...next]);

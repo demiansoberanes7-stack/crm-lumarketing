@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { getDb } from "@/lib/db";
 import { schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
@@ -137,27 +137,63 @@ export async function seedDemo(
   const demoPhones = DEMO_CONTACTS.map((c) => c.phone);
 
   // --- Idempotencia: limpiar datos demo previos (orden inverso de FKs) ---
+  // Scoped SIEMPRE por organización: los teléfonos demo podrían existir
+  // como clientes reales en otra instancia/org, y borrarlos la destruiría.
   const prevContacts = await db
     .select({ id: schema.contact.id })
     .from(schema.contact)
-    .where(inArray(schema.contact.phone, demoPhones));
+    .where(
+      and(
+        eq(schema.contact.organizationId, organizationId),
+        inArray(schema.contact.phone, demoPhones)
+      )
+    );
   const prevIds = prevContacts.map((c) => c.id);
   if (prevIds.length > 0) {
     const prevConvs = await db
       .select({ id: schema.conversation.id })
       .from(schema.conversation)
-      .where(inArray(schema.conversation.contactId, prevIds));
+      .where(
+        and(
+          eq(schema.conversation.organizationId, organizationId),
+          inArray(schema.conversation.contactId, prevIds)
+        )
+      );
     const convIds = prevConvs.map((c) => c.id);
     if (convIds.length > 0) {
       await db
         .delete(schema.message)
-        .where(inArray(schema.message.conversationId, convIds));
+        .where(
+          and(
+            eq(schema.message.organizationId, organizationId),
+            inArray(schema.message.conversationId, convIds)
+          )
+        );
       await db
         .delete(schema.conversation)
-        .where(inArray(schema.conversation.id, convIds));
+        .where(
+          and(
+            eq(schema.conversation.organizationId, organizationId),
+            inArray(schema.conversation.id, convIds)
+          )
+        );
     }
-    await db.delete(schema.lead).where(inArray(schema.lead.contactId, prevIds));
-    await db.delete(schema.contact).where(inArray(schema.contact.id, prevIds));
+    await db
+      .delete(schema.lead)
+      .where(
+        and(
+          eq(schema.lead.organizationId, organizationId),
+          inArray(schema.lead.contactId, prevIds)
+        )
+      );
+    await db
+      .delete(schema.contact)
+      .where(
+        and(
+          eq(schema.contact.organizationId, organizationId),
+          inArray(schema.contact.id, prevIds)
+        )
+      );
   }
   // KB y corridas demo previas
   await db

@@ -10,6 +10,7 @@ import {
   serializeContact,
 } from "@/server/contacts";
 import { normalizeMedium } from "@/lib/contact-medium";
+import { normalizeMx } from "@/lib/meta/client";
 import { upsertFicha } from "@/server/bot/ficha";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +80,21 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
     set.name = body.data.name;
     set.nameSource = "manual";
   }
-  if (body.data.phone !== undefined) set.phone = body.data.phone || null;
+  if (body.data.phone !== undefined) {
+    // Normaliza al formato canónico (solo dígitos + 521→52): es el mismo
+    // formato con el que la ingesta guarda `phone`/`wa_identity`, así el
+    // matcher por teléfono sigue funcionando.
+    const phone = body.data.phone ? normalizeMx(body.data.phone.replace(/\D/g, "")) : null;
+    set.phone = phone;
+    // La identidad de WhatsApp SIN prefijo ES el teléfono normalizado: si el
+    // operador corrige el número, la identidad debe seguirlo — si no, el
+    // próximo mensaje del cliente crea un contacto nuevo y el historial se
+    // parte en dos. Identidades con prefijo (bsuid:, ig:, fb:, tt:) no se
+    // tocan: son llaves de plataforma, no teléfono.
+    if (phone && current.channel === "whatsapp" && !current.waIdentity.includes(":")) {
+      set.waIdentity = phone;
+    }
+  }
   if (body.data.notes !== undefined) set.notes = body.data.notes;
   if (body.data.archived !== undefined) {
     set.archivedAt = body.data.archived ? new Date() : null;

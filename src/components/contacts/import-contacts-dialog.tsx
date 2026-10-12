@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Upload, FileText, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseCsv } from "@/lib/csv";
 
 interface ImportResult {
   imported: number;
@@ -37,11 +38,11 @@ export function ImportContactsDialog({
     reader.onload = () => {
       const text = String(reader.result ?? "");
       setCsvText(text);
-      // Preview: primeras 5 filas
-      const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\r|\n/).filter((l) => l.trim());
-      setPreview(lines.slice(0, 6).map((l) => ({ raw: l })));
+      // Preview: primeras 5 filas (parseCsv respeta campos multilínea)
+      const rows = parseCsv(text);
+      setPreview(rows.slice(0, 5).map((r) => ({ raw: Object.values(r).join(", ") })));
     };
-    reader.readAsText(file);
+    reader.readAsText(file, "utf-8");
   }
 
   async function doImport() {

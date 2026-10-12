@@ -11,17 +11,36 @@ function detectSeparator(line: string): string {
   return semis > commas ? ";" : ",";
 }
 
-/** Divide una línea CSV respetando comillas dobles. */
-function splitLine(line: string, sep: string): string[] {
-  const cells: string[] = [];
+/**
+ * Parsea el texto COMPLETO a filas de celdas respetando RFC 4180: comillas
+ * dobles, `""` como comilla literal y saltos de línea DENTRO de campos
+ * entrecomillados. Dividir por líneas antes de parsear rompía cualquier
+ * campo con salto interno (direcciones, notas).
+ */
+function parseRows(text: string, sep: string): string[][] {
+  const rows: string[][] = [];
+  let cells: string[] = [];
   let current = "";
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i] ?? "";
+  let cellStarted = false;
+
+  const endCell = () => {
+    cells.push(current.trim());
+    current = "";
+    cellStarted = false;
+  };
+  const endRow = () => {
+    endCell();
+    // Filas completamente vacías se descartan.
+    if (!(cells.length === 1 && cells[0] === "")) rows.push(cells);
+    cells = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i] ?? "";
     if (inQuotes) {
       if (ch === '"') {
-        // "" dentro de comillas = comilla literal
-        if (line[i + 1] === '"') {
+        if (text[i + 1] === '"') {
           current += '"';
           i++;
         } else {
@@ -30,44 +49,48 @@ function splitLine(line: string, sep: string): string[] {
       } else {
         current += ch;
       }
-    } else if (ch === '"') {
+      continue;
+    }
+    if (ch === '"') {
       inQuotes = true;
+      cellStarted = true;
     } else if (ch === sep) {
-      cells.push(current);
-      current = "";
+      endCell();
+    } else if (ch === "\n" || ch === "\r") {
+      // \r\n cuenta como un solo salto.
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      if (cellStarted || current.length > 0 || cells.length > 0) endRow();
     } else {
       current += ch;
+      cellStarted = true;
     }
   }
-  cells.push(current);
-  return cells.map((c) => c.trim());
+  // La última fila sin salto final.
+  if (cellStarted || current.length > 0 || cells.length > 0) endRow();
+  return rows;
 }
 
 /**
  * Parsea texto CSV a array de objetos usando la fila de encabezados como keys.
- * La primera línea no vacía es el header. Filas vacías se descartan.
+ * La primera fila no vacía es el header. Filas vacías se descartan.
  */
 export function parseCsv(text: string): Record<string, string>[] {
   // Quitar BOM si viene de Excel
   const clean = text.replace(/^\uFEFF/, "");
-  const lines = clean.split(/\r\n|\r|\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return [];
-  const headerLine = lines[0] ?? "";
-  const sep = detectSeparator(headerLine);
-  const headers = splitLine(headerLine, sep).map((h) =>
-    h.toLowerCase().replace(/\s+/g, "_")
-  );
-  const rows: Record<string, string>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const cells = splitLine(line, sep);
+  const firstLine = clean.split(/\r\n|\r|\n/, 1)[0] ?? "";
+  const rows = parseRows(clean, detectSeparator(firstLine));
+  const headerRow = rows[0];
+  if (!headerRow || rows.length < 2) return [];
+  const headers = headerRow.map((h) => h.toLowerCase().replace(/\s+/g, "_"));
+  const out: Record<string, string>[] = [];
+  for (const cells of rows.slice(1)) {
     const row: Record<string, string> = {};
     headers.forEach((h, j) => {
       row[h] = cells[j] ?? "";
     });
-    rows.push(row);
+    out.push(row);
   }
-  return rows;
+  return out;
 }
 
 /** Escapa un valor para celda CSV. */

@@ -72,9 +72,20 @@ function createAuth() {
       before: createAuthMiddleware(async (ctx) => {
         // Rate limit por IP en login/registro (FR-062): 10 / 10 min → 429.
         if (RATE_LIMITED_PATHS.has(ctx.path)) {
+          // El PRIMER hop de X-Forwarded-For lo escribe el cliente: con él se
+          // podía esquivar el rate limit mandando un header distinto por
+          // request. El hop que importa es el ÚLTIMO (el que agrega el proxy
+          // de confianza: Caddy/Traefik). x-real-ip lo pisa el proxy y es
+          // aún más directo, así va primero.
+          const forwarded = ctx.headers?.get("x-forwarded-for");
+          const lastHop = forwarded
+            ?.split(",")
+            .map((h) => h.trim())
+            .filter(Boolean)
+            .at(-1);
           const ip =
-            ctx.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ||
             ctx.headers?.get("x-real-ip") ||
+            lastHop ||
             "local";
           const result = checkRateLimit(`${ctx.path}:${ip}`, AUTH_RATE_LIMIT);
           if (!result.allowed) {

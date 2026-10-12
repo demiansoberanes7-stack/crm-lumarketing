@@ -39,6 +39,11 @@ function resolveProvider(raw: string): MarketingProvider | null {
     : null;
 }
 
+/** Últimos 4 caracteres de un secreto, para que el formulario sepa que hay uno guardado. */
+function last4(value: unknown): string {
+  return typeof value === "string" && value.length > 0 ? value.slice(-4) : "";
+}
+
 export const GET = withAuth(
   async (session, _req: Request, { params }: { params: Promise<{ provider: string }> }) => {
     const provider = resolveProvider((await params).provider);
@@ -46,13 +51,24 @@ export const GET = withAuth(
     const integration = await getIntegration(session.organizationId, provider);
     if (!integration) return NextResponse.json(null);
     const credentials: Record<string, unknown> = { ...integration.credentials };
-    // La service account incluye una private key: jamás cruza al cliente.
-    // El formulario solo necesita saber si ya hay una guardada.
+    // Los secretos jamás cruzan al cliente (constitución I): el formulario
+    // solo recibe los últimos 4 caracteres / banderas, igual que el resto del
+    // CRM (tokenLast4). Un campo vacío al guardar no borra lo guardado.
     if (provider === "ga4") {
       const configured = typeof credentials.serviceAccountJson === "string" &&
         credentials.serviceAccountJson.trim().length > 0;
       delete credentials.serviceAccountJson;
       credentials.serviceAccountConfigured = configured;
+    } else if (provider === "google_ads") {
+      credentials.developerTokenLast4 = last4(credentials.developerToken);
+      credentials.clientSecretLast4 = last4(credentials.clientSecret);
+      credentials.refreshTokenSet = last4(credentials.refreshToken).length > 0;
+      delete credentials.developerToken;
+      delete credentials.clientSecret;
+      delete credentials.refreshToken;
+    } else if (provider === "meta_ads") {
+      credentials.accessTokenLast4 = last4(credentials.accessToken);
+      delete credentials.accessToken;
     }
     return NextResponse.json({ credentials });
   }
@@ -77,6 +93,13 @@ export const POST = withAuth(
       return apiError(422, "invalid_body", detail);
     }
     const data = result.data as Record<string, unknown>;
+
+    // Un campo vacío no borra lo que ya existe (mismo criterio que /test): el
+    // formulario ya no recibe los secretos guardados, así que los deja en
+    // blanco para conservarlos.
+    for (const [key, value] of Object.entries(data)) {
+      if (typeof value === "string" && !value.trim()) delete data[key];
+    }
 
     const existing = await getIntegration(session.organizationId, provider);
     // Merge sobre lo guardado: un campo vacío no borra lo que ya existe

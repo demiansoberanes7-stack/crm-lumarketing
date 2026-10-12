@@ -352,6 +352,13 @@ export const automationExecution = pgTable(
     index("automation_execution_due_idx").on(t.status, t.scheduledAt),
     index("automation_execution_org_sent_idx").on(t.organizationId, t.sentAt),
     index("automation_execution_conversation_idx").on(t.conversationId, t.createdAt),
+    // El dedup de enqueueFollowUp era SELECT-then-INSERT: dos eventos
+    // simultáneos pasaban la revisión y colaban el mismo seguimiento dos
+    // veces. El índice único parcial cierra la carrera en la propia BD
+    // (una sola ejecución activa por regla y conversación).
+    uniqueIndex("automation_execution_active_uq")
+      .on(t.organizationId, t.conversationId, t.ruleId)
+      .where(sql`${t.status} IN ('queued', 'running')`),
   ]
 );
 

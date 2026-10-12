@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -57,25 +57,31 @@ export function AgendaClient() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoadFailed(false);
+    const [cfg, avail] = await Promise.all([
+      fetch("/api/calendar/settings").catch(() => null),
+      fetch("/api/calendar/availability").catch(() => null),
+    ]);
+    if (cfg?.ok) {
+      const data = (await cfg.json()) as { settings: Settings };
+      setSettings(data.settings);
+    } else {
+      setLoadFailed(true);
+    }
+    if (avail?.ok) {
+      const data = (await avail.json()) as { slots: { label: string }[] };
+      setSlots(data.slots.slice(0, 5));
+    } else {
+      setSlots([]);
+    }
+  }, []);
 
   useEffect(() => {
-    void (async () => {
-      const [cfg, avail] = await Promise.all([
-        fetch("/api/calendar/settings").catch(() => null),
-        fetch("/api/calendar/availability").catch(() => null),
-      ]);
-      if (cfg?.ok) {
-        const data = (await cfg.json()) as { settings: Settings };
-        setSettings(data.settings);
-      }
-      if (avail?.ok) {
-        const data = (await avail.json()) as { slots: { label: string }[] };
-        setSlots(data.slots.slice(0, 5));
-      } else {
-        setSlots([]);
-      }
-    })();
-  }, []);
+    void load();
+  }, [load]);
 
   async function refreshPreview() {
     const res = await fetch("/api/calendar/availability").catch(() => null);
@@ -160,7 +166,17 @@ export function AgendaClient() {
     void refreshPreview();
   }
 
-  if (!settings) return <p className="text-sm text-text-3">Cargando…</p>;
+  if (!settings) {
+    if (loadFailed) {
+      return (
+        <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
+          <span>No se pudo cargar la configuración de la agenda.</span>
+          <Button variant="outline" onClick={() => void load()}>Reintentar</Button>
+        </div>
+      );
+    }
+    return <p className="text-sm text-text-3">Cargando…</p>;
+  }
 
   return (
     <div className="max-w-2xl space-y-4">

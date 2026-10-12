@@ -251,32 +251,45 @@ export async function processMessagesValue(value: WebhookValue): Promise<void> {
   const organizationId = credentials.organizationId;
 
   for (const status of value.statuses ?? []) {
-    await applyStatusUpdate(organizationId, status);
+    try {
+      await applyStatusUpdate(organizationId, status);
+    } catch (err) {
+      // Un estado malformado no descarta los demás ni los mensajes del batch
+      // (Meta ya recibió el 200: no reintenta).
+      console.error(`[webhook] error procesando estado ${status.id ?? "?"}:`, err);
+    }
   }
   const { whatsappProvider } = await import("@/server/whatsapp/provider");
   if (await whatsappProvider(organizationId) !== "meta") return;
 
   for (const msg of value.messages ?? []) {
     if (!SUPPORTED_TYPES.has(msg.type)) continue; // reacciones, etc.: ignorar
-    const resolved = resolveIdentity(msg, value.contacts);
-    if (!resolved) {
-      // Mensaje sin NINGUNA identidad utilizable (ni teléfono ni BSUID):
-      // registrar y descartar — jamás reventar el webhook (003).
-      console.warn(
-        `[webhook] mensaje ${msg.id} sin identidad utilizable (sin from ni from_user_id): descartado`
-      );
-      continue;
+    // Un error por mensaje (carrera de upsert, fallo de BD, media roto) no
+    // debe abortar el RESTO del batch: la ruta ya respondió 200 y Meta no
+    // reintenta, así que el descarte sería permanente.
+    try {
+      const resolved = resolveIdentity(msg, value.contacts);
+      if (!resolved) {
+        // Mensaje sin NINGUNA identidad utilizable (ni teléfono ni BSUID):
+        // registrar y descartar — jamás reventar el webhook (003).
+        console.warn(
+          `[webhook] mensaje ${msg.id} sin identidad utilizable (sin from ni from_user_id): descartado`
+        );
+        continue;
+      }
+      await ingestInboundMessage({
+        organizationId,
+        identity: resolved,
+        waMessageId: msg.id,
+        type: msg.type,
+        text: msg.text?.body ?? null,
+        timestamp: msg.timestamp,
+        media: mediaInputFrom(msg),
+        referral: msg.referral ?? null,
+      });
+    } catch (err) {
+      console.error(`[webhook] error procesando mensaje ${msg.id}:`, err);
     }
-    await ingestInboundMessage({
-      organizationId,
-      identity: resolved,
-      waMessageId: msg.id,
-      type: msg.type,
-      text: msg.text?.body ?? null,
-      timestamp: msg.timestamp,
-      media: mediaInputFrom(msg),
-      referral: msg.referral ?? null,
-    });
   }
 }
 
@@ -480,8 +493,12 @@ export async function ingestInboundMessage(input: {
   await db
     .update(schema.conversation)
     .set({
-      lastInboundAt: waTimestamp,
-      lastMessageAt: waTimestamp,
+      // GREATEST: los webhooks de Meta pueden llegar fuera de orden (o
+      // reintentados); sin esto un mensaje viejo retrocedía el marcador de
+      // última entrada y el barrido de inactividad volvía a disparar
+      // seguimientos que ya se habían cancelado.
+      lastInboundAt: sql`GREATEST(COALESCE(${schema.conversation.lastInboundAt}, ${waTimestamp}), ${waTimestamp})`,
+      lastMessageAt: sql`GREATEST(COALESCE(${schema.conversation.lastMessageAt}, ${waTimestamp}), ${waTimestamp})`,
       unreadCount: sql`${schema.conversation.unreadCount} + 1`,
       updatedAt: new Date(),
     })

@@ -50,9 +50,12 @@ export const POST = withAuth(async (session, req: Request) => {
       lastMessageAt: now,
     });
   } else {
-    // Verify conversation belongs to this org
+    // Verify conversation belongs to this org AND is a test conversation.
+    // Un conversationId REAL haría que runAgentTurn enviara la respuesta por
+    // WhatsApp al cliente de verdad (y reabriera su ventana de 24 h): la
+    // sandbox del Laboratorio jamás toca la API real (constitución IV).
     const convRows = await db
-      .select({ id: schema.conversation.id })
+      .select({ id: schema.conversation.id, isTest: schema.conversation.isTest })
       .from(schema.conversation)
       .where(
         scoped(
@@ -66,6 +69,18 @@ export const POST = withAuth(async (session, req: Request) => {
       return Response.json(
         { error: { code: "not_found", message: "Conversación no encontrada" } },
         { status: 404 }
+      );
+    }
+    if (!convRows[0].isTest) {
+      return Response.json(
+        {
+          error: {
+            code: "invalid_conversation",
+            message:
+              "El chat del Laboratorio solo opera conversaciones de prueba (is_test). Una conversación real recibiría la respuesta por WhatsApp.",
+          },
+        },
+        { status: 400 }
       );
     }
   }

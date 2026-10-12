@@ -68,14 +68,22 @@ async function executeRun(
   runId: string,
   organizationId: string
 ): Promise<void> {
+  // El AbortController corta la corrida entre casos cuando vence el timeout:
+  // sin eso, Promise.race solo desechaba la promesa y la corrida seguía
+  // corriendo en background (gastando LLM) — y al terminar pisaba el
+  // `failed` del timeout con un `done` calculado sobre casos incompletos.
+  const controller = new AbortController();
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(
-      () => reject(new Error("timeout de 10 minutos superado")),
-      RUN_TIMEOUT_MS
-    )
+    setTimeout(() => {
+      controller.abort();
+      reject(new Error("timeout de 10 minutos superado"));
+    }, RUN_TIMEOUT_MS)
   );
   try {
-    await Promise.race([runAllCases(runId, organizationId), timeout]);
+    await Promise.race([
+      runAllCases(runId, organizationId, controller.signal),
+      timeout,
+    ]);
   } catch (err) {
     await failRun(runId, organizationId, String(err));
   }
@@ -83,7 +91,8 @@ async function executeRun(
 
 async function runAllCases(
   runId: string,
-  organizationId: string
+  organizationId: string,
+  signal: AbortSignal
 ): Promise<void> {
   const db = getDb();
   const cases = await db
@@ -120,6 +129,9 @@ async function runAllCases(
   publishProgress(organizationId, runId, "running", done, total);
 
   for (const [index, testCase] of cases.entries()) {
+    if (signal.aborted) {
+      throw new Error("corrida abortada (timeout o cancelación)");
+    }
     if (index > 0) {
       await new Promise((resolve) => setTimeout(resolve, PACE_BETWEEN_CASES_MS));
     }
@@ -168,11 +180,18 @@ async function runAllCases(
     .where(eq(schema.agentTestCase.runId, runId));
   const score = computeScore(finalCases);
 
-  await getDb()
+  // Solo si sigue `running`: si el timeout ya marcó `failed`, esta corrida
+  // tardía no debe pisar el estado (ni publicar un "done" mentiroso).
+  const updated = await getDb()
     .update(schema.agentTestRun)
     .set({ status: "done", score, finishedAt: new Date() })
-    .where(eq(schema.agentTestRun.id, runId));
-  publishProgress(organizationId, runId, "done", done, total, score);
+    .where(
+      and(eq(schema.agentTestRun.id, runId), eq(schema.agentTestRun.status, "running"))
+    )
+    .returning({ id: schema.agentTestRun.id });
+  if (updated[0]) {
+    publishProgress(organizationId, runId, "done", done, total, score);
+  }
 }
 
 /** Conversa el guion completo contra el agente real; corta al primer handoff. */

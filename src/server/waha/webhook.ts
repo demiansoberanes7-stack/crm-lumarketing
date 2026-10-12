@@ -9,7 +9,7 @@
  * - message.ack: actualizaciones de estado (sent/delivered/read)
  * - session.status: estado de la sesión WAHA
  */
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { ingestInboundMessage } from "@/server/inbox/ingest";
 import { applyStatusUpdate } from "@/server/inbox/status";
@@ -188,9 +188,12 @@ export function processSessionStatus(
 /**
  * Handler principal del webhook WAHA.
  * POST /api/webhooks/waha/[token]
+ *
+ * El body YA viene parseado: la ruta lo lee ANTES de after() porque una vez
+ * enviada la respuesta el stream del request ya no está disponible.
  */
 export async function handleWahaWebhook(
-  request: NextRequest,
+  parsedBody: unknown,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
@@ -199,14 +202,14 @@ export async function handleWahaWebhook(
   // En WAHA, el token se configura en la URL del webhook.
   // Aquí simplemente procesamos el body sin verificar el token específicamente,
   // ya que la URL secreta ya protege el endpoint.
-  const body = await request.json().catch(() => null);
-  if (!body) {
+  const body = parsedBody as { event?: string; session?: string; payload?: Record<string, unknown> } | null;
+  if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const event = body.event as string | undefined;
-  const session = body.session as string | undefined;
-  const payload = body.payload as Record<string, unknown> | undefined;
+  const event = body.event;
+  const session = body.session;
+  const payload = body.payload;
 
   if (!event || !payload) {
     return NextResponse.json({ ok: true });

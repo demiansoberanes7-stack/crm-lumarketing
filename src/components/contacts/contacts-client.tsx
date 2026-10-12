@@ -431,8 +431,10 @@ function EditDialog({
 }) {
   const [name, setName] = useState(contact.name);
   const [phone, setPhone] = useState(contact.phone ?? "");
-  const [email, setEmail] = useState((contact.ficha as Record<string, unknown>)?.email as string ?? "");
-  const [interests, setInterests] = useState((contact.ficha as Record<string, unknown>)?.interests as string ?? "");
+  const [email, setEmail] = useState(((contact.ficha as Record<string, unknown>)?.email as string) ?? "");
+  const [interests, setInterests] = useState(((contact.ficha as Record<string, unknown>)?.interests as string) ?? "");
+  const originalEmail = ((contact.ficha as Record<string, unknown>)?.email as string) ?? "";
+  const originalInterests = ((contact.ficha as Record<string, unknown>)?.interests as string) ?? "";
   const [notes, setNotes] = useState(contact.notes ?? "");
   const [medium, setMedium] = useState(contact.medium ?? "");
   const [mediumDetail, setMediumDetail] = useState(contact.mediumDetail ?? "");
@@ -526,8 +528,10 @@ function EditDialog({
               patch.medium = medium || null;
               patch.mediumDetail = medium === "red_social" ? mediumDetail || null : null;
               const ficha: Record<string, unknown> = {};
-              if (email) ficha.email = email;
-              if (interests) ficha.interests = interests;
+              // `null` borra la clave (mergeFicha): vaciar un campo SÍ debe
+              // persistir, no quedarse con el valor viejo.
+              if (email !== originalEmail) ficha.email = email || null;
+              if (interests !== originalInterests) ficha.interests = interests || null;
               if (Object.keys(ficha).length > 0) patch.ficha = ficha;
               void onSave(patch);
             }}

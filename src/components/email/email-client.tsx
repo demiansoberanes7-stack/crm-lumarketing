@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { NewAccountDialog } from "./new-account-dialog";
 import Link from "next/link";
 import { groupEmailThreads } from "./threading";
+import { bufferToBase64 } from "@/lib/base64";
 
 type EmailAccount = {
   id: string;
@@ -223,7 +224,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
     for (const file of Array.from(files)) {
       if (file.size > 10 * 1024 * 1024) { setError(`El archivo ${file.name} supera 10MB`); continue; }
       const buffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const base64 = bufferToBase64(buffer);
       newAttachments.push({ filename: file.name, content: base64, contentType: file.type || "application/octet-stream" });
     }
     setAttachments((prev) => [...prev, ...newAttachments]);

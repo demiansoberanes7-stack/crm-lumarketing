@@ -1,5 +1,8 @@
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody } from "@/lib/api";
+import { getDb, schema } from "@/lib/db";
+import { scoped } from "@/lib/db/tenant";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
 import {
@@ -41,6 +44,12 @@ export async function POST(req: Request) {
   const body = await parseBody(req, createSchema);
   if (!body.ok) return body.response;
 
+  const convDenied = await assertConversationActive(
+    gate.organizationId,
+    body.data.conversationId
+  );
+  if (convDenied) return convDenied;
+
   try {
     const result = await createSessionBooking({
       organizationId: gate.organizationId,
@@ -64,6 +73,12 @@ export async function PATCH(req: Request) {
   const body = await parseBody(req, rescheduleSchema);
   if (!body.ok) return body.response;
 
+  const convDenied = await assertConversationActive(
+    gate.organizationId,
+    body.data.conversationId
+  );
+  if (convDenied) return convDenied;
+
   try {
     const result = await rescheduleForConversation({
       organizationId: gate.organizationId,
@@ -81,6 +96,42 @@ export async function PATCH(req: Request) {
  * dueño del negocio, no del agente. El camino es el handoff. */
 
 type Gate = { organizationId: string } | { response: Response };
+
+/**
+ * El cerebro externo obedece las MISMAS banderas que el agente in-process:
+ * si la IA está apagada en la conversación o hay handoff activo, el dueño
+ * tiene la palabra y el bot no debe agendar ni mover citas por su cuenta.
+ */
+async function assertConversationActive(
+  organizationId: string,
+  conversationId: string
+): Promise<Response | null> {
+  const [conv] = await getDb()
+    .select({
+      aiEnabled: schema.conversation.aiEnabled,
+      handoffAt: schema.conversation.handoffAt,
+    })
+    .from(schema.conversation)
+    .where(
+      scoped(
+        schema.conversation.organizationId,
+        organizationId,
+        eq(schema.conversation.id, conversationId)
+      )
+    )
+    .limit(1);
+  if (!conv) {
+    return apiError(404, "not_found", "Conversación no encontrada");
+  }
+  if (!conv.aiEnabled || conv.handoffAt) {
+    return apiError(
+      409,
+      "handoff_active",
+      "La conversación está en manos de un humano; el agente no agenda"
+    );
+  }
+  return null;
+}
 
 async function guard(req: Request): Promise<Gate> {
   if (!agendaEnabled()) return { response: agendaDisabledResponse() };

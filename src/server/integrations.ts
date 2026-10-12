@@ -31,13 +31,21 @@ type IntegrationRow = typeof schema.integration.$inferSelect;
 function rowToIntegration(row: IntegrationRow): Integration {
   let credentials: Record<string, unknown>;
   if (row.credentialsCipher && row.credentialsIv && row.credentialsTag) {
-    credentials = JSON.parse(decryptSecret({
-      cipher: row.credentialsCipher,
-      iv: row.credentialsIv,
-      tag: row.credentialsTag,
-    })) as Record<string, unknown>;
+    // Una fila no descifrable (llave de cifrado rotada, cipher corrupto) no
+    // debe tumbar el GET/POST de integraciones ni a las reglas de
+    // automatización: se trata como "sin credenciales" y el dueño vuelve a
+    // guardarlas. Mismo criterio que whatsapp/credentials.ts.
+    try {
+      credentials = JSON.parse(decryptSecret({
+        cipher: row.credentialsCipher,
+        iv: row.credentialsIv,
+        tag: row.credentialsTag,
+      })) as Record<string, unknown>;
+    } catch {
+      credentials = {};
+    }
   } else {
-    credentials = row.credentials as Record<string, unknown>;
+    credentials = (row.credentials ?? {}) as Record<string, unknown>;
   }
   return {
     id: row.id,

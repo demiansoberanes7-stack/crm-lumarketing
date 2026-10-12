@@ -23,6 +23,8 @@ export type EmailChatThread = {
   participant: { name: string; email: string };
   messages: {
     id: string;
+    /** Message-ID RFC: es el que va en el header In-Reply-To de una respuesta. */
+    messageId: string;
     direction: "inbound" | "outbound";
     from: string;
     text: string | null;
@@ -48,6 +50,7 @@ function toChatThread(thread: EmailThread<EmailRow>): EmailChatThread {
     participant: participantName(correspondent, thread.latest.to),
     messages: thread.messages.map((m) => ({
       id: m.id,
+      messageId: m.messageId,
       direction: m.direction,
       from: m.from,
       text: m.bodyText,

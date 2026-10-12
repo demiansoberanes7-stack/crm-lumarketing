@@ -18,10 +18,16 @@ interface GoogleAdsCreds {
   clientSecret: string;
   /** Opcional: pegado tras autorizar una vez con scope adwords (patrón Calendar). */
   refreshToken?: string;
+  /** El servidor solo manda los últimos 4; el secreto nunca cruza al cliente. */
+  developerTokenLast4?: string;
+  clientSecretLast4?: string;
+  refreshTokenSet?: boolean;
 }
 interface MetaAdsCreds {
   accessToken: string;
   adAccountId: string;
+  /** El servidor solo manda los últimos 4; el token nunca cruza al cliente. */
+  accessTokenLast4?: string;
 }
 interface Ga4Creds {
   propertyId: string;
@@ -190,7 +196,10 @@ export function MarketingClient() {
     // persiste aquí. Sin esto el tilde quedaba verde con credenciales que
     // nunca se guardaron y el Hub seguía diciendo "Desconectado".
     if (values && (next.state === "connected" || next.state === "saved")) {
-      const persisted = await persistIntegration(provider, values);
+      // Solo lo que el usuario tecleó: las banderas *Last4/*Set son del
+      // servidor y no deben persistirse como credenciales.
+      const { developerTokenLast4: _dt4, clientSecretLast4: _cs4, refreshTokenSet: _rts, accessTokenLast4: _at4, ...typed } = values as Record<string, unknown>;
+      const persisted = await persistIntegration(provider, typed);
       if (testSeq.current[provider] !== seq) return;
       next = persisted
         ? { ...next, message: next.message ? `${next.message} · guardado` : "Credenciales guardadas." }
@@ -210,8 +219,20 @@ export function MarketingClient() {
         fetch("/api/integrations/meta_ads").then(r => r.json()).catch(() => null),
         fetch("/api/integrations/ga4").then(r => r.json()).catch(() => null),
       ]);
-      if (gAds?.credentials) setGoogleAds(c => ({ ...c, ...gAds.credentials }));
-      if (mAds?.credentials) setMetaAds(c => ({ ...c, ...mAds.credentials }));
+      // Los secretos no cruzan del servidor (solo llegan últimos 4/banderas):
+      // los campos quedan en blanco y se conservan vacíos al guardar.
+      if (gAds?.credentials) {
+        const { developerTokenLast4, clientSecretLast4, refreshTokenSet, ...rest } = gAds.credentials;
+        setGoogleAds(c => ({
+          ...c, ...rest,
+          developerTokenLast4, clientSecretLast4, refreshTokenSet,
+          developerToken: "", clientSecret: "", refreshToken: "",
+        }));
+      }
+      if (mAds?.credentials) {
+        const { accessTokenLast4, ...rest } = mAds.credentials;
+        setMetaAds(c => ({ ...c, ...rest, accessTokenLast4, accessToken: "" }));
+      }
       if (ga?.credentials) setGa4(c => ({ ...c, ...ga.credentials }));
       setLoading(false);
     }
@@ -225,8 +246,14 @@ export function MarketingClient() {
     void Promise.all([runTest("google_ads"), runTest("meta_ads"), runTest("ga4")]);
   }, [loading, runTest]);
 
-  const googleReady = !!(googleAds.customerId && googleAds.developerToken && googleAds.clientId && googleAds.clientSecret);
-  const metaReady = !!(metaAds.accessToken && metaAds.adAccountId);
+  // Listo = los campos no-secretos llenos + el secreto tecleado O ya guardado
+  // (la prueba mezcla formulario con lo guardado; vacío no pisa).
+  const googleReady = !!(
+    googleAds.customerId && googleAds.clientId &&
+    (googleAds.developerToken || googleAds.developerTokenLast4) &&
+    (googleAds.clientSecret || googleAds.clientSecretLast4)
+  );
+  const metaReady = !!(metaAds.adAccountId && (metaAds.accessToken || metaAds.accessTokenLast4));
   const ga4Ready = !!ga4.propertyId && (ga4.serviceAccountConfigured === true || serviceAccountJson.trim().length > 0);
 
   async function handleSave() {
@@ -234,9 +261,12 @@ export function MarketingClient() {
     setSaved(false);
     setSaveError(null);
     try {
+      // Las banderas *Last4/*Set son solo de presentación: no se persisten.
+      const { developerTokenLast4: _dt4, clientSecretLast4: _cs4, refreshTokenSet: _rts, ...gAdsTyped } = googleAds;
+      const { accessTokenLast4: _at4, ...mAdsTyped } = metaAds;
       const results = await Promise.all([
-        persistIntegration("google_ads", googleAds),
-        persistIntegration("meta_ads", metaAds),
+        persistIntegration("google_ads", gAdsTyped),
+        persistIntegration("meta_ads", mAdsTyped),
         persistIntegration("ga4", {
           propertyId: ga4.propertyId,
           ...(serviceAccountJson.trim() ? { serviceAccountJson } : {}),
@@ -328,6 +358,9 @@ export function MarketingClient() {
             />
             <FieldHint>
               En Google Ads API Center (<code>ads.google.com/aw/apicenter</code>). Necesitas cuenta de administrador (MCC).
+              {googleAds.developerTokenLast4 && (
+                <> Guardado ····{googleAds.developerTokenLast4}. Déjalo en blanco para conservarlo.</>
+              )}
             </FieldHint>
           </div>
           <div>
@@ -351,6 +384,9 @@ export function MarketingClient() {
             />
             <FieldHint>
               Mismo panel de Google Cloud → se genera junto al Client ID.
+              {googleAds.clientSecretLast4 && (
+                <> Guardado ····{googleAds.clientSecretLast4}. Déjalo en blanco para conservarlo.</>
+              )}
             </FieldHint>
           </div>
           <div className="sm:col-span-2">
@@ -363,6 +399,9 @@ export function MarketingClient() {
             />
             <FieldHint>
               Con él el CRM puede leer tus cuentas de verdad (listAccessibleCustomers). Autoriza una vez en <code>developers.google.com/oauthplayground</code> con el alcance <code>https://www.googleapis.com/auth/adwords</code> y pega el token aquí. Sin él, la prueba solo verifica el par Client ID/Secret.
+              {googleAds.refreshTokenSet && (
+                <> Hay un Refresh Token guardado; déjalo en blanco para conservarlo.</>
+              )}
             </FieldHint>
           </div>
         </div>
@@ -415,6 +454,9 @@ export function MarketingClient() {
             />
             <FieldHint>
               Meta Business Suite → Configuración → <strong>Usuarios del sistema</strong> → token con permiso <em>ads_read</em>.
+              {metaAds.accessTokenLast4 && (
+                <> Guardado ····{metaAds.accessTokenLast4}. Déjalo en blanco para conservarlo.</>
+              )}
             </FieldHint>
           </div>
         </div>
