@@ -26,6 +26,7 @@ const PSID_META = `psid-meta-${RUN}`;
 const PSID_ZERNIO = `psid-zernio-${RUN}`;
 /** Marca de esta corrida: el arnes se puede repetir sobre la misma base. */
 const MARCA = `#${RUN}`;
+const RECOVERY_MARK = `${MARCA}-RECOVERY`;
 const NOMBRE_ZERNIO = `Jane Doe ${MARCA}`;
 
 let cookie = "";
@@ -241,6 +242,47 @@ async function main() {
     "el agente responde automáticamente al mensaje entrante de Messenger",
     aiReply?.aiGenerated === true && aiReply?.direction === "out",
     JSON.stringify({ aiGenerated: aiReply?.aiGenerated, direction: aiReply?.direction, status: aiReply?.status })
+  );
+
+  console.log("\n== Recuperación de un webhook parcialmente procesado ==");
+  const agentPausedForRecovery = await api("/api/agent/profile", {
+    method: "PUT",
+    body: JSON.stringify({ enabled: false }),
+  });
+  const recoveryPayload = metaEvent([{
+    sender: { id: `psid-recovery-${RUN}` },
+    recipient: { id: PAGE },
+    timestamp: Date.now(),
+    message: { mid: `m_recovery_${RUN}`, text: `Hola, necesito ayuda ${RECOVERY_MARK}` },
+  }]);
+  await webhook(recoveryPayload);
+  const recoveryConversation = await waitForConversation((c) => c.preview?.includes(RECOVERY_MARK));
+  await sleep(1200);
+  const recoveryBefore = recoveryConversation
+    ? await api(`/api/conversations/${recoveryConversation.id}/messages`)
+    : { json: null };
+  ok("el test pausa el agente antes de simular la primera entrega", agentPausedForRecovery.res.ok);
+  ok(
+    "el primer intento deja el inbound pero todavía no una respuesta IA",
+    (recoveryBefore.json?.messages ?? []).filter((m) => m.direction === "out" && m.aiGenerated).length === 0
+  );
+
+  const agentResumedForRecovery = await api("/api/agent/profile", {
+    method: "PUT",
+    body: JSON.stringify({ enabled: true }),
+  });
+  await webhook(recoveryPayload); // mismo message id: debe reparar side effects, no duplicar.
+  const recoveredReply = recoveryConversation
+    ? await waitForAiReply(recoveryConversation.id)
+    : null;
+  const recoveryAfter = recoveryConversation
+    ? await api(`/api/conversations/${recoveryConversation.id}/messages`)
+    : { json: null };
+  ok("una reentrega del mismo inbound reactiva el turno pendiente", agentResumedForRecovery.res.ok && recoveredReply?.aiGenerated === true);
+  ok(
+    "la recuperación conserva un solo inbound y una respuesta del agente",
+    (recoveryAfter.json?.messages ?? []).filter((m) => m.direction === "in" && m.text?.includes(RECOVERY_MARK)).length === 1 &&
+      (recoveryAfter.json?.messages ?? []).filter((m) => m.direction === "out" && m.aiGenerated).length === 1
   );
 
   console.log("\n== Idempotencia y ruido (Meta) ==");

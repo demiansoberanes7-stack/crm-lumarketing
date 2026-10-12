@@ -24,9 +24,13 @@ export async function onLeadActivity(
     .limit(1);
 
   if (existing[0]) {
+    const activityAt = sql.param(at, schema.lead.lastActivityAt);
     await db
       .update(schema.lead)
-      .set({ lastActivityAt: at, updatedAt: new Date() })
+      .set({
+        lastActivityAt: sql`GREATEST(COALESCE(${schema.lead.lastActivityAt}, ${activityAt}), ${activityAt})`,
+        updatedAt: new Date(),
+      })
       .where(eq(schema.lead.id, existing[0].id));
     return;
   }

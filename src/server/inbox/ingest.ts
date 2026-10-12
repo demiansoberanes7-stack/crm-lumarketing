@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { normalizeMx } from "@/lib/meta/client";
@@ -468,7 +468,10 @@ export async function ingestInboundMessage(input: {
 
   const waTimestamp = toDate(input.timestamp);
 
-  // Idempotencia dura: mismo wa_message_id → sin efectos adicionales.
+  // Idempotencia por wa_message_id. Si una ejecución anterior dejó el mensaje
+  // persistido pero se cortó antes de actualizar ventana/pipeline/agente, una
+  // reentrega repara esas consecuencias sin insertar otro mensaje ni sumar
+  // unreadCount dos veces.
   const msgId = newId("message");
   await db
     .insert(schema.message)
@@ -487,11 +490,16 @@ export async function ingestInboundMessage(input: {
   const [message] = await db
     .select()
     .from(schema.message)
-    .where(eq(schema.message.id, msgId))
+    .where(eq(schema.message.waMessageId, input.waMessageId))
     .limit(1);
-  if (!message) return; // duplicado
+  if (
+    !message ||
+    message.organizationId !== organizationId ||
+    message.conversationId !== conversation.id
+  ) return;
+  const isDuplicate = message.id !== msgId;
 
-  const asset = input.media
+  const asset = input.media && !message.mediaAssetId
     ? await attachMediaAsset(organizationId, message.id, input.media)
     : null;
 
@@ -500,17 +508,20 @@ export async function ingestInboundMessage(input: {
   // string para OID 1184, así que una Date cruda termina en Buffer.byteLength
   // y aborta la ingesta. Param con el encoder de timestamp la convierte a ISO.
   const timestampParam = sql.param(waTimestamp, schema.conversation.lastInboundAt);
+  const conversationPatch = {
+    // GREATEST: los webhooks de Meta pueden llegar fuera de orden (o
+    // reintentados); sin esto un mensaje viejo retrocedía el marcador de
+    // última entrada y el barrido de inactividad volvía a disparar
+    // seguimientos que ya se habían cancelado.
+    lastInboundAt: sql`GREATEST(COALESCE(${schema.conversation.lastInboundAt}, ${timestampParam}), ${timestampParam})`,
+    lastMessageAt: sql`GREATEST(COALESCE(${schema.conversation.lastMessageAt}, ${timestampParam}), ${timestampParam})`,
+    updatedAt: new Date(),
+  };
   await db
     .update(schema.conversation)
     .set({
-      // GREATEST: los webhooks de Meta pueden llegar fuera de orden (o
-      // reintentados); sin esto un mensaje viejo retrocedía el marcador de
-      // última entrada y el barrido de inactividad volvía a disparar
-      // seguimientos que ya se habían cancelado.
-      lastInboundAt: sql`GREATEST(COALESCE(${schema.conversation.lastInboundAt}, ${timestampParam}), ${timestampParam})`,
-      lastMessageAt: sql`GREATEST(COALESCE(${schema.conversation.lastMessageAt}, ${timestampParam}), ${timestampParam})`,
-      unreadCount: sql`${schema.conversation.unreadCount} + 1`,
-      updatedAt: new Date(),
+      ...conversationPatch,
+      ...(!isDuplicate ? { unreadCount: sql`${schema.conversation.unreadCount} + 1` } : {}),
     })
     .where(eq(schema.conversation.id, conversation.id));
 
@@ -522,25 +533,47 @@ export async function ingestInboundMessage(input: {
     console.error(`[pipeline] no se pudo registrar actividad del contacto ${contact.id}:`, err);
   }
 
-  publish(organizationId, {
-    type: "message.new",
-    data: {
-      conversationId: conversation.id,
-      message: serializeMessage(message, asset),
-    },
-  });
+  if (!isDuplicate) {
+    publish(organizationId, {
+      type: "message.new",
+      data: {
+        conversationId: conversation.id,
+        message: serializeMessage(message, asset),
+      },
+    });
+  }
   publish(organizationId, {
     type: "conversation.updated",
     data: { conversation: { id: conversation.id } },
   });
 
-  publishWebhook(organizationId, "message.inbound", {
-    conversationId: conversation.id,
-    contactId: contact.id,
-    messageId: message.id,
-  });
+  if (!isDuplicate) {
+    publishWebhook(organizationId, "message.inbound", {
+      conversationId: conversation.id,
+      contactId: contact.id,
+      messageId: message.id,
+    });
+  }
 
-  if (!input.suppressAi) await maybeRunAgentTurn(conversation.id);
+  if (!input.suppressAi) {
+    if (!isDuplicate) {
+      await maybeRunAgentTurn(conversation.id);
+    } else {
+      const [reply] = await db
+        .select({ id: schema.message.id })
+        .from(schema.message)
+        .where(
+          and(
+            eq(schema.message.conversationId, conversation.id),
+            eq(schema.message.direction, "out"),
+            ne(schema.message.status, "failed"),
+            gte(schema.message.createdAt, message.createdAt)
+          )
+        )
+        .limit(1);
+      if (!reply) await maybeRunAgentTurn(conversation.id);
+    }
+  }
 }
 
 function toDate(timestamp: string): Date {
