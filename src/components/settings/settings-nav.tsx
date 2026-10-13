@@ -21,10 +21,10 @@ const AI_TABS: Tab[] = [
   { href: "/settings/agent", label: "Agente" },
 ];
 
+// Marketing, WAHA y Buzón no son pestañas del menú: se llega a ellas por las
+// tarjetas de la página Conexiones (que enlaza a /settings/marketing, /settings/waha
+// y /settings/email). El nav solo enseña el destino, no cada integración.
 const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
-const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
-const WAHA_TAB: Tab = { href: "/settings/waha", label: "WAHA" };
-const EMAIL_TAB: Tab = { href: "/settings/email", label: "Buzón" };
 
 const WEBHOOKS_TAB: Tab = { href: "/settings/webhooks", label: "Webhooks" };
 const DIAGNOSTICS_TAB: Tab = { href: "/settings/diagnostics", label: "Diagnóstico" };
@@ -34,13 +34,13 @@ export function SettingsNav({ owner = false }: { owner?: boolean }) {
   const pathname = usePathname();
   const activeTabRef = useRef<HTMLAnchorElement | null>(null);
 
-  // Conexiones agrupa SOLO integraciones (cuentas y credenciales de terceros);
-  // Ajustes agrupa lo demás (marca, equipo, IA, webhooks, mantenimiento).
+  // Conexiones es el destino único de integraciones (sus tarjetas enlazan a las
+  // páginas de cada una); Ajustes agrupa lo demás (marca, equipo, IA, webhooks, mantenimiento).
   const groups: TabGroup[] = owner
     ? [
         {
           label: "Conexiones",
-          tabs: [CONNECTIONS_TAB, MARKETING_TAB, WAHA_TAB, EMAIL_TAB],
+          tabs: [CONNECTIONS_TAB],
         },
         {
           label: "Ajustes",
