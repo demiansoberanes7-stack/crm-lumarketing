@@ -334,7 +334,14 @@ export async function sendQuote(
     const { quotePdf } = await import("./pdf");
     const pdf = await quotePdf(organizationId, quoteId);
     if (!pdf) throw new Error("No se pudo generar el PDF de la cotización");
-    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: pdf.filename } });
+    // El archivo que llega al chat se nombra por el destinatario, no por el
+    // número interno: "cotizacion para [nombre contacto]".
+    const targetContactId = conversation.contactId ?? quote.contactId;
+    const [contactRow] = targetContactId
+      ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, targetContactId))).limit(1)
+      : [];
+    const contactName = contactRow?.name?.trim() || quote.quoteNumber;
+    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: `cotizacion para ${contactName}.pdf` } });
   } else {
     const full = await getQuote(organizationId, quoteId);
     if (!full) throw new Error("Cotización no encontrada");

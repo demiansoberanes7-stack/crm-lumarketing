@@ -29,8 +29,12 @@ export type EmailChatThread = {
     from: string;
     text: string | null;
     createdAt: string;
+    /** ¿Ya se abrió? El buzón lo pinta como leído al abrir el hilo. */
+    seen: boolean;
   }[];
   unread: boolean;
+  /** Correos entrantes sin abrir: es el badge del renglón. */
+  unreadCount: number;
   latestAt: string;
 };
 
@@ -55,8 +59,12 @@ function toChatThread(thread: EmailThread<EmailRow>): EmailChatThread {
       from: m.from,
       text: m.bodyText,
       createdAt: new Date(m.createdAt).toISOString(),
+      seen: m.seen,
     })),
     unread: thread.unread,
+    unreadCount: thread.messages.filter(
+      (m) => m.direction === "inbound" && !m.seen
+    ).length,
     latestAt: new Date(thread.latest.createdAt).toISOString(),
   };
 }

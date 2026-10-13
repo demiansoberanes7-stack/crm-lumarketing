@@ -28,5 +28,9 @@ export async function register(): Promise<void> {
     // trato — checa su propio canal en cada barrido.
     const { startMercadoLibreWorker } = await import("./server/mercado-libre/poller");
     await startMercadoLibreWorker();
+    // Buzón IMAP: sincroniza las cuentas de correo habilitadas; sin esto el
+    // correo solo llegaba cuando alguien pulsaba el sync manual.
+    const { startEmailWorker } = await import("./server/email/poller");
+    await startEmailWorker();
   }
 }

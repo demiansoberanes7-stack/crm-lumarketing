@@ -1,30 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Mail, Paperclip, Pencil, RefreshCw, Send, X } from "lucide-react";
+import Link from "next/link";
+import { ChevronLeft, Mail, Pencil, RefreshCw, Search, Send, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { matchesQuery } from "@/lib/search";
+import { ContactAvatar } from "@/components/avatar";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import { ChannelBadge } from "@/components/channel-badge";
+import { formatTime } from "@/components/inbox/helpers";
 import type { EmailChatThread } from "@/app/api/email/threads/route";
 import { bufferToBase64 } from "@/lib/base64";
 import { EmailComposeDialog, type EmailAttachment } from "./email-compose-dialog";
 
 type EmailAccount = { id: string; label: string | null; email: string; enabled: boolean };
-
-function initials(name: string): string {
-  return name.replace(/["<>]/g, "").split(/[@\s]+/).filter(Boolean).slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "").join("");
-}
-
-function previewTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const days = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
-  if (days === 0) return d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-  if (days === 1) return "Ayer";
-  if (days < 7) return d.toLocaleDateString("es-MX", { weekday: "short" });
-  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
-}
 
 function bubbleTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
@@ -39,20 +29,41 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
 }
 
-export function EmailChatClient() {
+/**
+ * Buzón de correo con el MISMO diseño de la Bandeja (ConversationList /
+ * InboxClient / Composer): mismo header con título y buscador en píldora,
+ * mismos renglones con avatar, barra de acento activa y badge de no leídos,
+ * mismo hilo con burujas y mismo compositor en píldora. El correo es una
+ * bandeja más, no una pantalla ajena.
+ */
+export function EmailChatClient({ channels }: { channels: readonly Channel[] }) {
+  const multiChannel = channels.length > 1;
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
-  const [threads, setThreads] = useState<EmailChatThread[]>([]);
+  const [threads, setThreads] = useState<EmailChatThread[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "unread">("all");
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
-  const [mobileList, setMobileList] = useState(true);
   const [composeOpen, setComposeOpen] = useState(false);
   const [replyAttachments, setReplyAttachments] = useState<EmailAttachment[]>([]);
   const replyFileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Rescate de lo tecleado ANTES de que hidratara el JS (mismo truco que
+  // ConversationList): el input se pinta en el HTML del servidor.
+  useEffect(() => {
+    const typed = inputRef.current?.value ?? "";
+    if (typed) setQuery(typed);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -65,9 +76,9 @@ export function EmailChatClient() {
     })();
   }, []);
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (opts?: { silent?: boolean }) => {
     if (!accountId) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
     const res = await fetch(`/api/email/threads?accountId=${accountId}`, { cache: "no-store" }).catch(() => null);
     if (res?.ok) {
@@ -81,12 +92,72 @@ export function EmailChatClient() {
 
   useEffect(() => { void refetch(); }, [refetch]);
 
-  const selected = threads.find((t) => t.id === selectedId) ?? null;
+  // Refresco por sondeo: el buzón no tiene SSE, igual que el contador de
+  // correos sin leer de la Bandeja (que también sondea cada minuto).
+  useEffect(() => {
+    const id = setInterval(() => void refetch({ silent: true }), 60_000);
+    return () => clearInterval(id);
+  }, [refetch]);
+
+  /**
+   * Refresh manual = sincronía IMAP real, no solo releer la BD: sin esto el
+   * botón daba la impresión de "actualizar" pero los correos nuevos solo
+   * llegaban cuando el poller del servidor corría.
+   */
+  const syncMail = useCallback(async () => {
+    if (!accountId || syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    setSyncError(null);
+    const res = await fetch(`/api/email/accounts/${accountId}/sync`, { method: "POST" }).catch(() => null);
+    syncingRef.current = false;
+    setSyncing(false);
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => null);
+      setSyncError(data?.error?.message ?? "No se pudo sincronizar el correo.");
+    }
+    await refetch();
+  }, [accountId, refetch]);
+
+  // Al entrar al buzón: pinta lo que ya hay y dispara una sincronía en
+  // segundo plano para traer lo que haya llegado mientras no estabas.
+  useEffect(() => { void syncMail(); }, [syncMail]);
+
+  const selected = threads?.find((t) => t.id === selectedId) ?? null;
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [selectedId, selected?.messages.length]);
+
+  function autogrow() {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }
+
+  /** Al abrir un hilo se marcan como leídos sus correos entrantes. */
+  function markRead(thread: EmailChatThread) {
+    const unseen = thread.messages.filter((m) => m.direction === "inbound" && !m.seen);
+    if (unseen.length === 0) return;
+    for (const m of unseen) {
+      void fetch(`/api/email/messages/${m.id}`, { method: "PATCH" }).catch(() => null);
+    }
+    setThreads((prev) =>
+      (prev ?? []).map((t) =>
+        t.id === thread.id
+          ? { ...t, unread: false, unreadCount: 0, messages: t.messages.map((m) => ({ ...m, seen: true })) }
+          : t
+      )
+    );
+  }
+
+  function select(thread: EmailChatThread) {
+    setSelectedId(thread.id);
+    setError(null);
+    markRead(thread);
+  }
 
   async function sendReply() {
     if (!selected || !replyBody.trim() || !accountId) return;
@@ -112,10 +183,15 @@ export function EmailChatClient() {
     if (res?.ok) {
       setReplyBody("");
       setReplyAttachments([]);
-      await refetch();
+      if (taRef.current) taRef.current.style.height = "auto";
+      await refetch({ silent: true });
     } else {
       const data = await res?.json().catch(() => null);
       setError(data?.error?.message ?? "No se pudo enviar la respuesta.");
+      // Lo que no salió vuelve al campo: nada se pierde en silencio.
+      setReplyBody((actual) => actual);
+      taRef.current?.focus();
+      setTimeout(autogrow, 0);
     }
   }
 
@@ -135,114 +211,279 @@ export function EmailChatClient() {
     if (replyFileRef.current) replyFileRef.current.value = "";
   }
 
+  const list = threads ?? [];
+  const searched = list.filter((t) =>
+    matchesQuery(query, { text: [t.participant.name, t.participant.email, t.subject] })
+  );
+  const visible = filter === "unread" ? searched.filter((t) => t.unread) : searched;
+  const unreadThreads = searched.filter((t) => t.unread).length;
+  const firstLoad = threads === null;
+
   if (accounts.length > 1 && !accountId) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-        Elige una cuenta de correo para ver sus conversaciones.
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="font-serif text-[21px] italic leading-tight text-foreground">
+          Elige una cuenta de correo
+        </p>
+        <p className="text-xs text-text-3">Para ver sus conversaciones, selecciona el buzón en el panel izquierdo.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full">
       {/* ═══ LISTA DE HILOS ═══ */}
-      <aside className={cn(
-        "w-full flex-col border-r md:w-[320px] md:shrink-0",
-        mobileList ? "flex" : "hidden md:flex",
-      )}>
-        <div className="flex flex-col gap-2 border-b p-3">
-          <Button
-            onClick={() => setComposeOpen(true)}
-            disabled={!accountId}
-            className="h-11 w-full rounded-full bg-blue-600 text-white hover:bg-blue-700"
-          >
-            <Pencil className="mr-1.5 h-4 w-4" /> Redactar
-          </Button>
-          <div className="flex items-center gap-2">
+      <section
+        className={cn(
+          "flex w-full shrink-0 flex-col overflow-hidden border-r md:w-[300px] lg:w-[360px]",
+          selected && "max-md:hidden"
+        )}
+      >
+        <header className="border-b px-4 pb-3 pt-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-[17px] font-bold tracking-tight">Buzón</h2>
+            <span className="font-mono text-[12px] text-text-3">{list.length}</span>
+            <div className="ml-auto flex max-w-full items-center gap-1 overflow-x-auto">
+              <Button
+                onClick={() => setComposeOpen(true)}
+                disabled={!accountId}
+                size="sm"
+                className="h-9 shrink-0"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} /> Redactar
+              </Button>
+              <Link
+                href="/inbox"
+                className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border-strong px-2.5 text-[12.5px] font-semibold text-text-2 transition-colors hover:border-text-3 hover:bg-accent"
+              >
+                Bandeja
+              </Link>
+              {multiChannel &&
+                channels.map((ch) => (
+                  <Link
+                    key={ch}
+                    href={`/inbox?channel=${ch}`}
+                    title={CHANNEL_LABEL[ch]}
+                    aria-label={CHANNEL_LABEL[ch]}
+                    className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-border-strong text-text-3 transition-colors hover:border-text-3 hover:bg-accent hover:text-foreground"
+                  >
+                    <ChannelBadge channel={ch} className="h-[14px] w-[14px] rounded-[4px]" />
+                  </Link>
+                ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-border-strong bg-background px-3.5 py-[7px] shadow-sm transition-[border-color,box-shadow] focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand-soft">
+            <Search className="h-4 w-4 shrink-0 text-text-3" strokeWidth={1.7} />
+            <input
+              ref={inputRef}
+              placeholder="Buscar por nombre, correo o asunto…"
+              aria-label="Buscar correo"
+              defaultValue=""
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full bg-transparent text-[13px] outline-none placeholder:text-text-3"
+            />
+            {query && (
+              <button
+                onClick={() => {
+                  if (inputRef.current) inputRef.current.value = "";
+                  setQuery("");
+                  inputRef.current?.focus();
+                }}
+                aria-label="Limpiar búsqueda"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-text-3 hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            )}
+          </div>
+        </header>
+
+        <div className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2.5">
+          {(
+            [
+              { id: "all", label: "Todas", count: searched.length },
+              { id: "unread", label: "No leídas", count: unreadThreads },
+            ] as const
+          ).map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              className={cn(
+                "flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[12.5px] font-semibold transition-colors",
+                filter === f.id
+                  ? "border-brand bg-brand text-brand-fg"
+                  : "border-border-strong bg-background text-text-2 hover:border-text-3"
+              )}
+            >
+              {f.label}
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-[11px]",
+                  filter === f.id ? "bg-brand-veil" : "bg-secondary text-text-3"
+                )}
+              >
+                {f.count}
+              </span>
+            </button>
+          ))}
+          {accounts.length > 1 && (
             <select
               value={accountId ?? ""}
               onChange={(e) => { setAccountId(e.target.value); setSelectedId(null); }}
-              className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
               aria-label="Cuenta de correo"
+              className="ml-auto min-h-11 min-w-[110px] max-w-[42%] truncate rounded-full border border-border-strong bg-background px-2 text-[12.5px] font-semibold text-text-2 transition-colors hover:border-text-3"
             >
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.label ?? a.email}</option>)}
             </select>
-            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => void refetch()} aria-label="Actualizar">
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </Button>
-          </div>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn("ml-auto h-11 w-11 shrink-0", accounts.length <= 1 && "ml-0")}
+            onClick={() => void syncMail()}
+            disabled={syncing || !accountId}
+            aria-label="Sincronizar correo"
+            title="Sincronizar correo"
+          >
+            <RefreshCw className={cn("h-4 w-4", (syncing || loading) && "animate-spin")} strokeWidth={1.7} />
+          </Button>
         </div>
+
+        {syncError && (
+          <p role="alert" className="border-b px-4 py-2.5 text-xs text-danger-text">
+            {syncError}
+          </p>
+        )}
+
         <div className="flex-1 overflow-y-auto overscroll-contain">
-          {threads.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-              <Mail className="h-8 w-8 text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground">Sin conversaciones de correo.</p>
+          {firstLoad && loading ? (
+            <p className="p-6 text-center text-xs text-text-3">Cargando…</p>
+          ) : list.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="font-serif text-[21px] italic leading-tight text-foreground">
+                Sin correos todavía
+              </p>
+              <p className="text-xs text-text-3">
+                Los mensajes que lleguen a tu buzón aparecerán aquí en tiempo real.
+              </p>
             </div>
-          ) : threads.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => { setSelectedId(t.id); setMobileList(false); }}
-              className={cn(
-                "flex w-full items-start gap-3 border-b px-3 py-3 text-left transition-colors hover:bg-accent/50",
-                selectedId === t.id && "bg-brand-tint/40",
-                t.unread && "bg-accent/30",
-              )}
-            >
-              <span className={cn(
-                "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white",
-                t.unread ? "bg-brand" : "bg-text-3",
-              )}>
-                {initials(t.participant.name)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-sm font-semibold">{t.participant.name}</span>
-                  <span className="shrink-0 text-[11px] text-text-3">{previewTime(t.latestAt)}</span>
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-text-3">{t.subject}</span>
-                <span className="mt-0.5 block truncate text-xs text-text-3">
-                  {t.messages[t.messages.length - 1]?.text?.replace(/\s+/g, " ").slice(0, 80) ?? "(sin contenido)"}
-                </span>
-              </span>
-              {t.unread && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand" />}
-            </button>
-          ))}
+          ) : visible.length === 0 ? (
+            <p className="p-6 text-center text-xs text-text-3">
+              Sin resultados para este filtro.
+            </p>
+          ) : (
+            <ul>
+              {visible.map((t) => {
+                const unread = t.unread;
+                const active = selectedId === t.id;
+                const snippet =
+                  t.messages[t.messages.length - 1]?.text?.replace(/\s+/g, " ").slice(0, 90) ??
+                  "(sin contenido)";
+                return (
+                  <li key={t.id} className="relative border-b border-border">
+                    {active && (
+                      <span className="absolute inset-y-0 left-0 w-[3px] bg-brand" />
+                    )}
+                    <button
+                      onClick={() => select(t)}
+                      className={cn(
+                        "flex w-full items-start gap-[11px] px-4 py-[var(--row-py)] text-left transition-colors",
+                        active ? "bg-[var(--bg-active)]" : "hover:bg-subtle"
+                      )}
+                    >
+                      <ContactAvatar
+                        name={t.participant.name}
+                        seed={t.participant.email}
+                        size="lg"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span
+                            className={cn(
+                              "truncate text-sm",
+                              unread ? "font-[680]" : "font-semibold"
+                            )}
+                          >
+                            {t.participant.name}
+                          </span>
+                          <span
+                            className={cn(
+                              "shrink-0 font-mono text-[10.5px] tracking-[0.02em]",
+                              unread ? "font-semibold text-brand" : "text-text-3"
+                            )}
+                          >
+                            {formatTime(t.latestAt)}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 flex items-center justify-between gap-2">
+                          <span
+                            className={cn(
+                              "truncate text-[13px]",
+                              unread ? "font-medium text-text-2" : "text-text-3"
+                            )}
+                          >
+                            {t.subject}
+                          </span>
+                          {unread && t.unreadCount > 0 && (
+                            <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-brand px-1.5 text-[10.5px] font-semibold text-brand-fg">
+                              {t.unreadCount > 99 ? "99+" : t.unreadCount}
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[13px] text-text-3">
+                          {snippet}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
-      </aside>
+      </section>
 
       {/* ═══ HILO EN CHAT ═══ */}
-      <section className={cn(
-        "min-w-0 flex-1 flex-col",
-        mobileList ? "hidden md:flex" : "flex",
-      )}>
-        {!selected ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-            <Mail className="h-8 w-8 text-muted-foreground/40" />
-            Selecciona una conversación para leerla y responder.
-          </div>
-        ) : (
+      <section
+        className={cn(
+          "flex min-w-0 flex-1 flex-col",
+          !selected && "max-md:hidden"
+        )}
+      >
+        {selected ? (
           <>
-            <header className="flex items-center gap-3 border-b px-4 py-3">
-              <button className="flex min-h-11 min-w-11 shrink-0 items-center justify-center md:hidden" onClick={() => { setMobileList(true); setSelectedId(null); }} aria-label="Volver">
-                <ArrowLeft className="h-5 w-5" />
+            <header className="flex items-center justify-between gap-1 border-b bg-background px-2 py-2.5 md:px-4">
+              <button
+                onClick={() => setSelectedId(null)}
+                aria-label="Volver a los correos"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-text-2 hover:bg-accent hover:text-foreground md:hidden"
+              >
+                <ChevronLeft className="h-5 w-5" strokeWidth={1.8} />
               </button>
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-brand text-[11px] font-bold text-white">
-                {initials(selected.participant.name)}
+              <div className="flex min-w-0 flex-1 items-center gap-3 p-1">
+                <ContactAvatar
+                  name={selected.participant.name}
+                  seed={selected.participant.email}
+                  size="md"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-bold leading-tight tracking-tight">
+                    {selected.participant.name}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-[10.5px] tracking-[0.04em] text-text-3">
+                    {selected.participant.email}
+                  </p>
+                </div>
+              </div>
+              <span className="ml-auto hidden max-w-[40%] min-w-0 truncate text-xs text-text-3 sm:block">
+                {selected.subject}
               </span>
-              <span className="min-w-0">
-                <p className="truncate text-sm font-semibold">{selected.participant.name}</p>
-                <p className="truncate text-xs text-text-3">{selected.subject}</p>
-              </span>
-              <span className="ml-auto hidden max-w-[40%] min-w-0 truncate text-xs text-text-3 sm:block">{selected.participant.email}</span>
             </header>
 
-            {error && (
-              <div role="alert" className="mx-4 mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            <div ref={scrollRef} className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto overscroll-contain px-3 py-5 sm:px-[6%]">
+            <div
+              ref={scrollRef}
+              className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto overscroll-contain px-3 py-5 sm:px-[6%]"
+            >
               {selected.messages.map((m, i) => {
                 const prev = selected.messages[i - 1];
                 const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
@@ -274,26 +515,27 @@ export function EmailChatClient() {
               })}
             </div>
 
-            <div className="border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            {/* Compositor en píldora, idéntico al de la Bandeja */}
+            <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3">
               {replyAttachments.length > 0 && (
-                <ul className="mb-2 space-y-1">
+                <div className="mb-2.5 space-y-1.5">
                   {replyAttachments.map((a, i) => (
-                    <li key={i} className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-xs">
-                      <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 truncate">{a.filename}</span>
+                    <div key={i} className="flex items-center gap-2.5 rounded-md border bg-subtle p-2.5">
+                      <Paperclip className="h-5 w-5 shrink-0 text-brand" strokeWidth={1.5} />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.filename}</span>
                       <button
                         type="button"
                         onClick={() => setReplyAttachments((prev) => prev.filter((_, j) => j !== i))}
                         aria-label={`Quitar ${a.filename}`}
-                        className="text-muted-foreground hover:text-destructive"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded text-text-3 hover:bg-secondary hover:text-foreground"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-4 w-4" strokeWidth={1.7} />
                       </button>
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 rounded-[23px] border border-border-strong bg-background py-1.5 pl-2 pr-1.5 shadow-sm transition-[border-color,box-shadow] focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand-soft">
                 <input
                   ref={replyFileRef}
                   type="file"
@@ -302,32 +544,65 @@ export function EmailChatClient() {
                   className="hidden"
                   onChange={(e) => void handleReplyFiles(e)}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 shrink-0"
-                  aria-label="Adjuntar archivo"
+                <button
                   onClick={() => replyFileRef.current?.click()}
+                  aria-label="Adjuntar archivo"
+                  title="Adjuntar archivo"
+                  className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground"
                 >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Textarea
-                  rows={2}
+                  <Paperclip className="h-[18px] w-[18px]" strokeWidth={1.7} />
+                </button>
+                <textarea
+                  ref={taRef}
+                  rows={1}
                   value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
+                  onFocus={(event) => {
+                    const textarea = event.currentTarget;
+                    window.setTimeout(() => textarea.scrollIntoView({ block: "nearest" }), 120);
+                  }}
+                  onChange={(e) => {
+                    setReplyBody(e.target.value);
+                    autogrow();
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void sendReply();
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendReply();
+                    }
                   }}
                   placeholder={`Responder a ${selected.participant.name}…`}
-                  className="min-h-[44px] min-w-0 flex-1 resize-none"
+                  className="max-h-[120px] min-w-0 flex-1 resize-none self-center bg-transparent py-1 text-sm leading-relaxed outline-none placeholder:text-text-3"
                 />
-                <Button onClick={() => void sendReply()} disabled={sending || !replyBody.trim()} className="h-[44px]">
-                  <Send className="mr-1.5 h-4 w-4" /> {sending ? "Enviando…" : "Enviar"}
-                </Button>
+                <button
+                  onClick={() => void sendReply()}
+                  disabled={sending || !replyBody.trim()}
+                  aria-label="Enviar"
+                  className={cn(
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg transition-[opacity,background-color] hover:bg-brand-hover",
+                    (sending || !replyBody.trim()) && "opacity-40"
+                  )}
+                >
+                  <Send className="h-4 w-4" strokeWidth={1.7} />
+                </button>
               </div>
-              <p className="mt-1 hidden text-[11px] text-text-3 sm:block">Ctrl/Cmd + Enter para enviar.</p>
+              <div className="mt-1.5 flex items-center justify-between">
+                {error ? <p className="text-xs text-destructive">{error}</p> : <span />}
+                <p className="font-mono text-[10.5px] tracking-[0.04em] text-text-3">
+                  Enter para enviar · Shift + Enter nueva línea
+                </p>
+              </div>
             </div>
           </>
+        ) : (
+          <div className="thread-bg flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+            <p className="font-serif text-[24px] italic leading-tight text-text-2">
+              Elige una conversación para ver el hilo
+            </p>
+            <p className="kicker">
+              <Mail className="mr-1 inline h-3 w-3 align-[-2px]" strokeWidth={1.8} />
+              Buzón · correo entrante
+            </p>
+          </div>
         )}
       </section>
 
@@ -335,7 +610,7 @@ export function EmailChatClient() {
         <EmailComposeDialog
           accountId={accountId}
           onClose={() => setComposeOpen(false)}
-          onSent={() => void refetch()}
+          onSent={() => { void refetch({ silent: true }); void syncMail(); }}
         />
       )}
     </div>

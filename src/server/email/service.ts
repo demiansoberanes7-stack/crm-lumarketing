@@ -148,54 +148,61 @@ export async function syncInbox(organizationId: string, accountId: string): Prom
     const lock = await client.getMailboxLock("INBOX");
 
     try {
-      const messages = client.fetch("1:*", {
-        envelope: true,
-        source: true,
-        uid: true,
-      });
-
       const db = getDb();
       let processed = 0;
       const MAX_SYNC = 500;
 
-      for await (const msg of messages) {
-        if (processed >= MAX_SYNC) break;
-        if (!msg.source) continue;
-
-        const parsed = await simpleParser(msg.source);
-        const messageId = parsed.messageId ?? `${msg.uid}@${accountId}`;
-
-        // Verificar si ya existe
+      // Paso 1 (barato): solo el envelope de todo el inbox, para conocer los
+      // Message-ID sin descargar cuerpos. El poller corre cada 3 min: bajar el
+      // source de los 500 correos en cada barrido es inútil si ya están en BD.
+      const unknown: Array<{ seq: number; uid: number }> = [];
+      const seenIds = new Set<string>();
+      for await (const msg of client.fetch("1:*", { envelope: true, uid: true })) {
+        const messageId = msg.envelope?.messageId ?? `${msg.uid}@${accountId}`;
+        if (seenIds.has(messageId)) continue;
+        seenIds.add(messageId);
         const [existing] = await db
           .select({ id: schema.emailMessage.id })
           .from(schema.emailMessage)
           .where(scoped(schema.emailMessage.organizationId, organizationId, eq(schema.emailMessage.accountId, accountId), eq(schema.emailMessage.messageId, messageId)))
           .limit(1);
+        if (!existing) unknown.push({ seq: msg.seq, uid: msg.uid });
+        if (unknown.length >= MAX_SYNC) break;
+      }
 
-        if (existing) continue;
+      // Paso 2: el cuerpo solo de los que faltan.
+      if (unknown.length > 0) {
+        const seqKeys = unknown.map((m) => m.seq);
+        for await (const msg of client.fetch(seqKeys, { envelope: true, source: true, uid: true })) {
+          if (!msg.source) continue;
 
-        // Buscar contacto por email del remitente (TODO: asociar cuando schema.contact tenga campo email)
-        const contactId: string | null = null;
+          const parsed = await simpleParser(msg.source);
+          const messageId = parsed.messageId ?? `${msg.uid}@${accountId}`;
 
-        await db.insert(schema.emailMessage).values({
-          id: newId("emailMessage"),
-          organizationId: creds.organizationId,
-          accountId,
-          messageId,
-          threadId: parsed.inReplyTo ?? null,
-          from: parsed.from?.value[0]?.address ?? "",
-          to: { value: parsed.to?.value ?? [] },
-          cc: parsed.cc ? { value: parsed.cc.value } : null,
-          subject: parsed.subject ?? "(sin asunto)",
-          bodyText: parsed.text ?? null,
-          bodyHtml: parsed.html ? String(parsed.html) : null,
-          direction: "inbound",
-          contactId,
-          seen: false,
-        });
+          // Buscar contacto por email del remitente (TODO: asociar cuando schema.contact tenga campo email)
+          const contactId: string | null = null;
 
-        synced++;
-        processed++;
+          await db.insert(schema.emailMessage).values({
+            id: newId("emailMessage"),
+            organizationId: creds.organizationId,
+            accountId,
+            messageId,
+            threadId: parsed.inReplyTo ?? null,
+            from: parsed.from?.value[0]?.address ?? "",
+            to: { value: parsed.to?.value ?? [] },
+            cc: parsed.cc ? { value: parsed.cc.value } : null,
+            subject: parsed.subject ?? "(sin asunto)",
+            bodyText: parsed.text ?? null,
+            bodyHtml: parsed.html ? String(parsed.html) : null,
+            direction: "inbound",
+            contactId,
+            seen: false,
+          }).onConflictDoNothing();
+
+          synced++;
+          processed++;
+          if (processed >= MAX_SYNC) break;
+        }
       }
     } finally {
       lock.release();

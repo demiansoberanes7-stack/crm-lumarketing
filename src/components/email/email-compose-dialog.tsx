@@ -74,18 +74,25 @@ export function EmailComposeDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <button aria-label="Cerrar" onClick={onClose} className="absolute inset-0 bg-black/30" />
-      <div className="relative z-10 max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border bg-card pb-[env(safe-area-inset-bottom)] shadow-2xl sm:rounded-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-overlay sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-label="Nuevo mensaje"
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 my-auto max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border bg-card pb-[env(safe-area-inset-bottom)] shadow-xl sm:rounded-2xl"
+      >
         <div className="flex items-center justify-between border-b px-5 py-3">
           <h2 className="text-sm font-semibold">Nuevo mensaje</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} aria-label="Cerrar" className="text-text-3 hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
         <form onSubmit={(e) => void handleSend(e)} className="flex flex-col">
           {error && (
-            <div role="alert" className="mx-5 mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-2 text-sm text-red-700">
+            <div role="alert" className="mx-5 mt-3 rounded-md border border-danger-soft bg-danger-tint px-4 py-2 text-sm text-danger-text">
               {error}
             </div>
           )}
@@ -139,7 +146,7 @@ export function EmailComposeDialog({
           )}
           <div className="flex items-center justify-between border-t px-5 py-3">
             <div className="flex items-center gap-1">
-              <Button type="submit" disabled={sending} className="rounded-full bg-blue-600 px-6 text-white hover:bg-blue-700">
+              <Button type="submit" disabled={sending} className="px-6">
                 <Send className="mr-1.5 h-3.5 w-3.5" />
                 {sending ? "Enviando..." : "Enviar"}
               </Button>
