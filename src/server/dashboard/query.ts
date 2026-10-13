@@ -128,7 +128,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
       ),
       msg_fail as (
         select count(*) as n from message
-        where ${scope(schema.message)} and created_at between ${from} and ${to}
+        where ${scope(schema.message)} and created_at >= ${to} - interval '24 hours'
           and (error is not null or status in ('failed', 'error'))
       ),
       conv as (
