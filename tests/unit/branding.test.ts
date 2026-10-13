@@ -48,18 +48,18 @@ describe("white-label: acento", () => {
     expect(lum).toBeLessThan(0xd0);
   });
 
-  it("hex inválido cae al default (el dorado LUMARK)", () => {
-    expect(resolveAccentSet("rojo")).toEqual(ACCENT_PRESETS["#b8963e"]!.set);
+  it("hex inválido cae al default (el lima LUMARK)", () => {
+    expect(resolveAccentSet("rojo")).toEqual(ACCENT_PRESETS["#65a30d"]!.set);
   });
 
-  it("el dorado LUMARK es el default y conserva su preset", () => {
-    expect(DEFAULT_BRANDING.accent).toBe("#B8963E");
+  it("el lima LUMARK es el default y conserva su preset", () => {
+    expect(DEFAULT_BRANDING.accent).toBe("#65a30d");
     expect(resolveAccentSet(DEFAULT_BRANDING.accent)).toEqual({
-      accent: "#B8963E",
-      hover: "#A38535",
-      soft: "#E8D8B0",
-      tint: "#FAF4E6",
-      text: "#8B7230",
+      accent: "#65a30d",
+      hover: "#55890b",
+      soft: "#e3f6d3",
+      tint: "#f6fbf1",
+      text: "#497509",
       fg: "#ffffff",
     });
   });
@@ -121,7 +121,7 @@ describe("white-label: normalización", () => {
   });
 
   it("acento inválido → default", () => {
-    expect(normalizeBranding({ accent: "azul" }).accent).toBe("#B8963E");
+    expect(normalizeBranding({ accent: "azul" }).accent).toBe("#65a30d");
     expect(normalizeBranding({ accent: "#3F6B66" }).accent).toBe("#3f6b66");
   });
 });

@@ -38,12 +38,12 @@
     --bubble-out-border: var(--accent-soft);
     --bubble-out-text: var(--text);
 
-    /* Acento (default: dorado Zorro Tech; el white-label lo sobreescribe) */
-    --accent: #B8963E;
-    --accent-hover: #A38535;
-    --accent-soft: #E8D8B0;
-    --accent-tint: #FAF4E6;
-    --accent-text: #8B7230;
+    /* Acento (default: lima/verde LUMARK; el white-label lo sobreescribe) */
+    --accent: #65a30d;
+    --accent-hover: #55890b;
+    --accent-soft: #e3f6d3;
+    --accent-tint: #f6fbf1;
+    --accent-text: #497509;
     --accent-fg: #ffffff;
     /* Velo translúcido ENCIMA del acento (contadores dentro de un chip). */
     --accent-veil: rgba(255, 255, 255, 0.22);
@@ -66,10 +66,10 @@
     --danger-text: #b91c1c;
     --danger-fg: #ffffff;
 
-    --info: #B8963E;
-    --info-tint: #FAF4E6;
-    --info-soft: #E8D8B0;
-    --info-text: #8B7230;
+    --info: #65a30d;
+    --info-tint: #f6fbf1;
+    --info-soft: #e3f6d3;
+    --info-text: #497509;
 
     /* Gráficas: degradados vivos sobre tarjetas claras */
     --chart-1: #8b5cf6;
@@ -96,10 +96,10 @@
     --overlay: rgba(10, 10, 10, 0.5);
     --knob: #ffffff;
 
-    /* Radios ajustados y sombras mínimas (chrome Vercel) */
-    --radius-sm: 6px;
-    --radius: 8px;
-    --radius-lg: 12px;
+    /* Radios suaves y redondeados (tarjetas estilo dashboard lima) */
+    --radius-sm: 8px;
+    --radius: 10px;
+    --radius-lg: 16px;
     --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.04);
     --shadow-md: 0 4px 12px rgba(10, 10, 10, 0.06);
     --shadow-pop: 0 16px 40px rgba(10, 10, 10, 0.1),
@@ -129,14 +129,14 @@
     --bubble-in: #1a1a1a;
     --bubble-in-border: #262626;
 
-    /* Acento: respaldo con el dorado aclarado para fondo oscuro; el
-       white-label lo recalcula (ver resolveAccentSet en lib/branding). */
-    --accent: #D4A843;
-    --accent-hover: #E8C060;
-    --accent-soft: #3D3220;
-    --accent-tint: #2A2115;
-    --accent-text: #E8C060;
-    --accent-fg: #ffffff;
+    /* Acento: lima aclarado para fondo oscuro; el white-label lo recalcula
+       (ver resolveAccentSet en lib/branding). */
+    --accent: #a3e635;
+    --accent-hover: #bef264;
+    --accent-soft: #2c3f14;
+    --accent-tint: #1c2910;
+    --accent-text: #bef264;
+    --accent-fg: #0f1419;
     --accent-veil: rgba(0, 0, 0, 0.22);
 
     /* Estado sobre fondo oscuro */
@@ -156,10 +156,10 @@
     --danger-text: #fca5a5;
     --danger-fg: #1a0a0a;
 
-    --info: #D4A843;
-    --info-tint: #2A2115;
-    --info-soft: #3D3220;
-    --info-text: #E8C060;
+    --info: #a3e635;
+    --info-tint: #1c2910;
+    --info-soft: #2c3f14;
+    --info-text: #bef264;
 
     /* Gráficas neón: degradados luminosos sobre superficies oscuras */
     --chart-1: #a78bfa;

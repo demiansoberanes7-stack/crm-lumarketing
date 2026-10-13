@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 import { PhotoLogo } from "@/components/photo-logo";
 
 /**
- * El trazo de la marca LUMARK: la "L" geométrica con remate dorado.
+ * El trazo de la marca LUMARK: la "L" geométrica con remate lima.
  * El cuerpo hereda `currentColor`; píntalo con `text-brand` (o blanco sobre el
- * mosaico) y el remate sigue siendo dorado.
+ * mosaico) y el remate sigue siendo lima.
  */
 export function BrandMark({
   className,

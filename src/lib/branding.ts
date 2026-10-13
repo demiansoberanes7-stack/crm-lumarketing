@@ -75,9 +75,9 @@ export function pdfInkOn(hex: string): Rgb {
 
 export const DEFAULT_BRANDING: Branding = {
   name: "LUMARK",
-  // Dorado luminoso LUMARK: la instancia recién instalada se ve
-  // con la marca LUMARK. Se cambia en Configuración → Marca.
-  accent: "#B8963E",
+  // Lima luminoso: la instancia recién instalada se ve con la marca LUMARK.
+  // Se cambia en Configuración → Marca.
+  accent: "#65a30d",
   currency: DEFAULT_CURRENCY,
   favicon: null,
   pdfColors: DEFAULT_PDF_COLORS,
@@ -88,8 +88,12 @@ export const DEFAULT_BRANDING: Branding = {
  * disponibles para quien quiera un CRM más discreto.
  */
 export const ACCENT_PRESETS: Record<string, { label: string; set: AccentSet }> = {
+  "#65a30d": {
+    label: "Lima LUMARK",
+    set: { accent: "#65a30d", hover: "#55890b", soft: "#e3f6d3", tint: "#f6fbf1", text: "#497509", fg: "#ffffff" },
+  },
   "#b8963e": {
-    label: "Dorado LUMARK",
+    label: "Dorado",
     set: { accent: "#B8963E", hover: "#A38535", soft: "#E8D8B0", tint: "#FAF4E6", text: "#8B7230", fg: "#ffffff" },
   },
   "#3f5972": {
