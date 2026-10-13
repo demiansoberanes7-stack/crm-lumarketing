@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { withAuth } from "@/lib/api";
+import { withOwner } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import {
@@ -10,7 +10,7 @@ import {
 export const dynamic = "force-dynamic";
 
 /** Locales y reseñas sincronizadas, para la pestaña de Configuración. */
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   if (!googleBusinessEnabled()) return googleBusinessDisabledResponse();
   const db = getDb();
   const locations = await db

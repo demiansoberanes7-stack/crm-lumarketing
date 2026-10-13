@@ -392,22 +392,42 @@ async function prepareSend(
     let accountRef: string | undefined;
     if (platform === "instagram") {
       const igCreds = await getInstagramCredentialsByOrg(organizationId);
-      if (!igCreds || igCreds.source !== "meta" || igCreds.status !== "connected") {
+      if (!igCreds || igCreds.status !== "connected") {
         throw new SendError(
           "not_connected",
-          "No hay cuenta de Instagram conectada vía Meta para responder comentarios"
+          "No hay cuenta de Instagram conectada para responder comentarios"
         );
       }
       token = igCreds.token;
+      // Meta directo responde por Graph con el token de la cuenta; Zernio
+      // publica el reply por el Inbox API con la cuenta enrutable.
+      if (igCreds.source === "zernio") {
+        if (!igCreds.accountRef) {
+          throw new SendError(
+            "not_connected",
+            "La conexión de Instagram vía Zernio no tiene cuenta enrutable para responder comentarios"
+          );
+        }
+        accountRef = igCreds.accountRef;
+      }
     } else if (platform === "messenger") {
       const msCreds = await getMessengerCredentialsByOrg(organizationId);
-      if (!msCreds || msCreds.source !== "meta" || msCreds.status !== "connected") {
+      if (!msCreds || msCreds.status !== "connected") {
         throw new SendError(
           "not_connected",
-          "No hay página de Facebook conectada vía Meta para responder comentarios"
+          "No hay página de Facebook conectada para responder comentarios"
         );
       }
       token = msCreds.token;
+      if (msCreds.source === "zernio") {
+        if (!msCreds.accountRef) {
+          throw new SendError(
+            "not_connected",
+            "La conexión de Messenger vía Zernio no tiene cuenta enrutable para responder comentarios"
+          );
+        }
+        accountRef = msCreds.accountRef;
+      }
     } else {
       const ttCreds = await getTikTokCredentialsByOrg(organizationId);
       if (!ttCreds || ttCreds.status !== "connected" || !ttCreds.accountRef) {
@@ -579,7 +599,7 @@ export async function sendText(input: {
     target.instagram ||
     target.tiktok ||
     target.zernio ||
-    target.comments?.platform === "tiktok"
+    target.comments?.accountRef
       ? newId("message")
       : undefined;
 
@@ -1287,10 +1307,11 @@ async function callCommentsReply(
 
   try {
     let replyId: string | undefined;
-    if (platform === "tiktok") {
-      // Zernio publica la respuesta pública del negocio. La llave local de
-      // mensaje sirve como Idempotency-Key si la plataforma acepta el reply
-      // pero la respuesta HTTP se pierde.
+    if (accountRef) {
+      // Zernio publica la respuesta pública del negocio (TikTok, y también
+      // Facebook/Instagram cuando la conexión es vía Zernio). La llave local
+      // de mensaje sirve como Idempotency-Key si la plataforma acepta el
+      // reply pero la respuesta HTTP se pierde.
       const result = (await zernioFetch(
         `/inbox/comments/${encodeURIComponent(postExternalId)}`,
         {
@@ -1302,8 +1323,8 @@ async function callCommentsReply(
       )) as { data?: { commentId?: string } };
       replyId = result.data?.commentId;
     } else {
-      // Instagram y Facebook publican replies vía Graph API, POST al
-      // comentario con { message }. El token va en el header Authorization.
+      // Meta directo publica replies vía Graph API, POST al comentario con
+      // { message }. El token va en el header Authorization.
       const res = await graphRequest<{ id?: string }>(`${replyCommentId}/replies`, {
         method: "POST",
         token,
@@ -1337,11 +1358,15 @@ async function callCommentsReply(
         }
         throw new SendError(
           "reconnect_required",
-          platform === "instagram"
-            ? "El token de Instagram expiró: reconecta la cuenta"
-            : platform === "messenger"
-              ? "El token de la página expiró: reconecta Messenger"
-              : "La API key de Zernio expiró: reconecta TikTok"
+          accountRef
+            ? platform === "instagram"
+              ? "La llave de Zernio de Instagram expiró: reconecta la cuenta"
+              : platform === "messenger"
+                ? "La llave de Zernio de Messenger expiró: reconecta la página"
+                : "La API key de Zernio expiró: reconecta TikTok"
+            : platform === "instagram"
+              ? "El token de Instagram expiró: reconecta la cuenta"
+              : "El token de la página expiró: reconecta Messenger"
         );
       }
       if (err.status === 0 || err.status >= 500) {

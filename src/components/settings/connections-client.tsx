@@ -6,7 +6,10 @@ import { CheckCircle2, CircleAlert, PlugZap, RefreshCw } from "lucide-react";
 
 type ConnectionStatus = {
   channels: string[];
+  provider: string;
   zernio: string;
+  meta: string;
+  waha: string;
   instagram: string;
   messenger: string;
   tiktok: string;
@@ -26,10 +29,11 @@ type ConnectionsStatus = {
 };
 
 const CONNECTIONS = [
-  { key: "zernio", channel: "whatsapp", name: "WhatsApp · Zernio", href: "/settings/whatsapp", detail: "Número de WhatsApp Business conectado mediante Zernio." },
-  { key: "instagram", channel: "instagram", name: "Instagram · Zernio / Meta", href: "/settings/instagram", detail: "Cuenta de Instagram para recibir y responder mensajes." },
-  { key: "messenger", channel: "messenger", name: "Messenger · Zernio / Meta", href: "/settings/messenger", detail: "Página de Facebook para mensajes de Messenger." },
-  { key: "tiktok", channel: "tiktok", name: "TikTok · Zernio", href: "/settings/tiktok", detail: "Cuenta de TikTok conectada mediante Zernio." },
+  { key: "zernio", statusKey: "zernio", channel: "whatsapp", name: "WhatsApp · Zernio", href: "/settings/whatsapp", detail: "Número de WhatsApp Business conectado mediante Zernio.", activationSetting: "WHATSAPP_ZERNIO_ENABLED=true" },
+  { key: "waha", statusKey: "waha", channel: "whatsapp", name: "WhatsApp · WAHA", href: "/settings/waha", detail: "Servidor WAHA self-hosted para enviar y recibir mensajes de WhatsApp.", activationSetting: null },
+  { key: "instagram", statusKey: "instagram", channel: "instagram", name: "Instagram · Zernio / Meta", href: "/settings/instagram", detail: "Cuenta de Instagram para recibir y responder mensajes.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok" },
+  { key: "messenger", statusKey: "messenger", channel: "messenger", name: "Messenger · Zernio / Meta", href: "/settings/messenger", detail: "Página de Facebook para mensajes de Messenger.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok" },
+  { key: "tiktok", statusKey: "tiktok", channel: "tiktok", name: "TikTok · Zernio", href: "/settings/tiktok", detail: "Cuenta de TikTok conectada mediante Zernio.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok" },
 ] as const;
 
 /** Conexiones de datos/publicidad: se resuelven con /api/settings/connections-status. */
@@ -183,16 +187,13 @@ export function ConnectionsClient() {
 
       <section aria-label="Conexiones de mensajería" className="grid min-w-0 gap-3 sm:grid-cols-2">
         {CONNECTIONS.map((connection) => {
-          const isEnabled = data ? (connection.channel === "whatsapp"
-            ? data.status.zernio !== "disabled"
-            : data.status.channels.includes(connection.channel)) : false;
-          const status = connection.key === "zernio"
-            ? data?.status.zernio
-            : data?.status[connection.key as "instagram" | "messenger" | "tiktok"];
+          const isEnabled = data ? (connection.key === "waha"
+            ? true
+            : connection.channel === "whatsapp"
+              ? data.status.zernio !== "disabled"
+              : data.status.channels.includes(connection.channel)) : false;
+          const status = data?.status[connection.statusKey];
           const disabled = Boolean(data && (!isEnabled || status === "disabled"));
-          const activationSetting = connection.channel === "whatsapp"
-            ? "WHATSAPP_ZERNIO_ENABLED=true"
-            : "CHANNELS=whatsapp,instagram,messenger,tiktok";
           return (
             <article key={connection.key} className="flex min-w-0 flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
               <div className="flex min-w-0 items-start gap-3">
@@ -212,10 +213,10 @@ export function ConnectionsClient() {
                 </span>
                 {data && !disabled && <Link className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent" href={connection.href}>Configurar</Link>}
               </div>
-              {data && disabled && (
+              {data && disabled && connection.activationSetting && (
                 <p className="rounded-md bg-subtle p-3 text-xs leading-relaxed text-text-2">
                   Para mostrar y activar esta conexión, agrega en las variables del despliegue:
-                  <code className="mt-1 block break-all font-mono text-foreground">{activationSetting}</code>
+                  <code className="mt-1 block break-all font-mono text-foreground">{connection.activationSetting}</code>
                   Después podrás guardar la API key y los datos de la cuenta desde Configuración.
                 </p>
               )}

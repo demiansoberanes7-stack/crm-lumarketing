@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { parseBody, withAuth } from "@/lib/api";
+import { parseBody, withOwner } from "@/lib/api";
 import { getIntegration, saveIntegration } from "@/server/integrations";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   const integration = await getIntegration(session.organizationId, "automation_rules");
   const rules = integration?.credentials?.rules;
   return NextResponse.json({ rules: Array.isArray(rules) ? rules : null });
 });
 
-export const POST = withAuth(async (session, req: Request) => {
+export const POST = withOwner(async (session, req: Request) => {
   const body = await parseBody(req, z.object({
     rules: z.array(z.object({
       id: z.string().trim().min(1).max(80),

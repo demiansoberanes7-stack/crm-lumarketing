@@ -1,4 +1,4 @@
-import { apiError, withAuth } from "@/lib/api";
+import { apiError, withOwner } from "@/lib/api";
 import {
   googleBusinessDisabledResponse,
   googleBusinessEnabled,
@@ -9,7 +9,7 @@ import { syncOrganization } from "@/server/google-business/sync";
 export const dynamic = "force-dynamic";
 
 /** Sync manual de reseñas: el botón de la pestaña de Configuración. */
-export const POST = withAuth(async (session) => {
+export const POST = withOwner(async (session) => {
   if (!googleBusinessEnabled()) return googleBusinessDisabledResponse();
   const creds = await getGoogleBusinessCredentials(session.organizationId);
   if (!creds) {

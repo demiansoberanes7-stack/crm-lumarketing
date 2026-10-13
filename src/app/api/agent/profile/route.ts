@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { apiError, parseBody, withOwner } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
@@ -7,7 +7,7 @@ import { normalizeAgentFichaFields, normalizeAgentRules, AGENT_FICHA_KEY_PATTERN
 
 export const dynamic = "force-dynamic";
 
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   const db = getDb();
   if (!db) return apiError(500, "db_error", "Base de datos no disponible");
   const rows = await db
@@ -72,7 +72,7 @@ const putSchema = z.object({
   businessDescription: z.string().trim().max(2000).nullable().optional(),
 });
 
-export const PUT = withAuth(async (session, req: Request) => {
+export const PUT = withOwner(async (session, req: Request) => {
   const body = await parseBody(req, putSchema);
   if (!body.ok) return body.response;
 

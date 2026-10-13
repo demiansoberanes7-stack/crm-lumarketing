@@ -70,6 +70,7 @@ describe("reglas y campos de ficha del prompt del agente", () => {
     }));
 
     expect(text).not.toContain('"action":"send_quote"');
+    expect(text).not.toContain('"action":"create_quote"');
     expect(text).not.toContain('"action":"move_stage"');
     expect(text).not.toContain("CAMPOS DISPONIBLES EN LA FICHA");
     expect(text).not.toContain("pide hablar con una persona");
@@ -79,6 +80,8 @@ describe("reglas y campos de ficha del prompt del agente", () => {
   it("mantiene los defaults existentes para las reglas de negocio", () => {
     const text = prompt();
     expect(text).toContain('"action":"send_quote"');
+    expect(text).toContain('"action":"create_quote"');
+    expect(text).toContain("Si el cliente solicita explícitamente una cotización");
     expect(text).toContain('"action":"move_stage"');
     expect(text).toContain("Si el cliente pide hablar con una persona");
     expect(text).toContain("no inventes");

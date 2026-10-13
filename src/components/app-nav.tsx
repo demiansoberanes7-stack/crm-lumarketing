@@ -166,12 +166,12 @@ export function AppNav({
 
       <div className="flex-1" />
 
-      <Link href="/watsi" className={navItemClass(pathname === "/watsi" || pathname.startsWith("/watsi/"))}>
+      <Link href="/copiloto" className={navItemClass(pathname === "/copiloto" || pathname.startsWith("/copiloto/"))}>
         <Sparkles
-          className={cn("h-[17px] w-[17px]", pathname === "/watsi" ? "text-brand" : "text-text-3")}
+          className={cn("h-[17px] w-[17px]", pathname === "/copiloto" ? "text-brand" : "text-text-3")}
           strokeWidth={1.8}
         />
-        asistente
+        Copiloto
       </Link>
 
       <Link href="/settings" className={navItemClass(settingsActive)}>

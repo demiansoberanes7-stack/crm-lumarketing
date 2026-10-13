@@ -76,6 +76,9 @@ export function buildAgentSystemPrompt(input: {
     ...(rules.sendProductQuotes
       ? ['- {"action":"send_quote","item_id":"<ID del producto>","reply":"..."} — enviar la ficha oficial de un producto del catálogo.']
       : []),
+    ...(rules.sendProductQuotes
+      ? ['- {"action":"create_quote","item_id":"<ID del producto>","quantity":1,"reply":"..."} — crear y enviar una cotización formal por el chat actual.']
+      : []),
     ...(rules.moveStageOnIntent
       ? ['- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).']
       : []),
@@ -88,7 +91,10 @@ export function buildAgentSystemPrompt(input: {
       ? [`- Guarda datos explícitos del cliente en ficha usando solo estos campos: ${fichaFieldList}. No inventes valores ni borres campos no mencionados; resume también el contexto en note.`]
       : []),
     ...(rules.sendProductQuotes
-      ? ["- Si el cliente pregunta sobre un producto o servicio del catálogo, usa send_quote para enviar la ficha oficial, no respondas solo con texto."]
+      ? [
+          "- Si el cliente pide precio o información de un producto, usa send_quote para compartir su ficha oficial.",
+          "- Si el cliente solicita explícitamente una cotización, presupuesto formal o propuesta de compra, usa create_quote con un producto disponible del catálogo y la cantidad que haya indicado (por defecto 1). No inventes descuentos.",
+        ]
       : []),
     ...(rules.handoffOnRequest
       ? ["- Si el cliente pide hablar con una persona, humano o asesor, usa handoff."]

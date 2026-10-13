@@ -23,13 +23,17 @@ export const GET = withAuth(async (session, req: Request, { params }: { params: 
   const messages = await db
     .select()
     .from(schema.watsiMessage)
-    .where(eq(schema.watsiMessage.conversationId, id))
+    .where(scoped(
+      schema.watsiMessage.organizationId,
+      session.organizationId,
+      eq(schema.watsiMessage.conversationId, id)
+    ))
     .orderBy(asc(schema.watsiMessage.createdAt))
     .limit(200);
 
   return Response.json({
     conversation: { id: conv.id, title: conv.title },
-    messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+    messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, sources: m.sources ?? [] })),
   });
 });
 

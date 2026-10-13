@@ -1,9 +1,9 @@
-import { withAuth, apiError } from "@/lib/api";
+import { withOwner, apiError } from "@/lib/api";
 import { getEmailAccountCredentials } from "@/server/email/service";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
-export const POST = withAuth(async (session, _req: Request, { params }: { params: Promise<{ id: string }> }) => {
+export const POST = withOwner(async (session, _req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const creds = await getEmailAccountCredentials(session.organizationId, (await params).id);
   if (!creds) return apiError(404, "not_found", "Cuenta no encontrada");
   const { ImapFlow } = await import("imapflow");

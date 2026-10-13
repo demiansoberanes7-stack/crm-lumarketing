@@ -1,4 +1,4 @@
-import { withAuth, parseBody, apiError } from "@/lib/api";
+import { withOwner, parseBody, apiError } from "@/lib/api";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
@@ -11,13 +11,13 @@ export const dynamic = "force-dynamic";
 type _Params = { params: Promise<{ id: string }> };
 
 /** DELETE — eliminar cuenta de email */
-export const DELETE = withAuth(async (session, _req, { params }) => {
+export const DELETE = withOwner(async (session, _req, { params }) => {
   const { id } = await params;
   await deleteEmailAccount(session.organizationId, id);
   return Response.json({ ok: true });
 });
 
-export const PATCH = withAuth(async (session, req: Request, { params }: _Params) => {
+export const PATCH = withOwner(async (session, req: Request, { params }: _Params) => {
   const { id } = await params;
   const body = await parseBody(req, z.object({ label: z.string().max(255).optional(), email: z.string().email(), imapHost: z.string().min(1), imapPort: z.number().int().min(1).max(65535), smtpHost: z.string().min(1), smtpPort: z.number().int().min(1).max(65535), username: z.string().min(1), password: z.string().optional() }));
   if (!body.ok) return body.response;

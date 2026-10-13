@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { parseBody, withAuth } from "@/lib/api";
+import { parseBody, withOwner } from "@/lib/api";
 import { listEmailAccounts, createEmailAccount } from "@/server/email/service";
 
 export const dynamic = "force-dynamic";
 
 /** GET — listar cuentas de email */
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   const accounts = await listEmailAccounts(session.organizationId);
   return Response.json({ accounts });
 });
@@ -22,7 +22,7 @@ const postSchema = z.object({
 });
 
 /** POST — crear cuenta de email */
-export const POST = withAuth(async (session, req: Request) => {
+export const POST = withOwner(async (session, req: Request) => {
   const body = await parseBody(req, postSchema);
   if (!body.ok) return body.response;
 

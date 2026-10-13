@@ -1,6 +1,7 @@
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { noConversationReason } from "@/server/broadcasts/audience";
 import { refreshBroadcastCampaign } from "@/server/broadcasts/metrics";
 import { SendError, sendText } from "@/server/inbox/send";
 
@@ -53,6 +54,7 @@ export async function runBroadcastWorkerOnce(): Promise<void> {
         organizationId: schema.broadcastRecipient.organizationId,
         campaignId: schema.broadcastRecipient.campaignId,
         conversationId: schema.broadcastRecipient.conversationId,
+        channel: schema.broadcastRecipient.channel,
         messageText: schema.broadcastCampaign.messageText,
       })
       .from(schema.broadcastRecipient)
@@ -98,6 +100,8 @@ async function deliver(input: {
   organizationId: string;
   campaignId: string;
   conversationId: string | null;
+  /** Columna varchar de la BD: se valida contra el catálogo al crearla. */
+  channel: string;
   messageText: string;
 }) {
   const db = getDb();
@@ -114,8 +118,9 @@ async function deliver(input: {
     return;
   }
   if (!input.conversationId) {
+    const reason = noConversationReason(input.channel);
     await db.update(schema.broadcastRecipient)
-      .set({ status: "skipped", skipReason: "no_whatsapp_conversation", updatedAt: now })
+      .set({ status: "skipped", skipReason: reason, updatedAt: now })
       .where(scoped(schema.broadcastRecipient.organizationId, input.organizationId, eq(schema.broadcastRecipient.id, input.id)));
     await refreshBroadcastCampaign(input.organizationId, input.campaignId);
     return;

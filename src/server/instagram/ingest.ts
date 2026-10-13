@@ -1,5 +1,7 @@
 import { IG_PREFIX } from "@/server/inbox/identity";
 import { ingestInboundMessage } from "@/server/inbox/ingest";
+import { isChannelEnabled } from "@/server/channels/enabled";
+import { ingestZernioCommentWebhook } from "@/server/comments/sync";
 import {
   getInstagramCredentialsByAccountRef,
   getInstagramCredentialsByIgUserId,
@@ -49,8 +51,10 @@ export async function processZernioEvent(payload: unknown): Promise<void> {
   // conectadas: sin este filtro acabariamos ingiriendo otra plataforma como
   // si fueran DMs de Instagram.
   if (evt.account?.platform !== "instagram") return;
-  if (evt.event !== "message.received") return;
-  if (evt.message?.direction && evt.message.direction !== "incoming") return;
+  if (
+    evt.event !== "message.received" &&
+    evt.event !== "comment.received"
+  ) return;
 
   const accountRef = evt.account?.id;
   if (!accountRef) return;
@@ -72,6 +76,17 @@ export async function processZernioEvent(payload: unknown): Promise<void> {
     );
     return;
   }
+
+  // Comentario público en una publicación: entra al canal `comments` con la IA
+  // apagada (el reply es público y lo publica una persona).
+  if (evt.event === "comment.received") {
+    if (isChannelEnabled("comments")) {
+      await ingestZernioCommentWebhook(creds.organizationId, payload, "instagram");
+    }
+    return;
+  }
+
+  if (evt.message?.direction && evt.message.direction !== "incoming") return;
 
   const igsid = evt.message?.sender?.id;
   if (!igsid) {

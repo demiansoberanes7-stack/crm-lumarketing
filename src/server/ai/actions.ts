@@ -29,6 +29,12 @@ const baseActions = [
     item_id: z.string().min(1),
     reply: z.string().optional(),
   }),
+  z.object({
+    action: z.literal("create_quote"),
+    item_id: z.string().min(1),
+    quantity: z.number().int().positive().max(100).optional(),
+    reply: z.string().optional(),
+  }),
 ] as const;
 
 /**
@@ -85,6 +91,7 @@ export function resolveStage(
 export function degradeAction(action: AgentActionType): AgentActionType {
   if (
     action.action === "move_stage" ||
+    action.action === "create_quote" ||
     action.action === "offer_slots" ||
     action.action === "book_slot"
   ) {

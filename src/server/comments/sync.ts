@@ -32,7 +32,7 @@ import { getTikTokCredentialsByOrg } from "@/server/tiktok/credentials";
 export type SyncResult = { comments: number; newComments: number };
 
 /** Prefijo de la identidad y del mensaje entrante según la plataforma. */
-type SocialCommentPlatform = "instagram" | "messenger" | "tiktok";
+export type SocialCommentPlatform = "instagram" | "messenger" | "tiktok";
 
 function platformBits(platform: SocialCommentPlatform) {
   if (platform === "instagram") return { prefix: "igc", channel: "comments" as const };
@@ -216,41 +216,60 @@ export async function syncOrganizationComments(
   return total;
 }
 
-/** Ingesta en tiempo real del webhook oficial `comment.received` de Zernio. */
-export async function ingestTikTokCommentWebhook(
-  organizationId: string,
-  payload: unknown
-): Promise<void> {
-  const event = payload as {
-    event?: string;
-    comment?: {
-      id?: string;
-      platform?: string;
-      platformPostId?: string;
-      text?: string;
-      createdAt?: string;
-      isReply?: boolean;
-      parentCommentId?: string | null;
-      author?: { id?: string; name?: string; username?: string; isOwnAccount?: boolean };
-    };
-    post?: { platformPostId?: string; content?: string | null };
-  } | null;
+type ZernioCommentEvent = {
+  event?: string;
+  comment?: {
+    id?: string;
+    platform?: string;
+    platformPostId?: string;
+    text?: string;
+    createdAt?: string;
+    isReply?: boolean;
+    parentCommentId?: string | null;
+    author?: { id?: string; name?: string; username?: string; isOwnAccount?: boolean };
+  };
+  post?: { platformPostId?: string; content?: string | null };
+};
+
+/** `comment.platform` de Zernio → plataforma interna de la bandeja. */
+function socialPlatformFrom(
+  platform: string | undefined
+): SocialCommentPlatform | null {
+  if (platform === "facebook" || platform === "messenger") return "messenger";
+  if (platform === "instagram") return "instagram";
+  if (platform === "tiktok") return "tiktok";
+  return null;
+}
+
+/**
+ * Normaliza un `comment.received` de Zernio (Facebook, Instagram o TikTok) a
+ * la forma que ya ingiere la Bandeja. Pura: devuelve null cuando no hay
+ * comentario utilizable —sin id, sin texto, sin autor, sin post— o cuando lo
+ * escribió la propia cuenta (el reply del negocio no es un comentario entrante).
+ */
+export function parseZernioCommentEvent(payload: unknown): {
+  platform: SocialCommentPlatform;
+  comment: RawSocialComment;
+} | null {
+  const event = payload as ZernioCommentEvent | null;
   const comment = event?.comment;
+  const platform = socialPlatformFrom(comment?.platform);
   const postExternalId = comment?.platformPostId ?? event?.post?.platformPostId;
   if (
+    !platform ||
     event?.event !== "comment.received" ||
-    comment?.platform !== "tiktok" ||
-    !comment.id ||
+    !comment?.id ||
     !comment.text?.trim() ||
     !comment.author?.id ||
     !postExternalId ||
     comment.author.isOwnAccount === true
-  ) return;
+  ) {
+    return null;
+  }
 
   const parsedAt = comment.createdAt ? new Date(comment.createdAt) : null;
-  await upsertCommentIntoInbox({
-    organizationId,
-    platform: "tiktok",
+  return {
+    platform,
     comment: {
       externalCommentId: comment.id,
       postExternalId,
@@ -261,6 +280,30 @@ export async function ingestTikTokCommentWebhook(
       parentExternalId: comment.isReply ? comment.parentCommentId ?? null : null,
       commentTime: parsedAt && Number.isFinite(parsedAt.getTime()) ? parsedAt : new Date(),
     },
+  };
+}
+
+/**
+ * Ingesta en tiempo real del webhook oficial `comment.received` de Zernio.
+ * Sirve para las tres plataformas que comparten esa API: el canal que recibe
+ * el evento (Messenger, Instagram o TikTok) resuelve la organización y llama
+ * aquí; el upsert por `externalCommentId` hace el resto sin duplicar nada.
+ */
+export async function ingestZernioCommentWebhook(
+  organizationId: string,
+  payload: unknown,
+  expected?: SocialCommentPlatform
+): Promise<void> {
+  const parsed = parseZernioCommentEvent(payload);
+  if (!parsed) return;
+  // El canal que recibe el evento solo ingerirá comentarios de SU plataforma:
+  // una misma llave de Zernio trae varias, y asignarle a la org equivocada un
+  // comentario ajeno rompe el reply (el post no existe en esa cuenta).
+  if (expected && parsed.platform !== expected) return;
+  await upsertCommentIntoInbox({
+    organizationId,
+    platform: parsed.platform,
+    comment: parsed.comment,
   });
 }
 

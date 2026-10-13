@@ -5,6 +5,7 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { BROADCAST_AUDIENCE_LIMIT, resolveBroadcastAudience } from "@/server/broadcasts/audience";
 import { createBroadcastSchema } from "@/server/broadcasts/filters";
+import { capabilitiesFor, textFits } from "@/server/channels/capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,24 @@ export const POST = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, createBroadcastSchema);
   if (!body.ok) return body.response;
 
+  // El texto tiene que caber en el canal elegido ANTES de guardar la lista:
+  // si no cabe, todos los destinatarios fallarían al enviar.
+  if (!textFits(body.data.channel, body.data.messageText)) {
+    const caps = capabilitiesFor(body.data.channel);
+    return apiError(
+      422,
+      "broadcast_text_too_long",
+      `${caps.label} no acepta mensajes de más de ${caps.maxTextBytes} bytes: acorta el texto`
+    );
+  }
+
   let recipients;
   try {
-    recipients = await resolveBroadcastAudience(session.organizationId, body.data.filters);
+    recipients = await resolveBroadcastAudience(
+      session.organizationId,
+      body.data.filters,
+      body.data.channel
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "No se pudo calcular el segmento";
     return apiError(422, "broadcast_audience", message);
@@ -45,7 +61,7 @@ export const POST = withAuth(async (session, req: Request) => {
       id,
       organizationId: session.organizationId,
       name: body.data.name,
-      channel: "whatsapp",
+      channel: body.data.channel,
       messageText: body.data.messageText,
       filters: body.data.filters,
       status: "draft",
@@ -76,6 +92,13 @@ export const POST = withAuth(async (session, req: Request) => {
   });
 
   return Response.json({
-    campaign: { id, name: body.data.name, status: "draft", recipientCount: recipients.length, skippedCount },
+    campaign: {
+      id,
+      name: body.data.name,
+      channel: body.data.channel,
+      status: "draft",
+      recipientCount: recipients.length,
+      skippedCount,
+    },
   }, { status: 201 });
 });

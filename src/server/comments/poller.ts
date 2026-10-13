@@ -40,15 +40,14 @@ export async function runCommentsWorkerOnce(): Promise<void> {
   workerState.__commentsTick = true;
   try {
     const db = getDb();
-    // Instagram/Facebook con token Meta; TikTok Inbox con cuenta Zernio.
+    // Instagram/Facebook con token Meta o llave Zernio (el Inbox API también
+    // expone comentarios); TikTok Inbox con cuenta Zernio.
     const igOrgs = await db
       .select({ organizationId: schema.instagramCredentials.organizationId })
-      .from(schema.instagramCredentials)
-      .where(eq(schema.instagramCredentials.source, "meta"));
+      .from(schema.instagramCredentials);
     const msOrgs = await db
       .select({ organizationId: schema.messengerCredentials.organizationId })
-      .from(schema.messengerCredentials)
-      .where(eq(schema.messengerCredentials.source, "meta"));
+      .from(schema.messengerCredentials);
     const tiktokOrgs = isChannelEnabled("tiktok")
       ? await db
           .select({ organizationId: schema.tiktokCredentials.organizationId })

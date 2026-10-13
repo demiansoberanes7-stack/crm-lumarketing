@@ -5,12 +5,12 @@ import type { TikTokCredentials } from "@/server/tiktok/credentials";
 import { zernioFetch } from "@/server/zernio";
 
 /**
- * Lector de comentarios públicos de publicaciones vía Graph API.
+ * Lector de comentarios públicos de publicaciones.
  *
- * Instagram y la página de Facebook publican los comentarios de SUS posts.
- * Detrás de una credencial de Meta (source="meta"): una llave de Zernio no
- * puede leerlos (Zernio solo transporta DMs), así que en ese caso se degrada
- * con un `error` claro y el resto de la ingesta sigue.
+ * Dos transports según la credencial: una conexión Meta (source="meta") lee
+ * por Graph API con el token de la página/IG, y una conexión Zernio
+ * (source="zernio") lee por el Inbox API unificado (`/inbox/comments`) con la
+ * misma llave que ya transporta los DMs. Cada función decide dentro.
  *
  * El token SIEMPRE viaja en el header Authorization, nunca en la query (mismo
  * criterio que meta-insights.ts: las URLs con access_token se filtran en logs
@@ -78,8 +78,15 @@ export async function fetchInstagramComments(
   creds: InstagramCredentials,
   opts?: { mediaLimit?: number; commentsLimit?: number }
 ): Promise<{ comments: RawSocialComment[] } | { error: string }> {
-  if (creds.source !== "meta") {
-    return { error: "Instagram conectado vía Zernio no expone comentarios (solo mensajes directos)" };
+  if (creds.source === "zernio") {
+    if (!creds.accountRef) {
+      return { error: "Instagram conectado vía Zernio no tiene cuenta enrutable para leer comentarios" };
+    }
+    return fetchZernioInboxComments(
+      { token: creds.token, accountRef: creds.accountRef },
+      "instagram",
+      { postLimit: opts?.mediaLimit, commentsLimit: opts?.commentsLimit }
+    );
   }
   const mediaLimit = opts?.mediaLimit ?? DEFAULT_MEDIA_LIMIT;
   const commentsLimit = opts?.commentsLimit ?? DEFAULT_COMMENTS_LIMIT;
@@ -145,7 +152,19 @@ export async function fetchMessengerComments(
   creds: MessengerCredentials,
   opts?: { postLimit?: number; commentsLimit?: number }
 ): Promise<{ comments: RawSocialComment[] } | { error: string }> {
-  if (creds.source !== "meta" || !creds.pageId) {
+  if (creds.source === "zernio") {
+    // Zernio sí expone los comentarios de la página por el Inbox API: la
+    // variante que antes degradaba ya no existe.
+    if (!creds.accountRef) {
+      return { error: "Messenger conectado vía Zernio no tiene cuenta enrutable para leer comentarios" };
+    }
+    return fetchZernioInboxComments(
+      { token: creds.token, accountRef: creds.accountRef },
+      "facebook",
+      opts
+    );
+  }
+  if (!creds.pageId) {
     return { error: "Messenger necesita una página de Meta (source=meta) con pageId para leer comentarios" };
   }
   const postLimit = opts?.postLimit ?? DEFAULT_MEDIA_LIMIT;
@@ -209,33 +228,39 @@ type ZernioTikTokComment = {
   message?: string;
   createdTime?: string;
   parentId?: string | null;
-  from?: { id?: string; name?: string; username?: string };
   replies?: ZernioTikTokComment[];
+  repliesHasMore?: boolean;
+  from?: { id?: string; name?: string; username?: string };
 };
 
+/** Plataformas con comentarios en el Inbox de Zernio (API unificada). */
+type ZernioInboxPlatform = "facebook" | "instagram" | "tiktok";
+
 /**
- * Comentarios de videos TikTok conectados a Zernio.
- * Zernio exige una cuenta TikTok for Business para Inbox, y recomienda el
- * webhook comment.received; este barrido cubre posts recientes como respaldo.
+ * Comentarios recientes vía el Inbox de Zernio, común a las tres plataformas:
+ * lista los posts comentados y luego el hilo de cada uno (mismo normalized
+ * shape en todas: `id`, `message`, `createdTime`, `from`, `replies`).
+ *
+ * Facebook capa los replies en 10 con `repliesHasMore`: cuando se levanta, se
+ * pide el hilo completo con `commentId` para no perder el resto de la
+ * conversación.
  */
-export async function fetchTikTokComments(
-  creds: TikTokCredentials,
+async function fetchZernioInboxComments(
+  creds: { token: string; accountRef: string },
+  platform: ZernioInboxPlatform,
   opts?: { postLimit?: number; commentsLimit?: number }
 ): Promise<{ comments: RawSocialComment[] } | { error: string }> {
-  if (creds.source !== "zernio" || !creds.accountRef) {
-    return { error: "TikTok necesita una cuenta de Zernio para leer comentarios" };
-  }
-
   const postLimit = Math.min(Math.max(opts?.postLimit ?? DEFAULT_MEDIA_LIMIT, 1), 100);
   const commentsLimit = Math.min(Math.max(opts?.commentsLimit ?? DEFAULT_COMMENTS_LIMIT, 1), 100);
 
   try {
     const postsResponse = (await zernioFetch(
-      `/inbox/comments?platform=tiktok&accountId=${encodeURIComponent(creds.accountRef)}&limit=${postLimit}`,
+      `/inbox/comments?platform=${platform}&accountId=${encodeURIComponent(creds.accountRef)}&limit=${postLimit}`,
       { token: creds.token }
     )) as { data?: Array<{ id?: string; platformPostId?: string; content?: string | null; commentCount?: number }> };
 
     const comments: RawSocialComment[] = [];
+    const seen = new Set<string>();
     for (const post of postsResponse.data ?? []) {
       const postExternalId = post.platformPostId ?? post.id;
       if (!postExternalId || (post.commentCount ?? 0) <= 0) continue;
@@ -256,9 +281,25 @@ export async function fetchTikTokComments(
         };
 
         for (const comment of response.comments ?? []) {
-          appendTikTokComment(comments, comment, postExternalId, post.content ?? null, null);
+          appendZernioComment(comments, seen, comment, postExternalId, post.content ?? null, null);
           for (const reply of comment.replies ?? []) {
-            appendTikTokComment(comments, reply, postExternalId, post.content ?? null, comment.id ?? null);
+            appendZernioComment(comments, seen, reply, postExternalId, post.content ?? null, comment.id ?? null);
+          }
+          // Facebook: los replies en línea están capados a 10; el resto se
+          // pide con commentId (prefiere el reply completo al conteo exacto).
+          if (comment.repliesHasMore && comment.id) {
+            const threadQuery = new URLSearchParams({
+              accountId: creds.accountRef,
+              commentId: comment.id,
+              limit: String(commentsLimit),
+            });
+            const thread = (await zernioFetch(
+              `/inbox/comments/${encodeURIComponent(postExternalId)}?${threadQuery}`,
+              { token: creds.token }
+            )) as { comments?: ZernioTikTokComment[] };
+            for (const reply of thread.comments ?? []) {
+              appendZernioComment(comments, seen, reply, postExternalId, post.content ?? null, comment.id);
+            }
           }
         }
 
@@ -270,14 +311,34 @@ export async function fetchTikTokComments(
     return { comments };
   } catch (err) {
     if (err instanceof MetaApiError) {
-      return { error: err.isAuthError ? "La API key de Zernio expiró: reconecta TikTok" : err.message };
+      return { error: err.isAuthError ? "La API key de Zernio expiró: reconecta la cuenta" : err.message };
     }
-    return { error: err instanceof Error ? err.message : "No se pudieron leer los comentarios de TikTok" };
+    return { error: err instanceof Error ? err.message : "No se pudieron leer los comentarios de Zernio" };
   }
 }
 
-function appendTikTokComment(
+/**
+ * Comentarios de videos TikTok conectados a Zernio.
+ * Zernio exige una cuenta TikTok for Business para Inbox, y recomienda el
+ * webhook comment.received; este barrido cubre posts recientes como respaldo.
+ */
+export async function fetchTikTokComments(
+  creds: TikTokCredentials,
+  opts?: { postLimit?: number; commentsLimit?: number }
+): Promise<{ comments: RawSocialComment[] } | { error: string }> {
+  if (creds.source !== "zernio" || !creds.accountRef) {
+    return { error: "TikTok necesita una cuenta de Zernio para leer comentarios" };
+  }
+  return fetchZernioInboxComments(
+    { token: creds.token, accountRef: creds.accountRef },
+    "tiktok",
+    opts
+  );
+}
+
+function appendZernioComment(
   comments: RawSocialComment[],
+  seen: Set<string>,
   comment: ZernioTikTokComment,
   postExternalId: string,
   postCaption: string | null,
@@ -286,6 +347,10 @@ function appendTikTokComment(
   const authorExternalId = comment.from?.id;
   const body = comment.message?.trim();
   if (!comment.id || !authorExternalId || !body) return;
+  // El hilo completo de Facebook reentrega los mismos replies que la lista:
+  // sin este corte se duplicaría la conversación en la Bandeja.
+  if (seen.has(comment.id)) return;
+  seen.add(comment.id);
   const parsedAt = comment.createdTime ? new Date(comment.createdTime) : null;
   comments.push({
     externalCommentId: comment.id,

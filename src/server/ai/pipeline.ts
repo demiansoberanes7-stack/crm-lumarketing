@@ -283,7 +283,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
   // El servidor hace cumplir las preferencias aunque el modelo devuelva una
   // acción desactivada por configuración.
-  if (!agentRules.sendProductQuotes && action.action === "send_quote") {
+  if (!agentRules.sendProductQuotes && (action.action === "send_quote" || action.action === "create_quote")) {
     action = action.reply ? { action: "reply", text: action.reply } : { action: "none" };
   }
   if (!agentRules.moveStageOnIntent && action.action === "move_stage") {
@@ -387,7 +387,8 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
           scoped(
             schema.catalogProduct.organizationId,
             organizationId,
-            eq(schema.catalogProduct.id, action.item_id)
+            eq(schema.catalogProduct.id, action.item_id),
+            eq(schema.catalogProduct.available, true)
           )
         )
         .limit(1);
@@ -405,6 +406,68 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       }
       
       await deliverReply(conversation, text.trim());
+      return;
+    }
+    case "create_quote": {
+      const [product] = await getDb()
+        .select()
+        .from(schema.catalogProduct)
+        .where(scoped(
+          schema.catalogProduct.organizationId,
+          organizationId,
+          eq(schema.catalogProduct.id, action.item_id),
+          eq(schema.catalogProduct.available, true)
+        ))
+        .limit(1);
+      if (!product) {
+        await deliverReply(conversation, action.reply ?? "No pude generar la cotización porque el producto no está disponible en el catálogo.");
+        return;
+      }
+      if (product.currency !== "MXN") {
+        await deliverReply(conversation, "No puedo generar una cotización formal para ese producto porque su moneda no es MXN. Un asesor puede ayudarte con el tipo de cambio.");
+        return;
+      }
+      if (conversation.isTest) {
+        await deliverReply(conversation, "En una conversación real prepararía y enviaría la cotización formal desde el sistema de cotizaciones.");
+        return;
+      }
+      const quoteChannel = conversation.channel === "whatsapp" || conversation.channel === "instagram" || conversation.channel === "messenger"
+        ? conversation.channel
+        : null;
+      if (!quoteChannel) {
+        await deliverReply(conversation, "Puedo enviar cotizaciones formales por WhatsApp, Instagram o Messenger. Un asesor puede continuar contigo por uno de esos canales.");
+        return;
+      }
+
+      const { createQuote, getQuote, sendQuote } = await import("@/server/quotes/service");
+      const quantity = action.quantity ?? 1;
+      try {
+        const quoteId = await createQuote(organizationId, {
+          contactId: conversation.contactId,
+          items: [{
+            productId: product.id,
+            name: product.name,
+            description: product.shortDescription ?? undefined,
+            quantity,
+            unitPrice: product.price,
+          }],
+        }, undefined, { agentSourceMessageId: lastInbound.id });
+        const quote = await getQuote(organizationId, quoteId);
+        if (!quote) throw new Error("La cotización no quedó disponible después de crearla");
+
+        if (quote.status === "draft") {
+          await sendQuote(organizationId, quoteId, quoteChannel, conversation.id);
+        }
+
+        const total = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(quote.total / 100);
+        const reply = quote.status === "draft"
+          ? `Te comparto la cotización ${quote.quoteNumber} por ${total} MXN.`
+          : `La cotización ${quote.quoteNumber} ya está registrada con estado ${quote.status}.`;
+        await deliverReply(conversation, action.reply ? `${action.reply}\n\n${reply}` : reply);
+      } catch (error) {
+        console.error(`[agente] no se pudo enviar la cotización: ${error}`);
+        await deliverReply(conversation, "No pude completar el envío de la cotización desde este chat. Un asesor puede retomarla desde el cotizador.");
+      }
       return;
     }
     case "handoff": {

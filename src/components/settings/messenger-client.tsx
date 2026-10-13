@@ -304,8 +304,9 @@ export function MessengerClient() {
               {source === "zernio" ? (
                 <>
                   En Zernio, da de alta este endpoint con el evento{" "}
-                  <code>message.received</code> y, si usas secreto, el mismo que
-                  pegaste arriba.
+                  <code>message.received</code> y <code>comment.received</code> (si
+                  activas Comentarios), y, si usas secreto, el mismo que pegaste
+                  arriba.
                 </>
               ) : (
                 <>

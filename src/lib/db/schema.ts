@@ -2202,12 +2202,27 @@ export const watsiMessage = pgTable(
       .references(() => watsiConversation.id, { onDelete: "cascade" }),
     role: varchar("role", { length: 20 }).notNull(),
     content: text("content").notNull(),
+    sources: jsonb("sources"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
     index("watsi_message_conversation_idx").on(t.conversationId, t.createdAt),
   ]
 );
+
+/** Per-organization access selection for the read-only workspace Copilot. */
+export const copilotSettings = pgTable("copilot_settings", {
+  organizationId: varchar("organization_id", { length: 255 })
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  accessMode: varchar("access_mode", { length: 20 }).notNull().default("selected"),
+  dataSources: jsonb("data_sources").notNull().default(
+    sql`'["metrics","pipeline","contacts","agenda"]'::jsonb`
+  ),
+  updatedBy: varchar("updated_by", { length: 255 }).references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 /**
  * Insights diarios de campañas de anuncios (Meta Ads), sincronizados por el

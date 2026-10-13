@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { apiError, parseBody, withOwner } from "@/lib/api";
 import {
   getTikTokCredentialsByOrg,
   saveTikTokCredentials,
@@ -14,7 +14,7 @@ import { recordDiagnostic } from "@/server/diagnostics/logger";
 export const dynamic = "force-dynamic";
 
 /** Estado de la conexión de TikTok (el token nunca sale entero). */
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   if (!isChannelEnabled("tiktok")) return channelDisabledResponse();
   const creds = await getTikTokCredentialsByOrg(session.organizationId);
   if (!creds) return Response.json({ connection: null });
@@ -42,7 +42,7 @@ const putSchema = z.object({
  * Guarda la conexión validando ANTES contra Zernio: una API key que no
  * sirve no llega a la base.
  */
-export const PUT = withAuth(async (session, req: Request) => {
+export const PUT = withOwner(async (session, req: Request) => {
   if (!isChannelEnabled("tiktok")) return channelDisabledResponse();
   const body = await parseBody(req, putSchema);
   if (!body.ok) return body.response;

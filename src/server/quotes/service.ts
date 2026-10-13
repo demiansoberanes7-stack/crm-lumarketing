@@ -87,10 +87,31 @@ function calculateTotals(items: QuoteInput["items"], input: {
 export async function createQuote(
   organizationId: string,
   input: QuoteInput,
-  createdBy?: string
+  createdBy?: string,
+  options?: { agentSourceMessageId?: string }
 ): Promise<string> {
   const created = await getDb().transaction(async (db) => {
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':quotes'}))`);
+  if (options?.agentSourceMessageId) {
+    const [existingEvent] = await db
+      .select({ quoteId: schema.quoteEvent.quoteId })
+      .from(schema.quoteEvent)
+      .where(scoped(
+        schema.quoteEvent.organizationId,
+        organizationId,
+        eq(schema.quoteEvent.eventType, "created"),
+        sql`${schema.quoteEvent.metadata}->>'agentSourceMessageId' = ${options.agentSourceMessageId}`
+      ))
+      .limit(1);
+    if (existingEvent) {
+      const [existingQuote] = await db
+        .select({ id: schema.quote.id, quoteNumber: schema.quote.quoteNumber, total: schema.quote.total, contactId: schema.quote.contactId })
+        .from(schema.quote)
+        .where(scoped(schema.quote.organizationId, organizationId, eq(schema.quote.id, existingEvent.quoteId)))
+        .limit(1);
+      if (existingQuote) return { ...existingQuote, created: false };
+    }
+  }
   if (input.contactId) {
     const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
     if (!contact) throw new Error("Contacto no válido");
@@ -152,17 +173,22 @@ export async function createQuote(
     quoteId: id,
     eventType: "created",
     actorId: createdBy ?? null,
+    metadata: options?.agentSourceMessageId
+      ? { agentSourceMessageId: options.agentSourceMessageId }
+      : null,
   });
 
-  return { id, quoteNumber, total: totals.total, contactId: input.contactId ?? null };
+  return { id, quoteNumber, total: totals.total, contactId: input.contactId ?? null, created: true };
   });
 
-  publishWebhook(organizationId, "quote.created", {
-    quoteId: created.id,
-    quoteNumber: created.quoteNumber,
-    total: created.total,
-    contactId: created.contactId,
-  });
+  if (created.created) {
+    publishWebhook(organizationId, "quote.created", {
+      quoteId: created.id,
+      quoteNumber: created.quoteNumber,
+      total: created.total,
+      contactId: created.contactId,
+    });
+  }
 
   return created.id;
 }

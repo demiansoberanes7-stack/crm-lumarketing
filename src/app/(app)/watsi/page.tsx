@@ -1,7 +1,8 @@
-import { WatsiClient } from "@/components/watsi/watsi-client";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function WatsiPage() {
-  return <WatsiClient />;
+  // Alias de compatibilidad para favoritos/enlaces existentes.
+  redirect("/copiloto");
 }

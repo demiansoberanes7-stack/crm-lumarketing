@@ -293,21 +293,12 @@ La base de datos PostgreSQL contiene **47+ tablas** organizadas en以下 categor
 
 ### Migraciones
 
-El sistema utiliza **9 migraciones** (0000-0008) aplicadas automáticamente al iniciar el contenedor:
+La cadena completa de migraciones vive en `drizzle/` (`drizzle/0000_baseline.sql` en adelante) y se aplica **automáticamente al iniciar el contenedor**; el registro obligatorio está en `drizzle/meta/_journal.json`.
 
-| # | Nombre | Propósito |
-|---|---|---|
-| 0000 | baseline | Esquema completo inicial (35+ tablas) |
-| 0001 | conversation_identity | Índice único condicional para conversaciones |
-| 0002 | charge_quote_unique | Unique index en charge_quote |
-| 0003 | project_stages | Tabla dedicada de etapas de proyecto |
-| 0004 | archived_and_rename_stages | Columna archived_at + renombrar etapas |
-| 0005 | agent_ai_provider | Columnas ai_token y ai_model en agent_profile |
-| 0006 | diagnostics_messaging | Tablas diagnostic_event, whatsapp_settings, integration_secret |
-| 0007 | agent_ai_token_encrypted | Columnas cifradas para token IA |
-| 0008 | tiktok_credentials | Tabla tiktok_credentials |
+- La lista canónica es `ls drizzle/*.sql` — este documento no la duplica: ya hubo doc obsoleto que hablaba de "9 migraciones" cuando el sistema iba mucho más allá.
+- Para añadir cambios de esquema: editar `src/lib/db/schema.ts` → `pnpm db:generate` → revisar el SQL generado en `drizzle/` → commitear el archivo **y** el journal.
+- Verificación en un despliegue: los logs de arranque muestran cada migración aplicada; `drizzle/meta/_journal.json` debe coincidir con los archivos presentes.
 
-**Archivos de migración**: `drizzle/0000_baseline.sql` → `drizzle/0008_tiktok_credentials.sql`  
 **Journal**: `drizzle/meta/_journal.json`
 
 ---
@@ -543,6 +534,8 @@ Tipos de acción disponibles (discriminated union Zod):
 - `handoff`: Transferir a humano
 - `offer_slots`: Ofrecer slots de cita
 - `book_slot`: Reservar cita
+- `send_quote`: Enviar la ficha oficial de un producto del catálogo
+- `create_quote`: Crear y enviar una cotización formal (idempotente por mensaje; gate `sendProductQuotes`)
 
 ### Handoff (`src/server/ai/handoff.ts`)
 
@@ -564,6 +557,15 @@ Construye el prompt del sistema con:
 - Inyección completa de la base de conocimiento
 - Etapas del pipeline
 - Schema JSON de acciones
+
+### Copiloto (IA de consulta, separada del Agente)
+
+El CRM tiene además **Copiloto** (`/copiloto`): un asistente de **solo lectura**
+para preguntarle al negocio ("¿cuánto cobramos este mes?"). No comparte
+configuración con el Agente y **nunca** escribe datos ni envía mensajes. Su
+configuración (fuentes de datos habilitadas) vive en Ajustes → Copiloto,
+solo para el owner, y el contexto se construye acotado al tenant con datos
+personales redactados. Guía completa: [docs/copiloto-agente.md](copiloto-agente.md).
 
 ---
 
@@ -1481,7 +1483,7 @@ validateWahaUrl(url: string): void
 1. Verificar health check: `curl https://crm-domain/api/health`
 2. Verificar logs en EasyPanel
 3. Verificar conexión a BD en EasyPanel console
-4. Verificar que las migraciones se aplicaron (deberían ser 9)
+4. Verificar que las migraciones se aplicaron (logs de arranque + `drizzle/meta/_journal.json`)
 
 ### Webhooks no llegan
 

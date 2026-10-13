@@ -16,6 +16,7 @@ interface Message {
   id: string;
   role: string;
   content: string;
+  sources?: { key: string; label: string; status: "available" | "empty" | "unavailable"; asOf: string }[];
 }
 
 const SUGGESTIONS = [
@@ -90,12 +91,12 @@ export function WatsiClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: msg, conversationId: activeId ?? undefined }),
       });
-      const data = (await res.json()) as { conversationId: string; response: string; error?: { message: string } };
+      const data = (await res.json()) as { conversationId: string; response: string; sources?: Message["sources"]; error?: { message: string } };
       if (!res.ok) {
         setMessages((prev) => [...prev, { id: `err-${Date.now()}`, role: "assistant", content: data.error?.message ?? "Error al procesar" }]);
         return;
       }
-      setMessages((prev) => [...prev, { id: `resp-${Date.now()}`, role: "assistant", content: data.response }]);
+      setMessages((prev) => [...prev, { id: `resp-${Date.now()}`, role: "assistant", content: data.response, sources: data.sources }]);
       if (!activeId) {
         setActiveId(data.conversationId);
         void loadConversations();
@@ -169,8 +170,8 @@ export function WatsiClient() {
               <Sparkles className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h2 className="text-sm font-bold">asistente</h2>
-              <p className="text-[11px] text-muted-foreground">Tu copiloto del espacio de trabajo</p>
+              <h2 className="text-sm font-bold">Copiloto</h2>
+              <p className="text-[11px] text-muted-foreground">Consulta de datos autorizados del espacio de trabajo</p>
             </div>
           </div>
         </header>
@@ -182,7 +183,7 @@ export function WatsiClient() {
                 <Sparkles className="h-6 w-6 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-lg font-semibold">Hola, soy asistente</p>
+                <p className="text-lg font-semibold">Hola, soy tu Copiloto</p>
                 <p className="max-w-md text-sm text-muted-foreground">
                   Pregúntame por tus leads, conversaciones, citas y métricas. Reviso tus datos reales antes de responderte.
                 </p>
@@ -218,6 +219,11 @@ export function WatsiClient() {
                     )}
                   >
                     <p className="whitespace-pre-wrap">{m.content}</p>
+                    {m.role === "assistant" && m.sources && m.sources.length > 0 && (
+                      <p className="mt-2 border-t border-current/10 pt-1.5 text-[10px] opacity-70">
+                        Fuentes: {m.sources.map((source) => `${source.label} (${source.status === "available" ? "consultada" : source.status === "empty" ? "sin registros" : "no disponible"})`).join(" · ")}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

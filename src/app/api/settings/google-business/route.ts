@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { apiError, parseBody, withOwner } from "@/lib/api";
 import {
   googleBusinessDisabledResponse,
   googleBusinessEnabled,
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 /** Credenciales OAuth de Google Business. Patrón Calendar: pegar tokens, sin callback. */
 
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   if (!googleBusinessEnabled()) return googleBusinessDisabledResponse();
   const creds = await getGoogleBusinessCredentials(session.organizationId);
   if (!creds) return Response.json({ connection: null });
@@ -36,7 +36,7 @@ const credsSchema = z.object({
   refreshToken: z.string().trim().min(1),
 });
 
-export const PUT = withAuth(async (session, req: Request) => {
+export const PUT = withOwner(async (session, req: Request) => {
   if (!googleBusinessEnabled()) return googleBusinessDisabledResponse();
   const body = await parseBody(req, credsSchema);
   if (!body.ok) return body.response;
@@ -59,7 +59,7 @@ export const PUT = withAuth(async (session, req: Request) => {
   return Response.json({ ok: true, accounts: accounts.accounts });
 });
 
-export const DELETE = withAuth(async (session) => {
+export const DELETE = withOwner(async (session) => {
   if (!googleBusinessEnabled()) return googleBusinessDisabledResponse();
   await deleteGoogleBusinessCredentials(session.organizationId);
   return Response.json({ ok: true });

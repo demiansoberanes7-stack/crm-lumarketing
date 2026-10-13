@@ -358,6 +358,20 @@
       "when": 1791600000022,
       "tag": "0050_campaign_metric_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791840000000,
+      "tag": "0051_copilot_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1791843600000,
+      "tag": "0052_watsi_message_sources",
+      "breakpoints": true
     }
   ]
 }

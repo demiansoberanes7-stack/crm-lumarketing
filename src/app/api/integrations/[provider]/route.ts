@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { withAuth, apiError } from "@/lib/api";
+import { withOwner, apiError } from "@/lib/api";
 import { getIntegration, saveIntegration, deleteIntegration, type IntegrationProvider } from "@/server/integrations";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ function last4(value: unknown): string {
   return typeof value === "string" && value.length > 0 ? value.slice(-4) : "";
 }
 
-export const GET = withAuth(
+export const GET = withOwner(
   async (session, _req: Request, { params }: { params: Promise<{ provider: string }> }) => {
     const provider = resolveProvider((await params).provider);
     if (!provider) return apiError(404, "not_found", "Proveedor no soportado");
@@ -74,7 +74,7 @@ export const GET = withAuth(
   }
 );
 
-export const POST = withAuth(
+export const POST = withOwner(
   async (session, req: Request, { params }: { params: Promise<{ provider: string }> }) => {
     const provider = resolveProvider((await params).provider);
     if (!provider) return apiError(404, "not_found", "Proveedor no soportado");
@@ -124,7 +124,7 @@ export const POST = withAuth(
   }
 );
 
-export const DELETE = withAuth(
+export const DELETE = withOwner(
   async (session, _req: Request, { params }: { params: Promise<{ provider: string }> }) => {
     const provider = resolveProvider((await params).provider);
     if (!provider) return apiError(404, "not_found", "Proveedor no soportado");

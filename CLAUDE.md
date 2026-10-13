@@ -30,6 +30,7 @@ externas: el trabajo en segundo plano (agente, Laboratorio) es in-process.
 |---|---|
 | El cerebro/proveedor LLM | `src/lib/ai/` (adaptador OpenRouter-compatible, `chatJson<T>`) |
 | El comportamiento/prompt del agente | `src/server/ai/prompts.ts` |
+| El Copiloto (IA de consulta, solo lectura) | `src/lib/copilot-config.ts` · `src/server/copilot-context.ts` · guía: [docs/copiloto-agente.md](docs/copiloto-agente.md) |
 | Las acciones que puede tomar el agente | `src/server/ai/actions.ts` + ejecución en `src/server/ai/pipeline.ts` |
 | Las personas o el juez del Laboratorio | `src/server/lab/personas.ts` · `src/server/lab/judge.ts` |
 | El canal WhatsApp (Graph API) | `src/lib/meta/` (cliente único) + `src/server/whatsapp/` |

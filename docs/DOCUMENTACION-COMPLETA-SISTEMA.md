@@ -482,6 +482,13 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 | `kb_entry` | Base de conocimiento | organizationId, question, answer, category |
 | `agent_test_run` | Ejecuciones del Laboratorio | organizationId, status, score |
 | `agent_test_case` | Casos de prueba | runId, persona, verdict (verde/amarillo/rojo) |
+| `copilot_settings` | Fuentes del Copiloto (IA de consulta, solo lectura) | organizationId, accessMode, dataSources |
+| `watsi_message` | Historial del chat del Copiloto | organizationId, role, content, sources |
+
+El **Copiloto** (`/copiloto`) es la superficie de consulta: lee las fuentes que
+el owner habilito, siempre acotado al tenant, y no escribe ni envia nada. El
+**Agente** (Bandeja) es la superficie comercial: responde, mueve etapas, agenda
+y cotiza. Guia: [copiloto-agente.md](copiloto-agente.md).
 
 ### Cotizaciones
 
@@ -547,23 +554,15 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 
 ## Migraciones
 
-| # | Archivo | Descripcion |
-|---|---------|-------------|
-| 0000 | `0000_baseline.sql` | Schema completo: 35+ tablas, FK, 70+ indices |
-| 0001 | `0001_conversation_identity.sql` | Unique index en conversation (org, contact) WHERE NOT is_test |
-| 0002 | `0002_charge_quote_unique.sql` | Unique index en charge (org, quote_id) |
-| 0003 | `0003_project_stages.sql` | Tabla project_stage dedicada, migracion de datos |
-| 0004 | `0004_archived_and_rename_stages.sql` | Columna archived_at, renombrar etapas |
-| 0005 | `0005_agent_ai_provider.sql` | Columnas ai_token y ai_model en agent_profile |
-| 0006 | `0006_diagnostics_messaging.sql` | diagnostic_event, whatsapp_settings, integration_secret |
-| 0007 | `0007_agent_ai_token_encrypted.sql` | Token cifrado (cipher, iv, tag) en agent_profile |
-| 0008 | `0008_tiktok_credentials.sql` | Tabla tiktok_credentials con token cifrado |
-| 0009 | `0009_one_running_run_index.sql` | Unique index: una ejecucion corriendo por organizacion |
-| 0010 | `0010_agent_pipeline_keywords.sql` | Palabras clave configurables del pipeline en agent_profile |
+La cadena completa vive en `drizzle/` (`0000_baseline.sql` en adelante) y se
+aplica automaticamente al arrancar el contenedor. El registro obligatorio esta
+en `drizzle/meta/_journal.json`.
 
-Las migraciones 0009 y 0010 estan registradas en `drizzle/meta/_journal.json`;
-el migrador necesita ese registro ademas de los archivos SQL. Se verifico su
-aplicacion en una base local nueva y una segunda ejecucion sin cambios pendientes.
+- La lista canonica es `ls drizzle/*.sql`; este documento no la duplica (una
+  tabla congelada aqui quedo obsoleta al poco de existir).
+- Cambios de esquema: editar `src/lib/db/schema.ts` → `pnpm db:generate` →
+  revisar el SQL → commitear archivo y journal.
+- Verificacion: los logs de arranque muestran cada migracion aplicada.
 
 ---
 
@@ -786,7 +785,7 @@ OPENROUTER_MODEL=openai/gpt-oss-120b
 OPENROUTER_JUDGE_MODEL=openai/gpt-oss-20b
 ```
 
-## Pipeline del Agente (7 acciones)
+## Pipeline del Agente (9 acciones)
 
 El agente produce EXACTAMENTE UNA accion por turno:
 
@@ -799,6 +798,8 @@ El agente produce EXACTAMENTE UNA accion por turno:
 | `handoff` | Escalar a humano |
 | `offer_slots` | Ofrecer slots disponibles (agenda) |
 | `book_slot` | Reservar un slot especifico (agenda) |
+| `send_quote` | Enviar la ficha de un producto del catalogo |
+| `create_quote` | Crear y enviar una cotizacion formal (idempotente; gate `sendProductQuotes`) |
 
 ## Flujo del Agente
 

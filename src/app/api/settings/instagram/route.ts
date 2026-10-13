@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { apiError, parseBody, withOwner } from "@/lib/api";
 import {
   getInstagramCredentialsByOrg,
   saveInstagramCredentials,
@@ -15,7 +15,7 @@ import { recordDiagnostic } from "@/server/diagnostics/logger";
 export const dynamic = "force-dynamic";
 
 /** 014 — Estado de la conexión de Instagram (el token nunca sale entero). */
-export const GET = withAuth(async (session) => {
+export const GET = withOwner(async (session) => {
   if (!isChannelEnabled("instagram")) return channelDisabledResponse();
   const creds = await getInstagramCredentialsByOrg(session.organizationId);
   if (!creds) return Response.json({ connection: null });
@@ -44,7 +44,7 @@ const putSchema = z.object({
  * Guarda la conexión validando ANTES contra la plataforma, igual que el
  * wizard de WhatsApp: un token que no sirve no llega a la base.
  */
-export const PUT = withAuth(async (session, req: Request) => {
+export const PUT = withOwner(async (session, req: Request) => {
   if (!isChannelEnabled("instagram")) return channelDisabledResponse();
   const body = await parseBody(req, putSchema);
   if (!body.ok) return body.response;
@@ -144,7 +144,7 @@ async function verify(data: z.infer<typeof putSchema>): Promise<Check> {
 }
 
 /** Desconectar Instagram: elimina las credenciales de la organización. */
-export const DELETE = withAuth(async (session) => {
+export const DELETE = withOwner(async (session) => {
   if (!isChannelEnabled("instagram")) return channelDisabledResponse();
   await deleteInstagramCredentials(session.organizationId);
   await recordDiagnostic({ organizationId: session.organizationId, source: "instagram", code: "disconnected", severity: "info" });

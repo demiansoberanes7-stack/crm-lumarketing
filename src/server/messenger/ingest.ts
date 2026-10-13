@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { isChannelEnabled } from "@/server/channels/enabled";
+import { ingestZernioCommentWebhook } from "@/server/comments/sync";
 import { FB_PREFIX } from "@/server/inbox/identity";
 import { ingestInboundMessage } from "@/server/inbox/ingest";
 import {
@@ -210,7 +212,50 @@ export async function processMetaPagePayload(payload: unknown): Promise<void> {
 export async function processZernioMessengerEvent(
   payload: unknown
 ): Promise<void> {
+  const evt = payload as ZernioEvent | null;
+  // comment.received NO es un mensaje: el normalizador de mensajes lo descarta
+  // (y con razón, no tiene sender ni mid). Se atiende aquí, antes de esa vía.
+  if (evt?.event === "comment.received") {
+    await ingestZernioMessengerComment(payload, evt);
+    return;
+  }
   await ingestAll(normalizeZernioEvent(payload), "zernio");
+}
+
+/**
+ * Comentario público en una publicación de la página (Facebook), vía el
+ * comment.received de Zernio. Los comentarios entran al canal `comments` de la
+ * Bandeja —con la IA apagada: el reply es público y lo publica una persona— y
+ * el poller de respaldo también los cubre.
+ */
+async function ingestZernioMessengerComment(
+  payload: unknown,
+  evt: ZernioEvent
+): Promise<void> {
+  const platform = (evt.account?.platform ?? "").toLowerCase();
+  if (!ZERNIO_MESSENGER_PLATFORMS.has(platform)) return;
+  // El canal de Comentarios apagado = la superficie no existe (ADR-001).
+  if (!isChannelEnabled("comments")) return;
+
+  const accountRef = evt.account?.id;
+  if (!accountRef) return;
+  const creds = await getMessengerCredentialsByAccountRef(accountRef);
+  if (!creds) {
+    console.warn(
+      `[messenger] comentario para una cuenta desconocida (${accountRef}): ` +
+        "guarda la conexión en Configuración → Messenger para recibir comentarios"
+    );
+    return;
+  }
+  if (creds.source !== "zernio") {
+    console.warn(
+      `[messenger] payload de Zernio en una instancia configurada como ` +
+        `'${creds.source}': descartado`
+    );
+    return;
+  }
+
+  await ingestZernioCommentWebhook(creds.organizationId, payload, "messenger");
 }
 
 async function ingestAll(

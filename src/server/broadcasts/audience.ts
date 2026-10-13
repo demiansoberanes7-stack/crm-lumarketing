@@ -2,8 +2,10 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { MEDIUM_VALUES, SOCIAL_NETWORKS } from "@/lib/contact-medium";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
-import { isWindowOpen } from "@/server/inbox/window";
+import { capabilitiesFor } from "@/server/channels/capabilities";
+import { isWindowOpen, isWindowOpenFor } from "@/server/inbox/window";
 import { whatsappProvider } from "@/server/whatsapp/provider";
+import type { BroadcastChannel } from "@/server/broadcasts/filters";
 
 export type BroadcastFilters = {
   stageId?: string;
@@ -16,12 +18,38 @@ export type BroadcastFilters = {
 export type BroadcastAudienceRecipient = {
   contactId: string;
   conversationId: string | null;
-  channel: "whatsapp";
+  channel: BroadcastChannel;
   status: "queued" | "skipped";
   skipReason: string | null;
 };
 
 export const BROADCAST_AUDIENCE_LIMIT = 5_000;
+
+/** Motivo de omisión cuando el contacto no tiene conversación en ese canal. */
+export function noConversationReason(channel: BroadcastChannel | string): string {
+  // WhatsApp conserva el motivo histórico (ya hay campañas con él guardado).
+  return channel === "whatsapp" ? "no_whatsapp_conversation" : `no_${channel}_conversation`;
+}
+
+/**
+ * ¿Se puede enviar AHORA por ese canal? WhatsApp con WAHA ignora la ventana
+ * (comportamiento histórico de la instancia); el resto respeta la ventana
+ * declarada en capabilities — un envío masivo jamás sale por la etiqueta de
+ * agente humano, esa es para respuestas del operador.
+ */
+function broadcastWindowOpen(
+  channel: BroadcastChannel,
+  lastInboundAt: Date | null,
+  provider: "meta" | "waha" | "zernio",
+  now: Date
+): boolean {
+  if (channel === "whatsapp") {
+    return provider === "waha" || isWindowOpen(lastInboundAt, now);
+  }
+  const windowMs = capabilitiesFor(channel).windowMs;
+  if (windowMs === null) return true;
+  return isWindowOpenFor(lastInboundAt, windowMs, now);
+}
 
 export function classifyBroadcastConversation(
   conversation: {
@@ -30,13 +58,17 @@ export function classifyBroadcastConversation(
     isTest: boolean;
     lastInboundAt: Date | null;
   } | null,
-  provider: "meta" | "waha" | "zernio",
+  options: { channel: BroadcastChannel; provider: "meta" | "waha" | "zernio" },
   now: Date = new Date()
 ): Pick<BroadcastAudienceRecipient, "conversationId" | "status" | "skipReason"> {
-  if (!conversation || conversation.channel !== "whatsapp" || conversation.isTest) {
-    return { conversationId: null, status: "skipped", skipReason: "no_whatsapp_conversation" };
+  if (!conversation || conversation.channel !== options.channel || conversation.isTest) {
+    return {
+      conversationId: null,
+      status: "skipped",
+      skipReason: noConversationReason(options.channel),
+    };
   }
-  if (provider !== "waha" && !isWindowOpen(conversation.lastInboundAt, now)) {
+  if (!broadcastWindowOpen(options.channel, conversation.lastInboundAt, options.provider, now)) {
     return { conversationId: conversation.id, status: "skipped", skipReason: "window_closed" };
   }
   return { conversationId: conversation.id, status: "queued", skipReason: null };
@@ -45,7 +77,8 @@ export function classifyBroadcastConversation(
 /** A distinct-and-scoped audience snapshot; it never sends or mutates contacts. */
 export async function resolveBroadcastAudience(
   organizationId: string,
-  filters: BroadcastFilters
+  filters: BroadcastFilters,
+  channel: BroadcastChannel = "whatsapp"
 ): Promise<BroadcastAudienceRecipient[]> {
   const db = getDb();
   let stageContactIds: string[] | undefined;
@@ -123,20 +156,22 @@ export async function resolveBroadcastAudience(
       and(
         scoped(schema.conversation.organizationId, organizationId),
         inArray(schema.conversation.contactId, contactIds),
-        eq(schema.conversation.channel, "whatsapp"),
+        eq(schema.conversation.channel, channel),
         eq(schema.conversation.isTest, false)
       )
     );
   const conversationByContact = new Map(conversations.map((conversation) => [conversation.contactId, conversation]));
-  const provider = await whatsappProvider(organizationId);
+  // El proveedor de WhatsApp solo decide la ventana de ese canal; los demás
+  // la leen de capabilities.
+  const provider = channel === "whatsapp" ? await whatsappProvider(organizationId) : "meta";
   const now = new Date();
 
   return contacts.map(({ id: contactId }) => {
     const conversation = conversationByContact.get(contactId);
     return {
       contactId,
-      channel: "whatsapp",
-      ...classifyBroadcastConversation(conversation ?? null, provider, now),
+      channel,
+      ...classifyBroadcastConversation(conversation ?? null, { channel, provider }, now),
     };
   });
 }

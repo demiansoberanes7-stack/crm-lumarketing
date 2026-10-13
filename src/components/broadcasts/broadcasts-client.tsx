@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MEDIUM_LABELS, SOCIAL_LABELS } from "@/lib/contact-medium";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 
 type Stage = { id: string; name: string; kind: string };
 type Campaign = {
   id: string;
   name: string;
+  channel: string;
   status: string;
   recipientCount: number;
   sentCount: number;
@@ -21,15 +23,28 @@ type Campaign = {
   createdAt: string;
 };
 type Preview = { total: number; queued: number; skipped: number; skippedByReason: Record<string, number> };
+type ChannelOption = { id: string; label: string; enabled: boolean; connected: boolean; status: string };
 
 const MEDIUMS = ["red_social", "llamada", "correo", "presencial", "otro"] as const;
 const SOCIALS = ["whatsapp", "instagram", "facebook", "tiktok", "x", "linkedin", "youtube", "otra"] as const;
+
+/** Un canal de chat por campaña: los mismos cuatro que acepta el schema. */
+const CAMPAIGN_CHANNELS = ["whatsapp", "instagram", "messenger", "tiktok"] as const;
 
 const statusLabels: Record<string, string> = {
   draft: "Borrador",
   sending: "Enviando",
   paused: "Pausada",
   completed: "Finalizada",
+};
+
+/** Etiquetas legibles de por qué un contacto quedó fuera del envío. */
+const skipLabels: Record<string, string> = {
+  window_closed: "Fuera de ventana",
+  no_whatsapp_conversation: "Sin conversación WhatsApp",
+  no_instagram_conversation: "Sin conversación Instagram",
+  no_messenger_conversation: "Sin conversación Messenger",
+  no_tiktok_conversation: "Sin conversación TikTok",
 };
 
 function makeFilters(input: {
@@ -54,6 +69,8 @@ function makeFilters(input: {
 export function BroadcastsClient() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([]);
+  const [channel, setChannel] = useState<string>("whatsapp");
   const [name, setName] = useState("");
   const [messageText, setMessageText] = useState("");
   const [stageId, setStageId] = useState("");
@@ -72,12 +89,27 @@ export function BroadcastsClient() {
   ]);
 
   const refresh = useCallback(async () => {
-    const [campaignResponse, stageResponse] = await Promise.all([
+    const [campaignResponse, stageResponse, channelResponse] = await Promise.all([
       fetch("/api/broadcasts", { cache: "no-store" }),
       fetch("/api/pipeline/stages", { cache: "no-store" }),
+      fetch("/api/automations/channels", { cache: "no-store" }),
     ]);
     if (campaignResponse.ok) setCampaigns((await campaignResponse.json()).campaigns ?? []);
     if (stageResponse.ok) setStages((await stageResponse.json()).stages ?? []);
+    if (channelResponse.ok) {
+      const options = ((await channelResponse.json()).channels ?? []) as ChannelOption[];
+      const chat = options.filter((option) =>
+        (CAMPAIGN_CHANNELS as readonly string[]).includes(option.id)
+      );
+      setChannelOptions(chat);
+      // Si el canal elegido ya no está conectado en esta instancia, cae al
+      // primero que sí lo esté (WhatsApp primero por el orden del catálogo).
+      setChannel((current) =>
+        chat.some((option) => option.id === current && option.connected)
+          ? current
+          : chat.find((option) => option.connected)?.id ?? chat[0]?.id ?? "whatsapp"
+      );
+    }
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -101,7 +133,7 @@ export function BroadcastsClient() {
       const result = await requestJson("/api/broadcasts/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(filters),
+        body: JSON.stringify({ ...filters, channel }),
       });
       setPreview(result);
     } catch (cause) {
@@ -119,7 +151,7 @@ export function BroadcastsClient() {
       const result = await requestJson("/api/broadcasts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, messageText, filters }),
+        body: JSON.stringify({ name, messageText, filters, channel }),
       });
       setNotice(`Campaña guardada con ${result.campaign.recipientCount} contactos en su lista.`);
       setName(""); setMessageText(""); setPreview(null);
@@ -146,7 +178,7 @@ export function BroadcastsClient() {
           <p className="kicker">Contactos segmentados</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Envíos masivos</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Crea campañas persistentes usando pipeline, red social y notas recientes. Cada campaña conserva su lista y resultados.
+            Crea campañas persistentes usando pipeline, red social y notas recientes. Cada campaña elige su canal de chat (WhatsApp, Instagram, Messenger o TikTok), conserva su lista y resultados.
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void refresh()} aria-label="Actualizar campañas">
@@ -163,11 +195,27 @@ export function BroadcastsClient() {
       <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <div className="mb-5 flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-tint text-brand-text"><Send className="h-4 w-4" /></span>
-          <div><h2 className="font-semibold">Nueva campaña de WhatsApp</h2><p className="text-xs text-muted-foreground">El envío libre solo se realiza dentro de la ventana de atención.</p></div>
+          <div><h2 className="font-semibold">Nueva campaña de {CHANNEL_LABEL[channel as Channel] ?? channel}</h2><p className="text-xs text-muted-foreground">El envío libre solo se realiza dentro de la ventana de atención del canal elegido.</p></div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
           <div className="space-y-4">
+            <label className="block space-y-1.5 text-sm font-medium">
+              Canal de la campaña
+              <select
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground"
+                value={channel}
+                onChange={(event) => { setChannel(event.target.value); setPreview(null); }}
+                aria-label="Canal de la campaña"
+              >
+                {channelOptions.length === 0 && <option value="whatsapp">WhatsApp</option>}
+                {channelOptions.map((option) => (
+                  <option key={option.id} value={option.id} disabled={!option.connected}>
+                    {option.label}{option.connected ? "" : " — sin conectar"}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="block space-y-1.5 text-sm font-medium">
               Nombre de campaña
               <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={160} placeholder="Seguimiento octubre" />
@@ -224,7 +272,7 @@ export function BroadcastsClient() {
             <span className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" /> {preview.total} en el segmento</span>
             <span className="text-emerald-700">{preview.queued} elegibles</span>
             <span className="inline-flex items-center gap-1.5 text-amber-700"><AlertCircle className="h-4 w-4" /> {preview.skipped} se omitirán</span>
-            {Object.entries(preview.skippedByReason).map(([reason, count]) => <span key={reason} className="text-xs text-muted-foreground">{reason === "window_closed" ? "Fuera de ventana" : "Sin conversación WhatsApp"}: {count}</span>)}
+            {Object.entries(preview.skippedByReason).map(([reason, count]) => <span key={reason} className="text-xs text-muted-foreground">{skipLabels[reason] ?? reason}: {count}</span>)}
           </div>
         )}
         <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -250,6 +298,7 @@ export function BroadcastsClient() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold">{campaign.name}</h3>
+                  <span className="rounded-full border border-border bg-subtle px-2 py-0.5 text-xs text-muted-foreground">{CHANNEL_LABEL[campaign.channel as Channel] ?? campaign.channel}</span>
                   <span className={`rounded-full border px-2 py-0.5 text-xs ${campaign.status === "sending" ? "border-blue-500/30 bg-blue-500/10 text-blue-700" : "border-border bg-subtle text-muted-foreground"}`}>{statusLabels[campaign.status] ?? campaign.status}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{campaign.recipientCount} contactos · {new Date(campaign.createdAt).toLocaleString("es-MX")}</p>

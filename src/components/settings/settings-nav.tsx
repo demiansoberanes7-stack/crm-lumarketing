@@ -6,38 +6,48 @@ import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 type Tab = { href: string; label: string };
+type TabGroup = { label: string; tabs: Tab[] };
 
-// Núcleo de configuración: siempre visible en el nav lateral.
+// Ajustes generales no relacionados con credenciales o con la configuración global de IA.
 const CORE_TABS: Tab[] = [
-  { href: "/settings/email", label: "Buzón" },
   { href: "/settings/branding", label: "Marca" },
   { href: "/settings/business", label: "Datos de Empresa" },
-  { href: "/settings/agent", label: "Agente" },
   { href: "/settings/team", label: "Equipo" },
 ];
 
-// Transporte alterno de WhatsApp (no tiene tarjeta en Conexiones, se queda en el nav).
-const WAHA_TAB: Tab = { href: "/settings/waha", label: "WAHA" };
+// Configuración global de IA: solo la administra el owner.
+const AI_TABS: Tab[] = [
+  { href: "/settings/copiloto", label: "Copiloto" },
+  { href: "/settings/agent", label: "Agente" },
+];
 
 const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
 const MARKETING_TAB: Tab = { href: "/settings/marketing", label: "Marketing" };
-const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
-const DIAGNOSTICS_TAB: Tab = { href: "/settings/diagnostics", label: "Diagnóstico" };
+const WAHA_TAB: Tab = { href: "/settings/waha", label: "WAHA" };
+const EMAIL_TAB: Tab = { href: "/settings/email", label: "Buzón" };
+
 const WEBHOOKS_TAB: Tab = { href: "/settings/webhooks", label: "Webhooks" };
+const DIAGNOSTICS_TAB: Tab = { href: "/settings/diagnostics", label: "Diagnóstico" };
+const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
 
 export function SettingsNav({ owner = false }: { owner?: boolean }) {
   const pathname = usePathname();
   const activeTabRef = useRef<HTMLAnchorElement | null>(null);
-  const tabs = [
-    ...(owner ? [CONNECTIONS_TAB] : []),
-    ...(owner ? [MARKETING_TAB] : []),
-    WAHA_TAB,
-    ...CORE_TABS,
-    // Webhooks es territorio del dueño: la API responde 403 a cualquier otro rol.
-    ...(owner ? [WEBHOOKS_TAB] : []),
-    ...(owner ? [DIAGNOSTICS_TAB] : []),
-    ...(owner ? [DATA_CLEANUP_TAB] : []),
-  ];
+
+  // Conexiones agrupa SOLO integraciones (cuentas y credenciales de terceros);
+  // Ajustes agrupa lo demás (marca, equipo, IA, webhooks, mantenimiento).
+  const groups: TabGroup[] = owner
+    ? [
+        {
+          label: "Conexiones",
+          tabs: [CONNECTIONS_TAB, MARKETING_TAB, WAHA_TAB, EMAIL_TAB],
+        },
+        {
+          label: "Ajustes",
+          tabs: [...AI_TABS, ...CORE_TABS, WEBHOOKS_TAB, DIAGNOSTICS_TAB, DATA_CLEANUP_TAB],
+        },
+      ]
+    : [{ label: "Ajustes", tabs: CORE_TABS }];
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 639px)").matches) {
@@ -46,21 +56,34 @@ export function SettingsNav({ owner = false }: { owner?: boolean }) {
   }, [pathname]);
 
   return (
-    <nav aria-label="Secciones de configuración" className="flex shrink-0 gap-1 overflow-x-auto scroll-smooth border-b p-2 sm:w-44 sm:flex-col sm:space-y-1 sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3">
-      {tabs.map((t) => (
-        <Link
-          key={t.href}
-          href={t.href}
-          ref={pathname.startsWith(t.href) ? activeTabRef : undefined}
-          className={cn(
-            "flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-sm px-3 text-[13.5px] font-semibold transition-colors",
-            pathname.startsWith(t.href)
-              ? "bg-brand-tint text-brand-text"
-              : "text-text-2 hover:bg-accent hover:text-foreground"
-          )}
-        >
-          {t.label}
-        </Link>
+    <nav
+      aria-label="Secciones de configuración"
+      className="flex shrink-0 gap-1 overflow-x-auto scroll-smooth border-b p-2 sm:w-48 sm:flex-col sm:gap-4 sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3"
+    >
+      {groups.map((group) => (
+        <div key={group.label} className="flex shrink-0 gap-1 sm:flex-col sm:gap-1">
+          <p
+            className="hidden shrink-0 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-3 sm:block"
+            aria-hidden="true"
+          >
+            {group.label}
+          </p>
+          {group.tabs.map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              ref={pathname.startsWith(t.href) ? activeTabRef : undefined}
+              className={cn(
+                "flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-sm px-3 text-[13.5px] font-semibold transition-colors",
+                pathname.startsWith(t.href)
+                  ? "bg-brand-tint text-brand-text"
+                  : "text-text-2 hover:bg-accent hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </div>
       ))}
     </nav>
   );

@@ -1,15 +1,16 @@
 import { apiError, parseBody, withAuth } from "@/lib/api";
-import { broadcastFiltersSchema } from "@/server/broadcasts/filters";
+import { previewBroadcastSchema } from "@/server/broadcasts/filters";
 import { resolveBroadcastAudience } from "@/server/broadcasts/audience";
 
 export const dynamic = "force-dynamic";
 
 export const POST = withAuth(async (session, req: Request) => {
-  const body = await parseBody(req, broadcastFiltersSchema);
+  const body = await parseBody(req, previewBroadcastSchema);
   if (!body.ok) return body.response;
 
+  const { channel, ...filters } = body.data;
   try {
-    const recipients = await resolveBroadcastAudience(session.organizationId, body.data);
+    const recipients = await resolveBroadcastAudience(session.organizationId, filters, channel);
     const queued = recipients.filter((recipient) => recipient.status === "queued").length;
     const skippedByReason = recipients.reduce<Record<string, number>>((counts, recipient) => {
       if (recipient.skipReason) counts[recipient.skipReason] = (counts[recipient.skipReason] ?? 0) + 1;

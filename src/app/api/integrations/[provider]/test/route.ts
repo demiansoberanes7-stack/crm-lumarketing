@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, withAuth } from "@/lib/api";
+import { apiError, withOwner } from "@/lib/api";
 import { getIntegration, type IntegrationProvider } from "@/server/integrations";
 import {
   testGa4ConnectionState,
@@ -47,7 +47,7 @@ function merge(
   return out;
 }
 
-export const POST = withAuth(
+export const POST = withOwner(
   async (session, req: Request, { params }: { params: Promise<{ provider: string }> }) => {
     const provider = (await params).provider as Provider;
     if (!PROVIDERS.includes(provider)) {

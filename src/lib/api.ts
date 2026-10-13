@@ -47,7 +47,10 @@ export function withOwner<Args extends unknown[]>(handler: (session: SessionCont
 /** Parsea el body JSON con un esquema Zod; inválido → Response 422. */
 export async function parseBody<T>(
   req: Request,
-  schema: z.ZodType<T>
+  // `Input = unknown` a propósito: con `Input = T` (el default) TypeScript
+  // infiere T como la UNIÓN de entrada y salida, y un campo con `.default()`
+  // salía como opcional aunque tras parsear siempre existe.
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>
 ): Promise<{ ok: true; data: T } | { ok: false; response: Response }> {
   let raw: unknown;
   try {
