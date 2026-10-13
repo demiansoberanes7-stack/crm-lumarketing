@@ -393,18 +393,15 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         )
         .limit(1);
       const product = rows[0];
-      
+
       let text = action.reply ? `${action.reply}\n\n` : "";
       if (product) {
-        const price = new Intl.NumberFormat("es-MX", { style: "currency", currency: product.currency }).format(product.price / 100);
-        text += `*${product.name}*\nPrecio: ${price}\n\n`;
-        if (product.shortDescription) text += `${product.shortDescription}\n\n`;
-        if (product.longDescription) text += `${product.longDescription}\n`;
-        if (product.imageUrl) text += `\nImagen de referencia: ${process.env.MAIN_URL || "https://crm.zorrotech.com"}${product.imageUrl}`;
+        const { renderProductCard } = await import("@/server/ai/product-card");
+        text += renderProductCard(product, process.env.MAIN_URL || "https://crm.zorrotech.com");
       } else {
         text += "No pude encontrar ese producto en el catálogo.";
       }
-      
+
       await deliverReply(conversation, text.trim());
       return;
     }
@@ -441,6 +438,17 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
       const { createQuote, getQuote, sendQuote } = await import("@/server/quotes/service");
       const quantity = action.quantity ?? 1;
+      // Inventario antes de crear: el servicio también valida, pero aquí el
+      // cliente recibe una respuesta conversacional en vez de un error.
+      if (product.stock !== null && quantity > product.stock) {
+        await deliverReply(
+          conversation,
+          product.stock <= 0
+            ? `El producto "${product.name}" está agotado por el momento. ¿Quieres que te avise cuando vuelva o prefieres ver alternativas?`
+            : `Del producto "${product.name}" solo quedan ${product.stock} pieza${product.stock === 1 ? "" : "s"}. ¿Genero la cotización con esa cantidad?`
+        );
+        return;
+      }
       try {
         const quoteId = await createQuote(organizationId, {
           contactId: conversation.contactId,

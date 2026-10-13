@@ -24,5 +24,9 @@ export async function register(): Promise<void> {
     // instancias sin el módulo encendido.
     const { startCommentsWorker } = await import("./server/comments/poller");
     await startCommentsWorker();
+    // Mensajes post-venta de Mercado Libre (canal `mercado_libre`): mismo
+    // trato — checa su propio canal en cada barrido.
+    const { startMercadoLibreWorker } = await import("./server/mercado-libre/poller");
+    await startMercadoLibreWorker();
   }
 }

@@ -16,6 +16,8 @@ interface Product {
   shortDescription: string | null;
   longDescription: string | null;
   imageUrl: string | null;
+  websiteUrl: string | null;
+  stock: number | null;
   available: boolean;
 }
 
@@ -43,8 +45,24 @@ const EMPTY_FORM = {
   shortDescription: "",
   longDescription: "",
   imageUrl: "",
+  websiteUrl: "",
+  stock: "",
   available: true,
 };
+
+/** Inventario a payload: vacío = sin control (null). */
+function stockPayload(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
+
+function stockLabel(stock: number | null): { text: string; variant: "success" | "secondary" | "warning" } {
+  if (stock === null) return { text: "Consultar", variant: "secondary" };
+  if (stock <= 0) return { text: "Agotado", variant: "warning" };
+  return { text: `${stock} pieza${stock === 1 ? "" : "s"}`, variant: "success" };
+}
 
 export function CatalogClient({ compact = false, onClose }: { compact?: boolean; onClose?: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
@@ -84,6 +102,8 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
       shortDescription: product.shortDescription ?? "",
       longDescription: product.longDescription ?? "",
       imageUrl: product.imageUrl ?? "",
+      websiteUrl: product.websiteUrl ?? "",
+      stock: product.stock === null ? "" : String(product.stock),
       available: product.available,
     });
     setImagePreview(product.imageUrl);
@@ -126,6 +146,8 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
           shortDescription: form.shortDescription || null,
           longDescription: form.longDescription || null,
           imageUrl: form.imageUrl || null,
+          websiteUrl: form.websiteUrl.trim() || null,
+          stock: stockPayload(form.stock),
           available: form.available,
         }),
       });
@@ -203,6 +225,16 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                           {p.shortDescription}
                         </p>
                       )}
+                      {p.websiteUrl && (
+                        <a
+                          href={p.websiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 block truncate text-xs text-primary hover:underline"
+                        >
+                          {p.websiteUrl}
+                        </a>
+                      )}
                     </div>
                      <Button
                        variant="ghost"
@@ -224,10 +256,14 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                     </Button>
                   </div>
 
-                  <div className="mt-auto flex items-center justify-between pt-2">
-                    <Badge variant={p.available ? "success" : "secondary"} className="text-[10px]">
-                      {p.available ? "Disponible" : "No disponible"}
-                    </Badge>
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {(() => {
+                        const s = stockLabel(p.stock);
+                        return <Badge variant={s.variant} className="text-[10px]">{s.text}</Badge>;
+                      })()}
+                      {!p.available && <Badge variant="secondary" className="text-[10px]">No cotizable</Badge>}
+                    </div>
                     <span className="text-sm font-bold tabular-nums">{formatMXN(p.price)}</span>
                   </div>
                 </div>
@@ -256,50 +292,6 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
             </div>
 
             <div className="space-y-4 p-5">
-              {/* Upload de imagen */}
-              <div className="space-y-1.5">
-                <Label>Imagen del producto</Label>
-                <div
-                  className="relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/40 transition-colors hover:border-primary/50 hover:bg-muted/60"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {imagePreview ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={imagePreview} alt="preview" className="h-full w-full object-cover" />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
-                        <ImagePlus className="h-8 w-8 text-white" />
-                        <span className="ml-2 text-sm font-medium text-white">Cambiar imagen</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                      <ImagePlus className="h-8 w-8" />
-                      <span className="text-xs">{uploading ? "Subiendo…" : "Haz clic para subir imagen"}</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleImageFile(file);
-                  }}
-                />
-                {/* URL manual como fallback */}
-                <Input
-                  placeholder="…o pega una URL de imagen directamente"
-                  value={form.imageUrl}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, imageUrl: e.target.value }));
-                    if (e.target.value) setImagePreview(e.target.value);
-                  }}
-                />
-              </div>
-
               {/* Nombre */}
               <div className="space-y-1.5">
                 <Label htmlFor="prod-name">Nombre del producto / servicio *</Label>
@@ -345,6 +337,82 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                 <p className="text-right text-[10px] text-muted-foreground">
                   {form.shortDescription.length}/500
                 </p>
+              </div>
+
+              {/* URL del sitio web */}
+              <div className="space-y-1.5">
+                <Label htmlFor="prod-url">
+                  URL del sitio web{" "}
+                  <span className="text-xs text-muted-foreground">(opcional — tienda, marketplace o landing del producto)</span>
+                </Label>
+                <Input
+                  id="prod-url"
+                  type="url"
+                  placeholder="https://…"
+                  value={form.websiteUrl}
+                  onChange={(e) => setForm((f) => ({ ...f, websiteUrl: e.target.value }))}
+                />
+              </div>
+
+              {/* Inventario */}
+              <div className="space-y-1.5">
+                <Label htmlFor="prod-stock">
+                  Inventario (piezas){" "}
+                  <span className="text-xs text-muted-foreground">(vacío = sin control, el agente dirá &quot;consultar&quot;)</span>
+                </Label>
+                <Input
+                  id="prod-stock"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Ej. 12"
+                  value={form.stock}
+                  onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                />
+              </div>
+
+              {/* Upload de imagen */}
+              <div className="space-y-1.5">
+                <Label>Imagen del producto</Label>
+                <div
+                  className="relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/40 transition-colors hover:border-primary/50 hover:bg-muted/60"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {imagePreview ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imagePreview} alt="preview" className="h-full w-full object-cover" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
+                        <ImagePlus className="h-8 w-8 text-white" />
+                        <span className="ml-2 text-sm font-medium text-white">Cambiar imagen</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <ImagePlus className="h-8 w-8" />
+                      <span className="text-xs">{uploading ? "Subiendo…" : "Haz clic para subir imagen"}</span>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleImageFile(file);
+                  }}
+                />
+                {/* URL manual como fallback */}
+                <Input
+                  placeholder="…o pega una URL de imagen directamente"
+                  value={form.imageUrl}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, imageUrl: e.target.value }));
+                    if (e.target.value) setImagePreview(e.target.value);
+                  }}
+                />
               </div>
 
               {/* Descripción larga (ficha técnica) */}

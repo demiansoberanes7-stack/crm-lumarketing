@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
-import { productImageUrlSchema } from "@/lib/catalog-schema";
+import { productImageUrlSchema, productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,8 @@ const patchSchema = z.object({
   shortDescription: z.string().max(500).nullable().optional(),
   longDescription: z.string().nullable().optional(),
   imageUrl: productImageUrlSchema.nullable().optional(),
+  websiteUrl: productWebsiteUrlSchema.nullable().optional(),
+  stock: productStockSchema.optional(),
   price: z.number().int().min(0).optional(),
   currency: z.string().min(3).max(3).optional(),
   available: z.boolean().optional(),

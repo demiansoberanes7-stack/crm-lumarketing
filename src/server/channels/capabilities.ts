@@ -104,6 +104,17 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     outboundMedia: false,
     deliveryReceipts: false,
   },
+  // Mensajes post-venta de Mercado Libre: chats privados por orden/pack, sin
+  // ventana de 24 h (la conversación puede reabrirse mientras la orden esté
+  // activa) y con límite duro de 350 caracteres por mensaje en la API oficial.
+  mercado_libre: {
+    label: CHANNEL_LABEL.mercado_libre,
+    windowMs: null,
+    outsideWindow: "none",
+    maxTextBytes: 350,
+    outboundMedia: false,
+    deliveryReceipts: false,
+  },
 };
 
 export function capabilitiesFor(channel: Channel): ChannelCapabilities {

@@ -13,6 +13,7 @@ interface CatalogProduct {
   name: string;
   price: number;
   available: boolean;
+  stock: number | null;
   shortDescription?: string | null;
 }
 
@@ -72,23 +73,34 @@ export function NewQuoteDialog({
     const product = catalog.find((p) => p.id === productId);
     if (!product) return;
     setItems((prev) =>
-      prev.map((it, i) =>
-        i === index
-          ? {
-              ...it,
-              name: product.name,
-              unitPrice: product.price / 100,
-              // La descripción corta del catálogo viaja con la partida: en el
-              // PDF se imprime bajo el nombre. El texto ya escrito a mano se
-              // conserva si el producto no trae una.
-              description: product.shortDescription?.trim()
-                ? product.shortDescription
-                : it.description,
-            }
-          : it
-      )
+      prev.map((it, i) => {
+        if (i !== index) return it;
+        const quantity = product.stock !== null && product.stock > 0
+          ? Math.min(it.quantity || 1, product.stock)
+          : it.quantity || 1;
+        return {
+          ...it,
+          productId: product.id,
+          name: product.name,
+          unitPrice: product.price / 100,
+          quantity,
+          // La descripción corta del catálogo viaja con la partida: en el
+          // PDF se imprime bajo el nombre. El texto ya escrito a mano se
+          // conserva si el producto no trae una.
+          description: product.shortDescription?.trim()
+            ? product.shortDescription
+            : it.description,
+        };
+      })
     );
   }, [catalog]);
+
+  /** Stock del producto vinculado a esta partida (null = sin control). */
+  function itemStock(item: QuoteItem): number | null {
+    if (!item.productId) return null;
+    const product = catalog.find((p) => p.id === item.productId);
+    return product ? product.stock : null;
+  }
 
   const subtotal = computeSubtotal(items);
   const discount =
@@ -111,7 +123,11 @@ export function NewQuoteDialog({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contactId,
-        items: validItems.map((item) => ({ ...item, unitPrice: Math.round(item.unitPrice * 100) })),
+        items: validItems.map((item) => ({
+          ...item,
+          productId: item.productId ?? undefined,
+          unitPrice: Math.round(item.unitPrice * 100),
+        })),
         discountType: discountType === "none" ? null : discountType,
         discountValue: discountValue ? (discountType === "fixed" ? Math.round(Number(discountValue) * 100) : Number(discountValue)) : undefined,
         taxRate: Number(taxRate),
@@ -184,9 +200,17 @@ export function NewQuoteDialog({
                           <Input
                             type="number"
                             min="1"
+                            max={itemStock(item) ?? undefined}
                             value={item.quantity}
-                            onChange={(e) => updateItem(i, "quantity", Number(e.target.value))}
+                            onChange={(e) => updateItem(i, "quantity", Math.max(Number(e.target.value) || 1, 1))}
                           />
+                          {itemStock(item) !== null && (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {itemStock(item)! <= 0
+                                ? "Agotado en inventario"
+                                : `Inventario: ${itemStock(item)} pieza${itemStock(item) === 1 ? "" : "s"}`}
+                            </p>
+                          )}
                         </div>
                         <div className="flex-1">
                           <Label className="text-xs text-muted-foreground">Precio unitario</Label>

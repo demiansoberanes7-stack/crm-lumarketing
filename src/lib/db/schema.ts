@@ -1138,6 +1138,10 @@ export const catalogProduct = pgTable(
     shortDescription: varchar("short_description", { length: 500 }),
     longDescription: text("long_description"),
     imageUrl: varchar("image_url", { length: 1024 }),
+    /** URL pública del producto (sitio web, marketplace, tienda). */
+    websiteUrl: varchar("website_url", { length: 1024 }),
+    /** Piezas disponibles. null = sin control de inventario (mostrar "consultar"). */
+    stock: integer("stock"),
     price:   integer("price").notNull().default(0),
     currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
     available: boolean("available").notNull().default(true),
@@ -1628,6 +1632,43 @@ export const googleBusinessReview = pgTable(
     uniqueIndex("gb_review_org_name_uq").on(t.organizationId, t.reviewName),
     index("gb_review_org_location_idx").on(t.organizationId, t.locationId),
   ]
+);
+
+/**
+ * Credenciales OAuth de Mercado Libre (canal `mercado_libre`, mensajería
+ * post-venta). Mismo patrón que google_business_credentials: el dueño pega
+ * clientId, clientSecret y refreshToken; los secretos viven cifrados
+ * (AES-256-GCM) y el access token de corta vida se refresca en el poller.
+ */
+export const marketplaceCredentials = pgTable(
+  "marketplace_credentials",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** user_id de la cuenta vendedora (se guarda al conectar vía /users/me). */
+    userId: varchar("user_id", { length: 64 }),
+    /** Sitio del vendedor (MLM, MLB, MCO, MLC…). */
+    siteId: varchar("site_id", { length: 16 }),
+    clientId: varchar("client_id", { length: 255 }).notNull(),
+    clientSecretCipher: text("client_secret_cipher").notNull(),
+    clientSecretIv: text("client_secret_iv").notNull(),
+    clientSecretTag: text("client_secret_tag").notNull(),
+    refreshTokenCipher: text("refresh_token_cipher").notNull(),
+    refreshTokenIv: text("refresh_token_iv").notNull(),
+    refreshTokenTag: text("refresh_token_tag").notNull(),
+    /** Access token de corta vida; se refresca con el refresh token. */
+    accessTokenCipher: text("access_token_cipher"),
+    accessTokenIv: text("access_token_iv"),
+    accessTokenTag: text("access_token_tag"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    status: varchar("status", { length: 20 }).notNull().default("connected"),
+    lastPolledAt: timestamp("last_polled_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ml_credentials_org_uq").on(t.organizationId)]
 );
 
 /* ============================================================

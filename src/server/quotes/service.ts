@@ -4,7 +4,7 @@
  * Cotizaciones versionadas con partidas, descuentos, impuestos, vigencia.
  * PDF con marca LUMARK y envío por WhatsApp/Instagram/Messenger.
  */
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -115,6 +115,24 @@ export async function createQuote(
   if (input.contactId) {
     const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
     if (!contact) throw new Error("Contacto no válido");
+  }
+  // Inventario: contra el stock vigente. null = sin control (no valida).
+  const productIds = [...new Set(input.items.map((i) => i.productId).filter((id): id is string => Boolean(id)))];
+  if (productIds.length) {
+    const stocks = await db
+      .select({ id: schema.catalogProduct.id, stock: schema.catalogProduct.stock })
+      .from(schema.catalogProduct)
+      .where(scoped(schema.catalogProduct.organizationId, organizationId, inArray(schema.catalogProduct.id, productIds)))
+      .for("share");
+    const stockById = new Map(stocks.map((row) => [row.id, row.stock]));
+    for (const item of input.items) {
+      if (!item.productId) continue;
+      const stock = stockById.get(item.productId);
+      if (stock === null || stock === undefined) continue;
+      if (item.quantity > stock) {
+        throw new Error(`Inventario insuficiente para "${item.name}": ${stock === 0 ? "está agotado" : `quedan ${stock} pieza${stock === 1 ? "" : "s"}`}.`);
+      }
+    }
   }
   const id = newId("quote");
   const quoteNumber = await nextQuoteNumber(db, organizationId);
@@ -434,6 +452,29 @@ export async function changeQuoteStatus(
       .update(schema.quote)
       .set({ status: newStatus, updatedAt: new Date() })
       .where(eq(schema.quote.id, quoteId));
+
+    // Al ACEPTAR se descuenta el inventario de los productos vinculados, una
+    // sola vez: el guard de transición de arriba impide repetir el descuento
+    // (solo se puede pasar a accepted desde draft/sent/viewed). Los productos
+    // sin stock controlado (null) se quedan como están.
+    if (newStatus === "accepted") {
+      const items = await db
+        .select({ productId: schema.quoteItem.productId, quantity: schema.quoteItem.quantity })
+        .from(schema.quoteItem)
+        .where(scoped(schema.quoteItem.organizationId, organizationId, eq(schema.quoteItem.quoteId, quoteId)));
+      for (const item of items) {
+        if (!item.productId) continue;
+        await db
+          .update(schema.catalogProduct)
+          .set({
+            stock: sql`CASE WHEN ${schema.catalogProduct.stock} IS NULL THEN NULL ELSE GREATEST(${schema.catalogProduct.stock} - ${item.quantity}, 0) END`,
+            updatedAt: new Date(),
+          })
+          .where(
+            scoped(schema.catalogProduct.organizationId, organizationId, eq(schema.catalogProduct.id, item.productId))
+          );
+      }
+    }
 
     await db.insert(schema.quoteEvent).values({
       id: newId("quoteEvent"),

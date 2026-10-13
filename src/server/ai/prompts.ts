@@ -26,9 +26,11 @@ export function renderCatalog(products: CatalogProduct[]): string {
     .filter((p) => p.available)
     .map((p) => {
       const price = `$${(p.price / 100).toFixed(2)} ${p.currency}`;
+      const stock = p.stock === null ? "consultar" : `${p.stock} pieza${p.stock === 1 ? "" : "s"}`;
       const shortDesc = p.shortDescription ? `\n  Descripción: ${p.shortDescription}` : "";
       const longDesc = p.longDescription ? `\n  Ficha técnica: ${p.longDescription}` : "";
-      return `- ID: ${p.id} | ${p.name} | ${price}${shortDesc}${longDesc}`;
+      const website = p.websiteUrl ? `\n  Sitio: ${p.websiteUrl}` : "";
+      return `- ID: ${p.id} | ${p.name} | ${price} | Inventario: ${stock}${shortDesc}${longDesc}${website}`;
     })
     .join("\n");
 }
@@ -92,8 +94,8 @@ export function buildAgentSystemPrompt(input: {
       : []),
     ...(rules.sendProductQuotes
       ? [
-          "- Si el cliente pide precio o información de un producto, usa send_quote para compartir su ficha oficial.",
-          "- Si el cliente solicita explícitamente una cotización, presupuesto formal o propuesta de compra, usa create_quote con un producto disponible del catálogo y la cantidad que haya indicado (por defecto 1). No inventes descuentos.",
+          "- Si el cliente pide precio, disponibilidad o información de un producto, usa send_quote para compartir su ficha oficial (el sistema arma el mensaje con precio, inventario, descripción, ficha técnica y sitio).",
+          "- Si el cliente solicita explícitamente una cotización, presupuesto formal o propuesta de compra, usa create_quote con un producto disponible del catálogo y la cantidad que haya indicado (por defecto 1). No inventes descuentos ni cantidades mayores al inventario reportado.",
         ]
       : []),
     ...(rules.handoffOnRequest
@@ -149,7 +151,7 @@ export function buildAgentSystemPrompt(input: {
       ? `CAMPOS DISPONIBLES EN LA FICHA DEL CONTACTO (usa exactamente estas claves): ${fichaFieldList}`
       : null,
     input.catalog.length > 0
-      ? `CATÁLOGO DE PRODUCTOS (precios en centavos — al mostrar, divide entre 100):\n${renderCatalog(input.catalog)}`
+      ? `CATÁLOGO DE PRODUCTOS (precios en centavos — al mostrar, divide entre 100; "Inventario: consultar" = sin control de stock):\n${renderCatalog(input.catalog)}`
       : null,
     `Etapas del pipeline disponibles: ${stageNames}`,
     [...actionLines, ...(configuredRules.length ? ["Reglas configuradas:", ...configuredRules] : []), ...agendaRules, "JSON puro, sin markdown ni texto adicional."].join("\n"),

@@ -25,6 +25,7 @@ type ConnectionsStatus = {
   google_ads_customer: string | null;
   calendar_id: string | null;
   google_business_last_sync: string | null;
+  mercado_libre_last_polled: string | null;
   email_accounts: string[];
 };
 
@@ -84,6 +85,18 @@ const DATA_CONNECTIONS = [
     account: (s: ConnectionsStatus) =>
       s.google_business_last_sync
         ? `Última lectura ${new Date(s.google_business_last_sync).toLocaleString("es-MX")}`
+        : null,
+  },
+  {
+    key: "mercado_libre",
+    name: "Mercado Libre",
+    href: "/settings/mercado-libre",
+    detail: "Cuenta vendedora para recibir y responder los mensajes post-venta (chats por orden).",
+    activationSetting: "CHANNELS=whatsapp,mercado_libre",
+    hint: null,
+    account: (s: ConnectionsStatus) =>
+      s.mercado_libre_last_polled
+        ? `Última lectura ${new Date(s.mercado_libre_last_polled).toLocaleString("es-MX")}`
         : null,
   },
   {

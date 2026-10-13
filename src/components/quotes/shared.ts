@@ -8,6 +8,8 @@ export interface QuoteItem {
   unitPrice: number;
   /** Descripción corta (del catálogo o escrita a mano); va al PDF. */
   description?: string;
+  /** Vínculo con catálogo para trazabilidad y descuento de inventario. */
+  productId?: string | null;
 }
 
 export const STATUS_LABELS: Record<string, string> = {

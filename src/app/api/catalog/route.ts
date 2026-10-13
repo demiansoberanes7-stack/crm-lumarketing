@@ -3,7 +3,7 @@ import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
-import { productImageUrlSchema } from "@/lib/catalog-schema";
+import { productImageUrlSchema, productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,8 @@ const postSchema = z.object({
   shortDescription: z.string().max(500).nullable().optional(),
   longDescription: z.string().nullable().optional(),
   imageUrl: productImageUrlSchema.nullable().optional(),
+  websiteUrl: productWebsiteUrlSchema.nullable().optional(),
+  stock: productStockSchema.optional(),
   price: z.number().int().min(0),
   currency: z.string().default("MXN"),
   available: z.boolean().default(true),
@@ -49,6 +51,8 @@ export const POST = withAuth(async (session, req: Request) => {
     shortDescription: body.data.shortDescription ?? null,
     longDescription: body.data.longDescription ?? null,
     imageUrl: body.data.imageUrl ?? null,
+    websiteUrl: body.data.websiteUrl ?? null,
+    stock: body.data.stock ?? null,
     price: body.data.price,
     currency: body.data.currency,
     available: body.data.available,

@@ -7,6 +7,8 @@ import { atribucionEnabled } from "@/server/attribution/flag";
 import { listEmailAccounts } from "@/server/email/service";
 import { getGoogleBusinessCredentials } from "@/server/google-business/credentials";
 import { googleBusinessEnabled } from "@/server/google-business/flag";
+import { getMarketplaceCredentials } from "@/server/mercado-libre/credentials";
+import { isChannelEnabled } from "@/server/channels/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,7 @@ export const dynamic = "force-dynamic";
  */
 export const GET = withOwner(async (session) => {
   const orgId = session.organizationId;
-  const [metaAds, ga4, googleAds, googleCreds, capi, emailAccounts, gbCreds] = await Promise.all([
+  const [metaAds, ga4, googleAds, googleCreds, capi, emailAccounts, gbCreds, mlCreds] = await Promise.all([
     getIntegration(orgId, "meta_ads"),
     getIntegration(orgId, "ga4"),
     getIntegration(orgId, "google_ads"),
@@ -29,6 +31,7 @@ export const GET = withOwner(async (session) => {
     atribucionEnabled() ? getCapiSettings(orgId) : null,
     listEmailAccounts(orgId),
     googleBusinessEnabled() ? getGoogleBusinessCredentials(orgId) : null,
+    isChannelEnabled("mercado_libre") ? getMarketplaceCredentials(orgId) : null,
   ]);
 
   const enabledEmailAccounts = emailAccounts.filter((a) => a.enabled);
@@ -57,6 +60,13 @@ export const GET = withOwner(async (session) => {
             ? "reconnect_required"
             : "connected"
           : "not_configured",
+      mercado_libre: !isChannelEnabled("mercado_libre")
+        ? "disabled"
+        : mlCreds
+          ? mlCreds.status === "reconnect_required" || mlCreds.status === "error"
+            ? "reconnect_required"
+            : "connected"
+          : "not_configured",
       email: enabledEmailAccounts.length > 0
         ? "connected"
         : emailAccounts.length > 0
@@ -68,6 +78,7 @@ export const GET = withOwner(async (session) => {
     google_ads_customer: googleAds?.credentials.customerId as string | null,
     calendar_id: googleCreds?.calendarId ?? null,
     google_business_last_sync: gbCreds?.lastSyncedAt?.toISOString() ?? null,
+    mercado_libre_last_polled: mlCreds?.lastPolledAt?.toISOString() ?? null,
     email_accounts: enabledEmailAccounts.map((a) => a.email),
   });
 });

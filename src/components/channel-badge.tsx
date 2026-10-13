@@ -37,6 +37,10 @@ const GOOGLE_PATH =
 const COMMENTS_PATH =
   "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z";
 
+/** Canasta de compras (Material "shopping_basket"); marca de Mercado Libre. */
+const MERCADO_LIBRE_PATH =
+  "M22 9h-4.79l-4.38-6.56c-.19-.28-.51-.42-.83-.42s-.64.14-.83.43L6.79 9H2c-.55 0-1 .45-1 1 0 .09.01.18.04.27l2.54 9.27c.23.84 1 1.46 1.92 1.46h13c.92 0 1.69-.62 1.93-1.46l2.54-9.27L23 10c0-.55-.45-1-1-1zM12.31 6l3.91 6H8.4l3.91-6zM12 18.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z";
+
 const MARK: Record<Channel, { path: string; tile: string }> = {
   whatsapp: { path: WHATSAPP_PATH, tile: "bg-[#25d366]" },
   instagram: {
@@ -51,6 +55,7 @@ const MARK: Record<Channel, { path: string; tile: string }> = {
   tiktok: { path: TIKTOK_PATH, tile: "bg-[#000000]" },
   google_business: { path: GOOGLE_PATH, tile: "bg-[#4285F4]" },
   comments: { path: COMMENTS_PATH, tile: "bg-[#f59e0b]" },
+  mercado_libre: { path: MERCADO_LIBRE_PATH, tile: "bg-[#3483FA]" },
 };
 
 /**

@@ -372,6 +372,20 @@
       "when": 1791843600000,
       "tag": "0052_watsi_message_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791900000000,
+      "tag": "0053_catalog_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791960000000,
+      "tag": "0054_marketplace_credentials",
+      "breakpoints": true
     }
   ]
 }

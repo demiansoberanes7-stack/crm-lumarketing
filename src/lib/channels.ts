@@ -26,7 +26,13 @@ export type Channel =
    * se publica como reply al comentario. Meta usa poller; TikTok usa Zernio,
    * webhook en tiempo real y poller de respaldo. Detrás de CHANNELS.
    */
-  | "comments";
+  | "comments"
+  /**
+   * Mensajes post-venta de Mercado Libre (packs/órdenes). Poller propio contra
+   * la Messaging API oficial; cada comprador es un contacto y cada pack un hilo
+   * en la Bandeja. Detrás de CHANNELS.
+   */
+  | "mercado_libre";
 
 /**
  * Orden en que los canales se presentan al operador. WhatsApp primero: es el
@@ -39,6 +45,7 @@ export const CHANNEL_ORDER: readonly Channel[] = [
   "tiktok",
   "google_business",
   "comments",
+  "mercado_libre",
 ];
 
 /** Nombre visible del canal, para la interfaz y para los errores del operador. */
@@ -51,6 +58,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   tiktok: "TikTok",
   google_business: "Google Business",
   comments: "Comentarios",
+  mercado_libre: "Mercado Libre",
 };
 
 export function isChannel(value: string): value is Channel {

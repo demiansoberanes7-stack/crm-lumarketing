@@ -46,6 +46,13 @@ import { zernioFetch } from "@/server/zernio";
 import { getGoogleBusinessCredentials } from "@/server/google-business/credentials";
 import { exchangeAccessToken, updateReviewReply } from "@/server/google-business/google-api";
 import {
+  getMarketplaceCredentials,
+  markMarketplaceReconnectRequired,
+  type MarketplaceCreds,
+} from "@/server/mercado-libre/credentials";
+import { ensureMarketplaceAccessToken } from "@/server/mercado-libre/sync";
+import { sendPackMessage } from "@/server/mercado-libre/client";
+import {
   capabilitiesFor,
   textFits,
   windowClosedMessage,
@@ -99,6 +106,8 @@ type SendTarget = {
   tiktok?: TikTokCredentials;
   /** Presente solo en conversaciones de reseñas de Google Business. */
   googleBusiness?: { clientId: string; clientSecret: string; refreshToken: string; reviewName: string };
+  /** Presente solo en conversaciones de mensajes post-venta de Mercado Libre. */
+  marketplace?: MarketplaceCreds & { packId: string; organizationId: string };
   /** Presente solo en conversaciones de comentarios de publicaciones. */
   comments?: {
     platform: "instagram" | "messenger" | "tiktok";
@@ -450,6 +459,45 @@ async function prepareSend(
     };
   }
 
+  // Mensajes post-venta de Mercado Libre: la "respuesta" va al pack (hilo de
+  // la orden) identificado en channelThreadRef. Transporte propio, sin ventana
+  // de 24 h, sin media, sin recibos.
+  if (row.conversation.channel === "mercado_libre") {
+    if (!isChannelEnabled("mercado_libre")) {
+      throw new SendError(
+        "not_connected",
+        "El canal de Mercado Libre está desactivado en esta instancia"
+      );
+    }
+    const mlCreds = await getMarketplaceCredentials(organizationId);
+    if (!mlCreds) {
+      throw new SendError(
+        "not_connected",
+        "No hay credenciales de Mercado Libre: configúralas en Ajustes → Conexiones"
+      );
+    }
+    if (mlCreds.status === "reconnect_required") {
+      throw new SendError(
+        "reconnect_required",
+        "Mercado Libre rechazó el refresh token: vuelve a conectar la cuenta en Configuración"
+      );
+    }
+    const packId = row.conversation.channelThreadRef;
+    if (!packId) {
+      throw new SendError(
+        "meta_error",
+        "Esta conversación no tiene un pack (orden) de Mercado Libre asociado"
+      );
+    }
+    return {
+      conversation: row.conversation,
+      credentials: null,
+      destinatario: { to: packId },
+      recipient: packId,
+      marketplace: { ...mlCreds, packId, organizationId },
+    };
+  }
+
   // El nucleo no decide la politica: la consulta. En WhatsApp fuera de ventana
   // no hay salida; Instagram y Messenger etiquetan y siguen; otro canal podria
   // no tener ventana en absoluto.
@@ -607,6 +655,8 @@ export async function sendText(input: {
     ? await callGoogleBusinessReply(target, input.text)
     : target.comments
      ? await callCommentsReply(target, input.text, preGenId)
+    : target.marketplace
+      ? await callMercadoLibreSend(target, input.text)
     : target.zernio
     ? await callWhatsappZernio(target, { message: input.text }, preGenId!)
     : target.waha
@@ -1230,6 +1280,59 @@ function requireReplyWindow(
       ? "La ventana de respuesta de TikTok dura 48 horas; espera a que el cliente vuelva a escribir"
       : `Pasaron 7 días desde el último mensaje: ${caps.label} ya no permite responder con la etiqueta de agente humano`;
   throw new SendError("window_closed", message);
+}
+
+/**
+ * Envío por el canal de Mercado Libre: el texto va al pack (hilo de la orden)
+ * vía la Messaging API oficial. Sin ventana de 24 h y sin media (las
+ * capacidades lo declaran). El "id de mensaje" devuelto es local: la API no
+ * garantiza un id en la respuesta del POST, y el poller solo ingeriría
+ * mensajes entrantes, así que un id único por envío evita colisiones.
+ */
+async function callMercadoLibreSend(
+  target: SendTarget,
+  text: string
+): Promise<string> {
+  const creds = target.marketplace!;
+
+  const caps = capabilitiesFor("mercado_libre");
+  if (!textFits("mercado_libre", text)) {
+    throw new SendError(
+      "meta_error",
+      `${caps.label} no acepta mensajes de más de ${caps.maxTextBytes} caracteres: acorta el texto`
+    );
+  }
+
+  const token = await ensureMarketplaceAccessToken(creds.organizationId, creds);
+  if ("error" in token) {
+    if (token.authError) {
+      await markMarketplaceReconnectRequired(creds.organizationId);
+      throw new SendError(
+        "reconnect_required",
+        "Mercado Libre rechazó las credenciales: vuelve a conectar la cuenta en Configuración"
+      );
+    }
+    throw new SendError(
+      "meta_unavailable",
+      `Mercado Libre no está disponible en este momento (${token.error}); intenta de nuevo`
+    );
+  }
+
+  const result = await sendPackMessage(token.accessToken, creds.packId, text);
+  if ("error" in result) {
+    if (result.authError) {
+      await markMarketplaceReconnectRequired(creds.organizationId);
+      throw new SendError(
+        "reconnect_required",
+        "Mercado Libre rechazó el token de acceso: reconecta la cuenta en Configuración"
+      );
+    }
+    // 403 también cubre el límite de mensajería del pack (el vendedor ya
+    // respondió y debe esperar al comprador).
+    throw new SendError("meta_error", `Mercado Libre rechazó el mensaje: ${result.error}`);
+  }
+
+  return newId("message");
 }
 
 /**

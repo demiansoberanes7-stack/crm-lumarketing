@@ -75,6 +75,8 @@ const prefixes = {
   googleBusinessCredentials: "gbc",
   googleBusinessLocation: "gbl",
   googleBusinessReview: "gbr",
+  // Credenciales OAuth de Mercado Libre (canal mercado_libre)
+  marketplaceCredentials: "mlc",
   // Insights de campañas de anuncios (Meta Ads)
   campaignInsight: "cmi",
   // Comentarios públicos de publicaciones (canal comments)
