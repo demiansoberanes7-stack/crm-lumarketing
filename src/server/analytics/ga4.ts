@@ -53,6 +53,8 @@ export interface Ga4Metrics {
   bounceRate: number;
   sources: Array<{ name: string; sessions: number }>;
   daily: Array<{ date: string; sessions: number }>;
+  /** Top de ciudades por sesiones (últimos 30 días). */
+  cities: Array<{ name: string; region: string; sessions: number }>;
 }
 
 export class Ga4Error extends Error {
@@ -261,14 +263,15 @@ function isoDate(date: Date): string {
 
 /**
  * Lee las métricas que promete la UI: sesiones, usuarios, tasa de rebote,
- * fuentes de tráfico y la serie diaria de sesiones (últimos 30 días).
+ * fuentes de tráfico, la serie diaria de sesiones y el top de ciudades
+ * (últimos 30 días).
  */
 export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics> {
   const today = new Date();
   const from = new Date(today.getTime() - 30 * 86_400_000);
   const dateRange = { startDate: isoDate(from), endDate: isoDate(today) };
 
-  const [totals, bySource, daily] = await Promise.all([
+  const [totals, bySource, daily, byCity] = await Promise.all([
     runReport(creds, {
       dateRanges: [dateRange],
       metrics: [{ name: "sessions" }, { name: "totalUsers" }, { name: "newUsers" }, { name: "bounceRate" }],
@@ -288,6 +291,13 @@ export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics>
       orderBys: [{ dimension: { dimensionName: "date" } }],
       limit: 31,
     }),
+    runReport(creds, {
+      dateRanges: [dateRange],
+      dimensions: [{ name: "city" }, { name: "region" }],
+      metrics: [{ name: "sessions" }],
+      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+      limit: 10,
+    }),
   ]);
 
   const totalsRow = totals.rows?.[0]?.metricValues ?? [];
@@ -304,5 +314,13 @@ export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics>
       date: row.dimensionValues[0]?.value || "",
       sessions: number(row.metricValues[0]?.value),
     })),
+    cities: (byCity.rows ?? [])
+      .map((row) => ({
+        name: row.dimensionValues[0]?.value || "",
+        region: row.dimensionValues[1]?.value || "",
+        sessions: number(row.metricValues[0]?.value),
+      }))
+      // GA4 reporta "(not set)" cuando no puede geolocalizar: no es una ciudad.
+      .filter((c) => c.name && c.name !== "(not set)"),
   };
 }

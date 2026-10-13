@@ -29,6 +29,7 @@ interface Ga4Data {
   bounceRate: number;
   sources: { name: string; sessions: number }[];
   daily: { date: string; sessions: number }[];
+  cities?: { name: string; region: string; sessions: number }[];
 }
 interface AnalyticsData {
   metrics: AdsMetric[];
@@ -126,6 +127,32 @@ export function MarketingSection() {
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (s.sessions / max) * 100)}%`, background: "linear-gradient(90deg, var(--chart-3), var(--chart-3-end))", boxShadow: "0 0 12px var(--chart-3)" }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {(ga4.cities?.length ?? 0) > 0 && (
+              <div className="chart-card rounded-xl border p-4">
+                <h3 className="mb-4 text-sm font-semibold">Tráfico por ciudad</h3>
+                <div className="space-y-2">
+                  {ga4.cities!.map((c) => {
+                    const max = ga4.cities![0]?.sessions || 1;
+                    return (
+                      <div key={`${c.name}-${c.region}`}>
+                        <div className="mb-1 flex justify-between gap-2 text-sm">
+                          <span className="min-w-0 truncate" title={`${c.name}${c.region ? `, ${c.region}` : ""}`}>
+                            {c.name}
+                            {c.region && (
+                              <span className="text-muted-foreground"> · {c.region}</span>
+                            )}
+                          </span>
+                          <span className="shrink-0 font-bold">{fmt(c.sessions)}</span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, (c.sessions / max) * 100)}%`, background: "linear-gradient(90deg, var(--chart-5), var(--chart-5-end))", boxShadow: "0 0 12px var(--chart-5)" }} />
                         </div>
                       </div>
                     );

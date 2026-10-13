@@ -45,6 +45,7 @@ interface Ga4Data {
   bounceRate: number;
   sources: { name: string; sessions: number }[];
   daily: { date: string; sessions: number }[];
+  cities?: { name: string; region: string; sessions: number }[];
 }
 
 interface DashboardData {

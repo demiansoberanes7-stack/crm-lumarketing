@@ -202,7 +202,7 @@ describe("runReport (Data API)", () => {
 });
 
 describe("readGa4Metrics", () => {
-  it("normaliza totales, canales y serie diaria", async () => {
+  it("normaliza totales, canales, serie diaria y ciudades", async () => {
     stubFetch(
       () => json({ access_token: "tok-metrics", expires_in: 3600 }),
       (_url, init) => {
@@ -221,6 +221,20 @@ describe("readGa4Metrics", () => {
           return json({
             rows: [
               { dimensionValues: [{ value: "20261001" }], metricValues: [{ value: "3" }] },
+            ],
+          });
+        }
+        if (dims.includes("city")) {
+          return json({
+            rows: [
+              {
+                dimensionValues: [{ value: "Mexico City" }, { value: "Mexico City" }],
+                metricValues: [{ value: "7" }],
+              },
+              {
+                dimensionValues: [{ value: "(not set)" }, { value: "(not set)" }],
+                metricValues: [{ value: "5" }],
+              },
             ],
           });
         }
@@ -244,6 +258,8 @@ describe("readGa4Metrics", () => {
       bounceRate: 0.25,
       sources: [{ name: "Organic Search", sessions: 10 }],
       daily: [{ date: "20261001", sessions: 3 }],
+      // "(not set)" no es una ciudad: GA4 lo reporta cuando no geolocaliza.
+      cities: [{ name: "Mexico City", region: "Mexico City", sessions: 7 }],
     });
   });
 });
