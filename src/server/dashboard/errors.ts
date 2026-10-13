@@ -71,7 +71,7 @@ export async function failedMessages(organizationId: string): Promise<ErrorDetai
     at: m.createdAt.toISOString(),
     subject: m.contactName,
     context: `${m.channel}${m.contactPhone ? ` · ${m.contactPhone}` : ""} · ${
-      m.direction === "outbound" ? "saliente" : "entrante"
+      m.direction === "out" ? "saliente" : "entrante"
     } · ${m.status}`,
     error: m.error ?? "Error sin detalle",
   }));
@@ -143,6 +143,7 @@ export async function failedWebhooks(organizationId: string): Promise<ErrorDetai
         gte(schema.outboundDelivery.createdAt, windowStart()),
         or(
           eq(schema.outboundDelivery.status, "failed"),
+          sql`${schema.outboundDelivery.lastStatusCode} >= 400`,
           sql`${schema.outboundDelivery.lastError} is not null`
         )
       )

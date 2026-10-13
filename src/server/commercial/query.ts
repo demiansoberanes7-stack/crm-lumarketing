@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -51,6 +51,9 @@ const n = (value: unknown): number => {
   return 0;
 };
 
+/** Fecha en ISO (YYYY-MM-DD) para comparar contra columnas `date` de Postgres. */
+const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
+
 /**
  * Plataforma de control comercial: agrega las 10 categorías desde datos REALES
  * del CRM (etapas, cotizaciones, pagos, gastos) y desde las tablas nuevas
@@ -67,7 +70,17 @@ export async function queryCommercial(
   const orgScope = (organizationColumn: PgColumn) => scoped(organizationColumn, orgId);
 
   // ── Ventas / embudo desde la bitácora de etapas ──
-  const [createdRow, wonRow, lostRow, quotesSentRow, quotesApprovedRow, paymentsRow, expensesRow] =
+  const [
+    createdRow,
+    wonRow,
+    lostRow,
+    quotesSentRow,
+    quotesApprovedRow,
+    paymentsRow,
+    expensesRow,
+    insightRow,
+    payingRow,
+  ] =
     await Promise.all([
       // Leads creados en el periodo (evento de nacimiento = fromStageId null)
       db
@@ -133,6 +146,32 @@ export async function queryCommercial(
         .select({ total: sql<number>`coalesce(sum(${schema.expense.monto}), 0)` })
         .from(schema.expense)
         .where(and(orgScope(schema.expense.organizationId), gte(schema.expense.fecha, from), lte(schema.expense.fecha, to))),
+      // Gasto real persistido por el poller de Meta Ads (no el presupuesto planeado).
+      db
+        .select({
+          spend: sql<number>`coalesce(sum(${schema.campaignInsight.spendCents}), 0)`,
+          cnt: count(),
+        })
+        .from(schema.campaignInsight)
+        .where(
+          and(
+            orgScope(schema.campaignInsight.organizationId),
+            gte(schema.campaignInsight.dateStart, isoDate(from)),
+            lte(schema.campaignInsight.dateStart, isoDate(to))
+          )
+        ),
+      // Clientes pagadores únicos (contactos con al menos un cobro en el periodo).
+      db
+        .select({ customers: sql<number>`count(distinct ${schema.payment.contactId})` })
+        .from(schema.payment)
+        .where(
+          and(
+            orgScope(schema.payment.organizationId),
+            isNotNull(schema.payment.contactId),
+            gte(schema.payment.fecha, from),
+            lte(schema.payment.fecha, to)
+          )
+        ),
     ]);
 
   const newLeads = n(createdRow[0]?.value);
@@ -143,9 +182,13 @@ export async function queryCommercial(
   const revenue = n(paymentsRow[0]?.total);
   const paymentsCount = n(paymentsRow[0]?.cnt);
   const expenses = n(expensesRow[0]?.total);
+  const adSpendCents = n(insightRow[0]?.spend);
+  const hasInsights = n(insightRow[0]?.cnt) > 0;
+  const payingCustomers = n(payingRow[0]?.customers);
 
-  // La tabla campaign guarda presupuesto planeado, no gasto realizado. No se
-  // debe usar ese presupuesto como si fuera inversión real para ROAS/ROMI/CAC.
+  // La tabla campaign guarda presupuesto planeado, no gasto realizado. El gasto
+  // real viene de campaign_insight (poller de Meta Ads); el presupuesto solo
+  // sirve como referencia planeada, nunca como inversión para ROAS/ROMI/CAC.
   const campaignRows = await db
     .select({
       plannedBudget: sql<number>`coalesce(sum(${schema.campaign.budgetPlannedCents}), 0)`,
@@ -200,14 +243,47 @@ export async function queryCommercial(
     .from(schema.experiment)
     .where(orgScope(schema.experiment.organizationId));
 
-  // ── Operaciones: tiempo de respuesta (actividad entrante→saliente) ──
-  const activityRows = await db
-    .select({ occurredAt: schema.activityEvent.occurredAt, type: schema.activityEvent.type, direction: schema.activityEvent.direction })
-    .from(schema.activityEvent)
-    .where(and(orgScope(schema.activityEvent.organizationId), gte(schema.activityEvent.occurredAt, from), lte(schema.activityEvent.occurredAt, to)))
-    .orderBy(schema.activityEvent.occurredAt)
-    .limit(2000);
-  const hasActivities = activityRows.length > 0;
+  // ── Operaciones: tiempo de respuesta (entrada → primera salida) ──
+  // Se calcula sobre la tabla `message` (la fuente real de la mensajería),
+  // emparejando cada mensaje entrante con la siguiente salida en su conversación.
+  const responseRows = await db
+    .select({
+      conversationId: schema.message.conversationId,
+      direction: schema.message.direction,
+      createdAt: schema.message.createdAt,
+    })
+    .from(schema.message)
+    .where(
+      and(
+        orgScope(schema.message.organizationId),
+        gte(schema.message.createdAt, from),
+        lte(schema.message.createdAt, to),
+        inArray(schema.message.direction, ["in", "out"])
+      )
+    )
+    .orderBy(schema.message.conversationId, schema.message.createdAt)
+    .limit(5000);
+
+  const pendingInbound = new Map<string, Date>();
+  const responseGapsHours: number[] = [];
+  for (const m of responseRows) {
+    const conv = m.conversationId;
+    if (!conv) continue;
+    if (m.direction === "in") {
+      // Guarda solo la entrada más reciente sin respuesta de esa conversación.
+      pendingInbound.set(conv, m.createdAt);
+    } else {
+      const inAt = pendingInbound.get(conv);
+      if (inAt) {
+        responseGapsHours.push((m.createdAt.getTime() - inAt.getTime()) / 3_600_000);
+        pendingInbound.delete(conv); // una respuesta por entrada
+      }
+    }
+  }
+  const avgResponseHours =
+    responseGapsHours.length > 0
+      ? responseGapsHours.reduce((a, b) => a + b, 0) / responseGapsHours.length
+      : null;
 
   // ── Marketplace (ventas ML manuales) ──
   const mlRows = await db
@@ -274,10 +350,13 @@ export async function queryCommercial(
     },
 
     embudo: {
+      // Embudo secuencial de 2 tramos: Prospectos → Cotizados → Ganados.
+      // "Perdidos" no es una etapa por la que se avanza (es un destino final),
+      // por eso no entra al gráfico de embudo.
       stages: [
         { stage: "Prospectos", value: newLeads },
+        { stage: "Cotizados", value: quotesSent },
         { stage: "Ganados", value: won },
-        { stage: "Perdidos", value: lost },
       ],
       leadToWon: maybe(conversionRate(won, newLeads)),
       leadToQuote: maybe(conversionRate(quotesSent, newLeads)),
@@ -291,15 +370,23 @@ export async function queryCommercial(
 
     publicidad: {
       plannedBudget: hasCampaigns ? num(plannedBudget) : unavailable("no_data"),
-      adSpend: unavailable("pending"),
+      // Gasto real persistido por el poller; "no_data" si aún no hay insights.
+      adSpend: hasInsights ? num(adSpendCents) : unavailable("no_data"),
+      // ROAS/ROMI necesitan ingresos ATRIBUIDOS a campañas; con ingresos totales
+      // se sobreestimarían, así que siguen pendientes hasta tener atribución.
       roas: unavailable("pending"),
       romi: unavailable("pending"),
-      cac: unavailable("pending"),
+      // CAC pagador: inversión real ÷ clientes que sí pagaron en el periodo.
+      cac: maybe(
+        hasInsights && payingCustomers > 0 ? adSpendCents / payingCustomers : null,
+        payingCustomers === 0 ? "not_applicable" : "no_data"
+      ),
     },
 
-    // La capa de tráfico (GA4) se mezcla en la ruta: aquí solo el vínculo
-    // sesión→prospecto cuando ya hay sesiones.
+    // La capa de tráfico (GA4) se resuelve en la ruta (aquí solo el estado
+    // inicial); session_to_lead combina sesiones de GA4 con nuevos prospectos.
     trafico: {
+      sessions: unavailable("pending"),
       sessionToLead: unavailable("pending"),
     },
 
@@ -330,8 +417,8 @@ export async function queryCommercial(
     },
 
     operaciones: {
-      responseTimeHours: unavailable(hasActivities ? "no_data" : "pending"),
-      activitiesLogged: num(activityRows.length),
+      responseTimeHours: maybe(avgResponseHours, "no_data"),
+      activitiesLogged: num(responseGapsHours.length),
     },
 
     calidad: {

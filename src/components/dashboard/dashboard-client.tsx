@@ -233,7 +233,7 @@ export function DashboardClient() {
         {/* ── MARKETING / PUBLICIDAD ───────────── */}
         <Department id="mkt" title="Marketing · Publicidad" icon={<LineChart className="h-4 w-4" />} defaultOpen={false}>
           <OriginGroup origin="external" label="Datos de la plataforma (GA4)">
-            <MarketingSection />
+            <MarketingSection period={period} />
           </OriginGroup>
           <OriginGroup origin="mixed" label="Atribución ads → CRM">
             <AdsMetricsSection ads={data.ads} />

@@ -51,23 +51,40 @@ function fmt(n: number, currency?: string): string {
   return n.toLocaleString("es-MX");
 }
 
+/** Etiqueta de ventana para los rótulos del bloque GA4. */
+function periodLabel(period: string): string {
+  switch (period) {
+    case "7d": return "7 días";
+    case "90d": return "90 días";
+    case "1y": return "1 año";
+    default: return "30 días";
+  }
+}
+
 /** Sección "Marketing digital": integraciones GA4 + Meta Ads + conversión de pipeline. */
-export function MarketingSection() {
+export function MarketingSection({ period = "30d" }: { period?: string }) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/analytics/dashboard")
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
+    setLoading(true);
+    setFailed(false);
+    fetch(`/api/analytics/dashboard?period=${encodeURIComponent(period)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d) => {
-      if (!alive) return;
-      if (d) setData(d as AnalyticsData);
-      setLoading(false);
-    });
+        if (!alive) return;
+        setData(d as AnalyticsData);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setFailed(true);
+        setLoading(false);
+      });
     return () => { alive = false; };
-  }, []);
+  }, [period]);
 
   if (loading) {
     return (
@@ -83,7 +100,11 @@ export function MarketingSection() {
   }
 
   const ga4 = data?.ga4 ?? null;
-  const anyConnected = data ? Object.values(data.connections).some((c) => c.status !== "disconnected") : false;
+  // "configured" cuenta como conectado (credenciales guardadas); "error"/
+  // "disconnected" no, para que el aviso aparezca cuando nada funciona.
+  const anyConnected = data
+    ? Object.values(data.connections).some((c) => c.status === "connected" || c.status === "configured")
+    : false;
 
   return (
     <section>
@@ -91,7 +112,20 @@ export function MarketingSection() {
         <Megaphone className="h-4 w-4" /> Marketing digital
       </h2>
 
-      {data && !anyConnected && (
+      {failed && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+          <div className="text-sm">
+            <p className="font-semibold text-red-800 dark:text-red-300">No se pudieron cargar las métricas de marketing</p>
+            <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
+              Revisa tu conexión o las integraciones en{" "}
+              <Link href="/settings/marketing" className="font-medium underline">Configuración de marketing</Link>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!failed && data && !anyConnected && (
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
           <div className="text-sm">
@@ -107,10 +141,10 @@ export function MarketingSection() {
       {ga4 && (
         <div className="mb-5 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard title="Sesiones" value={formatNumber(ga4.sessions)} icon={<Eye />} />
-            <KpiCard title="Usuarios" value={formatNumber(ga4.users)} icon={<Users />} />
-            <KpiCard title="Usuarios nuevos" value={formatNumber(ga4.newUsers)} icon={<Users />} />
-            <KpiCard title="Tasa de rebote" value={`${(ga4.bounceRate * 100).toFixed(1)}%`} icon={<AlertCircle />} />
+            <KpiCard title="Sesiones" value={formatNumber(ga4.sessions)} icon={<Eye />} origin="GA4" window={periodLabel(period)} />
+            <KpiCard title="Usuarios" value={formatNumber(ga4.users)} icon={<Users />} origin="GA4" window={periodLabel(period)} />
+            <KpiCard title="Usuarios nuevos" value={formatNumber(ga4.newUsers)} icon={<Users />} origin="GA4" window={periodLabel(period)} />
+            <KpiCard title="Tasa de rebote" value={`${(ga4.bounceRate * 100).toFixed(1)}%`} icon={<AlertCircle />} origin="GA4" window={periodLabel(period)} />
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
             {ga4.sources.length > 0 && (
@@ -162,7 +196,7 @@ export function MarketingSection() {
             )}
             {ga4.daily.length > 0 && (
               <div className="chart-card rounded-xl border p-4">
-                <h3 className="mb-4 text-sm font-semibold">Sesiones diarias (30 días)</h3>
+                <h3 className="mb-4 text-sm font-semibold">Sesiones diarias ({periodLabel(period)})</h3>
                 <div className="h-[220px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={ga4.daily.map((d) => ({ name: d.date.slice(6) + "/" + d.date.slice(4, 6), sesiones: d.sessions }))}>

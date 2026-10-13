@@ -12,10 +12,14 @@ interface KpiCardProps {
   icon?: ReactNode;
   trend?: "up" | "down" | "neutral";
   trendValue?: string;
+  /** Fuente del dato (p. ej. "GA4", "CRM", "Meta Ads"). */
+  origin?: string;
+  /** Ventana de tiempo a la que aplica (p. ej. "30 días"). */
+  window?: string;
   className?: string;
 }
 
-export function KpiCard({ title, value, subtitle, icon, trend, trendValue, className }: KpiCardProps) {
+export function KpiCard({ title, value, subtitle, icon, trend, trendValue, origin, window: windowLabel, className }: KpiCardProps) {
   return (
     <Card className={cn("overflow-hidden", className)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-2 pt-4 sm:px-5">
@@ -37,6 +41,11 @@ export function KpiCard({ title, value, subtitle, icon, trend, trendValue, class
             <p title={subtitle} className="line-clamp-2 min-w-0 text-xs leading-snug text-muted-foreground">{subtitle}</p>
           )}
         </div>
+        {(origin || windowLabel) && (
+          <p className="mt-1.5 truncate text-[10px] uppercase tracking-wide text-muted-foreground/80">
+            {[origin, windowLabel].filter(Boolean).join(" · ")}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

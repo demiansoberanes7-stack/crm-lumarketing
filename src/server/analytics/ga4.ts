@@ -1,4 +1,5 @@
 import { createSign } from "node:crypto";
+import { dashboardRange } from "@/server/dashboard/metrics";
 
 /**
  * Cliente de Google Analytics 4 (Data API) por REST directo, sin SDK.
@@ -128,6 +129,16 @@ function signJwt(account: ServiceAccount): string {
 /** Caché mínima de tokens: la clave incluye el email y un hash de la clave. */
 type TokenEntry = { token: string; expiresAt: number };
 const tokenCache = new Map<string, TokenEntry>();
+
+/**
+ * Caché de métricas por propiedad+período (TTL corto). El dashboard se abre
+ * y se recarga constantemente; sin esto cada visita dispara 4 reports a la
+ * Data API y se agota la cuota gratis. TTL de 5 min: suficiente para que un
+ * refresco no reconsulte, corto para no mostrar datos muy viejos.
+ */
+type MetricsEntry = { value: Ga4Metrics; expiresAt: number };
+const metricsCache = new Map<string, MetricsEntry>();
+const METRICS_TTL_MS = 5 * 60 * 1000;
 
 type TokenFailure = { error?: string; error_description?: string };
 
@@ -263,15 +274,21 @@ function isoDate(date: Date): string {
 
 /**
  * Lee las métricas que promete la UI: sesiones, usuarios, tasa de rebote,
- * fuentes de tráfico, la serie diaria de sesiones y el top de ciudades
- * (últimos 30 días).
+ * fuentes de tráfico, la serie diaria de sesiones y el top de ciudades,
+ * acotadas al período del tablero (7d/30d/90d/1y).
  */
-export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics> {
-  const today = new Date();
-  const from = new Date(today.getTime() - 30 * 86_400_000);
-  const dateRange = { startDate: isoDate(from), endDate: isoDate(today) };
+export async function readGa4Metrics(creds: Ga4Credentials, period = "30d"): Promise<Ga4Metrics> {
+  const cacheKey = `${creds.propertyId}:${period}`;
+  const cached = metricsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const [totals, bySource, daily, byCity] = await Promise.all([
+  const { from, to } = dashboardRange(period);
+  const dateRange = { startDate: isoDate(from), endDate: isoDate(to) };
+  const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86_400_000) + 1);
+
+  // allSettled (no all): si un reporte falla por cuota o un campo inválido,
+  // los demás siguen y el dashboard muestra lo que sí se pudo leer.
+  const [totals, bySource, daily, byCity] = await Promise.allSettled([
     runReport(creds, {
       dateRanges: [dateRange],
       metrics: [{ name: "sessions" }, { name: "totalUsers" }, { name: "newUsers" }, { name: "bounceRate" }],
@@ -289,7 +306,7 @@ export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics>
       dimensions: [{ name: "date" }],
       metrics: [{ name: "sessions" }],
       orderBys: [{ dimension: { dimensionName: "date" } }],
-      limit: 31,
+      limit: days + 1,
     }),
     runReport(creds, {
       dateRanges: [dateRange],
@@ -300,21 +317,25 @@ export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics>
     }),
   ]);
 
-  const totalsRow = totals.rows?.[0]?.metricValues ?? [];
-  return {
+  const totalsRow = (totals.status === "fulfilled" ? totals.value.rows?.[0]?.metricValues : undefined) ?? [];
+  const sourceRows = bySource.status === "fulfilled" ? bySource.value.rows ?? [] : [];
+  const dailyRows = daily.status === "fulfilled" ? daily.value.rows ?? [] : [];
+  const cityRows = byCity.status === "fulfilled" ? byCity.value.rows ?? [] : [];
+
+  const value: Ga4Metrics = {
     sessions: number(totalsRow[0]?.value),
     users: number(totalsRow[1]?.value),
     newUsers: number(totalsRow[2]?.value),
     bounceRate: number(totalsRow[3]?.value),
-    sources: (bySource.rows ?? []).map((row) => ({
+    sources: sourceRows.map((row) => ({
       name: row.dimensionValues[0]?.value || "(sin canal)",
       sessions: number(row.metricValues[0]?.value),
     })),
-    daily: (daily.rows ?? []).map((row) => ({
+    daily: dailyRows.map((row) => ({
       date: row.dimensionValues[0]?.value || "",
       sessions: number(row.metricValues[0]?.value),
     })),
-    cities: (byCity.rows ?? [])
+    cities: cityRows
       .map((row) => ({
         name: row.dimensionValues[0]?.value || "",
         region: row.dimensionValues[1]?.value || "",
@@ -323,4 +344,7 @@ export async function readGa4Metrics(creds: Ga4Credentials): Promise<Ga4Metrics>
       // GA4 reporta "(not set)" cuando no puede geolocalizar: no es una ciudad.
       .filter((c) => c.name && c.name !== "(not set)"),
   };
+
+  metricsCache.set(cacheKey, { value, expiresAt: Date.now() + METRICS_TTL_MS });
+  return value;
 }

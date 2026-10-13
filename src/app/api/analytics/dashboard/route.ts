@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/api";
-import { getEnv } from "@/lib/env";
 import { getIntegration } from "@/server/integrations";
 import { ga4ConnectionState, parseGa4Credentials, readGa4Metrics, type Ga4Metrics } from "@/server/analytics/ga4";
 
@@ -17,14 +16,6 @@ type DashboardMetric = {
 };
 type DashboardCampaign = DashboardMetric & { id: string; name: string };
 type ChartPoint = { name: string; meta: number };
-type MetaInsight = {
-  campaign_id?: string;
-  campaign_name?: string;
-  spend?: string;
-  impressions?: string;
-  clicks?: string;
-  date_start?: string;
-};
 type SourceConnection = { status: ConnectionStatus; message?: string };
 type DashboardData = {
   metrics: DashboardMetric[];
@@ -37,27 +28,9 @@ type DashboardData = {
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
-function amount(value: string | undefined): number {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-async function readMetaInsights(url: URL, accessToken: string): Promise<{ ok: true; data: MetaInsight[] } | { ok: false; status: number; detail: string }> {
-  // El token viaja en el header y NO en la query: las URLs con
-  // access_token se filtran en logs de proxies, CDNs y referers.
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    return { ok: false, status: response.status, detail: detail.slice(0, 500) };
-  }
-  const payload = (await response.json()) as { data?: MetaInsight[] };
-  return { ok: true, data: payload.data ?? [] };
-}
-
-export const GET = withAuth(async (session) => {
+export const GET = withAuth(async (session, req: Request) => {
+  // Ventana del tablero (7d/30d/90d/1y); GA4 la respeta en sus reports.
+  const period = new URL(req.url).searchParams.get("period") ?? "30d";
   const orgId = session.organizationId;
   const [metaIntegration, googleIntegration, ga4Integration] = await Promise.all([
     getIntegration(orgId, "meta_ads"),
@@ -97,7 +70,7 @@ export const GET = withAuth(async (session) => {
   const ga4Parsed = parseGa4Credentials(ga4Credentials);
   if (ga4Parsed) {
     try {
-      ga4Metrics = await readGa4Metrics(ga4Parsed);
+      ga4Metrics = await readGa4Metrics(ga4Parsed, period);
       connections.ga4 = { status: "connected" };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -106,80 +79,8 @@ export const GET = withAuth(async (session) => {
     }
   }
 
-  if (metaConfigured) {
-    const env = getEnv();
-    const graphRoot = `${env.META_GRAPH_BASE_URL.replace(/\/+$/, "")}/${env.META_GRAPH_API_VERSION.replace(/^\/+|\/+$/g, "")}`;
-    const token = metaCredentials.accessToken as string;
-    const rawAccountId = metaCredentials.adAccountId as string;
-    const accountId = rawAccountId.startsWith("act_") ? rawAccountId : `act_${rawAccountId}`;
-    const campaignUrl = new URL(`${graphRoot}/${accountId}/insights`);
-    campaignUrl.search = new URLSearchParams({
-      fields: "campaign_id,campaign_name,spend,impressions,clicks",
-      date_preset: "last_30d",
-      level: "campaign",
-    }).toString();
-    const dailyUrl = new URL(`${graphRoot}/${accountId}/insights`);
-    dailyUrl.search = new URLSearchParams({
-      fields: "date_start,clicks",
-      date_preset: "last_30d",
-      level: "account",
-      time_increment: "1",
-    }).toString();
-
-    try {
-      const [campaignResult, dailyResult] = await Promise.all([
-        readMetaInsights(campaignUrl, token),
-        readMetaInsights(dailyUrl, token),
-      ]);
-      if (!campaignResult.ok) {
-        connections.meta = {
-          status: "error",
-          message: `Meta Graph API respondió ${campaignResult.status}: ${campaignResult.detail || "sin detalle"}`,
-        };
-        console.error("[analytics] Meta campaign insights failed", campaignResult.status, campaignResult.detail);
-      } else {
-        const normalizedCampaigns = campaignResult.data.map((campaign, index) => ({
-          id: campaign.campaign_id || `${campaign.campaign_name || "meta-campaign"}-${index}`,
-          name: campaign.campaign_name || "Campaña sin nombre",
-          source: "meta" as const,
-          spend: amount(campaign.spend),
-          impressions: amount(campaign.impressions),
-          clicks: amount(campaign.clicks),
-          currency: "MXN",
-        }));
-        campaigns.push(...normalizedCampaigns);
-        if (campaignResult.data.length > 0) {
-          metrics.push({
-            source: "meta",
-            spend: normalizedCampaigns.reduce((total, campaign) => total + campaign.spend, 0),
-            impressions: normalizedCampaigns.reduce((total, campaign) => total + campaign.impressions, 0),
-            clicks: normalizedCampaigns.reduce((total, campaign) => total + campaign.clicks, 0),
-            currency: "MXN",
-          });
-        }
-        connections.meta = { status: "connected" };
-      }
-
-      if (!dailyResult.ok) {
-        console.error("[analytics] Meta daily insights failed", dailyResult.status, dailyResult.detail);
-      } else {
-        chartData.push(...dailyResult.data
-          .filter((day) => hasText(day.date_start))
-          .map((day) => ({
-            name: new Date(`${day.date_start}T00:00:00Z`).toLocaleDateString("es-MX", {
-              day: "2-digit",
-              month: "short",
-              timeZone: "UTC",
-            }),
-            meta: amount(day.clicks),
-          })));
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      connections.meta = { status: "error", message: `No se pudo consultar Meta Ads: ${detail.slice(0, 300)}` };
-      console.error("[analytics] Meta insights request failed", error);
-    }
-  }
-
+  // Meta Ads: las métricas de campaña viven en el Campaign Explorer (datos
+  // persistidos por el poller cada 15 min), no aquí. Este endpoint solo
+  // reporta el estado de la conexión para no duplicar llamadas a Graph.
   return NextResponse.json({ metrics, campaigns, chartData, connections, ga4: ga4Metrics } satisfies DashboardData);
 });

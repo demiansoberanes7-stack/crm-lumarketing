@@ -201,7 +201,7 @@ export function CommercialHub() {
                   <MetricCard title="Inversión publicitaria" metric={data.publicidad.adSpend} formatter={formatCurrency} icon={<Megaphone className="h-4 w-4" />} />
                   <MetricCard title="ROAS" metric={data.publicidad.roas} formatter={(n) => `${n.toFixed(2)}x`} />
                   <MetricCard title="ROMI" metric={data.publicidad.romi} formatter={formatPercent} />
-                  <MetricCard title="CAC" metric={data.publicidad.cac} formatter={formatCurrency} />
+                  <MetricCard title="CAC pagador" metric={data.publicidad.cac} formatter={formatCurrency} />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   La inversión se calcula desde las campañas registradas. Registra tu inversión manualmente o conecta Meta Ads para ver ROAS/ROMI reales.
@@ -210,20 +210,26 @@ export function CommercialHub() {
               </div>
             )}
 
-            {tab === "trafico" && (
-              <div className="rounded-xl border border-dashed bg-card p-6 text-center">
-                <p className="font-medium">Tráfico digital (GA4)</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Las sesiones de GA4 se leen desde la integración. Configura GA4 en Integraciones para verla aquí.
-                </p>
-                <Link
-                  href="/settings/marketing"
-                  className="mt-3 inline-flex h-8 items-center rounded-full border border-border-strong bg-transparent px-3 text-xs font-semibold text-foreground transition-colors hover:border-foreground"
-                >
-                  Configurar GA4
-                </Link>
-              </div>
-            )}
+            {tab === "trafico" &&
+              (data.trafico.sessions?.availability === "available" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <MetricCard title="Sesiones" metric={data.trafico.sessions} formatter={formatNumber} icon={<MousePointerClick className="h-4 w-4" />} />
+                  <MetricCard title="Sesión → prospecto" metric={data.trafico.sessionToLead} formatter={formatPercent} icon={<Target className="h-4 w-4" />} />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed bg-card p-6 text-center">
+                  <p className="font-medium">Tráfico digital (GA4)</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Las sesiones de GA4 se leen desde la integración. Configura GA4 en Integraciones para verla aquí.
+                  </p>
+                  <Link
+                    href="/settings/marketing"
+                    className="mt-3 inline-flex h-8 items-center rounded-full border border-border-strong bg-transparent px-3 text-xs font-semibold text-foreground transition-colors hover:border-foreground"
+                  >
+                    Configurar GA4
+                  </Link>
+                </div>
+              ))}
 
             {tab === "adquisicion" && (
               <div className="chart-card rounded-xl border p-4">
