@@ -65,13 +65,12 @@ const PRODUCT = {
   stock: 5,
   shortDescription: "Ramo pequeño de estación.",
   longDescription: "Incluye 9 tallos y tarjeta escrita a mano.",
-  imageUrl: "/api/media/public/org_1/catalog/ramo.png",
   websiteUrl: "https://tienda.ejemplo.com/ramo",
 };
 
 describe("ficha de producto en el chat (renderProductCard)", () => {
-  it("arma la ficha ordenada: nombre, precio, disponibilidad, descripción, ficha, sitio e imagen", () => {
-    const card = renderProductCard(PRODUCT, "https://crm.ejemplo.com");
+  it("arma la ficha ordenada: nombre, precio, disponibilidad, descripción, ficha y sitio", () => {
+    const card = renderProductCard(PRODUCT);
     const lines = card.split("\n");
     expect(lines[0]).toBe("*Ramo primavera*");
     expect(lines[1]).toBe("Precio: $350.00");
@@ -79,24 +78,22 @@ describe("ficha de producto en el chat (renderProductCard)", () => {
     expect(card).toContain("Ramo pequeño de estación.");
     expect(card).toContain("Incluye 9 tallos");
     expect(card).toContain("Sitio: https://tienda.ejemplo.com/ramo");
-    expect(card).toContain("Imagen de referencia: https://crm.ejemplo.com/api/media/public/org_1/catalog/ramo.png");
+    expect(card).not.toContain("Imagen");
   });
 
   it("sin inventario dice consultar; en 0 dice agotado; con 1 pieza usa singular", () => {
     expect(stockLabel(null)).toBe("Consultar disponibilidad");
     expect(stockLabel(0)).toBe("Agotado por el momento");
     expect(stockLabel(1)).toBe("1 pieza disponible");
-    const agotado = renderProductCard({ ...PRODUCT, stock: 0 }, "");
+    const agotado = renderProductCard({ ...PRODUCT, stock: 0 });
     expect(agotado).toContain("Disponibilidad: Agotado por el momento");
   });
 
   it("omite secciones vacías sin dejar líneas sueltas", () => {
     const card = renderProductCard(
-      { ...PRODUCT, shortDescription: null, longDescription: null, imageUrl: null, websiteUrl: null },
-      ""
+      { ...PRODUCT, shortDescription: null, longDescription: null, websiteUrl: null }
     );
     expect(card).not.toContain("Sitio:");
-    expect(card).not.toContain("Imagen");
     expect(card.split("\n").filter((l) => l === "")).toHaveLength(0);
   });
 });

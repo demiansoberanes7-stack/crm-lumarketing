@@ -386,6 +386,13 @@
       "when": 1791960000000,
       "tag": "0054_marketplace_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1791960000001,
+      "tag": "0055_catalog_drop_image_url",
+      "breakpoints": true
     }
   ]
 }

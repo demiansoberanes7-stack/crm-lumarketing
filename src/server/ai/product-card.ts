@@ -1,6 +1,6 @@
 /**
  * Ficha de producto para el chat, ordenada y separada:
- * nombre, precio, disponibilidad, descripción, ficha técnica, sitio e imagen.
+ * nombre, precio, disponibilidad, descripción, ficha técnica y sitio.
  */
 type ProductCardInput = {
   name: string;
@@ -9,7 +9,6 @@ type ProductCardInput = {
   stock: number | null;
   shortDescription: string | null;
   longDescription: string | null;
-  imageUrl: string | null;
   websiteUrl: string | null;
 };
 
@@ -19,7 +18,7 @@ export function stockLabel(stock: number | null): string {
   return `${stock} pieza${stock === 1 ? "" : "s"} disponible${stock === 1 ? "" : "s"}`;
 }
 
-export function renderProductCard(product: ProductCardInput, mainUrl: string): string {
+export function renderProductCard(product: ProductCardInput): string {
   const price = new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: product.currency,
@@ -32,6 +31,5 @@ export function renderProductCard(product: ProductCardInput, mainUrl: string): s
   if (product.shortDescription) lines.push("", product.shortDescription);
   if (product.longDescription) lines.push("", product.longDescription);
   if (product.websiteUrl) lines.push("", `Sitio: ${product.websiteUrl}`);
-  if (product.imageUrl) lines.push("", `Imagen de referencia: ${mainUrl}${product.imageUrl}`);
   return lines.join("\n");
 }

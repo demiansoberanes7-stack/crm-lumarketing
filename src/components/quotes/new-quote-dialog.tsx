@@ -186,7 +186,7 @@ export function NewQuoteDialog({
                             if (e.target.value) selectCatalogProduct(i, e.target.value);
                           }}
                         >
-                          <option value="">Catálogo…</option>
+                          <option value="">Inventario…</option>
                           {catalog.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name} — {formatMXNDisplay(p.price / 100)}

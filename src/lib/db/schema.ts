@@ -1137,7 +1137,6 @@ export const catalogProduct = pgTable(
     description: text("description"),
     shortDescription: varchar("short_description", { length: 500 }),
     longDescription: text("long_description"),
-    imageUrl: varchar("image_url", { length: 1024 }),
     /** URL pública del producto (sitio web, marketplace, tienda). */
     websiteUrl: varchar("website_url", { length: 1024 }),
     /** Piezas disponibles. null = sin control de inventario (mostrar "consultar"). */

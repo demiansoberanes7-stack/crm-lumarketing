@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
-import { productImageUrlSchema, productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
+import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -31,15 +31,10 @@ export const GET = withAuth(async (session, _req, { params }) => {
 
 const patchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
-  description: z.string().nullable().optional(),
   shortDescription: z.string().max(500).nullable().optional(),
-  longDescription: z.string().nullable().optional(),
-  imageUrl: productImageUrlSchema.nullable().optional(),
   websiteUrl: productWebsiteUrlSchema.nullable().optional(),
   stock: productStockSchema.optional(),
   price: z.number().int().min(0).optional(),
-  currency: z.string().min(3).max(3).optional(),
-  available: z.boolean().optional(),
 });
 
 /** PATCH — actualizar producto */

@@ -397,7 +397,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       let text = action.reply ? `${action.reply}\n\n` : "";
       if (product) {
         const { renderProductCard } = await import("@/server/ai/product-card");
-        text += renderProductCard(product, process.env.MAIN_URL || "https://crm.zorrotech.com");
+        text += renderProductCard(product);
       } else {
         text += "No pude encontrar ese producto en el catálogo.";
       }

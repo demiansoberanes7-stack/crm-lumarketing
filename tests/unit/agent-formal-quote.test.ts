@@ -70,7 +70,6 @@ function queueTurn(isTest = false) {
     available: true,
     shortDescription: "Servicio completo",
     longDescription: null,
-    imageUrl: null,
   };
   selectQueue.push(
     [{ id: "cv_1", organizationId: "org_1", contactId: "ct_1", channel: "whatsapp", isTest, aiEnabled: true, handoffAt: null, handoffReason: null, lastInboundAt: inboundAt }],

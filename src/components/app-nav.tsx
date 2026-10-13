@@ -44,7 +44,7 @@ const NAV: NavItem[] = [
   { href: "/contacts", label: "Contactos", icon: Users },
   { href: "/balance", label: "Balance", icon: DollarSign },
   { href: "/quotes", label: "Cotizador", icon: FileText },
-  { href: "/catalog", label: "Catálogo", icon: Package },
+  { href: "/catalog", label: "Inventario", icon: Package },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
   { href: "/broadcasts", label: "Envíos masivos", icon: Send },
   { href: "/suppliers", label: "Proveedores", icon: Truck },

@@ -1,21 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, Package, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Download, Package, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ImportInventoryDialog } from "@/components/catalog/import-inventory-dialog";
 
 interface Product {
   id: string;
   name: string;
   price: number;
-  description: string | null;
   shortDescription: string | null;
-  longDescription: string | null;
-  imageUrl: string | null;
   websiteUrl: string | null;
   stock: number | null;
   available: boolean;
@@ -28,26 +25,12 @@ function formatMXN(amount: number): string {
   }).format(amount / 100);
 }
 
-/** Sube un archivo al endpoint local de uploads y devuelve la URL pública */
-async function uploadImage(file: File): Promise<string> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch("/api/media/upload", { method: "POST", body: form });
-  if (!res.ok) throw new Error("No se pudo subir la imagen");
-  const data = (await res.json()) as { url: string };
-  return data.url;
-}
-
 const EMPTY_FORM = {
   name: "",
   price: "",
-  description: "",
   shortDescription: "",
-  longDescription: "",
-  imageUrl: "",
   websiteUrl: "",
   stock: "",
-  available: true,
 };
 
 /** Inventario a payload: vacío = sin control (null). */
@@ -67,13 +50,11 @@ function stockLabel(stock: number | null): { text: string; variant: "success" | 
 export function CatalogClient({ compact = false, onClose }: { compact?: boolean; onClose?: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [showNew, setShowNew] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/catalog").catch(() => null);
@@ -88,9 +69,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
     setShowNew(false);
     setEditingId(null);
     setForm(EMPTY_FORM);
-    setImagePreview(null);
     setFormError("");
-    if (fileRef.current) fileRef.current.value = "";
   }
 
   function editProduct(product: Product) {
@@ -98,37 +77,12 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
     setForm({
       name: product.name,
       price: (product.price / 100).toFixed(2),
-      description: product.description ?? "",
       shortDescription: product.shortDescription ?? "",
-      longDescription: product.longDescription ?? "",
-      imageUrl: product.imageUrl ?? "",
       websiteUrl: product.websiteUrl ?? "",
       stock: product.stock === null ? "" : String(product.stock),
-      available: product.available,
     });
-    setImagePreview(product.imageUrl);
     setFormError("");
     setShowNew(true);
-  }
-
-  async function handleImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    // Local preview instantáneo
-    const objectUrl = URL.createObjectURL(file);
-    setImagePreview(objectUrl);
-    // Subida real
-    setUploading(true);
-    try {
-      const url = await uploadImage(file);
-      setForm((f) => ({ ...f, imageUrl: url }));
-      // Reemplaza el object URL con el permanente
-      setImagePreview(url);
-    } catch {
-      setImagePreview(null);
-      setFormError("No se pudo cargar la imagen. Intenta con PNG, JPG, WEBP o GIF de hasta 5 MB.");
-    } finally {
-      setUploading(false);
-    }
   }
 
   async function saveProduct() {
@@ -142,13 +96,9 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
         body: JSON.stringify({
           name: form.name.trim(),
           price: Math.round(Number(form.price) * 100),
-          description: form.description || null,
           shortDescription: form.shortDescription || null,
-          longDescription: form.longDescription || null,
-          imageUrl: form.imageUrl || null,
           websiteUrl: form.websiteUrl.trim() || null,
           stock: stockPayload(form.stock),
-          available: form.available,
         }),
       });
       if (!response.ok) {
@@ -174,10 +124,18 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
     <div className={`flex h-full flex-col ${compact ? "min-h-[70dvh]" : ""}`}>
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Catálogo de Productos</h2>
-          <Button size="sm" onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setImagePreview(null); setFormError(""); setShowNew(true); }}>
+          <h2 className="text-[17px] font-bold tracking-tight">Inventario</h2>
+          <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
+            <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Importar
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { window.location.href = "/api/catalog/export"; }}>
+            <Download className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Exportar
+          </Button>
+          <Button size="sm" onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setFormError(""); setShowNew(true); }}>
             <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Nuevo Producto
+            Nuevo producto
           </Button>
         </div>
         {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Cerrar</Button>}
@@ -189,8 +147,8 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
             <Package className="h-10 w-10 text-muted-foreground/40" />
             <p className="text-sm font-medium">Sin productos</p>
             <p className="max-w-sm text-xs text-muted-foreground">
-              Agrega productos o servicios a tu catálogo. El bot los usará para
-              armar cotizaciones y fichas técnicas completas.
+              Agrega productos o servicios a tu inventario. El bot los usará para
+              armar cotizaciones y responder disponibilidad.
             </p>
           </div>
         ) : (
@@ -200,22 +158,6 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                 key={p.id}
                 className="group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md"
               >
-                {/* Imagen del producto */}
-                {p.imageUrl ? (
-                  <div className="aspect-video w-full overflow-hidden bg-muted">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.imageUrl}
-                      alt={p.name}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex aspect-video w-full items-center justify-center bg-muted/50">
-                    <Package className="h-10 w-10 text-muted-foreground/30" />
-                  </div>
-                )}
-
                 <div className="flex flex-1 flex-col gap-1.5 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -297,7 +239,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                 <Label htmlFor="prod-name">Nombre del producto / servicio *</Label>
                 <Input
                   id="prod-name"
-                  placeholder="Ej. Diseño de sitio web corporativo"
+                  placeholder="Ej. Romance vintage"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 />
@@ -330,7 +272,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                 <Input
                   id="prod-short"
                   maxLength={500}
-                  placeholder="Ej. Sitio web responsivo en 15 días, con SEO incluido"
+                  placeholder="Ej. Ramo pequeño"
                   value={form.shortDescription}
                   onChange={(e) => setForm((f) => ({ ...f, shortDescription: e.target.value }))}
                 />
@@ -371,82 +313,6 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                 />
               </div>
 
-              {/* Upload de imagen */}
-              <div className="space-y-1.5">
-                <Label>Imagen del producto</Label>
-                <div
-                  className="relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-muted/40 transition-colors hover:border-primary/50 hover:bg-muted/60"
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {imagePreview ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={imagePreview} alt="preview" className="h-full w-full object-cover" />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
-                        <ImagePlus className="h-8 w-8 text-white" />
-                        <span className="ml-2 text-sm font-medium text-white">Cambiar imagen</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                      <ImagePlus className="h-8 w-8" />
-                      <span className="text-xs">{uploading ? "Subiendo…" : "Haz clic para subir imagen"}</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleImageFile(file);
-                  }}
-                />
-                {/* URL manual como fallback */}
-                <Input
-                  placeholder="…o pega una URL de imagen directamente"
-                  value={form.imageUrl}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, imageUrl: e.target.value }));
-                    if (e.target.value) setImagePreview(e.target.value);
-                  }}
-                />
-              </div>
-
-              {/* Descripción larga (ficha técnica) */}
-              <div className="space-y-1.5">
-                <Label htmlFor="prod-long">
-                  Ficha técnica completa{" "}
-                  <span className="text-xs text-muted-foreground">(para el agente y PDF de cotización)</span>
-                </Label>
-                <Textarea
-                  id="prod-long"
-                  rows={4}
-                  placeholder="Describe características, alcance, tiempos de entrega, qué incluye, condiciones, etc."
-                  value={form.longDescription}
-                  onChange={(e) => setForm((f) => ({ ...f, longDescription: e.target.value }))}
-                />
-              </div>
-
-              {/* Descripción interna (legacy) */}
-              <div className="space-y-1.5">
-                <Label htmlFor="prod-desc">
-                  Nota interna{" "}
-                  <span className="text-xs text-muted-foreground">(solo visible en el CRM)</span>
-                </Label>
-                <Input
-                  id="prod-desc"
-                  placeholder="Notas para tu equipo"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.available} onChange={(e) => setForm((f) => ({ ...f, available: e.target.checked }))} />
-                Disponible para cotizar
-              </label>
               {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
             </div>
 
@@ -454,7 +320,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
             <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
               <Button variant="ghost" onClick={closeNew}>Cancelar</Button>
               <Button
-                disabled={saving || uploading || !form.name.trim() || !form.price}
+                disabled={saving || !form.name.trim() || !form.price}
                 onClick={() => void saveProduct()}
               >
                 {saving ? "Guardando…" : editingId ? "Guardar cambios" : "Guardar producto"}
@@ -462,6 +328,13 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
             </div>
           </div>
         </div>
+      )}
+
+      {showImport && (
+        <ImportInventoryDialog
+          onClose={() => setShowImport(false)}
+          onImported={() => void refetch()}
+        />
       )}
     </div>
   );

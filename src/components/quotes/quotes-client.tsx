@@ -88,7 +88,7 @@ export function QuotesClient() {
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowCatalog(true)}>
           <Package className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-          Catálogo
+          Inventario
         </Button>
       </header>
 
