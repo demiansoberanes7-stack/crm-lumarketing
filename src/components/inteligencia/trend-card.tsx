@@ -45,7 +45,7 @@ function ZChip({ z }: { z: number | null }) {
     <span
       className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
         rising
-          ? "bg-success/10 text-success"
+          ? "bg-success-tint text-success-text"
           : flat
             ? "bg-brand-tint text-brand-text"
             : "bg-warning-tint text-warning-text"

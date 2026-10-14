@@ -90,7 +90,7 @@ export function CommercialHub() {
   }, [load]);
 
   return (
-    <div className="flex h-full flex-col bg-background/50 text-foreground">
+    <div className="flex h-full flex-col bg-subtle text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-4">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Control comercial</h1>

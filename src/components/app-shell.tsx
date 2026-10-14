@@ -1,20 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import type { ThemePreference } from "@/lib/theme";
 import { AppNav } from "@/components/app-nav";
-import { BrandLogo } from "@/components/brand-mark";
+import { AppHeader } from "@/components/app-header";
+import { CommandPalette, useCommandPaletteShortcut } from "@/components/command-palette";
+import { useUnreadCount } from "@/components/use-unread-count";
+
+const COLLAPSE_KEY = "lumark:nav-collapsed";
 
 /**
- * Cascarón de la app en dos modos:
+ * Cascarón de la app, al estilo del starter:
  *
- * - Escritorio (lg+): el panel lateral es una columna fija, como siempre.
- * - Móvil/tableta: el lateral sale de la izquierda como cajón sobre un velo,
- *   y arriba queda una barra con el hamburguesa y la marca. El cajón se cierra
- *   solo al navegar (el `pathname` cambia) y con Escape.
+ * - Escritorio (lg+): barra lateral que colapsa a rail de iconos (estado
+ *   recordado en localStorage) + cabecera con breadcrumbs, ⌘K, campana y tema.
+ * - Móvil/tableta: el lateral sale como cajón sobre un velo; la cabecera
+ *   lleva hamburguesa y marca.
  *
  * La altura usa `100dvh` (no `100vh`) porque en el navegador móvil la barra de
  * direcciones se encoge al hacer scroll: con `vh` el compositor de la Bandeja
@@ -41,7 +44,10 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [visibleHeight, setVisibleHeight] = useState<string | null>(null);
+  const unread = useUnreadCount();
 
   // El teclado virtual no siempre modifica 100dvh (especialmente iOS Safari).
   // Sincronizar el shell con el viewport visual mantiene el composer visible.
@@ -60,6 +66,21 @@ export function AppShell({
     };
   }, []);
 
+  // Estado del rail: se lee en el cliente para no divergir del SSR.
+  useEffect(() => {
+    setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
+  }, []);
+
+  const toggleCollapse = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c;
+      window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
+
+  useCommandPaletteShortcut(useCallback(() => setSearchOpen((o) => !o), []));
+
   // Navegar = cerrar el cajón. Sin esto, tocar "Pipeline" deja el velo encima
   // de la pantalla recién cargada.
   useEffect(() => {
@@ -67,13 +88,16 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
-    if (!navOpen) return;
+    if (!navOpen && !searchOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setNavOpen(false);
+      if (e.key === "Escape") {
+        setNavOpen(false);
+        setSearchOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navOpen]);
+  }, [navOpen, searchOpen]);
 
   return (
     <div
@@ -95,26 +119,27 @@ export function AppShell({
         commit={commit}
         userName={userName}
         role={role}
-        theme={theme}
         open={navOpen}
+        collapsed={collapsed}
         onClose={() => setNavOpen(false)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-1.5 border-b bg-subtle px-2 pt-[env(safe-area-inset-top)] lg:hidden">
-          <button
-            onClick={() => setNavOpen(true)}
-            aria-label="Abrir el menú"
-            aria-expanded={navOpen}
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-text-2 hover:bg-accent hover:text-foreground"
-          >
-            <Menu className="h-5 w-5" strokeWidth={1.8} />
-          </button>
-          <BrandLogo branding={branding} logoUrl={logoUrl} className="min-w-0" />
-        </header>
+        <AppHeader
+          branding={branding}
+          logoUrl={logoUrl}
+          theme={theme}
+          unread={unread}
+          collapsed={collapsed}
+          onToggleCollapse={toggleCollapse}
+          onOpenDrawer={() => setNavOpen(true)}
+          onOpenSearch={() => setSearchOpen(true)}
+        />
 
         <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
       </div>
+
+      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

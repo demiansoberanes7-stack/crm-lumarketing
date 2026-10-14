@@ -29,7 +29,7 @@ const numberCompact = new Intl.NumberFormat("es-MX", { notation: "compact", maxi
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <article className="min-w-0 rounded-xl border bg-card p-4 shadow-sm">
+    <article className="stat-card min-w-0 rounded-xl border bg-card p-4 shadow-xs">
       <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-text-3">{label}</p>
       <p className="mt-1 truncate text-xl font-semibold tabular-nums">{value}</p>
       {hint && <p className="mt-0.5 truncate text-[11px] text-text-3">{hint}</p>}

@@ -40,7 +40,7 @@ function Department({ id, title, icon, defaultOpen = true, children }: {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={`${id}-body`}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-accent/50 sm:px-5"
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-accent sm:px-5"
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-tint text-brand-text">{icon}</span>
@@ -175,8 +175,8 @@ export function DashboardClient() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
-        <h1 className="text-lg font-bold tracking-tight">Dashboard</h1>
+      <header className="header-surface sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-3 backdrop-blur sm:px-6">
+        <h1 className="text-2xl font-bold tracking-tight">Hola, bienvenido de nuevo 👋</h1>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
             <button

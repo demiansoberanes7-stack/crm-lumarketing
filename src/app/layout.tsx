@@ -8,11 +8,9 @@ import { getBranding } from "@/server/branding";
 import "./globals.css";
 
 // Fuentes self-hosted (woff2 locales, sin CDN en runtime: soberanía).
-const archivo = localFont({
-  src: [
-    { path: "../fonts/Archivo-Regular.woff2", weight: "400", style: "normal" },
-    { path: "../fonts/Archivo-Bold.woff2", weight: "700", style: "normal" },
-  ],
+// Geist y Geist Mono: la voz del chrome del starter (vercel/geist-font).
+const geist = localFont({
+  src: [{ path: "../fonts/Geist-Variable.woff2", weight: "100 900", style: "normal" }],
   variable: "--font-sans",
   display: "swap",
 });
@@ -24,12 +22,8 @@ const instrumentSerif = localFont({
   variable: "--font-serif",
   display: "swap",
 });
-const plexMono = localFont({
-  src: [
-    { path: "../fonts/IBMPlexMono-Regular.woff2", weight: "400", style: "normal" },
-    { path: "../fonts/IBMPlexMono-Medium.woff2", weight: "500", style: "normal" },
-    { path: "../fonts/IBMPlexMono-SemiBold.woff2", weight: "600", style: "normal" },
-  ],
+const geistMono = localFont({
+  src: [{ path: "../fonts/GeistMono-Variable.woff2", weight: "100 900", style: "normal" }],
   variable: "--font-mono",
   display: "swap",
 });
@@ -61,7 +55,7 @@ export default async function RootLayout({
   return (
     <html
       lang="es"
-      className={`${archivo.variable} ${instrumentSerif.variable} ${plexMono.variable}`}
+      className={`${geist.variable} ${instrumentSerif.variable} ${geistMono.variable}`}
       // La preferencia siempre es explícita: el tema viaja resuelto en el HTML
       // del servidor, así que no hay divergencia con el cliente ni parpadeo.
       data-theme={theme}

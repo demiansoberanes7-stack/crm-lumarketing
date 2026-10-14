@@ -27,7 +27,7 @@ export type CompareItem = {
   classification: "A" | "B" | "C" | "D";
 };
 
-const LINE_COLORS = ["#4c6ef5", "#12b886", "#f59f00"];
+const LINE_COLORS = ["var(--chart-2)", "var(--chart-3)", "var(--chart-1)"];
 const CLS_LABEL: Record<CompareItem["classification"], string> = {
   A: "A · crece",
   B: "B · estable",

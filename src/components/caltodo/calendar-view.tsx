@@ -94,14 +94,14 @@ export function CalendarView({ tasks, settings }: { tasks: Task[]; settings: Set
               const today = isSameDay(day, zonedDisplayDate(new Date(), timezone));
               return (
                 <div key={day.toISOString()} className="border-l relative">
-                  <div className={`h-12 border-b p-2 text-center ${today ? "bg-brand/10" : "bg-subtle/50"}`}>
+                  <div className={`h-12 border-b p-2 text-center ${today ? "bg-brand-tint" : "bg-subtle"}`}>
                     <div className="text-xs text-text-3">{format(day, "EEE", { locale: es })}</div>
                     <div className={`text-sm font-medium ${today ? "text-brand" : ""}`}>{format(day, "d")}</div>
                   </div>
                   <div className="relative" style={{ height: `${hours.length * 64}px` }}>
-                    {hours.map((h) => <div key={h} className={`h-16 border-b ${h >= ws && h < we ? "" : "bg-subtle/50"}`} />)}
+                    {hours.map((h) => <div key={h} className={`h-16 border-b ${h >= ws && h < we ? "" : "bg-subtle"}`} />)}
                     {dayTasks.map((t) => { const pos = position(t); return pos ? (
-                      <div key={t.id} className="absolute left-0.5 right-0.5 rounded-md p-1 text-xs overflow-hidden bg-brand/20 border border-brand/40" style={pos}>
+                      <div key={t.id} className="absolute left-0.5 right-0.5 rounded-md p-1 text-xs overflow-hidden bg-brand-tint border border-brand-soft" style={pos}>
                         <div className="font-medium truncate">{t.title}</div>
                         {t.scheduledStart && <div className="text-text-3 truncate">{format(new Date(t.scheduledStart), "h:mm a")}</div>}
                       </div>
@@ -118,9 +118,9 @@ export function CalendarView({ tasks, settings }: { tasks: Task[]; settings: Set
             </div>
             <div className="border-l relative">
               <div className="relative" style={{ height: `${hours.length * 80}px` }}>
-                {hours.map((h) => <div key={h} className={`h-20 border-b ${h >= ws && h < we ? "" : "bg-subtle/50"}`} />)}
+                {hours.map((h) => <div key={h} className={`h-20 border-b ${h >= ws && h < we ? "" : "bg-subtle"}`} />)}
                 {tasksForDay(startOfDay(current)).map((t) => { const pos = position(t); return pos ? (
-                  <div key={t.id} className="absolute left-1 right-1 rounded-md p-2 overflow-hidden bg-brand/20 border border-brand/40" style={pos}>
+                  <div key={t.id} className="absolute left-1 right-1 rounded-md p-2 overflow-hidden bg-brand-tint border border-brand-soft" style={pos}>
                     <div className="font-medium">{t.title}</div>
                     {t.scheduledStart && t.scheduledEnd && <div className="text-xs text-text-3 flex items-center gap-1 mt-1"><Clock className="h-3 w-3" />{format(new Date(t.scheduledStart), "h:mm a")} – {format(new Date(t.scheduledEnd), "h:mm a")}</div>}
                     {t.details && <p className="text-xs text-text-3 mt-1 line-clamp-2">{t.details}</p>}

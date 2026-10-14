@@ -2,7 +2,8 @@
 
 import { type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardFooter, CardHeader, CardMetric, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 interface KpiCardProps {
@@ -19,34 +20,60 @@ interface KpiCardProps {
   className?: string;
 }
 
+/**
+ * KPI al estilo del starter: tarjeta con gradiente sutil del acento, badge
+ * de tendencia a la derecha del título, número grande tabular y footer con
+ * el insight (subtítulo o tendencia) + fuente/ventana.
+ */
 export function KpiCard({ title, value, subtitle, icon, trend, trendValue, origin, window: windowLabel, className }: KpiCardProps) {
+  const TrendIcon = trend === "up" ? ArrowUp : trend === "down" ? ArrowDown : Minus;
   return (
-    <Card className={cn("overflow-hidden", className)}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-3 pb-2 pt-4 sm:px-5">
-        <CardTitle title={title} className="line-clamp-2 min-w-0 leading-snug text-xs font-medium text-muted-foreground">{title}</CardTitle>
-        {icon && <div className="h-4 w-4 shrink-0 text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</div>}
-      </CardHeader>
-      <CardContent className="min-w-0 px-3 pb-4 sm:px-5">
-        <div title={String(value)} className="truncate text-xl font-bold tabular-nums sm:text-2xl">{value}</div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          {trend === "up" && <ArrowUp className="h-3 w-3 text-emerald-500" />}
-          {trend === "down" && <ArrowDown className="h-3 w-3 text-red-500" />}
-          {trend === "neutral" && <Minus className="h-3 w-3 text-muted-foreground" />}
-          {trendValue && (
-            <p className={cn("text-xs", trend === "up" && "text-emerald-500", trend === "down" && "text-red-500")}>
+    <Card className={cn("stat-card overflow-hidden", className)}>
+      <CardHeader className="px-4 pb-1 pt-4 sm:px-5">
+        <CardTitle title={title} className="line-clamp-2 min-w-0 leading-snug text-xs font-medium text-muted-foreground">
+          {title}
+        </CardTitle>
+        <CardAction>
+          {trend && trendValue ? (
+            <Badge
+              variant="outline"
+              className={cn(
+                "gap-1 text-[11px] font-medium",
+                trend === "up" && "text-success-text",
+                trend === "down" && "text-danger-text",
+                trend === "neutral" && "text-text-3"
+              )}
+            >
+              <TrendIcon className="h-3 w-3" strokeWidth={2.2} />
               {trendValue}
+            </Badge>
+          ) : icon ? (
+            <span className="text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+          ) : null}
+        </CardAction>
+      </CardHeader>
+      <CardMetric className="truncate px-4 pb-3 sm:px-5" title={String(value)}>
+        {value}
+      </CardMetric>
+      {(subtitle || origin || windowLabel) && (
+        <CardFooter className="px-4 py-2.5 sm:px-5">
+          {subtitle && !trendValue && (
+            <p title={subtitle} className="line-clamp-1 font-medium text-foreground">
+              {subtitle}
             </p>
           )}
-          {subtitle && !trendValue && (
-            <p title={subtitle} className="line-clamp-2 min-w-0 text-xs leading-snug text-muted-foreground">{subtitle}</p>
+          {trendValue && subtitle && (
+            <p title={subtitle} className="line-clamp-1 text-muted-foreground">
+              {subtitle}
+            </p>
           )}
-        </div>
-        {(origin || windowLabel) && (
-          <p className="mt-1.5 truncate text-[10px] uppercase tracking-wide text-muted-foreground/80">
-            {[origin, windowLabel].filter(Boolean).join(" · ")}
-          </p>
-        )}
-      </CardContent>
+          {(origin || windowLabel) && (
+            <p className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
+              {[origin, windowLabel].filter(Boolean).join(" · ")}
+            </p>
+          )}
+        </CardFooter>
+      )}
     </Card>
   );
 }

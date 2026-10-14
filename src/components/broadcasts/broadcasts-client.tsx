@@ -226,7 +226,7 @@ export function BroadcastsClient() {
             </label>
           </div>
 
-          <div className="space-y-3 rounded-lg border bg-subtle/50 p-4">
+          <div className="space-y-3 rounded-lg border bg-subtle p-4">
             <h3 className="text-sm font-semibold">Segmentar contactos</h3>
             <label className="block space-y-1 text-xs font-medium text-muted-foreground">
               Etapa del pipeline
@@ -323,5 +323,5 @@ export function BroadcastsClient() {
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-lg bg-subtle/70 px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p></div>;
+  return <div className="rounded-lg bg-subtle px-3 py-2"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p></div>;
 }

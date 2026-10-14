@@ -1,16 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { Check, Gauge, HelpCircle, Plus, Search } from "lucide-react";
+import { DottedAreaChart } from "@/components/ui/chart";
 
 /**
  * Overview de palabra clave estilo SEMrush: métricas arriba, historial,
@@ -66,10 +58,10 @@ const numberCompact = new Intl.NumberFormat("es-MX", {
 const p1 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 1 });
 
 const INTENT_BADGE: Record<Intent, { label: string; cls: string }> = {
-  transaccional: { label: "Transaccional", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  comercial: { label: "Comercial", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  informativo: { label: "Informativo", cls: "bg-sky-50 text-sky-700 border-sky-200" },
-  navegacional: { label: "Navegacional", cls: "bg-violet-50 text-violet-700 border-violet-200" },
+  transaccional: { label: "Transaccional", cls: "border-success-soft bg-success-tint text-success-text" },
+  comercial: { label: "Comercial", cls: "border-warning-soft bg-warning-tint text-warning-text" },
+  informativo: { label: "Informativo", cls: "border-border bg-subtle text-text-2" },
+  navegacional: { label: "Navegacional", cls: "border-brand-soft bg-brand-tint text-brand-text" },
 };
 
 function IntentBadge({ intent }: { intent: Intent }) {
@@ -82,10 +74,10 @@ function IntentBadge({ intent }: { intent: Intent }) {
 }
 
 function bandColor(band: string): string {
-  if (band === "baja") return "#12b886";
-  if (band === "media") return "#f59f00";
-  if (band === "alta") return "#fa5252";
-  return "#c92a2a";
+  if (band === "baja") return "var(--success)";
+  if (band === "media") return "var(--warning)";
+  if (band === "alta") return "var(--danger)";
+  return "var(--danger)";
 }
 
 function fmtDuration(seconds: number | null): string {
@@ -97,7 +89,7 @@ function fmtDuration(seconds: number | null): string {
 
 function StatCard({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
-    <article className="min-w-0 rounded-xl border bg-card p-4 shadow-sm">
+    <article className="stat-card min-w-0 rounded-xl border bg-card p-4 shadow-xs">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-text-3">{label}</p>
       <div className="mt-1">{children}</div>
       {hint && <p className="mt-1 text-[11px] leading-snug text-text-3">{hint}</p>}
@@ -245,18 +237,15 @@ export function KeywordView({
 
       {/* Historial */}
       {trend.length >= 2 && (
-        <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <div className="rounded-xl border bg-card p-4 shadow-xs">
           <h3 className="text-xs font-semibold text-text-2">Interés histórico · {d.tracked?.name} (28 días)</h3>
-          <div className="mt-2 h-44" aria-hidden="true">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="day" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} />
-                <YAxis tick={{ fontSize: 10 }} width={44} />
-                <Tooltip formatter={(v) => (v == null ? "—" : `${numberCompact.format(Number(v))} vistas`)} labelFormatter={(l) => `Día ${l}`} />
-                <Area type="monotone" dataKey="value" stroke="#4c6ef5" fill="#4c6ef5" fillOpacity={0.15} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="mt-2" aria-hidden="true">
+            <DottedAreaChart
+              data={trend}
+              xKey="day"
+              series={[{ key: "value", color: "var(--chart-2)" }]}
+              yFormatter={(v) => numberCompact.format(v)}
+            />
           </div>
           <p className="mt-1 text-[11px] text-text-3">
             Unidad: vistas acumuladas del feed popular que coinciden con el nicho (YouTube MX).
