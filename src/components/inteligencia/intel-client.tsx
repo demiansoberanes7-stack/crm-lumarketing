@@ -8,6 +8,8 @@ import { TrendCard } from "@/components/inteligencia/trend-card";
 import { ReportView, type SearchReport } from "@/components/inteligencia/report-view";
 import { ShareBars } from "@/components/inteligencia/share-bars";
 import { AudiencePanel } from "@/components/inteligencia/audience-panel";
+import { GeoPanel } from "@/components/inteligencia/geo-panel";
+import { FunnelPanel } from "@/components/inteligencia/funnel-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 
 type TrendsPayload = {
@@ -85,6 +87,11 @@ export function IntelClient() {
     const totalVideos = trends.trends.reduce((a, t) => a + t.lastVideoCount, 0);
     return { niches: trends.trends.length, totalViews, totalVideos };
   }, [trends]);
+
+  const geoTerms = useMemo(
+    () => trends?.trends.map((t) => ({ id: t.termId, name: t.name })) ?? [],
+    [trends]
+  );
 
   function toggleSelect(termId: string) {
     setCompareItems(null);
@@ -229,6 +236,10 @@ export function IntelClient() {
           <ShareBars rows={shareRows} />
 
           <AudiencePanel />
+
+          <GeoPanel terms={geoTerms} />
+
+          <FunnelPanel />
 
           <section aria-label="Tendencias actuales" className="space-y-3">
             {loadingTrends ? (

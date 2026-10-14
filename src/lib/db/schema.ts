@@ -2482,3 +2482,33 @@ export const intelSearchLog = pgTable(
   },
   (t) => [index("intel_search_log_org_idx").on(t.organizationId, t.createdAt)]
 );
+
+/**
+ * Conteo de establecimientos DENUE por estado y día (competencia por
+ * geografía). `censored` = la ventana devolvió 10 registros: el total real
+ * es ≥10 (la API no entrega el total exacto).
+ */
+export const intelGeoSnapshot = pgTable(
+  "intel_geo_snapshot",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    termId: varchar("term_id", { length: 255 })
+      .notNull()
+      .references(() => intelTerm.id, { onDelete: "cascade" }),
+    /** Clave INEGI de la entidad federativa, "01"…"32". */
+    state: varchar("state", { length: 2 }).notNull(),
+    count: integer("count").notNull(),
+    censored: boolean("censored").notNull().default(false),
+    /** Día UTC del conteo, formato "YYYY-MM-DD". */
+    day: varchar("day", { length: 10 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_geo_term_state_day_uq").on(t.termId, t.state, t.day),
+    index("intel_geo_org_day_idx").on(t.organizationId, t.day),
+    index("intel_geo_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);

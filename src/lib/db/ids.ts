@@ -87,6 +87,7 @@ const prefixes = {
   intelSnapshot: "isn",
   intelVideo: "ivd",
   intelSearch: "isg",
+  intelGeo: "ige",
 } as const;
 
 export type IdKind = keyof typeof prefixes;
