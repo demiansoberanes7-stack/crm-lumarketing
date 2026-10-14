@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -9,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Gauge, HelpCircle, Search } from "lucide-react";
+import { Check, Gauge, HelpCircle, Plus, Search } from "lucide-react";
 
 /**
  * Overview de palabra clave estilo SEMrush: métricas arriba, historial,
@@ -104,9 +105,73 @@ function StatCard({ label, children, hint }: { label: string; children: React.Re
   );
 }
 
-export function KeywordView({ data }: { data: KeywordOverviewView }) {
+function MonitorButton({
+  keyword,
+  already,
+  pending,
+  onMonitor,
+  compact = false,
+}: {
+  keyword: string;
+  already: boolean;
+  pending: boolean;
+  onMonitor: (keyword: string) => void;
+  compact?: boolean;
+}) {
+  if (already) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+        title="Ya está en tu catálogo de monitoreo"
+      >
+        <Check className="h-3 w-3" /> Monitoreando
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onMonitor(keyword)}
+      disabled={pending}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium text-brand-text hover:bg-brand-tint disabled:opacity-60 ${
+        compact ? "" : "min-h-7"
+      }`}
+      title="Agregar al catálogo: entra al share y a las tendencias"
+    >
+      <Plus className="h-3 w-3" />
+      {pending ? "Agregando…" : compact ? "Monitorear" : "+ Monitorear"}
+    </button>
+  );
+}
+
+export function KeywordView({
+  data,
+  onMonitored,
+}: {
+  data: KeywordOverviewView;
+  onMonitored: () => void;
+}) {
   const d = data;
   const trend = d.tracked?.seriesPoints ?? [];
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState<string | null>(null);
+
+  async function handleMonitor(keyword: string) {
+    if (pending) return;
+    setPending(keyword);
+    const res = await fetch("/api/intel/monitor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword }),
+    }).catch(() => null);
+    setPending(null);
+    if (res?.ok) {
+      setAdded((prev) => new Set(prev).add(keyword.toLowerCase()));
+      onMonitored();
+    }
+  }
+
+  const queryMonitored = Boolean(d.tracked) || added.has(d.query.toLowerCase());
 
   return (
     <section className="space-y-4" aria-label={`Análisis de ${d.query}`}>
@@ -122,6 +187,12 @@ export function KeywordView({ data }: { data: KeywordOverviewView }) {
             monitoreado: {d.tracked.name}
           </span>
         )}
+        <MonitorButton
+          keyword={d.query}
+          already={queryMonitored}
+          pending={pending === d.query}
+          onMonitor={(kw) => void handleMonitor(kw)}
+        />
       </div>
 
       {/* KPIs */}
@@ -211,15 +282,25 @@ export function KeywordView({ data }: { data: KeywordOverviewView }) {
                   <th className="px-4 py-1.5 font-medium">Keyword</th>
                   <th className="px-4 py-1.5 font-medium">Intención</th>
                   <th className="px-4 py-1.5 text-right font-medium">Interés</th>
+                  <th className="px-4 py-1.5 text-right font-medium">Acción</th>
                 </tr>
               </thead>
               <tbody>
                 {d.related.map((r) => (
                   <tr key={r.keyword} className="border-t">
-                    <td className="max-w-[200px] truncate px-4 py-1.5" title={r.keyword}>{r.keyword}</td>
+                    <td className="max-w-[170px] truncate px-4 py-1.5" title={r.keyword}>{r.keyword}</td>
                     <td className="px-4 py-1.5"><IntentBadge intent={r.intent} /></td>
                     <td className="px-4 py-1.5 text-right tabular-nums text-text-2">
                       {r.tracked ? numberCompact.format(r.tracked.lastValue) : "—"}
+                    </td>
+                    <td className="px-4 py-1.5 text-right">
+                      <MonitorButton
+                        compact
+                        keyword={r.keyword}
+                        already={Boolean(r.tracked) || added.has(r.keyword.toLowerCase())}
+                        pending={pending === r.keyword}
+                        onMonitor={(kw) => void handleMonitor(kw)}
+                      />
                     </td>
                   </tr>
                 ))}

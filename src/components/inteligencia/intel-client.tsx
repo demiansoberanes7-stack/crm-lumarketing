@@ -291,7 +291,7 @@ export function IntelClient() {
       )}
 
       {overview ? (
-        <KeywordView data={overview} />
+        <KeywordView data={overview} onMonitored={() => void loadTrends()} />
       ) : compareItems ? (
         <CompareView items={compareItems} onRemove={toggleSelect} onClear={clearCompare} />
       ) : (

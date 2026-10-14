@@ -101,29 +101,40 @@ export async function resolveTerm(
   query: string
 ): Promise<IntelTerm | null> {
   const terms = await listActiveTerms(organizationId);
-  const q = query
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim();
-  if (!q) return null;
-  const byName = terms.find((t) =>
-    t.name
+  const hit = findTermByKeyword(terms, query);
+  if (!hit) return null;
+  return terms.find((t) => t.id === hit.id) ?? null;
+}
+
+/**
+ * ¿La keyword ya está cubierta por un término existente (nombre completo o
+ * keyword igual/contenida)? Evita duplicar el catálogo al monitorear desde
+ * el overview: si una keyword ya pertenece a un nicho mayor, se reutiliza.
+ */
+export function findTermByKeyword(
+  terms: Array<{ id: string; name: string; keywords: string[] }>,
+  keyword: string
+): { id: string; name: string } | null {
+  const norm = (s: string) =>
+    s
       .toLowerCase()
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
-      .includes(q)
-  );
-  if (byName) return byName;
-  return (
-    terms.find((t) =>
-      t.keywords.some((k) =>
-        k
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[̀-ͯ]/g, "")
-          .includes(q)
-      )
-    ) ?? null
-  );
+      .trim();
+  const q = norm(keyword);
+  if (!q) return null;
+  for (const term of terms) {
+    const name = norm(term.name);
+    if (name === q || name.includes(q) || q.includes(name)) {
+      return { id: term.id, name: term.name };
+    }
+    for (const k of term.keywords) {
+      const kw = norm(k);
+      if (!kw) continue;
+      if (kw === q || kw.includes(q) || q.includes(kw)) {
+        return { id: term.id, name: term.name };
+      }
+    }
+  }
+  return null;
 }
