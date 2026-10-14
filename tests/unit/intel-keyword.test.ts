@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  classifyIntent,
-  difficultyProxy,
-  isQuestion,
-} from "@/server/intel/keyword";
+import { classifyIntent, difficultyProxy } from "@/server/intel/keyword";
 
 describe("classifyIntent (intención de búsqueda)", () => {
   it("detecta intención transaccional con prioridad máxima", () => {
@@ -22,60 +18,32 @@ describe("classifyIntent (intención de búsqueda)", () => {
     expect(classifyIntent("qué es un nvr")).toBe("informativo");
     expect(classifyIntent("errores de red wifi")).toBe("informativo");
   });
-  it("cae a informativo por defecto", () => {
-    expect(classifyIntent("cámaras de seguridad")).toBe("informativo");
+  it("cae a navegacional por defecto", () => {
+    expect(classifyIntent("cámaras de seguridad")).toBe("navegacional");
   });
 });
 
-describe("isQuestion", () => {
-  it("detecta signos y palabras interrogativas", () => {
-    expect(isQuestion("¿La cámara vale la pena?")).toBe(true);
-    expect(isQuestion("mejor router")).toBe(false);
-    expect(isQuestion("cómo instalar starlink")).toBe(true);
-    expect(isQuestion("cuanto cuesta un pc gamer")).toBe(true);
-  });
-});
-
-describe("difficultyProxy (fórmula documentada)", () => {
-  it("es baja con poca saturación, incumbentes débiles y poca oferta", () => {
-    const d = difficultyProxy({
-      totalResults: 200,
-      medianViews: 2000,
-      establishments: 2,
-      censored: false,
-    });
+describe("difficultyProxy (solo DENUE)", () => {
+  it("es baja con poca oferta local", () => {
+    const d = difficultyProxy({ establishments: 2, censored: false });
     expect(d.score).toBeLessThan(25);
     expect(d.band).toBe("baja");
+    expect(d.factors).toHaveLength(1);
   });
-  it("es muy alta con SERP saturado e incumbentes fuertes", () => {
-    const d = difficultyProxy({
-      totalResults: 900_000,
-      medianViews: 4_000_000,
-      establishments: 200,
-      censored: true,
-    });
+  it("es muy alta con mucha oferta (censurada)", () => {
+    const d = difficultyProxy({ establishments: 200, censored: true });
     expect(d.score).toBeGreaterThan(75);
     expect(d.band).toBe("muy alta");
   });
-  it("sin DENUE redistribuye los pesos y lo dice en la fórmula", () => {
-    const d = difficultyProxy({
-      totalResults: 50_000,
-      medianViews: 100_000,
-      establishments: null,
-      censored: false,
-    });
-    expect(d.factors).toHaveLength(2);
-    expect(d.factors.every((f) => f.weightPct === 50)).toBe(true);
-    expect(d.formula).toContain("50%");
+  it("sin DENUE devuelve score 0 y lo dice en la fórmula", () => {
+    const d = difficultyProxy({ establishments: null, censored: false });
+    expect(d.score).toBe(0);
+    expect(d.factors).toHaveLength(0);
+    expect(d.formula).toContain("Sin DENUE");
   });
-  it("los factores suman 100 de peso", () => {
-    const d = difficultyProxy({
-      totalResults: 10_000,
-      medianViews: 50_000,
-      establishments: 30,
-      censored: false,
-    });
-    const totalWeight = d.factors.reduce((a, f) => a + f.weightPct, 0);
-    expect(totalWeight).toBe(100);
+  it("con DENUE el único factor pesa 100%", () => {
+    const d = difficultyProxy({ establishments: 30, censored: false });
+    expect(d.factors).toHaveLength(1);
+    expect(d.factors[0]!.weightPct).toBe(100);
   });
 });

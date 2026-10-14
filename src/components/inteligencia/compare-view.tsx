@@ -23,7 +23,6 @@ export type CompareItem = {
   z: number | null;
   sharePct: number;
   lastValue: number;
-  videoCount: number;
   classification: "A" | "B" | "C" | "D";
 };
 
@@ -140,10 +139,9 @@ export function CompareView({
               <th className="px-4 py-2.5 font-medium">Nicho</th>
               <th className="px-4 py-2.5 font-medium">Clasif.</th>
               <th className="px-4 py-2.5 text-right font-medium">Share %</th>
-              <th className="px-4 py-2.5 text-right font-medium">Vistas feed</th>
+              <th className="px-4 py-2.5 text-right font-medium">Índice GT</th>
               <th className="px-4 py-2.5 text-right font-medium">Mediana/día</th>
               <th className="px-4 py-2.5 text-right font-medium">z-score</th>
-              <th className="px-4 py-2.5 text-right font-medium">Videos</th>
             </tr>
           </thead>
           <tbody>
@@ -155,15 +153,15 @@ export function CompareView({
                 <td className="px-4 py-2.5 text-right tabular-nums">{numberCompact.format(item.lastValue)}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{numberCompact.format(item.descriptive.median)}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{item.z === null ? "s/ base" : p2.format(item.z)}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{item.videoCount}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="text-[11px] leading-snug text-text-3">
-        Mismas unidades y ventana (28 días, UTC) para todos. Share = % de vistas del último feed
-        entre los nichos monitoreados; z-score = últimos 7 días vs 21 previos. Fuente: YouTube Data API (mostPopular, MX).
+        Mismas unidades y ventana (30 días, UTC) para todos. Share = % del interés GT del
+        último día entre los nichos comparados; z-score = últimos 7 días vs 21 previos.
+        Fuente: Google Trends (MX), 100 % externa.
       </p>
     </section>
   );

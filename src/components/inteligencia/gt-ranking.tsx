@@ -30,11 +30,9 @@ export type TrendSeries = {
   name: string;
   /** z-score de últimos 7 días vs 21 previos (null si no hay base). */
   z: number | null;
-  /** Vistas del último día. */
+  /** Índice GT del último día (0–100). */
   lastValue: number;
-  /** Videos coincidentes del último día. */
-  lastVideoCount: number;
-  /** Serie de la ventana (GT: 30 días; fallback YouTube: 28). */
+  /** Serie de la ventana GT (30 días). */
   series: Array<{ day: string; value: number }>;
 };
 
@@ -51,10 +49,8 @@ export type RankedNiche = {
   recommendation: string;
   /** Color de la recomendación. */
   recTone: "success" | "warning" | "danger" | "neutral";
-  /** Vistas del último día. */
+  /** Índice GT del último día. */
   lastViews: number;
-  /** Videos del último día. */
-  lastVideos: number;
 };
 
 /* ── Cálculo del ranking ─────────────────────────────────────────────────── */
@@ -114,7 +110,6 @@ export function buildRanking(trends: TrendSeries[]): RankedNiche[] {
       recommendation: rec.text,
       recTone: rec.tone,
       lastViews: t.lastValue,
-      lastVideos: t.lastVideoCount,
     });
   }
   // Orden: A primero, luego B, C, D; dentro de cada clase por índice desc.
@@ -308,9 +303,9 @@ export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
       </div>
 
       <p className="mt-3 border-t pt-2 text-[11px] leading-snug text-text-3">
-        Índice: vistas del último día relativas al máximo de la ventana (0–100).
-        Tendencia: z-score de la ventana reciente contra el histórico. Fuente: YouTube
-        mostPopular (MX), normalizado.
+        Índice: interés de búsqueda relativo al máximo de la ventana (0–100).
+        Tendencia: z-score de la ventana reciente contra el histórico. Fuente:
+        Google Trends (MX, endpoint no oficial), 100 % externa.
       </p>
     </section>
   );

@@ -5,7 +5,6 @@ type Trend = {
   name: string;
   z: number | null;
   lastValue: number;
-  lastVideoCount: number;
   series: Array<{ day: string; value: number }>;
 };
 
@@ -78,12 +77,8 @@ export function TrendCard({
       <Sparkline series={trend.series} />
       <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-2">
         <div>
-          <dt className="inline text-text-3">Vistas feed: </dt>
+          <dt className="inline text-text-3">Índice GT hoy: </dt>
           <dd className="inline font-medium">{numberCompact.format(trend.lastValue)}</dd>
-        </div>
-        <div>
-          <dt className="inline text-text-3">Videos: </dt>
-          <dd className="inline font-medium">{trend.lastVideoCount}</dd>
         </div>
       </dl>
       {onSelect && (

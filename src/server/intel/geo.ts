@@ -76,12 +76,19 @@ export async function runGeoIngest(
   const results: Array<{ state: MexicoState; count: number; censored: boolean }> = [];
   let idx = 0;
   for (const state of MEXICO_STATES) {
-    // Pausa corta entre llamadas para no golpear el rate limit de INEGI.
-    if (idx > 0) await new Promise((r) => setTimeout(r, 150));
+    // Pausa entre llamadas: INEGI limita ráfagas; 500 ms evita el 429.
+    if (idx > 0) await new Promise((r) => setTimeout(r, 500));
     idx += 1;
-    const denue = await countEstablishments(creds.denueToken, [term.name], state.code);
+    let denue = await countEstablishments(creds.denueToken, [term.name], state.code);
+    // Un reintento tras fallo puntual (timeout o rate limit transitorio).
+    if (!denue) {
+      await new Promise((r) => setTimeout(r, 1200));
+      denue = await countEstablishments(creds.denueToken, [term.name], state.code);
+    }
     if (denue) results.push({ state, count: denue.count, censored: denue.censored });
   }
+  // Éxito parcial: si al menos 1 estado respondió, se guarda y se declara ok.
+  // Solo se reporta denue_failed si NINGÚN estado respondió.
   if (results.length === 0) return { ok: false, reason: "denue_failed" };
 
   for (const r of results) {

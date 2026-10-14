@@ -2,18 +2,12 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
-import {
-  getIntelCredentials,
-  markIntelIngested,
-} from "@/server/intel/credentials";
-import { ensureSeedTerms, listActiveTerms, resolveTerm } from "@/server/intel/terms";
-import { matchTerms, youtubeSource } from "@/server/intel/sources/youtube";
-import { countEstablishments } from "@/server/intel/sources/denue";
+import { getIntelCredentials } from "@/server/intel/credentials";
+import { listActiveTerms } from "@/server/intel/terms";
 import {
   classify,
   describe,
   growthZ,
-  oneSidedP,
   toIndex,
   type Classification,
   type Descriptive,
@@ -31,142 +25,35 @@ export function addDays(day: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-export class IngestNotConfiguredError extends Error {
-  constructor() {
-    super("Faltan credenciales de inteligencia");
-    this.name = "IngestNotConfiguredError";
-  }
-}
-
-export type IngestResult = {
-  day: string;
-  videosAnalyzed: number;
-  termsMatched: number;
-  snapshotsUpserted: number;
-};
-
-/**
- * Ingesta diaria: feed popular de YouTube (MX) contra el catálogo de
- * términos; guarda el agregado en `intel_snapshot` y la muestra cruda en
- * `intel_video` (ambos con dedupe por día, re-ejecutable).
- */
-export async function runIngest(organizationId: string): Promise<IngestResult> {
-  const creds = await getIntelCredentials(organizationId);
-  if (!creds) throw new IngestNotConfiguredError();
-  await ensureSeedTerms(organizationId);
-  const terms = await listActiveTerms(organizationId);
-  const videos = await youtubeSource.listMostPopular(creds.youtubeKey, "MX", 50);
-  const day = utcDay();
-  const byTerm = matchTerms(
-    videos,
-    terms.map((t) => ({ id: t.id, keywords: t.keywords }))
-  );
-
-  const db = getDb();
-  let snapshotsUpserted = 0;
-  let termsMatched = 0;
-
-  for (const term of terms) {
-    const matches = byTerm.get(term.id) ?? [];
-    const totalViews = matches.reduce((acc, v) => acc + v.views, 0);
-    if (matches.length > 0) termsMatched += 1;
-
-    await db
-      .insert(schema.intelSnapshot)
-      .values({
-        id: newId("intelSnapshot"),
-        organizationId,
-        termId: term.id,
-        day,
-        value: totalViews,
-        videoCount: matches.length,
-        source: "youtube_mostpopular",
-      })
-      .onConflictDoUpdate({
-        target: [schema.intelSnapshot.termId, schema.intelSnapshot.day],
-        set: { value: totalViews, videoCount: matches.length },
-      });
-    snapshotsUpserted += 1;
-
-    if (matches.length > 0) {
-      await db
-        .insert(schema.intelVideo)
-        .values(
-          matches.map((v) => ({
-            id: newId("intelVideo"),
-            organizationId,
-            termId: term.id,
-            videoId: v.videoId,
-            title: v.title.slice(0, 300),
-            views: v.views,
-            likes: v.likes,
-            durationSeconds: v.durationSeconds,
-            publishedAt: v.publishedAt ? new Date(v.publishedAt) : null,
-            channelTitle: v.channelTitle?.slice(0, 200) ?? null,
-            day,
-          }))
-        )
-        .onConflictDoNothing();
-    }
-  }
-
-  await markIntelIngested(organizationId);
-  return { day, videosAnalyzed: videos.length, termsMatched, snapshotsUpserted };
-}
-
 export type TrendCard = {
   termId: string;
   name: string;
   /** z-score de los últimos 7 días contra los 21 previos (null si no aplica). */
   z: number | null;
   lastValue: number;
-  lastVideoCount: number;
-  /** Serie de los últimos 28 días (0 donde no hubo snapshot). */
+  /** Serie GT de la ventana (30 días). */
   series: Array<{ day: string; value: number }>;
 };
 
 /**
  * Estado 1: tendencias actuales. Por término, z-score de la ventana reciente
  * contra el histórico; se ordena de mayor a menor z (los null al final).
- * Prefiere la serie Google Trends (0–100) cuando está habilitada y tiene
- * datos; si no, usa el fallback YouTube normalizado.
+ * SOLO usa la serie Google Trends (0–100). Sin datos GT → el nicho no aparece
+ * (nunca se rellena con vistas de canales: la fuente es 100 % externa).
  */
 export async function getTrends(
   organizationId: string
 ): Promise<{ trends: TrendCard[]; lastIngestAt: string | null }> {
   const creds = await getIntelCredentials(organizationId);
-  const gtActive = creds?.gtEnabled ?? false;
   const terms = await listActiveTerms(organizationId);
   const end = utcDay();
-  // Ventana amplia: cubre la serie GT de 30 días y el histórico YouTube de 28.
+  // Ventana: 30 días de GT.
   const start = addDays(end, -29);
 
   const db = getDb();
   const termIds = terms.map((t) => t.id);
-  const rows = termIds.length
-    ? await db
-        .select()
-        .from(schema.intelSnapshot)
-        .where(
-          scoped(
-            schema.intelSnapshot.organizationId,
-            organizationId,
-            inArray(schema.intelSnapshot.termId, termIds)
-          )
-        )
-        .orderBy(schema.intelSnapshot.day)
-    : [];
-
-  const byTerm = new Map<string, Array<{ day: string; value: number; videoCount: number }>>();
-  for (const row of rows) {
-    const list = byTerm.get(row.termId) ?? [];
-    list.push({ day: row.day, value: Number(row.value), videoCount: row.videoCount });
-    byTerm.set(row.termId, list);
-  }
-
-  // Serie GT por término (si está habilitada y hay datos ingeridos).
   const gtByTerm = new Map<string, Array<{ day: string; value: number }>>();
-  if (gtActive && termIds.length) {
+  if (termIds.length) {
     const gtRows = await db
       .select()
       .from(schema.intelGtSnapshot)
@@ -187,25 +74,9 @@ export async function getTrends(
 
   const trends: TrendCard[] = [];
   for (const term of terms) {
-    const gtHistory = (gtByTerm.get(term.id) ?? []).filter(
+    const history = (gtByTerm.get(term.id) ?? []).filter(
       (s) => s.day >= start && s.day <= end
     );
-    const ytHistory = (byTerm.get(term.id) ?? []).filter(
-      (s) => s.day >= start && s.day <= end
-    );
-
-    // Prefiere GT; si no hay serie GT para este término, usa YouTube.
-    let history: Array<{ day: string; value: number; videoCount: number }>;
-    if (gtHistory.length > 0) {
-      const ytCountByDay = new Map(ytHistory.map((s) => [s.day, s.videoCount]));
-      history = gtHistory.map((s) => ({
-        day: s.day,
-        value: s.value,
-        videoCount: ytCountByDay.get(s.day) ?? 0,
-      }));
-    } else {
-      history = ytHistory;
-    }
     if (history.length === 0) continue;
 
     const recent = history.slice(-7).map((s) => s.value);
@@ -216,158 +87,13 @@ export async function getTrends(
       name: term.name,
       z: growthZ(recent, prior),
       lastValue: last.value,
-      lastVideoCount: last.videoCount,
       series: history.map((s) => ({ day: s.day, value: s.value })),
     });
   }
   trends.sort((a, b) => (b.z ?? -Infinity) - (a.z ?? -Infinity));
   return {
     trends,
-    lastIngestAt: creds?.lastIngestAt?.toISOString() ?? null,
-  };
-}
-
-export type SampleVideo = {
-  videoId: string;
-  title: string;
-  views: number;
-  likes: number;
-};
-
-export type SearchReport = {
-  query: string;
-  term: { id: string; name: string } | null;
-  classification: Classification;
-  headline: string;
-  warnings: string[];
-  series: Descriptive | null;
-  seriesPoints: Array<{ day: string; value: number }>;
-  videos: (Descriptive & { sample: SampleVideo[] }) | null;
-  inferencia: { z: number | null; p: number | null; window: string };
-  competencia: {
-    establecimientos: number;
-    censored: boolean;
-    fuente: "DENUE · INEGI";
-    nota: string;
-  } | null;
-  method: { fuente: string; geo: string; ventana: string };
-  generatedAt: string;
-};
-
-const RECENT_WINDOW = "últimos 7 días vs 21 días previos";
-const SERIES_WINDOW = "28 días (diario, UTC)";
-
-/**
- * Estado 2: informe de búsqueda. Resuelve el término, calcula descriptiva e
- * inferencia sobre su serie, muestrea los videos coincidentes del último
- * ingest y, si hay token DENUE, agrega el conteo de establecimientos como
- * proxy de competencia. Nunca inventa datos: sin historia → clasificación D
- * con su advertencia; sin token DENUE → competencia null.
- */
-export async function searchReport(
-  organizationId: string,
-  query: string
-): Promise<SearchReport> {
-  const db = getDb();
-  const term = await resolveTerm(organizationId, query);
-  await db
-    .insert(schema.intelSearchLog)
-    .values({
-      id: newId("intelSearch"),
-      organizationId,
-      query: query.slice(0, 200),
-      termId: term?.id ?? null,
-    });
-
-  const end = utcDay();
-  const start = addDays(end, -27);
-  const history = term
-    ? (
-        await db
-          .select()
-          .from(schema.intelSnapshot)
-          .where(
-            scoped(
-              schema.intelSnapshot.organizationId,
-              organizationId,
-              eq(schema.intelSnapshot.termId, term.id)
-          )
-        )
-          .orderBy(schema.intelSnapshot.day)
-      ).filter((s) => s.day >= start && s.day <= end)
-    : [];
-
-  const seriesValues = history.map((s) => Number(s.value));
-  const seriesPoints = history.map((s) => ({ day: s.day, value: Number(s.value) }));
-  const recent = seriesValues.slice(-7);
-  const prior = seriesValues.slice(0, -7);
-  const z = seriesValues.length >= 7 ? growthZ(recent, prior) : null;
-  const verdict = classify({ daysWithData: seriesValues.length, z });
-
-  const day = history.length > 0 ? history[history.length - 1]!.day : utcDay();
-  const videoRows =
-    term && seriesValues.length > 0
-      ? await db
-          .select()
-          .from(schema.intelVideo)
-          .where(
-            scoped(
-              schema.intelVideo.organizationId,
-              organizationId,
-              eq(schema.intelVideo.termId, term.id),
-              eq(schema.intelVideo.day, day)
-          )
-          )
-          .orderBy(desc(schema.intelVideo.views))
-          .limit(10)
-      : [];
-  const sample: SampleVideo[] = videoRows.map((v) => ({
-    videoId: v.videoId,
-    title: v.title ?? "",
-    views: Number(v.views),
-    likes: Number(v.likes),
-  }));
-
-  let competencia: SearchReport["competencia"] = null;
-  const creds = await getIntelCredentials(organizationId);
-  if (creds?.denueToken && term) {
-    const count = await countEstablishments(creds.denueToken, term.keywords);
-    if (count) {
-      competencia = {
-        establecimientos: count.count,
-        censored: count.censored,
-        fuente: "DENUE · INEGI",
-        nota: count.censored
-          ? "La ventana de la API devolvió 10 registros: el total real es ≥10."
-          : "Conteo exacto de coincidencias en el directorio nacional.",
-      };
-    }
-  }
-
-  return {
-    query,
-    term: term ? { id: term.id, name: term.name } : null,
-    classification: verdict.classification,
-    headline: verdict.headline,
-    warnings: verdict.warnings,
-    series: seriesValues.length > 0 ? describe(seriesValues) : null,
-    seriesPoints,
-    videos:
-      sample.length > 0
-        ? { ...describe(sample.map((v) => v.views)), sample }
-        : null,
-    inferencia: {
-      z,
-      p: z !== null ? oneSidedP(z) : null,
-      window: RECENT_WINDOW,
-    },
-    competencia,
-    method: {
-      fuente: "YouTube Data API · mostPopular (MX)",
-      geo: term?.geo ?? "MX",
-      ventana: SERIES_WINDOW,
-    },
-    generatedAt: new Date().toISOString(),
+    lastIngestAt: creds?.gtLastSyncAt?.toISOString() ?? creds?.lastIngestAt?.toISOString() ?? null,
   };
 }
 
@@ -377,17 +103,16 @@ export type TermCompareItem = {
   seriesPoints: Array<{ day: string; value: number }>;
   descriptive: Descriptive;
   z: number | null;
-  /** % del interés del último feed que representa este nicho (share). */
+  /** % del interés GT del último día que representa este nicho (share). */
   sharePct: number;
   lastValue: number;
-  videoCount: number;
   classification: Classification;
 };
 
 /**
  * Comparativa de 2–3 nichos: mismas métricas, misma ventana, unidades
- * explícitas. El share se calcula sobre la suma de vistas del último feed
- * entre los nichos monitoreados (no es share de mercado total).
+ * explícitas. Fuente: SOLO Google Trends (índice 0–100). Sin datos GT →
+ * el nicho queda con serie vacía (nunca se rellena con YouTube).
  */
 export async function compareTerms(
   organizationId: string,
@@ -400,26 +125,26 @@ export async function compareTerms(
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
 
   const end = utcDay();
-  const start = addDays(end, -27);
+  const start = addDays(end, -29);
   const db = getDb();
   const rows = terms.length
     ? await db
         .select()
-        .from(schema.intelSnapshot)
+        .from(schema.intelGtSnapshot)
         .where(
           scoped(
-            schema.intelSnapshot.organizationId,
+            schema.intelGtSnapshot.organizationId,
             organizationId,
-            inArray(schema.intelSnapshot.termId, terms.map((t) => t.id))
+            inArray(schema.intelGtSnapshot.termId, terms.map((t) => t.id))
           )
         )
-        .orderBy(schema.intelSnapshot.day)
+        .orderBy(schema.intelGtSnapshot.day)
     : [];
 
-  const byTerm = new Map<string, Array<{ day: string; value: number; videoCount: number }>>();
+  const byTerm = new Map<string, Array<{ day: string; value: number }>>();
   for (const row of rows) {
     const list = byTerm.get(row.termId) ?? [];
-    list.push({ day: row.day, value: Number(row.value), videoCount: row.videoCount });
+    list.push({ day: row.day, value: row.value });
     byTerm.set(row.termId, list);
   }
 
@@ -440,7 +165,6 @@ export async function compareTerms(
     const prior = seriesValues.slice(0, -7);
     const z = seriesValues.length >= 7 ? growthZ(recent, prior) : null;
     const verdict = classify({ daysWithData: seriesValues.length, z });
-    const last = history[history.length - 1];
     return {
       termId: term.id,
       name: term.name,
@@ -449,7 +173,6 @@ export async function compareTerms(
       z,
       sharePct: totalLast > 0 ? (lastValues[i]! / totalLast) * 100 : 0,
       lastValue: lastValues[i]!,
-      videoCount: last?.videoCount ?? 0,
       classification: verdict.classification,
     };
   });
@@ -580,8 +303,8 @@ export type GtReport = {
   termName: string;
   /** Serie GT 0–100 (máx de la ventana = 100). */
   series: Array<{ day: string; value: number }>;
-  /** Fuente real de la serie (para el tooltip). */
-  seriesSource: "google_trends" | "youtube_fallback" | "none";
+  /** Fuente real de la serie (para el tooltip). Solo GT: sin fallback YouTube. */
+  seriesSource: "google_trends" | "none";
   /** Regiones 0–100 (GT) o DENUE (fallback, normalizado). */
   regions: Array<{ state: string; index: number; source: "google_trends" | "denue" }>;
   regionsSource: "google_trends" | "denue" | "none";
@@ -619,10 +342,10 @@ export async function getGtReport(
   const gtActive = creds?.gtEnabled ?? false;
 
   const end = utcDay();
-  // Ventana de lectura: cubre la serie GT de 30 días (el fallback YouTube usa 28).
+  // Ventana de lectura: cubre la serie GT de 30 días.
   const start = addDays(end, -29);
 
-  // Serie GT (solo si está habilitado)
+  // Serie GT (solo si está habilitado). Sin fallback a YouTube: fuente 100 % externa.
   const gtRows = gtActive
     ? await db
         .select()
@@ -636,24 +359,8 @@ export async function getGtReport(
   let series: GtReport["series"] = [];
   let seriesSource: GtReport["seriesSource"] = "none";
   if (gtRows.length > 0) {
-    series = gtRows.map((r) => ({ day: r.day, value: r.value }));
+    series = gtRows.filter((r) => r.day >= start && r.day <= end).map((r) => ({ day: r.day, value: r.value }));
     seriesSource = "google_trends";
-  } else {
-    // Fallback YouTube → normalizado 0–100
-    const ytRows = await db
-      .select()
-      .from(schema.intelSnapshot)
-      .where(
-        scoped(schema.intelSnapshot.organizationId, organizationId, eq(schema.intelSnapshot.termId, termId))
-      )
-      .orderBy(schema.intelSnapshot.day);
-    const filtered = ytRows.filter((s) => s.day >= start && s.day <= end);
-    if (filtered.length > 0) {
-      const raw = filtered.map((s) => Number(s.value));
-      const idx = toIndex(raw);
-      series = filtered.map((s, i) => ({ day: s.day, value: idx[i] ?? 0 }));
-      seriesSource = "youtube_fallback";
-    }
   }
 
   // Regiones GT (solo si está habilitado)
@@ -702,7 +409,7 @@ export async function getGtReport(
     .slice(0, 5)
     .map((r) => ({ label: r.label, value: r.value, pct: r.pct, isBreakout: r.isBreakout }));
 
-  const usedFallback = seriesSource === "youtube_fallback" || regionsSource === "none";
+  const usedFallback = regionsSource === "none" && seriesSource === "none";
 
   return {
     termId,
@@ -715,10 +422,7 @@ export async function getGtReport(
     queries,
     usedFallback,
     method: {
-      fuente:
-        seriesSource === "google_trends"
-          ? "Google Trends (endpoint no oficial)"
-          : "YouTube mostPopular (fallback, normalizado 0–100)",
+      fuente: "Google Trends (endpoint no oficial, fuente externa)",
       ventana: "últimos 30 días",
     },
     generatedAt: new Date().toISOString(),

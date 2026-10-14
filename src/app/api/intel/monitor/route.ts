@@ -5,7 +5,8 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { intelDisabledResponse, intelEnabled } from "@/server/intel/flag";
 import { findTermByKeyword } from "@/server/intel/terms";
-import { IngestNotConfiguredError, runIngest } from "@/server/intel/service";
+import { getIntelCredentials } from "@/server/intel/credentials";
+import { runGtIngest } from "@/server/intel/service";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ const bodySchema = z.object({ keyword: z.string().min(2).max(80) });
 /**
  * Monitorear una keyword desde el overview: la agrega al catálogo de
  * términos (o reutiliza el nicho que ya la cubre, sin duplicar) y dispara
- * la ingesta para que entre al share y a las tendencias de inmediato.
+ * la ingesta GT para que entre al ranking de inmediato.
  */
 export const POST = withAuth(async (session, req: Request) => {
   if (!intelEnabled()) return intelDisabledResponse();
@@ -58,15 +59,12 @@ export const POST = withAuth(async (session, req: Request) => {
     active: true,
   });
 
-  // Captura inmediata para que el nicho nuevo tenga dato del mismo día.
-  // Si falla (sin credenciales, red), el término queda listo para la
-  // siguiente ingesta manual — nunca bloquea el alta.
-  try {
-    await runIngest(organizationId);
-  } catch (e) {
-    if (!(e instanceof IngestNotConfiguredError)) {
-      // Degradación silenciosa: el término ya existe; el dato llega luego.
-    }
+  // Captura inmediata GT para que el nicho nuevo tenga dato el mismo día.
+  // Si falla (GT deshabilitado, rate limit), el término queda listo para
+  // la siguiente ingesta manual — nunca bloquea el alta.
+  const creds = await getIntelCredentials(organizationId);
+  if (creds?.gtEnabled) {
+    await runGtIngest(organizationId, termId).catch(() => undefined);
   }
 
   return Response.json({ termId, name: keyword, created: true });

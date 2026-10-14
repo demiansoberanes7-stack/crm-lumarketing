@@ -14,10 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TrendCard } from "@/components/inteligencia/trend-card";
 import { KeywordView, type KeywordOverviewView } from "@/components/inteligencia/keyword-view";
-import { ShareBars } from "@/components/inteligencia/share-bars";
 import { AudiencePanel } from "@/components/inteligencia/audience-panel";
 import { GeoPanel } from "@/components/inteligencia/geo-panel";
-import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
 import { GtRelatedPanel } from "@/components/inteligencia/gt-related-panel";
@@ -31,7 +29,6 @@ type TrendsPayload = {
     name: string;
     z: number | null;
     lastValue: number;
-    lastVideoCount: number;
     series: Array<{ day: string; value: number }>;
   }>;
   lastIngestAt: string | null;
@@ -41,7 +38,7 @@ type GtReport = {
   termId: string;
   termName: string;
   series: Array<{ day: string; value: number }>;
-  seriesSource: "google_trends" | "youtube_fallback" | "none";
+  seriesSource: "google_trends" | "none";
   regions: Array<{ state: string; index: number; source: "google_trends" | "denue" }>;
   regionsSource: "google_trends" | "denue" | "none";
   topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
@@ -51,24 +48,13 @@ type GtReport = {
   generatedAt: string;
 };
 
-const numberCompact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
-
-function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <article className="stat-card min-w-0 rounded-xl border bg-card p-4 shadow-xs">
-      <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-text-3">{label}</p>
-      <p className="mt-1 truncate text-xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="mt-0.5 truncate text-[11px] text-text-3">{hint}</p>}
-    </article>
-  );
-}
-
 /* ── Componente principal ────────────────────────────────────────────────── */
 
 /**
- * Módulo de inteligencia. Vista principal = layout estilo Google Trends
- * (chip de término, filtros, serie 0–100, subregiones, temas/consultas).
- * Pestaña «Overview» = el motor SEMrush (keyword-view) + tablero completo.
+ * Módulo de inteligencia — 100 % fuentes externas (Google Trends + DENUE).
+ * Sin datos internos del CRM ni de canales propios.
+ * Pestaña «Tendencias» = ranking + comparativa multi-nicho + subregiones/temas GT.
+ * Pestaña «Overview» = buscador de keywords + contexto ENDUTIH + mapa DENUE.
  */
 export function IntelClient() {
   const [trends, setTrends] = useState<TrendsPayload | null>(null);
@@ -86,10 +72,7 @@ export function IntelClient() {
   const suggestSeq = useRef(0);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Pestana activa: "gt" (vista principal) u "overview" (SEMrush + tablero).
   const [tab, setTab] = useState<"gt" | "overview">("gt");
-
-  // Selección de término para el reporte GT.
   const [activeTermId, setActiveTermId] = useState<string>("");
   const [gtReport, setGtReport] = useState<GtReport | null>(null);
 
@@ -108,14 +91,12 @@ export function IntelClient() {
 
   useEffect(() => { void loadTrends(); }, [loadTrends]);
 
-  // Selecciona el primer término por defecto para GT.
   useEffect(() => {
     if (!activeTermId && trends?.trends.length) {
       setActiveTermId(trends.trends[0]!.termId);
     }
   }, [trends, activeTermId]);
 
-  // Carga el reporte GT cuando cambia el término activo.
   const loadGt = useCallback(async (termId: string) => {
     if (!termId) return;
     const res = await fetch(`/api/intel/gt?termId=${encodeURIComponent(termId)}`, {
@@ -131,7 +112,6 @@ export function IntelClient() {
 
   useEffect(() => { void loadGt(activeTermId); }, [activeTermId, loadGt]);
 
-  // Autocompletado con debounce (estilo SEMrush): mientras el usuario escribe.
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
@@ -155,33 +135,10 @@ export function IntelClient() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const shareRows = useMemo(() => {
-    if (!trends) return [];
-    const total = trends.trends.reduce((a, t) => a + t.lastValue, 0);
-    return trends.trends
-      .filter((t) => t.lastValue > 0)
-      .map((t) => ({
-        name: t.name,
-        views: t.lastValue,
-        pct: total > 0 ? (t.lastValue / total) * 100 : 0,
-      }))
-      .sort((a, b) => b.pct - a.pct);
-  }, [trends]);
-
-  const kpis = useMemo(() => {
-    if (!trends) return null;
-    const totalViews = trends.trends.reduce((a, t) => a + t.lastValue, 0);
-    const totalVideos = trends.trends.reduce((a, t) => a + t.lastVideoCount, 0);
-    return { niches: trends.trends.length, totalViews, totalVideos };
-  }, [trends]);
-
   const geoTerms = useMemo(
     () => trends?.trends.map((t) => ({ id: t.termId, name: t.name })) ?? [],
     [trends]
   );
-
-  // Serie para la gráfica GT (con suavizado MA7, sin alterar el dato crudo).
-  // (Se eliminó: la pestaña Tendencias ahora usa el ranking + comparativa multi-nicho.)
 
   function toggleSelect(termId: string) {
     setCompareItems(null);
@@ -264,7 +221,7 @@ export function IntelClient() {
       await loadTrends();
     } else {
       const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
-      setError(data?.error?.message ?? "No se pudo actualizar el feed de datos.");
+      setError(data?.error?.message ?? "No se pudo actualizar Google Trends.");
     }
   }
 
@@ -286,8 +243,9 @@ export function IntelClient() {
             <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-text-2">
-            Tendencias de búsqueda en México: interés relativo (0–100), subregiones y
-            temas/consultas relacionados. Fuente primaria Google Trends; fallback a YouTube.
+            Tendencias de búsqueda en México desde fuentes externas: Google Trends
+            (interés relativo 0–100, subregiones, temas/consultas) y DENUE · INEGI
+            (competencia local). Sin datos de tus canales ni del CRM.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -304,7 +262,7 @@ export function IntelClient() {
         </div>
       </header>
 
-      {/* Pestañas: GT (principal) u Overview (SEMrush + tablero). */}
+      {/* Pestañas: Tendencias (GT) u Overview (buscador + DENUE + ENDUTIH). */}
       <div className="flex gap-1 rounded-md bg-subtle p-0.5" role="tablist">
         <button
           type="button"
@@ -348,9 +306,7 @@ export function IntelClient() {
             <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
               <h2 className="font-semibold">Interés comparado · últimos 30 días</h2>
               <p className="mt-1 text-xs text-text-3">
-                Cada nicho normalizado a su propio máximo (0–100). Sirve para ver de un
-                vistazo cuáles suben y cuáles bajan. Fuente: Google Trends (MX) cuando hay
-                datos; si no, YouTube mostPopular.
+                Cada nicho normalizado a su propio máximo (0–100). Fuente: Google Trends (MX).
               </p>
               <div className="mt-3">
                 <GtCompareChart trends={trends.trends} />
@@ -369,7 +325,7 @@ export function IntelClient() {
             </section>
           )}
 
-          {/* Selector de nicho para paneles GT (subregiones, temas) */}
+          {/* Selector de nicho para paneles GT */}
           {trends && trends.trends.length > 0 && gtReport && (gtReport.regionsSource !== "none" || gtReport.topics.length > 0 || gtReport.queries.length > 0) && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-medium text-text-2">Ver detalle de:</span>
@@ -392,7 +348,7 @@ export function IntelClient() {
             </div>
           )}
 
-          {/* Subregiones (solo si hay datos GT) */}
+          {/* Subregiones GT */}
           {gtReport && gtReport.regionsSource !== "none" && (
             <GtRegionPanel
               regions={gtReport.regions}
@@ -401,12 +357,12 @@ export function IntelClient() {
             />
           )}
 
-          {/* Temas y consultas (solo si hay datos GT) */}
+          {/* Temas y consultas GT */}
           {gtReport && (gtReport.topics.length > 0 || gtReport.queries.length > 0) && (
             <GtRelatedPanel topics={gtReport.topics} queries={gtReport.queries} />
           )}
 
-          {/* Cards de tendencia (compatibilidad con el flujo de comparar) */}
+          {/* Cards de tendencia (selección para comparar) */}
           {trends && trends.trends.length > 0 && (
             <section aria-label="Tendencias actuales" className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -434,6 +390,19 @@ export function IntelClient() {
               </div>
             </section>
           )}
+
+          {/* Estado vacío: sin datos GT */}
+          {loadingTrends ? (
+            <p className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">Consultando Google Trends…</p>
+          ) : trends && trends.trends.length === 0 && (
+            <div className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">
+              <p className="font-medium">Aún no hay datos de Google Trends.</p>
+              <p className="mt-1 text-text-3">
+                Activa Google Trends en Conexiones → Inteligencia y pulsa «Actualizar datos»
+                para ingerir el interés de búsqueda de los 16 nichos (fuente externa, gratis).
+              </p>
+            </div>
+          )}
         </>
       ) : overview ? (
         <KeywordView data={overview} onMonitored={() => void loadTrends()} />
@@ -441,7 +410,7 @@ export function IntelClient() {
         <CompareView items={compareItems} onRemove={toggleSelect} onClear={clearCompare} />
       ) : (
         <>
-          {/* Buscador SEMrush */}
+          {/* Buscador estilo SEMrush */}
           <form onSubmit={handleSearch} className="relative flex flex-wrap gap-2">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
@@ -487,66 +456,11 @@ export function IntelClient() {
             )}
           </form>
 
-          {kpis && (
-            <section aria-label="Resumen" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <StatCard label="Nichos monitoreados" value={String(kpis.niches)} hint="catálogo activo" />
-              <StatCard label="Videos del feed" value={numberCompact.format(kpis.totalVideos)} hint="coincidencias del día" />
-              <StatCard label="Interés total" value={numberCompact.format(kpis.totalViews)} hint="vistas acumuladas" />
-              <StatCard
-                label="Comparativa"
-                value={`${selected.length}/3`}
-                hint={selected.length >= 2 ? "pulsa Comparar" : "selecciona tarjetas"}
-              />
-            </section>
-          )}
-
-          <ShareBars rows={shareRows} />
-
+          {/* Contexto demográfico externo (ENDUTIH, no es dato del CRM) */}
           <AudiencePanel />
 
+          {/* Competencia local DENUE (fuente externa INEGI) */}
           <GeoPanel terms={geoTerms} />
-
-          <ContentPanel />
-
-          <section aria-label="Tendencias actuales" className="space-y-3">
-            {loadingTrends ? (
-              <p className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">Consultando tendencias…</p>
-            ) : trends && trends.trends.length > 0 ? (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-sm font-semibold tracking-tight text-text-2">
-                    Evolución por nicho · 28 días
-                  </h2>
-                  <Button
-                    onClick={() => void handleCompare()}
-                    disabled={selected.length < 2 || comparing}
-                    variant={selected.length >= 2 ? "default" : "outline"}
-                  >
-                    <GitCompareArrows className="mr-2 h-4 w-4" />
-                    {comparing ? "Comparando…" : `Comparar (${selected.length})`}
-                  </Button>
-                </div>
-                <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {trends.trends.map((trend) => (
-                    <TrendCard
-                      key={trend.termId}
-                      trend={trend}
-                      selected={selected.includes(trend.termId)}
-                      onSelect={() => toggleSelect(trend.termId)}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">
-                <p className="font-medium">Aún no hay datos de tendencias.</p>
-                <p className="mt-1 text-text-3">
-                  Configura la API key de YouTube (Conexiones → Inteligencia) y pulsa
-                  «Actualizar datos» para capturar el feed popular del día.
-                </p>
-              </div>
-            )}
-          </section>
         </>
       )}
       </div>
