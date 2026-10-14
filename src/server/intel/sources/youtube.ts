@@ -121,6 +121,106 @@ export async function verifyYoutubeKey(apiKey: string): Promise<true> {
   return true;
 }
 
+export type SearchHit = PopularVideo & { position: number };
+
+export type VideoSearchResult = {
+  /** Total aproximado de videos que coinciden con la consulta (SERP volumen). */
+  totalResults: number;
+  videos: SearchHit[];
+};
+
+/**
+ * Búsqueda real en YouTube (search.list + videos.list) — el equivalente a
+ * un SERP por palabra clave. `search.list` cuesta 100 unidades de cuota
+ * (de las 10 000 diarias gratis); `videos.list` por los IDs, 1 unidad.
+ * Devuelve el total reportado (proxy de saturación de contenido) y los
+ * primeros resultados con estadísticas y duración.
+ */
+export async function searchVideos(
+  apiKey: string,
+  query: string,
+  maxResults = 12
+): Promise<VideoSearchResult> {
+  const q = query.trim();
+  if (!q) return { totalResults: 0, videos: [] };
+  const searchParams = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    q,
+    regionCode: "MX",
+    relevanceLanguage: "es",
+    maxResults: String(Math.min(maxResults, 25)),
+    key: apiKey,
+  });
+  let response: Response;
+  try {
+    response = await fetch(`${YOUTUBE_BASE}/search?${searchParams.toString()}`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new YoutubeError("YouTube no respondió a tiempo", "network");
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new YoutubeError("YouTube rechazó la API key", "unauthorized");
+  }
+  const payload = (await response.json().catch(() => null)) as {
+    items?: Array<{ id?: { videoId?: string } }>;
+    pageInfo?: { totalResults?: number };
+    error?: { message?: string };
+  } | null;
+  if (!response.ok || !payload || payload.error) {
+    throw new YoutubeError(
+      payload?.error?.message ?? `YouTube respondió ${response.status}`,
+      "unexpected"
+    );
+  }
+  const ids = (payload.items ?? [])
+    .map((i) => i.id?.videoId)
+    .filter((id): id is string => Boolean(id));
+  if (ids.length === 0) {
+    return { totalResults: payload.pageInfo?.totalResults ?? 0, videos: [] };
+  }
+  const detailParams = new URLSearchParams({
+    part: "snippet,statistics,contentDetails",
+    id: ids.join(","),
+    key: apiKey,
+  });
+  let detailResponse: Response;
+  try {
+    detailResponse = await fetch(`${YOUTUBE_BASE}/videos?${detailParams.toString()}`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new YoutubeError("YouTube no respondió a tiempo", "network");
+  }
+  const detailPayload = (await detailResponse.json().catch(() => null)) as
+    | YoutubeListResponse
+    | null;
+  const byId = new Map<string, PopularVideo>();
+  for (const item of detailPayload?.items ?? []) {
+    if (!item?.id) continue;
+    byId.set(item.id, {
+      videoId: item.id,
+      title: item.snippet?.title ?? "",
+      description: item.snippet?.description ?? "",
+      views: Number(item.statistics?.viewCount ?? 0) || 0,
+      likes: Number(item.statistics?.likeCount ?? 0) || 0,
+      durationSeconds: item.contentDetails?.duration
+        ? parseDurationSeconds(item.contentDetails.duration)
+        : null,
+      publishedAt: item.snippet?.publishedAt ?? null,
+      channelTitle: item.snippet?.channelTitle ?? null,
+    });
+  }
+  // Conserva el orden del SERP; posición 1-based.
+  const videos: SearchHit[] = [];
+  ids.forEach((id, i) => {
+    const v = byId.get(id);
+    if (v) videos.push({ ...v, position: i + 1 });
+  });
+  return { totalResults: payload.pageInfo?.totalResults ?? 0, videos };
+}
+
 export type TermMatch = {
   videoId: string;
   title: string;

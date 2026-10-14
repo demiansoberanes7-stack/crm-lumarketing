@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, GitCompareArrows, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TrendCard } from "@/components/inteligencia/trend-card";
-import { ReportView, type SearchReport } from "@/components/inteligencia/report-view";
+import { KeywordView, type KeywordOverviewView } from "@/components/inteligencia/keyword-view";
 import { ShareBars } from "@/components/inteligencia/share-bars";
 import { AudiencePanel } from "@/components/inteligencia/audience-panel";
 import { GeoPanel } from "@/components/inteligencia/geo-panel";
@@ -38,21 +38,25 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 }
 
 /**
- * Módulo de inteligencia — panel de búsqueda de tendencias.
- * Estado 1: KPIs + share Nielsen + audiencia + tarjetas con comparativa.
- * Estado 2: informe de búsqueda (actualiza el panel) o comparativa de nichos.
+ * Módulo de inteligencia — motor de búsqueda de palabras clave estilo
+ * SEMrush con autocompletado, más el tablero (share, audiencia, geografía,
+ * embudo, contenidos) debajo del overview.
  */
 export function IntelClient() {
   const [trends, setTrends] = useState<TrendsPayload | null>(null);
-  const [report, setReport] = useState<SearchReport | null>(null);
+  const [overview, setOverview] = useState<KeywordOverviewView | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [compareItems, setCompareItems] = useState<CompareItem[] | null>(null);
   const [comparing, setComparing] = useState(false);
   const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggest, setShowSuggest] = useState(false);
   const [loadingTrends, setLoadingTrends] = useState(true);
   const [searching, setSearching] = useState(false);
   const [ingesting, setIngesting] = useState(false);
   const [error, setError] = useState("");
+  const suggestSeq = useRef(0);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadTrends = useCallback(async () => {
     setLoadingTrends(true);
@@ -68,6 +72,30 @@ export function IntelClient() {
   }, []);
 
   useEffect(() => { void loadTrends(); }, [loadTrends]);
+
+  // Autocompletado con debounce (estilo SEMrush): mientras el usuario escribe.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const seq = ++suggestSeq.current;
+    const timer = setTimeout(() => {
+      void (async () => {
+        const res = await fetch(`/api/intel/suggest?q=${encodeURIComponent(q)}`, {
+          cache: "no-store",
+        }).catch(() => null);
+        if (seq !== suggestSeq.current) return;
+        if (res?.ok) {
+          const data = await res.json().catch(() => null) as { suggestions?: string[] } | null;
+          setSuggestions(data?.suggestions ?? []);
+          setShowSuggest(true);
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const shareRows = useMemo(() => {
     if (!trends) return [];
@@ -107,7 +135,7 @@ export function IntelClient() {
     if (selected.length < 2) return;
     setComparing(true);
     setError("");
-    setReport(null);
+    setOverview(null);
     const res = await fetch(`/api/intel/compare?ids=${selected.join(",")}`, { cache: "no-store" }).catch(() => null);
     setComparing(false);
     if (res?.ok) {
@@ -124,28 +152,41 @@ export function IntelClient() {
     setSelected([]);
   }
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    if (!q) return;
+  async function runSearch(q: string) {
+    const term = q.trim();
+    if (!term) return;
     setSearching(true);
     setError("");
-    setReport(null);
+    setOverview(null);
     setCompareItems(null);
-    const res = await fetch(`/api/intel/search?q=${encodeURIComponent(q)}`, { cache: "no-store" }).catch(() => null);
+    setShowSuggest(false);
+    const res = await fetch(`/api/intel/keyword?q=${encodeURIComponent(term)}`, {
+      cache: "no-store",
+    }).catch(() => null);
     setSearching(false);
     if (res?.ok) {
-      const data = await res.json().catch(() => null) as SearchReport | null;
-      if (data) setReport(data);
+      const data = await res.json().catch(() => null) as KeywordOverviewView | null;
+      if (data) setOverview(data);
     } else {
       const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
-      setError(data?.error?.message ?? "No se pudo generar el informe.");
+      setError(data?.error?.message ?? "No se pudo analizar la palabra clave.");
     }
   }
 
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    void runSearch(query);
+  }
+
+  function pickSuggestion(s: string) {
+    setQuery(s);
+    void runSearch(s);
+  }
+
   function handleClear() {
-    setReport(null);
+    setOverview(null);
     setQuery("");
+    setSuggestions([]);
     setError("");
   }
 
@@ -163,6 +204,16 @@ export function IntelClient() {
     }
   }
 
+  function onSuggestFocus() {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+    if (suggestions.length > 0) setShowSuggest(true);
+  }
+
+  function onSuggestBlur() {
+    // Retrasa el cierre para permitir el click en una sugerencia.
+    blurTimer.current = setTimeout(() => setShowSuggest(false), 150);
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -171,8 +222,8 @@ export function IntelClient() {
             <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-text-2">
-            Compara nichos, busca una idea y mide su relevancia con datos públicos de México
-            (YouTube + DENUE/INEGI). Cada gráfica indica su unidad y fuente.
+            Analiza cualquier palabra clave: intención, dificultad, palabras relacionadas,
+            preguntas y el SERP real de YouTube en México.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -188,21 +239,45 @@ export function IntelClient() {
         </div>
       </header>
 
-      <form onSubmit={(e) => void handleSearch(e)} className="flex flex-wrap gap-2">
+      <form onSubmit={handleSearch} className="relative flex flex-wrap gap-2">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Busca una idea: cámaras de seguridad, pc gamer, starlink…"
+            onFocus={onSuggestFocus}
+            onBlur={onSuggestBlur}
+            placeholder="Escribe una keyword: cámaras de seguridad, pc gamer, starlink…"
             className="pl-9"
-            aria-label="Buscar una idea"
+            aria-label="Palabra clave a analizar"
+            autoComplete="off"
           />
+          {showSuggest && suggestions.length > 0 && (
+            <ul
+              role="listbox"
+              aria-label="Sugerencias"
+              className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 shadow-md"
+            >
+              {suggestions.map((s) => (
+                <li key={s}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickSuggestion(s)}
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  >
+                    <Search className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                    <span className="min-w-0 truncate">{s}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <Button type="submit" disabled={searching || !query.trim()}>
-          {searching ? "Analizando…" : "Buscar"}
+          {searching ? "Analizando…" : "Analizar"}
         </Button>
-        {report && (
+        {overview && (
           <Button type="button" variant="ghost" onClick={handleClear}>
             <X className="mr-1 h-4 w-4" /> Limpiar
           </Button>
@@ -215,8 +290,8 @@ export function IntelClient() {
         </p>
       )}
 
-      {report ? (
-        <ReportView report={report} />
+      {overview ? (
+        <KeywordView data={overview} />
       ) : compareItems ? (
         <CompareView items={compareItems} onRemove={toggleSelect} onClear={clearCompare} />
       ) : (
