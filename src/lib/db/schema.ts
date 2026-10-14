@@ -2457,6 +2457,11 @@ export const intelVideo = pgTable(
     title: varchar("title", { length: 300 }),
     views: bigint("views", { mode: "number" }).notNull().default(0),
     likes: bigint("likes", { mode: "number" }).notNull().default(0),
+    /** Duración en segundos (contentDetails del API). */
+    durationSeconds: integer("duration_seconds"),
+    /** Fecha de publicación del video. */
+    publishedAt: timestamp("published_at"),
+    channelTitle: varchar("channel_title", { length: 200 }),
     /** Día UTC de captura, "YYYY-MM-DD". */
     day: varchar("day", { length: 10 }).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),

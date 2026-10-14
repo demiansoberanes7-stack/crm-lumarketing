@@ -99,6 +99,9 @@ export async function runIngest(organizationId: string): Promise<IngestResult> {
             title: v.title.slice(0, 300),
             views: v.views,
             likes: v.likes,
+            durationSeconds: v.durationSeconds,
+            publishedAt: v.publishedAt ? new Date(v.publishedAt) : null,
+            channelTitle: v.channelTitle?.slice(0, 200) ?? null,
             day,
           }))
         )

@@ -10,6 +10,7 @@ import { ShareBars } from "@/components/inteligencia/share-bars";
 import { AudiencePanel } from "@/components/inteligencia/audience-panel";
 import { GeoPanel } from "@/components/inteligencia/geo-panel";
 import { FunnelPanel } from "@/components/inteligencia/funnel-panel";
+import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 
 type TrendsPayload = {
@@ -240,6 +241,8 @@ export function IntelClient() {
           <GeoPanel terms={geoTerms} />
 
           <FunnelPanel />
+
+          <ContentPanel />
 
           <section aria-label="Tendencias actuales" className="space-y-3">
             {loadingTrends ? (

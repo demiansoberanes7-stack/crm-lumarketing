@@ -15,7 +15,24 @@ export type PopularVideo = {
   description: string;
   views: number;
   likes: number;
+  /** Duración en segundos (ISO 8601 del API → number). null si falta. */
+  durationSeconds: number | null;
+  /** Fecha de publicación del video. null si falta. */
+  publishedAt: string | null;
+  channelTitle: string | null;
 };
+
+/** Parsea la duración ISO 8601 de YouTube (PT#H#M#S) a segundos. */
+export function parseDurationSeconds(iso: string | undefined | null): number | null {
+  if (!iso) return null;
+  const m = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return null;
+  const h = Number(m[1] ?? 0);
+  const min = Number(m[2] ?? 0);
+  const s = Number(m[3] ?? 0);
+  const total = h * 3600 + min * 60 + s;
+  return total > 0 ? total : null;
+}
 
 export class YoutubeError extends Error {
   constructor(
@@ -30,7 +47,13 @@ export class YoutubeError extends Error {
 type YoutubeListResponse = {
   items?: Array<{
     id?: string;
-    snippet?: { title?: string; description?: string };
+    snippet?: {
+      title?: string;
+      description?: string;
+      publishedAt?: string;
+      channelTitle?: string;
+    };
+    contentDetails?: { duration?: string };
     statistics?: { viewCount?: string; likeCount?: string };
   }>;
   error?: { message?: string };
@@ -42,7 +65,7 @@ async function listMostPopular(
   maxResults: number
 ): Promise<PopularVideo[]> {
   const params = new URLSearchParams({
-    part: "snippet,statistics",
+    part: "snippet,statistics,contentDetails",
     chart: "mostPopular",
     regionCode,
     maxResults: String(maxResults),
@@ -78,6 +101,11 @@ async function listMostPopular(
       description: item.snippet?.description ?? "",
       views: Number(item.statistics?.viewCount ?? 0) || 0,
       likes: Number(item.statistics?.likeCount ?? 0) || 0,
+      durationSeconds: item.contentDetails?.duration
+        ? parseDurationSeconds(item.contentDetails.duration)
+        : null,
+      publishedAt: item.snippet?.publishedAt ?? null,
+      channelTitle: item.snippet?.channelTitle ?? null,
     });
   }
   return videos;
@@ -98,6 +126,9 @@ export type TermMatch = {
   title: string;
   views: number;
   likes: number;
+  durationSeconds: number | null;
+  publishedAt: string | null;
+  channelTitle: string | null;
 };
 
 /**
@@ -124,6 +155,9 @@ export function matchTerms(
           title: video.title,
           views: video.views,
           likes: video.likes,
+          durationSeconds: video.durationSeconds,
+          publishedAt: video.publishedAt,
+          channelTitle: video.channelTitle,
         });
       }
     }
