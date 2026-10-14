@@ -172,3 +172,168 @@ export function normalizeText(value: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Estadística descriptiva e inferencial estilo Google Trends.
+   Cada función declara su método; nada se muestra al usuario sin su ventana
+   y su fuente. Todas degradan a null/[] con razón cuando no hay base.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Índice normalizado 0–100 (la máxima de la ventana = 100).
+ *
+ * Es la escala de Google Trends: el interés RELATIVO dentro de la propia
+ * ventana, no un absoluto. Si la serie es plana en 0 o vacía → [] (no se
+ * inventa un índice sin señal).
+ */
+export function toIndex(series: number[]): number[] {
+  if (series.length === 0) return [];
+  const max = Math.max(...series);
+  if (max <= 0) return series.map(() => 0);
+  return series.map((v) => Math.round((v / max) * 100));
+}
+
+/**
+ * Media móvil centrada de `window` puntos (suaviza la línea sin alterar el
+ * dato crudo: el tooltip muestra el valor original).
+ *
+ * Bordes: usa la ventana disponible (promedia lo que haya hacia el centro).
+ * `window <= 1` o serie vacía → serie original.
+ */
+export function smoothMA(values: number[], window = 7): number[] {
+  if (values.length === 0 || window <= 1) return values;
+  const half = Math.floor(window / 2);
+  return values.map((_, i) => {
+    const start = Math.max(0, i - half);
+    const end = Math.min(values.length, i + half + 1);
+    const slice = values.slice(start, end);
+    return mean(slice);
+  });
+}
+
+/**
+ * Cambio porcentual de `reciente` vs `previo` (medias).
+ *
+ * `previo` ~ 0 → no devuelve un % (dividir por ~0 engaña). Llama a
+ * `detectBreakout` para decidir si es «Aumento puntual» en vez de un número.
+ */
+export function pctChange(recent: number[], prior: number[]): number | null {
+  if (recent.length === 0 || prior.length === 0) return null;
+  const prev = mean(prior);
+  if (Math.abs(prev) < 1e-9) return null;
+  const rec = mean(recent);
+  return ((rec - prev) / Math.abs(prev)) * 100;
+}
+
+export type BreakoutResult = {
+  isBreakout: boolean;
+  /** Cambio % solo si NO es breakout; null si no hay base para el %. */
+  pct: number | null;
+  label: string;
+  warnings: string[];
+};
+
+/**
+ * Detección de «Aumento puntual» (breakout) al estilo Google Trends.
+ *
+ * Regla (explícita y auditable):
+ * - Si la media previa es < `floorPct` del máximo de la ventana completa y la
+ *   reciente supera ese umbral → breakout. El % se suprime: un denominador
+ *   ~0 produce porcentajes gigantes que no miden nada.
+ * - Si no, se devuelve el % normal (puede ser negativo = contracción).
+ *
+ * `floorPct` = 5 (por defecto): la barra de «casi nada» es 5% del pico.
+ */
+export function detectBreakout(
+  recent: number[],
+  prior: number[],
+  floorPct = 5
+): BreakoutResult {
+  const warnings: string[] = [];
+  if (recent.length === 0 || prior.length === 0) {
+    return { isBreakout: false, pct: null, label: "s/d", warnings: ["Sin datos para comparar."] };
+  }
+  const all = [...prior, ...recent];
+  const peak = Math.max(...all);
+  const floor = (peak * floorPct) / 100;
+  const prevMean = mean(prior);
+  const recMean = mean(recent);
+
+  // Baseline plana en ~0 y ahora hay señal → «Aumento puntual».
+  if (prevMean < floor && recMean >= floor && peak > 0) {
+    warnings.push(
+      "El interés previo era casi nulo: el porcentaje no es significativo, se marca como aumento puntual."
+    );
+    return { isBreakout: true, pct: null, label: "Aumento puntual", warnings };
+  }
+
+  const pct = pctChange(recent, prior);
+  if (pct === null) {
+    return { isBreakout: false, pct: null, label: "s/d", warnings: ["Sin base previa para el cambio %."] };
+  }
+  const sign = pct >= 0 ? "+" : "";
+  return { isBreakout: false, pct, label: `${sign}${Math.round(pct)}%`, warnings };
+}
+
+export type RankedItem<T> = {
+  item: T;
+  rank: number;
+  /** Agrupa empates estadísticos: mismo `tier` = misma altura de barra. */
+  tier: number;
+  /** true si difiere del anterior menos que 1·s_ruido (≈ empate). */
+  tiedWithPrevious: boolean;
+};
+
+/**
+ * Ranking de subregiones con empates estadísticos.
+ *
+ * `values` son los índices 0–100 por región (misma escala). Dos regiones
+ * empatan si su índice difiere menos que `tieTol` (por defecto 1.0 punto en
+ * la escala 0–100, que es ~1 desv del ruido de serie diaria). El `tier`
+ * define la altura de barra: regiones empatadas comparten barra.
+ *
+ * El orden es descendente (mayor interés arriba). Regiones con índice 0
+ * quedan al final con tier propio (no empatan con las que tienen señal).
+ */
+export function rankWithTiers<T>(
+  entries: { item: T; value: number }[],
+  tieTol = 1.0
+): RankedItem<T>[] {
+  const sorted = [...entries].sort((a, b) => b.value - a.value);
+  const out: RankedItem<T>[] = [];
+  let currentRank = 0;
+  let currentTier = 0;
+  let previousValue: number | null = null;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const entry = sorted[i]!;
+    const tied =
+      previousValue !== null && Math.abs(entry.value - previousValue) < tieTol;
+    if (!tied || i === 0) {
+      currentRank = i + 1;
+      currentTier = entry.value <= 0 ? 10_000 + i : Math.round(entry.value);
+    }
+    out.push({
+      item: entry.item,
+      rank: currentRank,
+      tier: currentTier,
+      tiedWithPrevious: tied,
+    });
+    previousValue = entry.value;
+  }
+  return out;
+}
+
+/**
+ * Índice 0–100 de una subregión contra el máximo del país (la región con más
+ * interés = 100, como Google Trends). Entrada: valor crudo por región
+ * (conteo de establecimientos, vistas, etc.). Si el máximo es 0 → todos 0.
+ */
+export function regionIndex(entries: { key: string; value: number }[]): {
+  key: string;
+  index: number;
+}[] {
+  const max = Math.max(0, ...entries.map((e) => e.value));
+  if (max <= 0) return entries.map((e) => ({ key: e.key, index: 0 }));
+  return entries.map((e) => ({ key: e.key, index: Math.round((e.value / max) * 100) }));
+}

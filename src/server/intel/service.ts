@@ -14,6 +14,7 @@ import {
   describe,
   growthZ,
   oneSidedP,
+  toIndex,
   type Classification,
   type Descriptive,
 } from "@/server/intel/stats";
@@ -411,4 +412,260 @@ export async function compareTerms(
   });
 
   return { terms: items, generatedAt: new Date().toISOString() };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Google Trends (ADR-001 · bandera INTEL_GT).
+   La serie GT manda (índice 0–100); las vistas YouTube son fallback
+   normalizado. Fuentes declaradas siempre en la UI.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+export type GtIngestResult = {
+  termId: string;
+  ok: boolean;
+  points: number;
+  regions: number;
+  related: number;
+  partial: boolean;
+  reason?: string;
+};
+
+/**
+ * Ingesta de Google Trends para UN término. Guarda la serie diaria, las
+ * regiones y los relacionados en sus tablas GT (dedupe por día, re-ejecutable).
+ * Nunca lanza: cualquier fallo devuelve `ok=false` con razón.
+ */
+export async function runGtIngest(
+  organizationId: string,
+  termId: string,
+  geo = "MX"
+): Promise<GtIngestResult> {
+  const db = getDb();
+  const termRows = await db
+    .select()
+    .from(schema.intelTerm)
+    .where(
+      scoped(schema.intelTerm.organizationId, organizationId, eq(schema.intelTerm.id, termId))
+    )
+    .limit(1);
+  const term = termRows[0];
+  if (!term) {
+    return { termId, ok: false, points: 0, regions: 0, related: 0, partial: false, reason: "Término no encontrado." };
+  }
+
+  const { fetchGt } = await import("@/server/intel/sources/google-trends");
+  const data = await fetchGt(term.name, geo, "now 7-d");
+  const day = utcDay();
+
+  let points = 0;
+  let regions = 0;
+  let related = 0;
+
+  if (data.timeSeries && data.timeSeries.points.length > 0) {
+    const index = toIndex(data.timeSeries.points.map((p) => p.value));
+    for (let i = 0; i < data.timeSeries.points.length; i++) {
+      const p = data.timeSeries.points[i]!;
+      // El timestamp de GT puede ser de días previos; convertimos a día UTC.
+      const pointDay = utcDay(new Date(p.time));
+      await db
+        .insert(schema.intelGtSnapshot)
+        .values({
+          id: newId("intelGtSnapshot"),
+          organizationId,
+          termId,
+          day: pointDay,
+          value: index[i] ?? 0,
+        })
+        .onConflictDoUpdate({
+          target: [schema.intelGtSnapshot.termId, schema.intelGtSnapshot.day],
+          set: { value: index[i] ?? 0 },
+        });
+      points += 1;
+    }
+  }
+
+  // Regiones: mapeamos geoCode de Google → clave INEGI si coincide (2 dígitos).
+  for (const r of data.regions) {
+    const state = r.geoCode.padStart(2, "0");
+    if (!/^\d{2}$/.test(state)) continue;
+    await db
+      .insert(schema.intelGtRegion)
+      .values({
+        id: newId("intelGtRegion"),
+        organizationId,
+        termId,
+        state,
+        value: r.value,
+        day,
+      })
+      .onConflictDoUpdate({
+        target: [schema.intelGtRegion.termId, schema.intelGtRegion.state, schema.intelGtRegion.day],
+        set: { value: r.value },
+      });
+    regions += 1;
+  }
+
+  // Relacionados (temas y consultas)
+  for (const r of [...data.topics, ...data.queries]) {
+    const kind = data.topics.includes(r) ? "topic" : "query";
+    const label = r.label.slice(0, 300);
+    await db
+      .insert(schema.intelGtRelated)
+      .values({
+        id: newId("intelGtRelated"),
+        organizationId,
+        termId,
+        kind,
+        label,
+        value: r.value,
+        pct: r.pct !== null ? Math.round(r.pct) : null,
+        isBreakout: r.isBreakout,
+        day,
+      })
+      .onConflictDoUpdate({
+        target: [schema.intelGtRelated.termId, schema.intelGtRelated.kind, schema.intelGtRelated.label, schema.intelGtRelated.day],
+        set: { value: r.value, pct: r.pct !== null ? Math.round(r.pct) : null, isBreakout: r.isBreakout },
+      });
+    related += 1;
+  }
+
+  return { termId, ok: points > 0 || regions > 0 || related > 0, points, regions, related, partial: data.partial };
+}
+
+export type GtReport = {
+  termId: string;
+  termName: string;
+  /** Serie GT 0–100 (máx de la ventana = 100). */
+  series: Array<{ day: string; value: number }>;
+  /** Fuente real de la serie (para el tooltip). */
+  seriesSource: "google_trends" | "youtube_fallback" | "none";
+  /** Regiones 0–100 (GT) o DENUE (fallback, normalizado). */
+  regions: Array<{ state: string; index: number; source: "google_trends" | "denue" }>;
+  regionsSource: "google_trends" | "denue" | "none";
+  topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
+  queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
+  /** true si GT no respondió y se usó fallback YouTube. */
+  usedFallback: boolean;
+  method: { fuente: string; ventana: string };
+  generatedAt: string;
+};
+
+/**
+ * Lee el reporte GT de un término desde la BD (lo que ya se ingirió).
+ * Si GT no tiene datos, cae a la serie YouTube normalizada 0–100 (fallback
+ * declarado). Regiones: si GT no tiene, usa DENUE normalizado.
+ */
+export async function getGtReport(
+  organizationId: string,
+  termId: string
+): Promise<GtReport | null> {
+  const db = getDb();
+  const termRows = await db
+    .select()
+    .from(schema.intelTerm)
+    .where(
+      scoped(schema.intelTerm.organizationId, organizationId, eq(schema.intelTerm.id, termId))
+    )
+    .limit(1);
+  const term = termRows[0];
+  if (!term) return null;
+
+  const end = utcDay();
+  const start = addDays(end, -27);
+
+  // Serie GT
+  const gtRows = await db
+    .select()
+    .from(schema.intelGtSnapshot)
+    .where(
+      scoped(schema.intelGtSnapshot.organizationId, organizationId, eq(schema.intelGtSnapshot.termId, termId))
+    )
+    .orderBy(schema.intelGtSnapshot.day);
+
+  let series: GtReport["series"] = [];
+  let seriesSource: GtReport["seriesSource"] = "none";
+  if (gtRows.length > 0) {
+    series = gtRows.map((r) => ({ day: r.day, value: r.value }));
+    seriesSource = "google_trends";
+  } else {
+    // Fallback YouTube → normalizado 0–100
+    const ytRows = await db
+      .select()
+      .from(schema.intelSnapshot)
+      .where(
+        scoped(schema.intelSnapshot.organizationId, organizationId, eq(schema.intelSnapshot.termId, termId))
+      )
+      .orderBy(schema.intelSnapshot.day);
+    const filtered = ytRows.filter((s) => s.day >= start && s.day <= end);
+    if (filtered.length > 0) {
+      const raw = filtered.map((s) => Number(s.value));
+      const idx = toIndex(raw);
+      series = filtered.map((s, i) => ({ day: s.day, value: idx[i] ?? 0 }));
+      seriesSource = "youtube_fallback";
+    }
+  }
+
+  // Regiones GT
+  const gtRegionRows = await db
+    .select()
+    .from(schema.intelGtRegion)
+    .where(
+      scoped(schema.intelGtRegion.organizationId, organizationId, eq(schema.intelGtRegion.termId, termId))
+    )
+    .orderBy(schema.intelGtRegion.day);
+
+  let regions: GtReport["regions"] = [];
+  let regionsSource: GtReport["regionsSource"] = "none";
+  if (gtRegionRows.length > 0) {
+    const byState = new Map<string, number>();
+    for (const r of gtRegionRows) {
+      byState.set(r.state, r.value);
+    }
+    regions = [...byState.entries()].map(([state, value]) => ({
+      state,
+      index: value,
+      source: "google_trends" as const,
+    }));
+    regionsSource = "google_trends";
+  }
+
+  // Relacionados
+  const relatedRows = await db
+    .select()
+    .from(schema.intelGtRelated)
+    .where(
+      scoped(schema.intelGtRelated.organizationId, organizationId, eq(schema.intelGtRelated.termId, termId))
+    )
+    .orderBy(desc(schema.intelGtRelated.day));
+
+  const topics = relatedRows
+    .filter((r) => r.kind === "topic")
+    .slice(0, 5)
+    .map((r) => ({ label: r.label, value: r.value, pct: r.pct, isBreakout: r.isBreakout }));
+  const queries = relatedRows
+    .filter((r) => r.kind === "query")
+    .slice(0, 5)
+    .map((r) => ({ label: r.label, value: r.value, pct: r.pct, isBreakout: r.isBreakout }));
+
+  const usedFallback = seriesSource === "youtube_fallback" || regionsSource === "none";
+
+  return {
+    termId,
+    termName: term.name,
+    series,
+    seriesSource,
+    regions,
+    regionsSource,
+    topics,
+    queries,
+    usedFallback,
+    method: {
+      fuente:
+        seriesSource === "google_trends"
+          ? "Google Trends (endpoint no oficial)"
+          : "YouTube mostPopular (fallback, normalizado 0–100)",
+      ventana: "últimos 28 días",
+    },
+    generatedAt: new Date().toISOString(),
+  };
 }

@@ -88,6 +88,10 @@ const prefixes = {
   intelVideo: "ivd",
   intelSearch: "isg",
   intelGeo: "ige",
+  // Inteligencia de mercado — Google Trends
+  intelGtSnapshot: "igs",
+  intelGtRegion: "igr",
+  intelGtRelated: "irl",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

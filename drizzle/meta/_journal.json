@@ -414,6 +414,20 @@
       "when": 1791980000001,
       "tag": "0058_intel_video_meta",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791990000001,
+      "tag": "0059_intel_gt",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792000000001,
+      "tag": "0060_intel_cred_status",
+      "breakpoints": true
     }
   ]
 }

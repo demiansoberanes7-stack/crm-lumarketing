@@ -2381,6 +2381,16 @@ export const intelCredentials = pgTable(
     /** Último ingest exitoso (fuente YouTube). */
     lastIngestAt: timestamp("last_ingest_at"),
     status: varchar("status", { length: 20 }).notNull().default("connected"),
+    // Estado de pruebas en vivo por fuente (distingue "guardado" de "conectado")
+    youtubeLastTestAt: timestamp("youtube_last_test_at"),
+    youtubeStatus: varchar("youtube_status", { length: 20 }),
+    denueLastTestAt: timestamp("denue_last_test_at"),
+    denueStatus: varchar("denue_status", { length: 20 }),
+    // Google Trends (ADR-001): habilitado por org + estado de la última prueba
+    gtEnabled: boolean("gt_enabled").notNull().default(false),
+    gtLastSyncAt: timestamp("gt_last_sync_at"),
+    gtStatus: varchar("gt_status", { length: 20 }),
+    gtLastTestAt: timestamp("gt_last_test_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -2515,5 +2525,94 @@ export const intelGeoSnapshot = pgTable(
     uniqueIndex("intel_geo_term_state_day_uq").on(t.termId, t.state, t.day),
     index("intel_geo_org_day_idx").on(t.organizationId, t.day),
     index("intel_geo_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);
+
+/**
+ * Snapshot diario de Google Trends por término (índice 0–100, escala GT).
+ * Se separa de `intel_snapshot` (vistas YouTube, bigint) porque la escala es
+ * distinta y así el fallback YouTube→GT es explícito en la UI.
+ */
+export const intelGtSnapshot = pgTable(
+  "intel_gt_snapshot",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    termId: varchar("term_id", { length: 255 })
+      .notNull()
+      .references(() => intelTerm.id, { onDelete: "cascade" }),
+    /** Día UTC "YYYY-MM-DD". */
+    day: varchar("day", { length: 10 }).notNull(),
+    /** Índice 0–100 de Google Trends (100 = máximo de la ventana). */
+    value: integer("value").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_gt_snapshot_term_day_uq").on(t.termId, t.day),
+    index("intel_gt_snapshot_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);
+
+/** Interés por subregión (estado) de Google Trends, índice 0–100. */
+export const intelGtRegion = pgTable(
+  "intel_gt_region",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    termId: varchar("term_id", { length: 255 })
+      .notNull()
+      .references(() => intelTerm.id, { onDelete: "cascade" }),
+    /** Clave INEGI de la entidad, "01"…"32". */
+    state: varchar("state", { length: 2 }).notNull(),
+    /** Índice 0–100 (100 = estado con más interés). */
+    value: integer("value").notNull(),
+    day: varchar("day", { length: 10 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_gt_region_term_state_day_uq").on(t.termId, t.state, t.day),
+    index("intel_gt_region_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);
+
+/**
+ * Temas y consultas relacionados de Google Trends.
+ * `isBreakout` = Google lo marcó «breakout» (rising); la UI lo muestra como
+ * «Aumento puntual» sin % (denominador ~0).
+ */
+export const intelGtRelated = pgTable(
+  "intel_gt_related",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    termId: varchar("term_id", { length: 255 })
+      .notNull()
+      .references(() => intelTerm.id, { onDelete: "cascade" }),
+    /** "topic" (tema) o "query" (consulta). */
+    kind: varchar("kind", { length: 10 }).notNull(),
+    /** Texto del tema/consulta. */
+    label: varchar("label", { length: 300 }).notNull(),
+    /** Índice 0–100 (para top) o valor crudo del rising. */
+    value: integer("value").notNull().default(0),
+    /** Cambio % vs periodo previo; null si es breakout o sin base. */
+    pct: integer("pct"),
+    isBreakout: boolean("is_breakout").notNull().default(false),
+    day: varchar("day", { length: 10 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_gt_related_term_kind_label_day_uq").on(
+      t.termId,
+      t.kind,
+      t.label,
+      t.day
+    ),
+    index("intel_gt_related_org_term_idx").on(t.organizationId, t.termId),
   ]
 );

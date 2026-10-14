@@ -1,9 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, GitCompareArrows, RefreshCw, Search, X } from "lucide-react";
+import {
+  BarChart3,
+  Clock,
+  GitCompareArrows,
+  LayoutGrid,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { DottedAreaChart } from "@/components/ui/chart";
 import { TrendCard } from "@/components/inteligencia/trend-card";
 import { KeywordView, type KeywordOverviewView } from "@/components/inteligencia/keyword-view";
 import { ShareBars } from "@/components/inteligencia/share-bars";
@@ -12,6 +22,10 @@ import { GeoPanel } from "@/components/inteligencia/geo-panel";
 import { FunnelPanel } from "@/components/inteligencia/funnel-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
+import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
+import { GtRelatedPanel } from "@/components/inteligencia/gt-related-panel";
+
+/* ── Tipos ───────────────────────────────────────────────────────────────── */
 
 type TrendsPayload = {
   trends: Array<{
@@ -23,6 +37,20 @@ type TrendsPayload = {
     series: Array<{ day: string; value: number }>;
   }>;
   lastIngestAt: string | null;
+};
+
+type GtReport = {
+  termId: string;
+  termName: string;
+  series: Array<{ day: string; value: number }>;
+  seriesSource: "google_trends" | "youtube_fallback" | "none";
+  regions: Array<{ state: string; index: number; source: "google_trends" | "denue" }>;
+  regionsSource: "google_trends" | "denue" | "none";
+  topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
+  queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
+  usedFallback: boolean;
+  method: { fuente: string; ventana: string };
+  generatedAt: string;
 };
 
 const numberCompact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
@@ -37,10 +65,12 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
   );
 }
 
+/* ── Componente principal ────────────────────────────────────────────────── */
+
 /**
- * Módulo de inteligencia — motor de búsqueda de palabras clave estilo
- * SEMrush con autocompletado, más el tablero (share, audiencia, geografía,
- * embudo, contenidos) debajo del overview.
+ * Módulo de inteligencia. Vista principal = layout estilo Google Trends
+ * (chip de término, filtros, serie 0–100, subregiones, temas/consultas).
+ * Pestaña «Overview» = el motor SEMrush (keyword-view) + tablero completo.
  */
 export function IntelClient() {
   const [trends, setTrends] = useState<TrendsPayload | null>(null);
@@ -58,6 +88,14 @@ export function IntelClient() {
   const suggestSeq = useRef(0);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Pestana activa: "gt" (vista principal) u "overview" (SEMrush + tablero).
+  const [tab, setTab] = useState<"gt" | "overview">("gt");
+
+  // Selección de término para el reporte GT.
+  const [activeTermId, setActiveTermId] = useState<string>("");
+  const [gtReport, setGtReport] = useState<GtReport | null>(null);
+  const [loadingGt, setLoadingGt] = useState(false);
+
   const loadTrends = useCallback(async () => {
     setLoadingTrends(true);
     setError("");
@@ -72,6 +110,31 @@ export function IntelClient() {
   }, []);
 
   useEffect(() => { void loadTrends(); }, [loadTrends]);
+
+  // Selecciona el primer término por defecto para GT.
+  useEffect(() => {
+    if (!activeTermId && trends?.trends.length) {
+      setActiveTermId(trends.trends[0]!.termId);
+    }
+  }, [trends, activeTermId]);
+
+  // Carga el reporte GT cuando cambia el término activo.
+  const loadGt = useCallback(async (termId: string) => {
+    if (!termId) return;
+    setLoadingGt(true);
+    const res = await fetch(`/api/intel/gt?termId=${encodeURIComponent(termId)}`, {
+      cache: "no-store",
+    }).catch(() => null);
+    setLoadingGt(false);
+    if (res?.ok) {
+      const data = await res.json().catch(() => null) as GtReport | null;
+      setGtReport(data);
+    } else {
+      setGtReport(null);
+    }
+  }, []);
+
+  useEffect(() => { void loadGt(activeTermId); }, [activeTermId, loadGt]);
 
   // Autocompletado con debounce (estilo SEMrush): mientras el usuario escribe.
   useEffect(() => {
@@ -122,6 +185,25 @@ export function IntelClient() {
     [trends]
   );
 
+  // Serie para la gráfica GT (con suavizado MA7, sin alterar el dato crudo).
+  const gtChartData = useMemo(() => {
+    if (!gtReport || gtReport.series.length === 0) return [];
+    const values = gtReport.series.map((s) => s.value);
+    // Media móvil centrada ventana 7 para suavizar; el tooltip muestra el crudo.
+    const half = 3;
+    return gtReport.series.map((p, i) => {
+      const start = Math.max(0, i - half);
+      const end = Math.min(values.length, i + half + 1);
+      const slice = values.slice(start, end);
+      const smooth = slice.reduce((a, b) => a + b, 0) / slice.length;
+      return {
+        day: p.day,
+        smooth: Math.round(smooth * 10) / 10,
+        raw: p.value,
+      };
+    });
+  }, [gtReport]);
+
   function toggleSelect(termId: string) {
     setCompareItems(null);
     setSelected((prev) => {
@@ -166,7 +248,10 @@ export function IntelClient() {
     setSearching(false);
     if (res?.ok) {
       const data = await res.json().catch(() => null) as KeywordOverviewView | null;
-      if (data) setOverview(data);
+      if (data) {
+        setOverview(data);
+        setTab("overview");
+      }
     } else {
       const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
       setError(data?.error?.message ?? "No se pudo analizar la palabra clave.");
@@ -210,9 +295,19 @@ export function IntelClient() {
   }
 
   function onSuggestBlur() {
-    // Retrasa el cierre para permitir el click en una sugerencia.
     blurTimer.current = setTimeout(() => setShowSuggest(false), 150);
   }
+
+  const sourceBadge =
+    gtReport?.seriesSource === "google_trends" ? (
+      <Badge variant="outline" className="border-success-soft bg-success-tint text-success-text">
+        Google Trends
+      </Badge>
+    ) : gtReport?.seriesSource === "youtube_fallback" ? (
+      <Badge variant="outline" className="border-warning-soft bg-warning-tint text-warning-text">
+        YouTube (fallback)
+      </Badge>
+    ) : null;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -222,13 +317,14 @@ export function IntelClient() {
             <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-text-2">
-            Analiza cualquier palabra clave: intención, dificultad, palabras relacionadas,
-            preguntas y el SERP real de YouTube en México.
+            Tendencias de búsqueda en México: interés relativo (0–100), subregiones y
+            temas/consultas relacionados. Fuente primaria Google Trends; fallback a YouTube.
           </p>
         </div>
         <div className="flex items-center gap-3">
           {trends?.lastIngestAt && (
-            <span className="text-xs text-text-3">
+            <span className="flex items-center gap-1 text-xs text-text-3">
+              <Clock className="h-3 w-3" />
               Datos al {new Date(trends.lastIngestAt).toLocaleString("es-MX")}
             </span>
           )}
@@ -239,50 +335,31 @@ export function IntelClient() {
         </div>
       </header>
 
-      <form onSubmit={handleSearch} className="relative flex flex-wrap gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={onSuggestFocus}
-            onBlur={onSuggestBlur}
-            placeholder="Escribe una keyword: cámaras de seguridad, pc gamer, starlink…"
-            className="pl-9"
-            aria-label="Palabra clave a analizar"
-            autoComplete="off"
-          />
-          {showSuggest && suggestions.length > 0 && (
-            <ul
-              role="listbox"
-              aria-label="Sugerencias"
-              className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 shadow-md"
-            >
-              {suggestions.map((s) => (
-                <li key={s}>
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => pickSuggestion(s)}
-                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                  >
-                    <Search className="h-3.5 w-3.5 shrink-0 text-text-3" />
-                    <span className="min-w-0 truncate">{s}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <Button type="submit" disabled={searching || !query.trim()}>
-          {searching ? "Analizando…" : "Analizar"}
-        </Button>
-        {overview && (
-          <Button type="button" variant="ghost" onClick={handleClear}>
-            <X className="mr-1 h-4 w-4" /> Limpiar
-          </Button>
-        )}
-      </form>
+      {/* Pestañas: GT (principal) u Overview (SEMrush + tablero). */}
+      <div className="flex gap-1 rounded-md bg-subtle p-0.5" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "gt"}
+          onClick={() => { setTab("gt"); handleClear(); }}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+            tab === "gt" ? "bg-card shadow-xs" : "text-text-2 hover:text-foreground"
+          }`}
+        >
+          <BarChart3 className="h-3.5 w-3.5" /> Tendencias
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "overview"}
+          onClick={() => setTab("overview")}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+            tab === "overview" ? "bg-card shadow-xs" : "text-text-2 hover:text-foreground"
+          }`}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" /> Overview
+        </button>
+      </div>
 
       {error && (
         <p role="alert" className="rounded-md border border-danger-soft bg-danger-tint p-3 text-sm text-danger-text">
@@ -290,12 +367,136 @@ export function IntelClient() {
         </p>
       )}
 
-      {overview ? (
+      {tab === "gt" ? (
+        <>
+          {/* Selector de término + chip */}
+          {trends && trends.trends.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-text-2">Nicho:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {trends.trends.map((t) => (
+                  <button
+                    key={t.termId}
+                    type="button"
+                    onClick={() => setActiveTermId(t.termId)}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      activeTermId === t.termId
+                        ? "border-brand-text bg-brand-tint text-brand-text"
+                        : "border-border bg-card text-text-2 hover:border-border/80"
+                    }`}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Serie principal 0–100 */}
+          <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Interés a lo largo del tiempo">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold">Interés a lo largo del tiempo</h2>
+              {sourceBadge}
+            </div>
+            <p className="mt-1 text-xs text-text-3">
+              Índice 0–100 · {gtReport?.method.ventana ?? "últimos 28 días"} ·{" "}
+              {gtReport?.method.fuente ?? "sin datos"}
+            </p>
+
+            {loadingGt ? (
+              <p className="mt-4 rounded-md bg-subtle p-3 text-sm text-text-2">Cargando serie…</p>
+            ) : gtChartData.length === 0 ? (
+              <div className="mt-4 rounded-md bg-subtle p-5 text-sm text-text-2">
+                <p className="font-medium">Sin datos de serie para este nicho.</p>
+                <p className="mt-1 text-text-3">
+                  Ejecuta una ingesta de Google Trends o «Actualizar datos» (YouTube) para
+                  poblar el historial.
+                </p>
+              </div>
+            ) : (
+              <>
+                <DottedAreaChart
+                  data={gtChartData}
+                  series={[{ key: "smooth", color: "var(--chart-1)", label: "Índice (MA7)" }]}
+                  xKey="day"
+                  height={200}
+                  yFormatter={(v) => String(Math.round(v))}
+                />
+                <p className="mt-2 text-[11px] leading-snug text-text-3">
+                  La línea es la media móvil centrada de 7 días (suavizado); el dato crudo
+                  se muestra en el tooltip. 100 = máximo de la ventana. Fuente:{" "}
+                  {gtReport?.method.fuente ?? "—"}.
+                </p>
+              </>
+            )}
+          </section>
+
+          {/* Subregiones */}
+          {gtReport && (
+            <GtRegionPanel
+              regions={gtReport.regions}
+              regionsSource={gtReport.regionsSource}
+              termName={gtReport.termName}
+            />
+          )}
+
+          {/* Temas y consultas */}
+          {gtReport && (
+            <GtRelatedPanel topics={gtReport.topics} queries={gtReport.queries} />
+          )}
+        </>
+      ) : overview ? (
         <KeywordView data={overview} onMonitored={() => void loadTrends()} />
       ) : compareItems ? (
         <CompareView items={compareItems} onRemove={toggleSelect} onClear={clearCompare} />
       ) : (
         <>
+          {/* Buscador SEMrush */}
+          <form onSubmit={handleSearch} className="relative flex flex-wrap gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={onSuggestFocus}
+                onBlur={onSuggestBlur}
+                placeholder="Escribe una keyword: cámaras de seguridad, pc gamer, starlink…"
+                className="pl-9"
+                aria-label="Palabra clave a analizar"
+                autoComplete="off"
+              />
+              {showSuggest && suggestions.length > 0 && (
+                <ul
+                  role="listbox"
+                  aria-label="Sugerencias"
+                  className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 shadow-md"
+                >
+                  {suggestions.map((s) => (
+                    <li key={s}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickSuggestion(s)}
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      >
+                        <Search className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                        <span className="min-w-0 truncate">{s}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <Button type="submit" disabled={searching || !query.trim()}>
+              {searching ? "Analizando…" : "Analizar"}
+            </Button>
+            {overview && (
+              <Button type="button" variant="ghost" onClick={handleClear}>
+                <X className="mr-1 h-4 w-4" /> Limpiar
+              </Button>
+            )}
+          </form>
+
           {kpis && (
             <section aria-label="Resumen" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard label="Nichos monitoreados" value={String(kpis.niches)} hint="catálogo activo" />

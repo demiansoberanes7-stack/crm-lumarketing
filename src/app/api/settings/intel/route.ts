@@ -22,7 +22,15 @@ export const GET = withOwner(async (session) => {
   return Response.json({
     connection: {
       youtubeKeyLast4: creds.youtubeKey.slice(-4),
+      youtubeStatus: creds.youtubeStatus,
+      youtubeLastTestAt: creds.youtubeLastTestAt,
       denueConfigured: Boolean(creds.denueToken),
+      denueStatus: creds.denueStatus,
+      denueLastTestAt: creds.denueLastTestAt,
+      gtEnabled: creds.gtEnabled,
+      gtStatus: creds.gtStatus,
+      gtLastTestAt: creds.gtLastTestAt,
+      gtLastSyncAt: creds.gtLastSyncAt,
       lastIngestAt: creds.lastIngestAt,
       status: creds.status,
     },
@@ -32,6 +40,7 @@ export const GET = withOwner(async (session) => {
 const credsSchema = z.object({
   youtubeKey: z.string().trim().min(1),
   denueToken: z.string().trim().min(1).optional().nullable(),
+  gtEnabled: z.boolean().optional(),
 });
 
 export const PUT = withOwner(async (session, req: Request) => {
@@ -55,6 +64,7 @@ export const PUT = withOwner(async (session, req: Request) => {
     organizationId: session.organizationId,
     youtubeKey: body.data.youtubeKey,
     denueToken: body.data.denueToken?.trim() || null,
+    gtEnabled: body.data.gtEnabled ?? false,
   });
   return Response.json({ ok: true });
 });
