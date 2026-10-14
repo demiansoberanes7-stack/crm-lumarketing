@@ -2,7 +2,7 @@
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
-import type { LossReason, StageChangeSource } from "@/lib/types";
+import type { LossReason, StageChangeSource, StageKind } from "@/lib/types";
 import { reportStageChange } from "@/server/attribution/conversions";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 
@@ -59,7 +59,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
   // 016: se anota aquí dentro y se reporta a Meta DESPUÉS del commit. Una
   // llamada de red dentro de la transacción la mantendría abierta mientras
   // Meta piensa, y una conversión jamás vale una transacción larga.
-  let toStageKind: "open" | "won" | "lost" | null = null;
+  let toStageKind: StageKind | null = null;
 
   const result = await db.transaction(async (tx) => {
     const leadRows = await tx
@@ -97,7 +97,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
     if (!target) return { ok: false as const, reason: "stage_not_found" as const };
 
     const changed = current.lead.stageId !== target.id;
-    toStageKind = target.kind as "open" | "won" | "lost";
+    toStageKind = target.kind as StageKind;
 
     // El motivo se exige al ENTRAR a la etapa perdida. Reordenar una tarjeta
     // que ya estaba ahí no vuelve a preguntar.
@@ -260,7 +260,7 @@ export async function recordLeadCreated(input: {
     fromStageName: null,
     toStageId: s.id,
     toStageName: s.name,
-    toStageKind: s.kind as "open" | "won" | "lost",
+    toStageKind: s.kind as StageKind,
     occurredAt: input.occurredAt ?? new Date(),
     actorUserId: input.actorUserId ?? null,
     source: input.source ?? "sistema",

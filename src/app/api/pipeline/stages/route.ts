@@ -19,6 +19,8 @@ export const GET = withAuth(async (session) => {
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(60),
+  // `won`/`lost` son anclas y solo se siembran; el dueño marca etapas de avance.
+  kind: z.enum(["open", "qualified"]).optional(),
 });
 
 export const POST = withAuth(async (session, req: Request) => {
@@ -41,7 +43,7 @@ export const POST = withAuth(async (session, req: Request) => {
       organizationId: session.organizationId,
       name: body.data.name,
       position: (maxPos[0]?.max ?? -1) + 1,
-      kind: "open",
+      kind: body.data.kind ?? "open",
     });
   const [stage] = await db
     .select()

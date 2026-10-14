@@ -79,6 +79,7 @@ export const METRIC_CATALOG: readonly MetricDefinition[] = [
   { id: "roas", name: "ROAS", category: "publicidad", unit: "ratio", formula: "Ingresos atribuidos ÷ inversión publicitaria", requires: ["campaign", "payment"], mayBeUnavailable: true },
   { id: "romi", name: "ROMI", category: "publicidad", unit: "percent", formula: "(Ingresos atribuidos − inversión) ÷ inversión × 100", requires: ["campaign", "payment"], mayBeUnavailable: true },
   { id: "cac", name: "CAC", category: "publicidad", unit: "currency", formula: "Costo de adquisición ÷ clientes nuevos", requires: ["campaign", "lead_stage_event"], mayBeUnavailable: true },
+  { id: "cpql", name: "CPQL", category: "publicidad", unit: "currency", formula: "Inversión publicitaria ÷ leads calificados", requires: ["campaign", "lead_stage_event"], mayBeUnavailable: true },
 
   // Tráfico digital (GA4)
   { id: "sessions", name: "Sesiones", category: "trafico", unit: "count", formula: "Sesiones de GA4 en el periodo", requires: ["ga4"], mayBeUnavailable: true },

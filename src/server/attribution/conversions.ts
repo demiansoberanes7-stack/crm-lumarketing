@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import type { StageKind } from "@/lib/types";
 import { sendBusinessMessagingEvent } from "@/lib/meta/capi";
 import { getCredentialsByOrg } from "@/server/whatsapp/credentials";
 import { atribucionEnabled } from "@/server/attribution/flag";
@@ -174,7 +175,7 @@ export async function reportStageChange(input: {
   leadId: string;
   contactId: string;
   toStageId: string;
-  toStageKind: "open" | "won" | "lost";
+  toStageKind: StageKind;
 }): Promise<void> {
   if (!atribucionEnabled()) return;
 

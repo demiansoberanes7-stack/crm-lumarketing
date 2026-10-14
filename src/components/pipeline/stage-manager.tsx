@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BadgeCheck, Trash2 } from "lucide-react";
 import type { StageDto } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-/** Gestión de etapas: renombrar, reordenar, agregar, eliminar (con reasignación). */
+/** Gestión de etapas: renombrar, reordenar, marcar calificado, agregar, eliminar. */
 export function StageManager({
   stages,
   onClose,
@@ -28,6 +29,17 @@ export function StageManager({
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: name.trim() }),
+    }).catch(() => null);
+    onChanged();
+  }
+
+  /** Marca/quita una etapa de avance como "calificado" (alimenta el embudo). */
+  async function toggleQualified(stage: StageDto) {
+    const kind = stage.kind === "qualified" ? "open" : "qualified";
+    await fetch(`/api/pipeline/stages/${stage.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind }),
     }).catch(() => null);
     onChanged();
   }
@@ -87,6 +99,8 @@ export function StageManager({
   }
 
   const sorted = [...stages].sort((a, b) => a.position - b.position);
+  // "won"/"lost" son anclas: no se marcan como calificadas ni se eliminan.
+  const isAdvance = (s: StageDto) => s.kind === "open" || s.kind === "qualified";
 
   return (
     <div
@@ -97,7 +111,10 @@ export function StageManager({
         className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-4 font-semibold">Etapas del pipeline</h3>
+        <h3 className="mb-1 font-semibold">Etapas del pipeline</h3>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Marca con el check la etapa que significa &quot;lead calificado&quot;: alimenta el embudo y el CPQL.
+        </p>
         <ul className="space-y-2">
           {sorted.map((s, i) => (
             <li key={s.id} className="flex items-center gap-2">
@@ -106,11 +123,23 @@ export function StageManager({
                 onBlur={(e) => void rename(s, e.target.value)}
                 className="flex-1"
               />
-              {s.kind !== "open" ? (
-                <Badge variant={s.kind === "won" ? "success" : "secondary"}>
-                  {s.kind === "won" ? "ganado" : "perdido"}
-                </Badge>
-              ) : (
+              {s.kind === "won" && <Badge variant="success">ganado</Badge>}
+              {s.kind === "lost" && <Badge variant="secondary">perdido</Badge>}
+              {s.kind === "qualified" && <Badge variant="default">calificado</Badge>}
+              {isAdvance(s) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={s.kind === "qualified" ? "Quitar calificado" : "Marcar calificado"}
+                  title={s.kind === "qualified" ? "Quitar calificado" : "Marcar calificado"}
+                  onClick={() => void toggleQualified(s)}
+                >
+                  <BadgeCheck
+                    className={cn("h-4 w-4", s.kind === "qualified" ? "text-brand" : "text-muted-foreground/50")}
+                  />
+                </Button>
+              )}
+              {isAdvance(s) && (
                 <Button
                   variant="ghost"
                   size="icon"

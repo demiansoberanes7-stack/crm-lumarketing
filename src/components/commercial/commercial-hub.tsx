@@ -16,7 +16,7 @@ interface CommercialData {
   currency: string;
   resumen: Record<string, MetricValue>;
   ventas: Record<string, MetricValue>;
-  embudo: { stages: { stage: string; value: number }[]; leadToWon: MetricValue; leadToQuote: MetricValue; quoteToWon: MetricValue; lossByReason: { key: string; label: string; value: number }[] };
+  embudo: { stages: { stage: string; value: number }[]; leadToQualified: MetricValue; qualifiedToQuote: MetricValue; leadToWon: MetricValue; leadToQuote: MetricValue; quoteToWon: MetricValue; lossByReason: { key: string; label: string; value: number }[] };
   publicidad: Record<string, MetricValue>;
   trafico: Record<string, MetricValue>;
   adquisicion: { byChannel: { name: string; kind: string; count: number }[]; hasData: boolean };
@@ -179,6 +179,8 @@ export function CommercialHub() {
                 </div>
                 <div className="space-y-4">
                   <div className="grid gap-3 sm:grid-cols-3">
+                    <MetricCard title="Prospecto → calificado" metric={data.embudo.leadToQualified} formatter={formatPercent} />
+                    <MetricCard title="Calificado → cotizado" metric={data.embudo.qualifiedToQuote} formatter={formatPercent} />
                     <MetricCard title="Prospecto → ganado" metric={data.embudo.leadToWon} formatter={formatPercent} />
                     <MetricCard title="Prospecto → cotizado" metric={data.embudo.leadToQuote} formatter={formatPercent} />
                     <MetricCard title="Cotizado → ganado" metric={data.embudo.quoteToWon} formatter={formatPercent} />
@@ -202,6 +204,7 @@ export function CommercialHub() {
                   <MetricCard title="ROAS" metric={data.publicidad.roas} formatter={(n) => `${n.toFixed(2)}x`} />
                   <MetricCard title="ROMI" metric={data.publicidad.romi} formatter={formatPercent} />
                   <MetricCard title="CAC pagador" metric={data.publicidad.cac} formatter={formatCurrency} />
+                  <MetricCard title="CPQL" metric={data.publicidad.cpql} formatter={formatCurrency} />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   La inversión se calcula desde las campañas registradas. Registra tu inversión manualmente o conecta Meta Ads para ver ROAS/ROMI reales.

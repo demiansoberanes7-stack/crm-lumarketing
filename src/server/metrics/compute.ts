@@ -94,6 +94,17 @@ export function cac(
 }
 
 /**
+ * CPQL = inversión publicitaria ÷ leads calificados. Sin calificados no hay
+ * CPQL definible (mismo criterio que CAC: jamás un denominador inventado).
+ */
+export function cpql(
+  adSpend: number | null | undefined,
+  qualifiedLeads: number | null | undefined
+): number | null {
+  return safeDivide(adSpend, qualifiedLeads);
+}
+
+/**
  * Contribución = ingresos − costo de prestación − inversión publicitaria.
  * `adSpend` opcional: si no se conoce, se deja fuera y la métrica se marca
  * como parcial por el llamador.

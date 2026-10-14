@@ -12,6 +12,8 @@ type Params = { params: Promise<{ id: string }> };
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   position: z.number().int().min(0).optional(),
+  // El dueño marca/quita "calificado"; `won`/`lost` son anclas inmutables.
+  kind: z.enum(["open", "qualified"]).optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
@@ -27,6 +29,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
       ...(body.data.position !== undefined
         ? { position: body.data.position }
         : {}),
+      ...(body.data.kind !== undefined ? { kind: body.data.kind } : {}),
     })
     .where(
       scoped(
@@ -69,7 +72,9 @@ export const DELETE = withAuth(async (session, req: Request, ctx: Params) => {
     .limit(1);
   const stage = rows[0];
   if (!stage) return apiError(404, "not_found", "Etapa no encontrada");
-  if (stage.kind !== "open") {
+  // "ganado" y "perdido" son anclas terminales; "calificado" y las abiertas
+  // sí se pueden eliminar (con `moveTo` para reubicar sus leads).
+  if (stage.kind === "won" || stage.kind === "lost") {
     return apiError(
       409,
       "anchor_stage",

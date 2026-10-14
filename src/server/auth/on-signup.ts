@@ -1,14 +1,16 @@
 import { asc, count, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import type { StageKind } from "@/lib/types";
 import { ACQUISITION_CHANNELS, UNKNOWN_CHANNEL } from "@/lib/acquisition-channel";
 import { LOSS_REASON_KEYS, LOSS_REASON_KEY_LABELS } from "@/lib/loss-reason";
 
 /** Etapas sembradas del pipeline (US2). */
-const SEED_STAGES: { name: string; kind: "open" | "won" | "lost" }[] = [
+const SEED_STAGES: { name: string; kind: StageKind }[] = [
   { name: "Nuevo", kind: "open" },
   { name: "En conversación", kind: "open" },
   { name: "Interesado", kind: "open" },
+  { name: "Calificado", kind: "qualified" },
   { name: "Cliente", kind: "won" },
   { name: "Perdido", kind: "lost" },
 ];

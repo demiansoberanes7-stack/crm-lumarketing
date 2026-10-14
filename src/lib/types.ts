@@ -62,11 +62,18 @@ export type MessageDto = {
   createdAt: string;
 };
 
+/**
+ * Tipo de etapa del pipeline. `qualified` marca la etapa que el dueño define
+ * como "lead calificado" y alimenta el embudo (CPQL, prospecto→calificado).
+ * `won`/`lost` son anclas terminales; `open`/`qualified` son etapas de avance.
+ */
+export type StageKind = "open" | "qualified" | "won" | "lost";
+
 export type StageDto = {
   id: string;
   name: string;
   position: number;
-  kind: "open" | "won" | "lost";
+  kind: StageKind;
 };
 
 /** Un dato de la ficha. Escalar a propósito: ver `server/bot/ficha`. */

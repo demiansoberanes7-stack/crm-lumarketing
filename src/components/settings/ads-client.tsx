@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+import type { StageKind } from "@/lib/types";
 /**
  * 016 — Ajustes → Anuncios: conectar el dataset de Meta, decir qué etapa
  * significa "lead calificado" y ver qué se le ha reportado.
@@ -25,7 +25,7 @@ type Capi = {
   qualifiedStageId: string | null;
 };
 
-type Stage = { id: string; name: string; kind: "open" | "won" | "lost" };
+type Stage = { id: string; name: string; kind: StageKind };
 
 type ActivityRow = {
   id: string;

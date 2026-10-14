@@ -5,6 +5,7 @@ import {
   roas,
   romi,
   cac,
+  cpql,
   contribution,
   contributionMargin,
   conversionRate,
@@ -52,14 +53,34 @@ describe("metrics: ROAS y ROMI", () => {
     expect(romi(500000, 0)).toBeNull();
   });
 });
-
 describe("metrics: CAC", () => {
   it("CAC = costo ÷ clientes nuevos", () => {
     expect(cac(300000, 10)).toBe(30000);
   });
+
   it("sin clientes el CAC no se inventa: null", () => {
     expect(cac(300000, 0)).toBeNull();
     expect(cac(300000, null)).toBeNull();
+  });
+});
+
+describe("metrics: CPQL", () => {
+  it("CPQL = inversión ÷ leads calificados", () => {
+    expect(cpql(500000, 5)).toBe(100000);
+  });
+
+  it("sin calificados el CPQL no se inventa: null", () => {
+    expect(cpql(500000, 0)).toBeNull();
+    expect(cpql(500000, null)).toBeNull();
+    expect(cpql(null, 5)).toBeNull();
+  });
+
+  it("está en el catálogo con fórmula y fuentes correctas", () => {
+    const m = getMetric("cpql");
+    expect(m).toBeDefined();
+    expect(m?.unit).toBe("currency");
+    expect(m?.requires).toEqual(expect.arrayContaining(["campaign", "lead_stage_event"]));
+    expect(m?.mayBeUnavailable).toBe(true);
   });
 });
 

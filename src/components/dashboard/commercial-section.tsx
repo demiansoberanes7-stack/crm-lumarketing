@@ -16,7 +16,7 @@ interface CommercialData {
   currency: string;
   resumen: Record<string, MetricValue>;
   ventas: Record<string, MetricValue>;
-  embudo: { stages: { stage: string; value: number }[]; leadToWon: MetricValue; leadToQuote: MetricValue; quoteToWon: MetricValue; lossByReason: { key: string; label: string; value: number }[] };
+  embudo: { stages: { stage: string; value: number }[]; leadToQualified: MetricValue; qualifiedToQuote: MetricValue; leadToWon: MetricValue; leadToQuote: MetricValue; quoteToWon: MetricValue; lossByReason: { key: string; label: string; value: number }[] };
   trafico: Record<string, MetricValue>;
   adquisicion: { byChannel: { name: string; kind: string; count: number }[]; hasData: boolean };
   rentabilidad: Record<string, MetricValue> & { hasCosts: boolean };
@@ -104,6 +104,8 @@ export function CommercialSection({ period }: { period: string }) {
             </div>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
+                <MetricCard title="Prospecto → calificado" metric={data.embudo.leadToQualified} formatter={formatPercent} />
+                <MetricCard title="Calificado → cotizado" metric={data.embudo.qualifiedToQuote} formatter={formatPercent} />
                 <MetricCard title="Prospecto → ganado" metric={data.embudo.leadToWon} formatter={formatPercent} />
                 <MetricCard title="Prospecto → cotizado" metric={data.embudo.leadToQuote} formatter={formatPercent} />
                 <MetricCard title="Cotizado → ganado" metric={data.embudo.quoteToWon} formatter={formatPercent} />

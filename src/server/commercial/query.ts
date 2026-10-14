@@ -72,6 +72,7 @@ export async function queryCommercial(
   // ── Ventas / embudo desde la bitácora de etapas ──
   const [
     createdRow,
+    qualifiedRow,
     wonRow,
     lostRow,
     quotesSentRow,
@@ -90,6 +91,19 @@ export async function queryCommercial(
           and(
             orgScope(schema.leadStageEvent.organizationId),
             isNull(schema.leadStageEvent.fromStageId),
+            gte(schema.leadStageEvent.occurredAt, from),
+            lte(schema.leadStageEvent.occurredAt, to)
+          )
+        ),
+      // Leads calificados: entraron a una etapa kind=qualified (distintos,
+      // para no doble-contar si un lead sale y vuelve a entrar).
+      db
+        .select({ value: sql<number>`count(distinct ${schema.leadStageEvent.leadId})` })
+        .from(schema.leadStageEvent)
+        .where(
+          and(
+            orgScope(schema.leadStageEvent.organizationId),
+            eq(schema.leadStageEvent.toStageKind, "qualified"),
             gte(schema.leadStageEvent.occurredAt, from),
             lte(schema.leadStageEvent.occurredAt, to)
           )
@@ -175,6 +189,7 @@ export async function queryCommercial(
     ]);
 
   const newLeads = n(createdRow[0]?.value);
+  const qualifiedLeads = n(qualifiedRow[0]?.value);
   const won = n(wonRow[0]?.value);
   const lost = n(lostRow[0]?.value);
   const quotesSent = n(quotesSentRow[0]?.value);
@@ -350,14 +365,17 @@ export async function queryCommercial(
     },
 
     embudo: {
-      // Embudo secuencial de 2 tramos: Prospectos → Cotizados → Ganados.
-      // "Perdidos" no es una etapa por la que se avanza (es un destino final),
-      // por eso no entra al gráfico de embudo.
+      // Embudo secuencial de 3 tramos: Prospectos → Calificados → Cotizados →
+      // Ganados. "Perdidos" no es una etapa por la que se avanza (es un destino
+      // final), por eso no entra al gráfico de embudo.
       stages: [
         { stage: "Prospectos", value: newLeads },
+        { stage: "Calificados", value: qualifiedLeads },
         { stage: "Cotizados", value: quotesSent },
         { stage: "Ganados", value: won },
       ],
+      leadToQualified: maybe(conversionRate(qualifiedLeads, newLeads)),
+      qualifiedToQuote: maybe(conversionRate(quotesSent, qualifiedLeads)),
       leadToWon: maybe(conversionRate(won, newLeads)),
       leadToQuote: maybe(conversionRate(quotesSent, newLeads)),
       quoteToWon: maybe(conversionRate(won, quotesSent)),
@@ -380,6 +398,11 @@ export async function queryCommercial(
       cac: maybe(
         hasInsights && payingCustomers > 0 ? adSpendCents / payingCustomers : null,
         payingCustomers === 0 ? "not_applicable" : "no_data"
+      ),
+      // CPQL: inversión real ÷ leads calificados en el periodo.
+      cpql: maybe(
+        hasInsights && qualifiedLeads > 0 ? adSpendCents / qualifiedLeads : null,
+        qualifiedLeads === 0 ? "not_applicable" : "no_data"
       ),
     },
 
