@@ -9,6 +9,8 @@ import { getGoogleBusinessCredentials } from "@/server/google-business/credentia
 import { googleBusinessEnabled } from "@/server/google-business/flag";
 import { getMarketplaceCredentials } from "@/server/mercado-libre/credentials";
 import { isChannelEnabled } from "@/server/channels/enabled";
+import { getIntelCredentials } from "@/server/intel/credentials";
+import { intelEnabled } from "@/server/intel/flag";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,7 @@ export const dynamic = "force-dynamic";
  */
 export const GET = withOwner(async (session) => {
   const orgId = session.organizationId;
-  const [metaAds, ga4, googleAds, googleCreds, capi, emailAccounts, gbCreds, mlCreds] = await Promise.all([
+  const [metaAds, ga4, googleAds, googleCreds, capi, emailAccounts, gbCreds, mlCreds, intelCreds] = await Promise.all([
     getIntegration(orgId, "meta_ads"),
     getIntegration(orgId, "ga4"),
     getIntegration(orgId, "google_ads"),
@@ -32,6 +34,7 @@ export const GET = withOwner(async (session) => {
     listEmailAccounts(orgId),
     googleBusinessEnabled() ? getGoogleBusinessCredentials(orgId) : null,
     isChannelEnabled("mercado_libre") ? getMarketplaceCredentials(orgId) : null,
+    intelEnabled() ? getIntelCredentials(orgId) : null,
   ]);
 
   const enabledEmailAccounts = emailAccounts.filter((a) => a.enabled);
@@ -67,6 +70,11 @@ export const GET = withOwner(async (session) => {
             ? "reconnect_required"
             : "connected"
           : "not_configured",
+      intel: !intelEnabled()
+        ? "disabled"
+        : intelCreds
+          ? "connected"
+          : "not_configured",
       email: enabledEmailAccounts.length > 0
         ? "connected"
         : emailAccounts.length > 0
@@ -79,6 +87,7 @@ export const GET = withOwner(async (session) => {
     calendar_id: googleCreds?.calendarId ?? null,
     google_business_last_sync: gbCreds?.lastSyncedAt?.toISOString() ?? null,
     mercado_libre_last_polled: mlCreds?.lastPolledAt?.toISOString() ?? null,
+    intel_last_ingest: intelCreds?.lastIngestAt?.toISOString() ?? null,
     email_accounts: enabledEmailAccounts.map((a) => a.email),
   });
 });

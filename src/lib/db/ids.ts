@@ -81,6 +81,12 @@ const prefixes = {
   campaignInsight: "cmi",
   // Comentarios públicos de publicaciones (canal comments)
   socialComment: "soc",
+  // Inteligencia de mercado (bandera INTEL)
+  intelCredentials: "ikc",
+  intelTerm: "itr",
+  intelSnapshot: "isn",
+  intelVideo: "ivd",
+  intelSearch: "isg",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

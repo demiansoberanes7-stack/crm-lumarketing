@@ -27,6 +27,7 @@ type ConnectionsStatus = {
   google_business_last_sync: string | null;
   mercado_libre_last_polled: string | null;
   email_accounts: string[];
+  intel_last_ingest: string | null;
 };
 
 const CONNECTIONS = [
@@ -39,6 +40,18 @@ const CONNECTIONS = [
 
 /** Conexiones de datos/publicidad: se resuelven con /api/settings/connections-status. */
 const DATA_CONNECTIONS = [
+  {
+    key: "intel",
+    name: "Inteligencia de Mercado",
+    href: "/settings/intel",
+    detail: "API keys gratuitas (YouTube + DENUE/INEGI) para tendencias y reportes de ideas.",
+    activationSetting: "INTEL=on",
+    hint: null as string | null,
+    account: (s: ConnectionsStatus) =>
+      s.intel_last_ingest
+        ? `Último feed ${new Date(s.intel_last_ingest).toLocaleString("es-MX")}`
+        : null,
+  },
   {
     key: "meta_ads",
     name: "Meta Ads",

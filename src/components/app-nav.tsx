@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  BarChart3,
   DollarSign,
   FileText,
   FlaskConical,
@@ -50,6 +51,7 @@ const NAV: NavItem[] = [
   { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
+  { href: "/inteligencia", label: "Inteligencia", icon: BarChart3 },
 ];
 
 /**

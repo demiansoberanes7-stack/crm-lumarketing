@@ -2354,3 +2354,131 @@ export const socialComment = pgTable(
     index("social_comment_org_platform_post_idx").on(t.organizationId, t.platform, t.postExternalId),
   ]
 );
+
+/* ============================================================
+ * Inteligencia de mercado (bandera INTEL)
+ *
+ * Todas las tablas del módulo son org-scoped (Constitución III): el dato de
+ * mercado se captura por instancia/organización, sin excepciones de datos
+ * "globales". Secretos cifrados AES-256-GCM (triple cipher/iv/tag), mismo
+ * patrón que google_business_credentials.
+ * ============================================================ */
+
+/** API keys del módulo: YouTube Data API + token DENUE (INEGI). */
+export const intelCredentials = pgTable(
+  "intel_credentials",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    youtubeKeyCipher: text("youtube_key_cipher").notNull(),
+    youtubeKeyIv: text("youtube_key_iv").notNull(),
+    youtubeKeyTag: text("youtube_key_tag").notNull(),
+    denueTokenCipher: text("denue_token_cipher"),
+    denueTokenIv: text("denue_token_iv"),
+    denueTokenTag: text("denue_token_tag"),
+    /** Último ingest exitoso (fuente YouTube). */
+    lastIngestAt: timestamp("last_ingest_at"),
+    status: varchar("status", { length: 20 }).notNull().default("connected"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("intel_credentials_org_uq").on(t.organizationId)]
+);
+
+/** Término/nicho monitoreado. `keywords` = JSON array de strings. */
+export const intelTerm = pgTable(
+  "intel_term",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 120 }).notNull(),
+    /** JSON array de palabras clave (minúsculas) con las que se matchean videos. */
+    keywords: jsonb("keywords").$type<string[]>().notNull(),
+    /** ISO 3166-1 alpha-2 del geo monitoreado. */
+    geo: varchar("geo", { length: 2 }).notNull().default("MX"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_term_org_name_uq").on(t.organizationId, t.name),
+    index("intel_term_org_active_idx").on(t.organizationId, t.active),
+  ]
+);
+
+/**
+ * Snapshot diario por término: agregados del matching del día.
+ * `day` es "YYYY-MM-DD" (UTC) para dedupe determinista.
+ */
+export const intelSnapshot = pgTable(
+  "intel_snapshot",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    termId: varchar("term_id", { length: 255 })
+      .notNull()
+      .references(() => intelTerm.id, { onDelete: "cascade" }),
+    /** Día UTC del snapshot, formato "YYYY-MM-DD". */
+    day: varchar("day", { length: 10 }).notNull(),
+    /** Suma de vistas de los videos coincidentes del día (proxy de interés). */
+    value: bigint("value", { mode: "number" }).notNull(),
+    /** Videos coincidentes del día. */
+    videoCount: integer("video_count").notNull().default(0),
+    /** Origen del dato: "youtube_mostpopular". */
+    source: varchar("source", { length: 40 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_snapshot_term_day_uq").on(t.termId, t.day),
+    index("intel_snapshot_org_day_idx").on(t.organizationId, t.day),
+    index("intel_snapshot_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);
+
+/** Videos coincidentes capturados por ingest (muestra cruda del snapshot). */
+export const intelVideo = pgTable(
+  "intel_video",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    termId: varchar("term_id", { length: 255 })
+      .notNull()
+      .references(() => intelTerm.id, { onDelete: "cascade" }),
+    /** Id del video en YouTube. */
+    videoId: varchar("video_id", { length: 40 }).notNull(),
+    title: varchar("title", { length: 300 }),
+    views: bigint("views", { mode: "number" }).notNull().default(0),
+    likes: bigint("likes", { mode: "number" }).notNull().default(0),
+    /** Día UTC de captura, "YYYY-MM-DD". */
+    day: varchar("day", { length: 10 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_video_term_video_day_uq").on(t.termId, t.videoId, t.day),
+    index("intel_video_org_term_idx").on(t.organizationId, t.termId, t.day),
+  ]
+);
+
+/** Historial de búsquedas del motor (UX + métrica de uso del módulo). */
+export const intelSearchLog = pgTable(
+  "intel_search_log",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    query: varchar("query", { length: 200 }).notNull(),
+    /** Término con el que se resolvió la búsqueda (null si no hubo match). */
+    termId: varchar("term_id", { length: 255 }).references(() => intelTerm.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("intel_search_log_org_idx").on(t.organizationId, t.createdAt)]
+);

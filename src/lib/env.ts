@@ -42,6 +42,10 @@ const envSchema = z.object({
   // responden desde el compositor. Apagado por defecto (mismo patrón ADR-001):
   // sin la bandera, la superficie responde 404. Ej.: GOOGLE_BUSINESS=on
   GOOGLE_BUSINESS: z.string().optional(),
+  // Inteligencia de mercado: tendencias y reportes de búsqueda dentro del CRM.
+  // Apagado por defecto (patrón ADR-001): sin la bandera, /inteligencia y
+  // /api/intel/* responden 404. Ej.: INTEL=on
+  INTEL: z.string().optional(),
   // 015: bases de los conectores. Solo se sobreescriben para apuntar a los
   // mocks en el self-test; en producción se usan las reales.
   ZOOM_BASE_URL: z.string().url().default("https://api.zoom.us/v2"),
