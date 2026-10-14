@@ -22,6 +22,8 @@ export const broadcastFiltersSchema = z.object({
   mediumDetail: z.enum(SOCIAL_NETWORKS).optional(),
   noteText: z.string().trim().min(1).max(160).optional(),
   noteDays: z.number().int().min(1).max(365).optional(),
+  /** IDs de contactos específicos (programación individual desde Contactos). */
+  contactIds: z.array(z.string().trim().min(1).max(255)).min(1).max(500).optional(),
 }).strict();
 
 /**
@@ -37,6 +39,21 @@ export const createBroadcastSchema = z.object({
   messageText: z.string().trim().min(1).max(4000),
   channel: broadcastChannelSchema.default("whatsapp"),
   filters: broadcastFiltersSchema,
+  /**
+   * Fecha/hora ISO en que debe salir. Si es null o pasada, sale ya.
+   * El worker solo procesa `scheduled_at <= now`, así que una fecha futura
+   * retiene la cola hasta que llegue el momento.
+   */
+  scheduledAt: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .nullable()
+    .refine((v) => {
+      if (!v) return true;
+      const d = new Date(v);
+      return !Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 60_000;
+    }, "La fecha de programación debe ser en el futuro"),
 }).strict();
 
 export type BroadcastFiltersInput = z.infer<typeof broadcastFiltersSchema>;

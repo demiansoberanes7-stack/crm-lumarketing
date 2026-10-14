@@ -8,14 +8,17 @@ import type { FichaDto, PriorityValue } from "@/lib/types";
 export function serializeContact(
   c: typeof schema.contact.$inferSelect,
   stageName: string | null = null,
-  priority: PriorityValue | null = null
+  priority: PriorityValue | null = null,
+  amountCents: number | null = null
 ) {
   return {
     id: c.id,
     name: c.name,
     phone: c.phone,
     notes: c.notes,
+    channel: c.channel,
     stageName,
+    amountCents,
     archivedAt: c.archivedAt?.toISOString() ?? null,
     source: effectiveSource(c.source),
     // Nace NULL como `source`: nadie captura a mano el medio de los cientos de

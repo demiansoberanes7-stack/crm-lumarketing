@@ -4,18 +4,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Archive,
-  ArchiveRestore,
+  CalendarClock,
   Download,
+  Mail,
   MessageSquareText,
+  MoreHorizontal,
+  Phone,
   Search,
-  Trash2,
   Upload,
   UserPlus,
   X,
+  DollarSign,
 } from "lucide-react";
 import type { ContactDto } from "@/lib/types";
 import { formatPhone } from "@/lib/utils";
+import { formatMoneyCents } from "@/lib/money";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ContactAvatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +32,17 @@ import { priorityRank } from "@/server/leads/priority";
 import { PriorityBadge } from "@/components/pipeline/priority-picker";
 import { NewContactDialog } from "./new-contact-dialog";
 import { ImportContactsDialog } from "./import-contacts-dialog";
+import { ScheduleMessageDialog } from "./schedule-message-dialog";
+
+const STAGE_TONE: Record<string, string> = {
+  Customer: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  Cliente: "border-emerald-200 bg-emerald-50 text-emerald-700",
+};
+
+function stageTone(name: string | null): string {
+  if (!name) return "border-border bg-subtle text-text-2";
+  return STAGE_TONE[name] ?? "border-border bg-subtle text-text-2";
+}
 
 export function ContactsClient() {
   const router = useRouter();
@@ -38,12 +53,12 @@ export function ContactsClient() {
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<ContactDto | null>(null);
   const [viewing, setViewing] = useState<ContactDto | null>(null);
+  const [scheduling, setScheduling] = useState<ContactDto | null>(null);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [creando, setCreando] = useState(false);
   const [importando, setImportando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Mismo rescate que en la Bandeja: lo tecleado antes de que hidrate el JS
-  // se perdía en silencio. Ver conversation-list.tsx.
   useEffect(() => {
     const typed = inputRef.current?.value ?? "";
     if (typed) setQuery(typed);
@@ -66,9 +81,6 @@ export function ContactsClient() {
     const res = await fetch(`/api/contacts?${params}`).catch(() => null);
     if (!res?.ok) return;
     const data = (await res.json()) as { contacts: ContactDto[] };
-    // A quién llamar primero: alta arriba, sin prioridad al final. El orden lo
-    // decide esta lista, no el servidor, porque es una preferencia de trabajo y
-    // no un dato del contacto.
     setContacts(
       [...data.contacts].sort(
         (a, b) => priorityRank(a.priority ?? null) - priorityRank(b.priority ?? null)
@@ -95,6 +107,14 @@ export function ContactsClient() {
     await fetch(`/api/contacts/${id}`, { method: "DELETE" }).catch(() => null);
     void refetch();
   }
+
+  // Cerrar menú al hacer click fuera
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuOpen]);
 
   return (
     <div className="flex h-full flex-col">
@@ -187,83 +207,133 @@ export function ContactsClient() {
             )}
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {contacts.map((c) => {
-              // Etiqueta del medio capturado ("Red social · Instagram"), nula
-              // si nadie lo llenó — a ese contacto no se le inventa uno.
               const med = mediumLabel(c.medium, c.mediumDetail);
+              const email = typeof c.ficha?.email === "string" ? c.ficha.email : null;
+              const channelLabel = CHANNEL_LABEL[c.channel as Channel] ?? c.channel;
+              const money = formatMoneyCents(c.amountCents, "MXN");
               return (
-              <li
-                key={c.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-3 py-3 sm:flex-nowrap sm:gap-x-4 sm:px-4"
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setViewing(c)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setViewing(c);
-                    }
-                  }}
-                  aria-label={`Abrir ficha de ${c.name}`}
-                  className="flex min-w-[60%] flex-1 cursor-pointer items-center gap-x-3 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-0"
+                <li
+                  key={c.id}
+                  className="group relative flex flex-col rounded-xl border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
                 >
-                  <ContactAvatar name={c.name} seed={c.id} />
-                  {/* El 60% mínimo reserva espacio para los botones en móvil. */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-sm font-medium">{c.name}</span>
-                      {c.priority && <PriorityBadge value={c.priority} />}
-                      {c.stageName && <Badge variant="outline">{c.stageName}</Badge>}
-                      {c.archivedAt && <Badge variant="secondary">Archivado</Badge>}
-                      {c.source?.source === "capturada" && (
-                        <Badge variant="secondary">{SOURCE_LABELS[c.source.value]}</Badge>
-                      )}
-                      {med && <Badge variant="outline">{med}</Badge>}
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {formatPhone(c.phone)}{c.notes ? ` · ${c.notes.slice(0, 60)}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditing(c)}
-                  >
-                    Editar
-                  </Button>
-                  <Link href={`/inbox?contact=${c.id}`}>
-                    <Button variant="ghost" size="icon" aria-label="Abrir conversación">
-                      <MessageSquareText className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={c.archivedAt ? "Desarchivar" : "Archivar"}
-                    onClick={() => void patch(c.id, { archived: !c.archivedAt })}
-                  >
-                    {c.archivedAt ? (
-                      <ArchiveRestore className="h-4 w-4" />
-                    ) : (
-                      <Archive className="h-4 w-4" />
+                  {/* Menú de acciones */}
+                  <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      aria-label="Acciones"
+                      onClick={() => setMenuOpen(menuOpen === c.id ? null : c.id)}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                    {menuOpen === c.id && (
+                      <div className="absolute right-0 top-8 z-20 w-44 rounded-md border bg-card py-1 shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => { setMenuOpen(null); setEditing(c); }}
+                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setMenuOpen(null); setScheduling(c); }}
+                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+                        >
+                          Programar mensaje
+                        </button>
+                        <Link href={`/inbox?contact=${c.id}`} className="block px-3 py-1.5 text-sm hover:bg-accent">
+                          Abrir conversación
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => { setMenuOpen(null); void patch(c.id, { archived: !c.archivedAt }); }}
+                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+                        >
+                          {c.archivedAt ? "Desarchivar" : "Archivar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setMenuOpen(null); void deleteContact(c.id, c.name); }}
+                          className="w-full px-3 py-1.5 text-left text-sm text-destructive hover:bg-accent"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Eliminar"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => void deleteContact(c.id, c.name)}
+                  </div>
+
+                  {/* Avatar + nombre + etapa */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setViewing(c)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setViewing(c);
+                      }
+                    }}
+                    className="flex cursor-pointer flex-col items-center gap-2 pb-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </li>
+                    <ContactAvatar name={c.name} seed={c.id} size="lg" />
+                    <h3 className="w-full truncate text-center text-sm font-semibold" title={c.name}>
+                      {c.name}
+                    </h3>
+                    {c.stageName && (
+                      <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${stageTone(c.stageName)}`}>
+                        {c.stageName}
+                      </span>
+                    )}
+                    {c.priority && <PriorityBadge value={c.priority} />}
+                  </div>
+
+                  {/* Datos de contacto */}
+                  <div className="space-y-1.5 border-t pt-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{c.phone ? formatPhone(c.phone) : "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{email ?? "—"}</span>
+                    </div>
+                    {money && (
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                        <span className="font-medium text-foreground">{money}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer: canal + medio + acciones rápidas */}
+                  <div className="mt-3 flex items-center justify-between border-t pt-3">
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="secondary" className="text-[10px]">{channelLabel}</Badge>
+                      {med && <Badge variant="outline" className="text-[10px]">{med}</Badge>}
+                      {c.archivedAt && <Badge variant="secondary" className="text-[10px]">Archivado</Badge>}
+                    </div>
+                    <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label="Programar mensaje"
+                        title="Programar mensaje"
+                        onClick={() => setScheduling(c)}
+                      >
+                        <CalendarClock className="h-3.5 w-3.5" />
+                      </Button>
+                      <Link href={`/inbox?contact=${c.id}`}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Abrir conversación">
+                          <MessageSquareText className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </li>
               );
             })}
           </ul>
@@ -286,6 +356,14 @@ export function ContactsClient() {
           contact={viewing}
           onClose={() => setViewing(null)}
           onEdit={(contact) => { setViewing(null); setEditing(contact); }}
+          onSchedule={(contact) => { setViewing(null); setScheduling(contact); }}
+        />
+      )}
+
+      {scheduling && (
+        <ScheduleMessageDialog
+          contact={scheduling}
+          onClose={() => setScheduling(null)}
         />
       )}
 
@@ -323,10 +401,12 @@ function ContactDetailDialog({
   contact: initial,
   onClose,
   onEdit,
+  onSchedule,
 }: {
   contact: ContactDto;
   onClose: () => void;
   onEdit: (contact: ContactDto) => void;
+  onSchedule: (contact: ContactDto) => void;
 }) {
   const [detail, setDetail] = useState<ContactDetailResponse | null>(null);
   const [error, setError] = useState("");
@@ -347,6 +427,8 @@ function ContactDetailDialog({
   const fichaEntries = Object.entries(ficha).filter(([key]) => key !== "email");
   const email = typeof ficha.email === "string" ? ficha.email : null;
   const medium = mediumLabel(contact.medium, contact.mediumDetail);
+  const channelLabel = CHANNEL_LABEL[contact.channel as Channel] ?? contact.channel;
+  const money = formatMoneyCents(contact.amountCents, "MXN");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-overlay p-4" onClick={onClose}>
@@ -359,7 +441,7 @@ function ContactDetailDialog({
       >
         <header className="mb-5 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <ContactAvatar name={contact.name} seed={contact.id} />
+            <ContactAvatar name={contact.name} seed={contact.id} size="lg" />
             <div className="min-w-0">
               <h2 className="truncate text-lg font-semibold">{contact.name}</h2>
               <p className="text-sm text-muted-foreground">Ficha del contacto</p>
@@ -377,7 +459,9 @@ function ContactDetailDialog({
           <DetailField label="Teléfono" value={contact.phone ? formatPhone(contact.phone) : null} />
           <DetailField label="Correo" value={email} />
           <DetailField label="Etapa" value={detail?.stage?.name ?? contact.stageName} />
+          <DetailField label="Canal" value={channelLabel} />
           <DetailField label="Medio de contacto" value={medium} />
+          <DetailField label="Monto" value={money} />
           <DetailField label="Fuente" value={contact.source ? `${SOURCE_LABELS[contact.source.value]} · ${contact.source.source === "capturada" ? "capturada" : "deducida"}` : null} />
           <DetailField label="Prioridad" value={contact.priority ?? null} />
           <DetailField label="Estado" value={contact.archivedAt ? "Archivado" : "Activo"} />
@@ -401,6 +485,9 @@ function ContactDetailDialog({
         )}
 
         <footer className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={() => onSchedule(contact)}>
+            <CalendarClock className="mr-2 h-4 w-4" />Programar mensaje
+          </Button>
           <Link href={`/inbox?contact=${contact.id}`}>
             <Button variant="outline"><MessageSquareText className="mr-2 h-4 w-4" />Abrir conversación</Button>
           </Link>
@@ -528,8 +615,6 @@ function EditDialog({
               patch.medium = medium || null;
               patch.mediumDetail = medium === "red_social" ? mediumDetail || null : null;
               const ficha: Record<string, unknown> = {};
-              // `null` borra la clave (mergeFicha): vaciar un campo SÍ debe
-              // persistir, no quedarse con el valor viejo.
               if (email !== originalEmail) ficha.email = email || null;
               if (interests !== originalInterests) ficha.interests = interests || null;
               if (Object.keys(ficha).length > 0) patch.ficha = ficha;

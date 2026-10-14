@@ -92,8 +92,12 @@ export type ContactDto = {
   /** null en contactos que llegaron solo con BSUID (003). */
   phone: string | null;
   notes: string | null;
+  /** Canal de transporte: whatsapp, instagram, messenger, tiktok, etc. */
+  channel: string;
   /** Etapa del embudo del lead asociado; null si el contacto no tiene lead. */
   stageName: string | null;
+  /** Monto del lead asociado (centavos); null si no se ha calificado. */
+  amountCents: number | null;
   archivedAt: string | null;
   /** De dónde salió el prospecto, capturada o deducida. */
   source?: SourceDto;

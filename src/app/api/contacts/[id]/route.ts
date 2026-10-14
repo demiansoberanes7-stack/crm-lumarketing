@@ -23,7 +23,12 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
   if (!contact) return apiError(404, "not_found", "Contacto no encontrado");
   const stageRow = await getContactStage(session.organizationId, id);
   return Response.json({
-    contact: serializeContact(contact),
+    contact: serializeContact(
+      contact,
+      stageRow?.stage.name ?? null,
+      null,
+      stageRow?.lead.amountCents ?? null
+    ),
     stage: stageRow
       ? {
           id: stageRow.stage.id,

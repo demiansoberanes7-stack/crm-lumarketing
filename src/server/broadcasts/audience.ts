@@ -13,6 +13,8 @@ export type BroadcastFilters = {
   mediumDetail?: (typeof SOCIAL_NETWORKS)[number];
   noteText?: string;
   noteDays?: number;
+  /** Contactos específicos (programación individual). */
+  contactIds?: string[];
 };
 
 export type BroadcastAudienceRecipient = {
@@ -130,6 +132,7 @@ export async function resolveBroadcastAudience(
     filters.mediumDetail ? eq(schema.contact.mediumDetail, filters.mediumDetail) : undefined,
     stageContactIds ? inArray(schema.contact.id, stageContactIds) : undefined,
     noteContactIds ? inArray(schema.contact.id, noteContactIds) : undefined,
+    filters.contactIds?.length ? inArray(schema.contact.id, filters.contactIds) : undefined,
   ];
   const contacts = await db
     .select({ id: schema.contact.id })

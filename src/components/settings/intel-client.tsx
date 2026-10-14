@@ -353,8 +353,10 @@ export function IntelSettingsClient() {
               {connection?.gtLastSyncAt && ` · última sync ${new Date(connection.gtLastSyncAt).toLocaleString("es-MX")}`}
             </p>
             <p className="mt-2 text-xs text-text-3">
-              La serie GT (índice 0–100) es la fuente principal de Inteligencia; sin ella,
-              el módulo usa YouTube como fallback normalizado.
+              La serie GT (índice 0–100) es la única fuente de tendencias del
+              módulo: 100 % externa, sin fallback a YouTube ni datos internos.
+              Sin ella, el ranking queda vacío hasta que se habilite y se
+              ingiera datos.
             </p>
             <div className="mt-3 flex flex-wrap items-end gap-3">
               <label className="flex items-center gap-2 text-sm">

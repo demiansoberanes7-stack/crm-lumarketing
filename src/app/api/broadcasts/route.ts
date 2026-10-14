@@ -54,6 +54,11 @@ export const POST = withAuth(async (session, req: Request) => {
 
   const db = getDb();
   const now = new Date();
+  // Si se programó una fecha futura, ese es el scheduledAt de la campaña y de
+  // cada destinatario; el worker solo procesa scheduled_at <= now. La campaña
+  // nace en "sending" para que el worker la espere hasta la hora programada.
+  const scheduledAt = body.data.scheduledAt ? new Date(body.data.scheduledAt) : now;
+  const isScheduled = scheduledAt.getTime() > now.getTime();
   const id = newId("broadcastCampaign");
   const skippedCount = recipients.filter((recipient) => recipient.status === "skipped").length;
   await db.transaction(async (tx) => {
@@ -64,9 +69,11 @@ export const POST = withAuth(async (session, req: Request) => {
       channel: body.data.channel,
       messageText: body.data.messageText,
       filters: body.data.filters,
-      status: "draft",
+      status: isScheduled ? "sending" : "draft",
       recipientCount: recipients.length,
       skippedCount,
+      scheduledAt,
+      startedAt: isScheduled ? now : null,
       createdBy: session.userId,
       createdAt: now,
       updatedAt: now,
@@ -83,7 +90,7 @@ export const POST = withAuth(async (session, req: Request) => {
           channel: recipient.channel,
           status: recipient.status,
           skipReason: recipient.skipReason,
-          scheduledAt: now,
+          scheduledAt,
           createdAt: now,
           updatedAt: now,
         }))
@@ -96,7 +103,8 @@ export const POST = withAuth(async (session, req: Request) => {
       id,
       name: body.data.name,
       channel: body.data.channel,
-      status: "draft",
+      status: isScheduled ? "sending" : "draft",
+      scheduledAt: scheduledAt.toISOString(),
       recipientCount: recipients.length,
       skippedCount,
     },
