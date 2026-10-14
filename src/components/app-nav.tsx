@@ -14,19 +14,30 @@ import { PhotoLogo } from "@/components/photo-logo";
 import { APP_VERSION, BUILD_COMMIT, versionLabel } from "@/lib/version";
 
 /**
- * Un renglón del menú: texto semibold, esquinas medias y, activo, lavado del
- * acento. En modo rail (colapsado) queda solo el icono centrado; el `title`
- * hace de tooltip nativo.
+ * Un renglón del menú. En escritorio (lg+) siempre es solo icono mediano
+ * con tooltip CSS al hover; en móvil (drawer) muestra icono + etiqueta.
  */
-function navItemClass(active: boolean, collapsed: boolean) {
+function navItemClass(active: boolean, showLabel: boolean) {
   return cn(
-    "group flex items-center rounded-lg text-[13.5px] font-semibold transition-colors",
-    collapsed
-      ? "min-h-10 w-10 justify-center p-0"
-      : "min-h-10 gap-[10px] px-2.5 py-2",
+    "group relative flex items-center rounded-lg text-[13.5px] font-semibold transition-colors",
+    showLabel
+      ? "min-h-10 gap-[10px] px-2.5 py-2"
+      : "min-h-11 w-11 justify-center p-0",
     active
       ? "bg-accent text-foreground"
       : "text-text-2 hover:bg-accent hover:text-foreground"
+  );
+}
+
+/** Tooltip CSS: aparece al hover del Link padre (group). Solo en modo icono. */
+function NavTooltip({ label }: { label: string }) {
+  return (
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-md transition-opacity duration-100 group-hover:opacity-100 lg:group-hover:opacity-100"
+    >
+      {label}
+    </span>
   );
 }
 
@@ -37,7 +48,6 @@ export function AppNav({
   role,
   commit,
   open = false,
-  collapsed = false,
   onClose,
 }: {
   branding: Branding;
@@ -52,8 +62,6 @@ export function AppNav({
   commit?: string;
   /** Solo aplica por debajo de `lg`: en escritorio el lateral es fijo. */
   open?: boolean;
-  /** Solo aplica en escritorio: rail de solo iconos. */
-  collapsed?: boolean;
   onClose?: () => void;
 }) {
   const pathname = usePathname();
@@ -62,22 +70,20 @@ export function AppNav({
   const [showVersion, setShowVersion] = useState(false);
 
   const sha = commit || BUILD_COMMIT;
-  const showLabels = !collapsed;
 
   return (
     <aside
       // Móvil: cajón que se desliza desde la izquierda (siempre montado, así
-      // la transición corre en ambos sentidos). Escritorio: rail o columna
-      // fija según `collapsed`.
+      // la transición corre en ambos sentidos). Escritorio: rail fijo de solo
+      // iconos medianos con tooltip al hover.
       className={cn(
         "fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-y-auto border-r bg-subtle pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] transition-[transform,visibility,width] duration-200",
-        "lg:static lg:visible lg:z-auto lg:translate-x-0 lg:overflow-visible lg:transition-[width]",
-        collapsed ? "lg:w-[64px] lg:px-3" : "lg:w-56 lg:px-3",
+        "lg:static lg:visible lg:z-auto lg:w-[72px] lg:translate-x-0 lg:overflow-visible lg:px-3 lg:transition-[width]",
         open ? "visible w-[17rem] translate-x-0 px-3 shadow-pop" : "invisible w-[17rem] -translate-x-full px-3"
       )}
     >
-      {/* Marca: el logo de la instancia; en rail colapsado solo el trazo. */}
-      <div className={cn("mb-4 flex items-start gap-1.5 pt-0.5", showLabels ? "px-1" : "justify-center px-0")}>
+      {/* Marca: en escritorio solo el logo centrado; en móvil drawer, completo. */}
+      <div className="mb-4 flex items-start gap-1.5 pt-0.5 lg:justify-center lg:px-0">
         <button
           onClick={onClose}
           aria-label="Cerrar el menú"
@@ -85,45 +91,47 @@ export function AppNav({
         >
           <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
-        {showLabels ? (
-          <div className="min-w-0">
-            <BrandLogo branding={branding} logoUrl={logoUrl} />
-          </div>
-        ) : (
-          <Link href="/dashboard" aria-label={branding.name} className="flex items-center">
-            {logoUrl ? (
-              <PhotoLogo src={logoUrl} alt="" className="h-8 w-8 rounded-lg" />
-            ) : (
-              <BrandLogo
-                branding={branding}
-                className="[&_span:last-child]:hidden [&_svg]:h-7 [&_svg]:w-7"
-              />
-            )}
-          </Link>
-        )}
+        {/* Drawer móvil: nombre + logo. Escritorio: solo logo. */}
+        <div className="min-w-0 lg:hidden">
+          <BrandLogo branding={branding} logoUrl={logoUrl} />
+        </div>
+        <Link href="/dashboard" aria-label={branding.name} className="hidden items-center lg:flex">
+          {logoUrl ? (
+            <PhotoLogo src={logoUrl} alt="" className="h-9 w-9 rounded-lg" />
+          ) : (
+            <BrandLogo
+              branding={branding}
+              className="[&_span:last-child]:hidden [&_svg]:h-8 [&_svg]:w-8"
+            />
+          )}
+        </Link>
       </div>
 
-      <nav className={cn("flex flex-col gap-0.5", showLabels ? "" : "items-center")}>
+      {/* Nav: en escritorio solo iconos con tooltip; en móvil drawer, con label. */}
+      <nav className="flex flex-col gap-0.5 lg:items-center">
         {[...NAV, ...NAV_FOOTER].map((item) => {
           const active = isNavActive(pathname, item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={navItemClass(active, !showLabels)}
-              title={showLabels ? undefined : item.label}
+              className={navItemClass(active, true)}
               aria-label={item.label}
             >
               <item.icon
-                className={cn("h-[17px] w-[17px] shrink-0", active ? "text-brand" : "text-text-3")}
+                className={cn("h-5 w-5 shrink-0", active ? "text-brand" : "text-text-3")}
                 strokeWidth={1.8}
               />
-              {showLabels && <span className="flex-1 truncate">{item.label}</span>}
-              {showLabels && item.badge && unread > 0 && (
-                <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1.5 text-[10.5px] font-bold text-brand-fg">
-                  {unread}
+              <span className="flex-1 truncate lg:hidden">{item.label}</span>
+              {item.badge && unread > 0 && (
+                <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-brand-fg lg:right-1 lg:top-1">
+                  {unread > 9 ? "9+" : unread}
                 </span>
               )}
+              {/* Tooltip solo en escritorio (drawer ya muestra el label). */}
+              <span className="hidden lg:contents">
+                <NavTooltip label={item.label} />
+              </span>
             </Link>
           );
         })}
@@ -131,54 +139,49 @@ export function AppNav({
 
       <div className="flex-1" />
 
-      <div className={cn("mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent", showLabels ? "px-2" : "justify-center px-0")}>
+      {/* Usuario: en escritorio solo avatar con tooltip; en drawer, completo. */}
+      <div className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:justify-center lg:px-0">
         <span
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand-text",
-            showLabels ? "h-8 w-8" : "h-8 w-8"
-          )}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand-text"
           title={userName}
         >
           {initials(userName)}
         </span>
-        {showLabels && (
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold">{userName}</span>
-            <span className="block truncate text-[11px] text-text-3">
-              {role === "owner" ? "Propietario" : "Equipo"} · En línea
-            </span>
+        <span className="min-w-0 flex-1 lg:hidden">
+          <span className="block truncate text-[13px] font-semibold">{userName}</span>
+          <span className="block truncate text-[11px] text-text-3">
+            {role === "owner" ? "Propietario" : "Equipo"} · En línea
           </span>
-        )}
-        {showLabels && (
-          <button
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
-            className="flex min-h-9 min-w-9 items-center justify-center rounded text-text-3 hover:text-foreground"
-            onClick={async () => {
-              await signOut();
-              router.push("/login");
-              router.refresh();
-            }}
-          >
-            <LogOut className="h-4 w-4" strokeWidth={1.7} />
-          </button>
-        )}
+        </span>
+        <button
+          aria-label="Cerrar sesión"
+          className="hidden min-h-9 min-w-9 items-center justify-center rounded text-text-3 hover:text-foreground lg:hidden"
+          onClick={async () => {
+            await signOut();
+            router.push("/login");
+            router.refresh();
+          }}
+        >
+          <LogOut className="h-4 w-4" strokeWidth={1.7} />
+        </button>
+        {/* Tooltip del usuario en escritorio. */}
+        <span className="hidden lg:contents">
+          <NavTooltip label={`${userName} · cerrar sesión`} />
+        </span>
       </div>
 
-      {/* Versión del build: clic para ver el commit. Discreta y solo expandida. */}
-      {showLabels && (
-        <button
-          className="mt-2 px-2.5 text-left font-mono text-[10.5px] tracking-[0.06em] text-text-2"
-          title={
-            sha
-              ? `${branding.name} ${APP_VERSION}, construido del commit ${sha}`
-              : `${branding.name} ${APP_VERSION}`
-          }
-          onClick={() => setShowVersion((v) => !v)}
-        >
-          {showVersion && sha ? `${versionLabel(sha)} · ${sha.slice(0, 7)}` : versionLabel(sha)}
-        </button>
-      )}
+      {/* Versión del build: discreta, clic para ver el commit. */}
+      <button
+        className="mt-2 hidden text-center font-mono text-[10px] tracking-[0.06em] text-text-2 lg:block"
+        title={
+          sha
+            ? `${branding.name} ${APP_VERSION}, construido del commit ${sha}`
+            : `${branding.name} ${APP_VERSION}`
+        }
+        onClick={() => setShowVersion((v) => !v)}
+      >
+        {showVersion && sha ? versionLabel(sha) : APP_VERSION}
+      </button>
     </aside>
   );
 }

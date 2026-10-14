@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, PanelLeft, Search } from "lucide-react";
+import { Bell, Menu, Search } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import type { ThemePreference } from "@/lib/theme";
 import { breadcrumbsFor } from "@/config/nav";
@@ -11,17 +11,15 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 /**
- * Cabecera del starter: a la izquierda el toggle del rail + breadcrumbs; a la
- * derecha el buscador ⌘K, la campana de la Bandeja y el tema. En móvil el
- * toggle abre el cajón y la marca sustituye a los breadcrumbs.
+ * Cabecera: a la izquierda la marca (móvil) o migas (escritorio); a la
+ * derecha el buscador ⌘K, la campana de la Bandeja y el tema. En móvil la
+ * hamburguesa abre el cajón.
  */
 export function AppHeader({
   branding,
   logoUrl,
   theme,
   unread,
-  collapsed,
-  onToggleCollapse,
   onOpenDrawer,
   onOpenSearch,
 }: {
@@ -29,9 +27,6 @@ export function AppHeader({
   logoUrl?: string | null;
   theme: ThemePreference;
   unread: number;
-  /** Estado del rail en escritorio (solo pinta el icono correcto). */
-  collapsed: boolean;
-  onToggleCollapse: () => void;
   /** Abre el cajón en móvil. */
   onOpenDrawer: () => void;
   onOpenSearch: () => void;
@@ -41,7 +36,7 @@ export function AppHeader({
 
   return (
     <header className="header-surface sticky top-0 z-30 flex h-12 shrink-0 items-center gap-1 border-b px-2 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:h-14 sm:px-3">
-      {/* Móvil: hamburguesa + marca. Escritorio: colapso del rail + migas. */}
+      {/* Móvil: hamburguesa + marca. */}
       <button
         type="button"
         onClick={onOpenDrawer}
@@ -49,14 +44,6 @@ export function AppHeader({
         className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
       >
         <Menu className="h-5 w-5" strokeWidth={1.8} />
-      </button>
-      <button
-        type="button"
-        onClick={onToggleCollapse}
-        aria-label={collapsed ? "Expandir la barra lateral" : "Contraer la barra lateral"}
-        className="hidden min-h-9 min-w-9 items-center justify-center rounded-lg text-text-2 hover:bg-accent hover:text-foreground lg:flex"
-      >
-        <PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.8} />
       </button>
 
       <div className="min-w-0 flex-1 lg:px-2">

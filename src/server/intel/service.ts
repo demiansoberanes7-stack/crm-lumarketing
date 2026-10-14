@@ -552,8 +552,9 @@ export type GtReport = {
 
 /**
  * Lee el reporte GT de un término desde la BD (lo que ya se ingirió).
- * Si GT no tiene datos, cae a la serie YouTube normalizada 0–100 (fallback
- * declarado). Regiones: si GT no tiene, usa DENUE normalizado.
+ * Si GT está deshabilitado (checkbox de BD) o no tiene datos, cae a la serie
+ * YouTube normalizada 0–100 (fallback declarado). Regiones: si GT no tiene,
+ * usa DENUE normalizado.
  */
 export async function getGtReport(
   organizationId: string,
@@ -570,17 +571,23 @@ export async function getGtReport(
   const term = termRows[0];
   if (!term) return null;
 
+  // Si GT está deshabilitado, no se leen las tablas GT: fallback directo.
+  const creds = await getIntelCredentials(organizationId);
+  const gtActive = creds?.gtEnabled ?? false;
+
   const end = utcDay();
   const start = addDays(end, -27);
 
-  // Serie GT
-  const gtRows = await db
-    .select()
-    .from(schema.intelGtSnapshot)
-    .where(
-      scoped(schema.intelGtSnapshot.organizationId, organizationId, eq(schema.intelGtSnapshot.termId, termId))
-    )
-    .orderBy(schema.intelGtSnapshot.day);
+  // Serie GT (solo si está habilitado)
+  const gtRows = gtActive
+    ? await db
+        .select()
+        .from(schema.intelGtSnapshot)
+        .where(
+          scoped(schema.intelGtSnapshot.organizationId, organizationId, eq(schema.intelGtSnapshot.termId, termId))
+        )
+        .orderBy(schema.intelGtSnapshot.day)
+    : [];
 
   let series: GtReport["series"] = [];
   let seriesSource: GtReport["seriesSource"] = "none";
@@ -605,14 +612,16 @@ export async function getGtReport(
     }
   }
 
-  // Regiones GT
-  const gtRegionRows = await db
-    .select()
-    .from(schema.intelGtRegion)
-    .where(
-      scoped(schema.intelGtRegion.organizationId, organizationId, eq(schema.intelGtRegion.termId, termId))
-    )
-    .orderBy(schema.intelGtRegion.day);
+  // Regiones GT (solo si está habilitado)
+  const gtRegionRows = gtActive
+    ? await db
+        .select()
+        .from(schema.intelGtRegion)
+        .where(
+          scoped(schema.intelGtRegion.organizationId, organizationId, eq(schema.intelGtRegion.termId, termId))
+        )
+        .orderBy(schema.intelGtRegion.day)
+    : [];
 
   let regions: GtReport["regions"] = [];
   let regionsSource: GtReport["regionsSource"] = "none";
@@ -629,14 +638,16 @@ export async function getGtReport(
     regionsSource = "google_trends";
   }
 
-  // Relacionados
-  const relatedRows = await db
-    .select()
-    .from(schema.intelGtRelated)
-    .where(
-      scoped(schema.intelGtRelated.organizationId, organizationId, eq(schema.intelGtRelated.termId, termId))
-    )
-    .orderBy(desc(schema.intelGtRelated.day));
+  // Relacionados (solo si está habilitado)
+  const relatedRows = gtActive
+    ? await db
+        .select()
+        .from(schema.intelGtRelated)
+        .where(
+          scoped(schema.intelGtRelated.organizationId, organizationId, eq(schema.intelGtRelated.termId, termId))
+        )
+        .orderBy(desc(schema.intelGtRelated.day))
+    : [];
 
   const topics = relatedRows
     .filter((r) => r.kind === "topic")

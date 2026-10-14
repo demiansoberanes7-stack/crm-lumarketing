@@ -9,13 +9,10 @@ import { AppHeader } from "@/components/app-header";
 import { CommandPalette, useCommandPaletteShortcut } from "@/components/command-palette";
 import { useUnreadCount } from "@/components/use-unread-count";
 
-const COLLAPSE_KEY = "lumark:nav-collapsed";
-
 /**
- * Cascarón de la app, al estilo del starter:
+ * Cascaron de la app:
  *
- * - Escritorio (lg+): barra lateral que colapsa a rail de iconos (estado
- *   recordado en localStorage) + cabecera con breadcrumbs, ⌘K, campana y tema.
+ * - Escritorio (lg+): rail fijo de solo iconos medianos con tooltip al hover.
  * - Móvil/tableta: el lateral sale como cajón sobre un velo; la cabecera
  *   lleva hamburguesa y marca.
  *
@@ -44,7 +41,6 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [visibleHeight, setVisibleHeight] = useState<string | null>(null);
   const unread = useUnreadCount();
@@ -64,19 +60,6 @@ export function AppShell({
       visualViewport?.removeEventListener("resize", updateHeight);
       window.removeEventListener("resize", updateHeight);
     };
-  }, []);
-
-  // Estado del rail: se lee en el cliente para no divergir del SSR.
-  useEffect(() => {
-    setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
-  }, []);
-
-  const toggleCollapse = useCallback(() => {
-    setCollapsed((c) => {
-      const next = !c;
-      window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      return next;
-    });
   }, []);
 
   useCommandPaletteShortcut(useCallback(() => setSearchOpen((o) => !o), []));
@@ -120,7 +103,6 @@ export function AppShell({
         userName={userName}
         role={role}
         open={navOpen}
-        collapsed={collapsed}
         onClose={() => setNavOpen(false)}
       />
 
@@ -130,8 +112,6 @@ export function AppShell({
           logoUrl={logoUrl}
           theme={theme}
           unread={unread}
-          collapsed={collapsed}
-          onToggleCollapse={toggleCollapse}
           onOpenDrawer={() => setNavOpen(true)}
           onOpenSearch={() => setSearchOpen(true)}
         />

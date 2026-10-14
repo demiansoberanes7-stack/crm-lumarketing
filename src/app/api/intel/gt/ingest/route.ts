@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiError, withAuth } from "@/lib/api";
-import { intelDisabledResponse, intelEnabled, gtEnabled } from "@/server/intel/flag";
+import { intelDisabledResponse, intelEnabled } from "@/server/intel/flag";
+import { getIntelCredentials } from "@/server/intel/credentials";
 import { runGtIngest } from "@/server/intel/service";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +13,16 @@ const bodySchema = z.object({
 
 /**
  * Dispara la ingesta de Google Trends para un término (serie, regiones,
- * relacionados). Re-ejecutable: upsert por día. Si la bandera INTEL_GT está
- * apagada, responde 404 (la superficie no existe en esta instancia).
+ * relacionados). Re-ejecutable: upsert por día. El control es el checkbox
+ * `gtEnabled` de la BD (GT es gratis y sin credenciales, no necesita env var).
  */
 export const POST = withAuth(async (session, req: Request) => {
   if (!intelEnabled()) return intelDisabledResponse();
-  if (!gtEnabled()) return intelDisabledResponse();
+
+  const creds = await getIntelCredentials(session.organizationId);
+  if (!creds?.gtEnabled) {
+    return apiError(409, "gt_not_enabled", "Activa Google Trends en Conexiones → Inteligencia.");
+  }
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {

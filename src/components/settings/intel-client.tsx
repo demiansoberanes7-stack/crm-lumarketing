@@ -165,7 +165,6 @@ export function IntelSettingsClient() {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        youtubeKey: `····${connection?.youtubeKeyLast4}`,
         denueToken,
         gtEnabled: connection?.gtEnabled ?? false,
       }),
@@ -208,7 +207,6 @@ export function IntelSettingsClient() {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        youtubeKey: `····${connection?.youtubeKeyLast4}`,
         denueToken: connection?.denueConfigured ? undefined : null,
         gtEnabled,
       }),

@@ -1,6 +1,6 @@
 import { withOwner } from "@/lib/api";
 import { markSourceTestResult } from "@/server/intel/credentials";
-import { intelDisabledResponse, intelEnabled, gtEnabled } from "@/server/intel/flag";
+import { intelDisabledResponse, intelEnabled } from "@/server/intel/flag";
 import { verifyGt } from "@/server/intel/sources/google-trends";
 
 export const dynamic = "force-dynamic";
@@ -8,11 +8,11 @@ export const dynamic = "force-dynamic";
 /**
  * Prueba en vivo de Google Trends (endpoint no oficial): consulta
  * "tecnología" en MX para "now 7-d" y verifica que devuelva serie.
- * Guarda el resultado en `gt_status` para el badge verde/rojo.
+ * No requiere env var: GT es gratis y sin credenciales, el control es el
+ * checkbox `gtEnabled` de la BD. Guarda el resultado en `gt_status`.
  */
 export const POST = withOwner(async (session) => {
   if (!intelEnabled()) return intelDisabledResponse();
-  if (!gtEnabled()) return intelDisabledResponse();
 
   const result = await verifyGt("tecnología", "MX");
   await markSourceTestResult(session.organizationId, "gt", result.ok);
