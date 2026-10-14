@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Prueba en vivo de Google Trends (endpoint no oficial): consulta
- * "tecnología" en MX para "now 7-d" y verifica que devuelva serie.
+ * "tecnología" en MX para "now 1-m" y verifica que devuelva serie.
  * No requiere env var: GT es gratis y sin credenciales, el control es el
  * checkbox `gtEnabled` de la BD. Guarda el resultado en `gt_status`.
  */

@@ -34,7 +34,7 @@ export type TrendSeries = {
   lastValue: number;
   /** Videos coincidentes del último día. */
   lastVideoCount: number;
-  /** Serie de los últimos 28 días (valor crudo de vistas). */
+  /** Serie de la ventana (GT: 30 días; fallback YouTube: 28). */
   series: Array<{ day: string; value: number }>;
 };
 
@@ -258,7 +258,7 @@ export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
             Enfócate en: {top.slice(0, 3).map((t) => t.name).join(", ")}
           </p>
           <p className="mt-0.5 text-xs text-success-text opacity-80">
-            Estos nichos tienen interés estable o en alza según los últimos 28 días.
+            Estos nichos tienen interés estable o en alza según los últimos 30 días.
           </p>
         </div>
       )}

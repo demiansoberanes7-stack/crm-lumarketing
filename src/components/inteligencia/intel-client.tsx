@@ -346,7 +346,7 @@ export function IntelClient() {
           {/* Gráfica comparativa multi-nicho (todas las líneas normalizadas) */}
           {trends && trends.trends.length > 0 && (
             <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
-              <h2 className="font-semibold">Interés comparado · últimos 28 días</h2>
+              <h2 className="font-semibold">Interés comparado · últimos 30 días</h2>
               <p className="mt-1 text-xs text-text-3">
                 Cada nicho normalizado a su propio máximo (0–100). Sirve para ver de un
                 vistazo cuáles suben y cuáles bajan. Fuente: Google Trends (MX) cuando hay

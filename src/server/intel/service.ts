@@ -138,7 +138,8 @@ export async function getTrends(
   const gtActive = creds?.gtEnabled ?? false;
   const terms = await listActiveTerms(organizationId);
   const end = utcDay();
-  const start = addDays(end, -27);
+  // Ventana amplia: cubre la serie GT de 30 días y el histórico YouTube de 28.
+  const start = addDays(end, -29);
 
   const db = getDb();
   const termIds = terms.map((t) => t.id);
@@ -496,7 +497,7 @@ export async function runGtIngest(
   }
 
   const { fetchGt } = await import("@/server/intel/sources/google-trends");
-  const data = await fetchGt(term.name, geo, "now 7-d");
+  const data = await fetchGt(term.name, geo, "now 1-m");
   const day = utcDay();
 
   let points = 0;
@@ -618,7 +619,8 @@ export async function getGtReport(
   const gtActive = creds?.gtEnabled ?? false;
 
   const end = utcDay();
-  const start = addDays(end, -27);
+  // Ventana de lectura: cubre la serie GT de 30 días (el fallback YouTube usa 28).
+  const start = addDays(end, -29);
 
   // Serie GT (solo si está habilitado)
   const gtRows = gtActive
@@ -717,7 +719,7 @@ export async function getGtReport(
         seriesSource === "google_trends"
           ? "Google Trends (endpoint no oficial)"
           : "YouTube mostPopular (fallback, normalizado 0–100)",
-      ventana: "últimos 28 días",
+      ventana: "últimos 30 días",
     },
     generatedAt: new Date().toISOString(),
   };

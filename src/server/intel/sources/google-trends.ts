@@ -286,7 +286,7 @@ async function explore(
 export async function fetchGt(
   kw: string,
   geo = "MX",
-  timeframe = "now 7-d"
+  timeframe = "now 1-m"
 ): Promise<GtResponse> {
   const key = cacheKey([kw, geo, timeframe]);
   const hit = cache.get(key);
@@ -374,7 +374,7 @@ export async function verifyGt(
   kw = "tecnología",
   geo = "MX"
 ): Promise<{ ok: boolean; reason?: string }> {
-  const data = await fetchGt(kw, geo, "now 7-d");
+  const data = await fetchGt(kw, geo, "now 1-m");
   if (data.timeSeries && data.timeSeries.points.length > 0) {
     return { ok: true };
   }
