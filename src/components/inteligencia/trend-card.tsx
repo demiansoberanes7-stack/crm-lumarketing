@@ -56,9 +56,21 @@ function ZChip({ z }: { z: number | null }) {
   );
 }
 
-export function TrendCard({ trend }: { trend: Trend }) {
+export function TrendCard({
+  trend,
+  selected = false,
+  onSelect,
+}: {
+  trend: Trend;
+  selected?: boolean;
+  onSelect?: () => void;
+}) {
   return (
-    <article className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm">
+    <article
+      className={`flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm transition-colors ${
+        selected ? "border-brand-text ring-1 ring-brand-text" : ""
+      }`}
+    >
       <div className="flex min-w-0 items-start justify-between gap-2">
         <h3 className="min-w-0 truncate font-semibold" title={trend.name}>{trend.name}</h3>
         <ZChip z={trend.z} />
@@ -66,7 +78,7 @@ export function TrendCard({ trend }: { trend: Trend }) {
       <Sparkline series={trend.series} />
       <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-2">
         <div>
-          <dt className="inline text-text-3">Vistas 7d: </dt>
+          <dt className="inline text-text-3">Vistas feed: </dt>
           <dd className="inline font-medium">{numberCompact.format(trend.lastValue)}</dd>
         </div>
         <div>
@@ -74,6 +86,20 @@ export function TrendCard({ trend }: { trend: Trend }) {
           <dd className="inline font-medium">{trend.lastVideoCount}</dd>
         </div>
       </dl>
+      {onSelect && (
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-pressed={selected}
+          className={`mt-auto min-h-9 rounded-md border px-2 text-xs font-medium transition-colors ${
+            selected
+              ? "border-brand-text bg-brand-tint text-brand-text"
+              : "text-text-2 hover:bg-accent"
+          }`}
+        >
+          {selected ? "✓ en comparativa" : "+ comparar"}
+        </button>
+      )}
     </article>
   );
 }

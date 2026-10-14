@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { BarChart3, RefreshCw, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, GitCompareArrows, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TrendCard } from "@/components/inteligencia/trend-card";
 import { ReportView, type SearchReport } from "@/components/inteligencia/report-view";
+import { ShareBars } from "@/components/inteligencia/share-bars";
+import { AudiencePanel } from "@/components/inteligencia/audience-panel";
+import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 
 type TrendsPayload = {
   trends: Array<{
@@ -19,15 +22,29 @@ type TrendsPayload = {
   lastIngestAt: string | null;
 };
 
+const numberCompact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
+
+function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <article className="min-w-0 rounded-xl border bg-card p-4 shadow-sm">
+      <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-text-3">{label}</p>
+      <p className="mt-1 truncate text-xl font-semibold tabular-nums">{value}</p>
+      {hint && <p className="mt-0.5 truncate text-[11px] text-text-3">{hint}</p>}
+    </article>
+  );
+}
+
 /**
- * Módulo de inteligencia con panel de dos estados:
- * - Estado 1 (default): tarjetas de tendencias actuales.
- * - Estado 2: al buscar, el mismo panel muestra el informe de la idea.
- * "× Limpiar" vuelve al Estado 1.
+ * Módulo de inteligencia — panel de búsqueda de tendencias.
+ * Estado 1: KPIs + share Nielsen + audiencia + tarjetas con comparativa.
+ * Estado 2: informe de búsqueda (actualiza el panel) o comparativa de nichos.
  */
 export function IntelClient() {
   const [trends, setTrends] = useState<TrendsPayload | null>(null);
   const [report, setReport] = useState<SearchReport | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [compareItems, setCompareItems] = useState<CompareItem[] | null>(null);
+  const [comparing, setComparing] = useState(false);
   const [query, setQuery] = useState("");
   const [loadingTrends, setLoadingTrends] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -49,6 +66,56 @@ export function IntelClient() {
 
   useEffect(() => { void loadTrends(); }, [loadTrends]);
 
+  const shareRows = useMemo(() => {
+    if (!trends) return [];
+    const total = trends.trends.reduce((a, t) => a + t.lastValue, 0);
+    return trends.trends
+      .filter((t) => t.lastValue > 0)
+      .map((t) => ({
+        name: t.name,
+        views: t.lastValue,
+        pct: total > 0 ? (t.lastValue / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.pct - a.pct);
+  }, [trends]);
+
+  const kpis = useMemo(() => {
+    if (!trends) return null;
+    const totalViews = trends.trends.reduce((a, t) => a + t.lastValue, 0);
+    const totalVideos = trends.trends.reduce((a, t) => a + t.lastVideoCount, 0);
+    return { niches: trends.trends.length, totalViews, totalVideos };
+  }, [trends]);
+
+  function toggleSelect(termId: string) {
+    setCompareItems(null);
+    setSelected((prev) => {
+      if (prev.includes(termId)) return prev.filter((id) => id !== termId);
+      if (prev.length >= 3) return prev;
+      return [...prev, termId];
+    });
+  }
+
+  async function handleCompare() {
+    if (selected.length < 2) return;
+    setComparing(true);
+    setError("");
+    setReport(null);
+    const res = await fetch(`/api/intel/compare?ids=${selected.join(",")}`, { cache: "no-store" }).catch(() => null);
+    setComparing(false);
+    if (res?.ok) {
+      const data = await res.json().catch(() => null) as { terms: CompareItem[] } | null;
+      if (data) setCompareItems(data.terms);
+    } else {
+      const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "No se pudo generar la comparativa.");
+    }
+  }
+
+  function clearCompare() {
+    setCompareItems(null);
+    setSelected([]);
+  }
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     const q = query.trim();
@@ -56,9 +123,8 @@ export function IntelClient() {
     setSearching(true);
     setError("");
     setReport(null);
-    const res = await fetch(`/api/intel/search?q=${encodeURIComponent(q)}`, {
-      cache: "no-store",
-    }).catch(() => null);
+    setCompareItems(null);
+    const res = await fetch(`/api/intel/search?q=${encodeURIComponent(q)}`, { cache: "no-store" }).catch(() => null);
     setSearching(false);
     if (res?.ok) {
       const data = await res.json().catch(() => null) as SearchReport | null;
@@ -81,6 +147,7 @@ export function IntelClient() {
     const res = await fetch("/api/intel/ingest", { method: "POST" }).catch(() => null);
     setIngesting(false);
     if (res?.ok) {
+      clearCompare();
       await loadTrends();
     } else {
       const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
@@ -96,8 +163,8 @@ export function IntelClient() {
             <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-text-2">
-            Tendencias de contenido y reportes de ideas con datos públicos (YouTube México + DENUE/INEGI).
-            Busca una idea y el panel se actualiza con su informe.
+            Compara nichos, busca una idea y mide su relevancia con datos públicos de México
+            (YouTube + DENUE/INEGI). Cada gráfica indica su unidad y fuente.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -142,31 +209,67 @@ export function IntelClient() {
 
       {report ? (
         <ReportView report={report} />
+      ) : compareItems ? (
+        <CompareView items={compareItems} onRemove={toggleSelect} onClear={clearCompare} />
       ) : (
-        <section aria-label="Tendencias actuales" className="space-y-3">
-          {loadingTrends ? (
-            <p className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">Consultando tendencias…</p>
-          ) : trends && trends.trends.length > 0 ? (
-            <>
-              <h2 className="text-sm font-semibold tracking-tight text-text-2">
-                Tendencias actuales · México · últimos 28 días
-              </h2>
-              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {trends.trends.map((trend) => (
-                  <TrendCard key={trend.termId} trend={trend} />
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">
-              <p className="font-medium">Aún no hay datos de tendencias.</p>
-              <p className="mt-1 text-text-3">
-                Configura la API key de YouTube (Conexiones → Inteligencia) y pulsa
-                «Actualizar datos» para capturar el feed popular del día.
-              </p>
-            </div>
+        <>
+          {kpis && (
+            <section aria-label="Resumen" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard label="Nichos monitoreados" value={String(kpis.niches)} hint="catálogo activo" />
+              <StatCard label="Videos del feed" value={numberCompact.format(kpis.totalVideos)} hint="coincidencias del día" />
+              <StatCard label="Interés total" value={numberCompact.format(kpis.totalViews)} hint="vistas acumuladas" />
+              <StatCard
+                label="Comparativa"
+                value={`${selected.length}/3`}
+                hint={selected.length >= 2 ? "pulsa Comparar" : "selecciona tarjetas"}
+              />
+            </section>
           )}
-        </section>
+
+          <ShareBars rows={shareRows} />
+
+          <AudiencePanel />
+
+          <section aria-label="Tendencias actuales" className="space-y-3">
+            {loadingTrends ? (
+              <p className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">Consultando tendencias…</p>
+            ) : trends && trends.trends.length > 0 ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold tracking-tight text-text-2">
+                    Evolución por nicho · 28 días
+                  </h2>
+                  <Button
+                    onClick={() => void handleCompare()}
+                    disabled={selected.length < 2 || comparing}
+                    variant={selected.length >= 2 ? "default" : "outline"}
+                  >
+                    <GitCompareArrows className="mr-2 h-4 w-4" />
+                    {comparing ? "Comparando…" : `Comparar (${selected.length})`}
+                  </Button>
+                </div>
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {trends.trends.map((trend) => (
+                    <TrendCard
+                      key={trend.termId}
+                      trend={trend}
+                      selected={selected.includes(trend.termId)}
+                      onSelect={() => toggleSelect(trend.termId)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">
+                <p className="font-medium">Aún no hay datos de tendencias.</p>
+                <p className="mt-1 text-text-3">
+                  Configura la API key de YouTube (Conexiones → Inteligencia) y pulsa
+                  «Actualizar datos» para capturar el feed popular del día.
+                </p>
+              </div>
+            )}
+          </section>
+        </>
       )}
     </div>
   );

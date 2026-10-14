@@ -323,3 +323,89 @@ export async function searchReport(
     generatedAt: new Date().toISOString(),
   };
 }
+
+export type TermCompareItem = {
+  termId: string;
+  name: string;
+  seriesPoints: Array<{ day: string; value: number }>;
+  descriptive: Descriptive;
+  z: number | null;
+  /** % del interés del último feed que representa este nicho (share). */
+  sharePct: number;
+  lastValue: number;
+  videoCount: number;
+  classification: Classification;
+};
+
+/**
+ * Comparativa de 2–3 nichos: mismas métricas, misma ventana, unidades
+ * explícitas. El share se calcula sobre la suma de vistas del último feed
+ * entre los nichos monitoreados (no es share de mercado total).
+ */
+export async function compareTerms(
+  organizationId: string,
+  termIds: string[]
+): Promise<{ terms: TermCompareItem[]; generatedAt: string }> {
+  const requested = [...new Set(termIds)].slice(0, 3);
+  const allTerms = await listActiveTerms(organizationId);
+  const terms = requested
+    .map((id) => allTerms.find((t) => t.id === id))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+  const end = utcDay();
+  const start = addDays(end, -27);
+  const db = getDb();
+  const rows = terms.length
+    ? await db
+        .select()
+        .from(schema.intelSnapshot)
+        .where(
+          scoped(
+            schema.intelSnapshot.organizationId,
+            organizationId,
+            inArray(schema.intelSnapshot.termId, terms.map((t) => t.id))
+          )
+        )
+        .orderBy(schema.intelSnapshot.day)
+    : [];
+
+  const byTerm = new Map<string, Array<{ day: string; value: number; videoCount: number }>>();
+  for (const row of rows) {
+    const list = byTerm.get(row.termId) ?? [];
+    list.push({ day: row.day, value: Number(row.value), videoCount: row.videoCount });
+    byTerm.set(row.termId, list);
+  }
+
+  const lastValues = terms.map((term) => {
+    const history = (byTerm.get(term.id) ?? []).filter(
+      (s) => s.day >= start && s.day <= end
+    );
+    return history.length > 0 ? history[history.length - 1]!.value : 0;
+  });
+  const totalLast = lastValues.reduce((a, b) => a + b, 0);
+
+  const items: TermCompareItem[] = terms.map((term, i) => {
+    const history = (byTerm.get(term.id) ?? []).filter(
+      (s) => s.day >= start && s.day <= end
+    );
+    const seriesValues = history.map((s) => s.value);
+    const recent = seriesValues.slice(-7);
+    const prior = seriesValues.slice(0, -7);
+    const z = seriesValues.length >= 7 ? growthZ(recent, prior) : null;
+    const verdict = classify({ daysWithData: seriesValues.length, z });
+    const last = history[history.length - 1];
+    return {
+      termId: term.id,
+      name: term.name,
+      seriesPoints: history.map((s) => ({ day: s.day, value: s.value })),
+      descriptive: describe(seriesValues),
+      z,
+      sharePct: totalLast > 0 ? (lastValues[i]! / totalLast) * 100 : 0,
+      lastValue: lastValues[i]!,
+      videoCount: last?.videoCount ?? 0,
+      classification: verdict.classification,
+    };
+  });
+
+  return { terms: items, generatedAt: new Date().toISOString() };
+}

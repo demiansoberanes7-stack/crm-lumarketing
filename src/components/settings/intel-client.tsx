@@ -162,8 +162,9 @@ export function IntelSettingsClient() {
                   placeholder="Token de 32 caracteres"
                 />
                 <p className="mt-1 text-[11px] leading-snug text-text-3">
-                  Gratis por correo: inegi.org.mx/servicios/api_denue.html → Obtener token.
-                  Habilita el conteo de establecimientos (competencia) en los informes.
+                  Gratis por correo: inegi.org.mx/app/api/denue/tokenVerify/tokenverify.html
+                  → pon tu correo → el token llega automáticamente. Habilita el conteo de
+                  establecimientos (competencia) en los informes.
                 </p>
               </div>
             </div>
