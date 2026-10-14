@@ -36,11 +36,13 @@ export const POST = withAuth(async (session, req: Request) => {
   const { runGeoIngest } = await import("@/server/intel/geo");
   const result = await runGeoIngest(session.organizationId, parsed.data.termId);
   if (!result.ok) {
-    const status = result.reason === "missing_denue_token" ? 409 : 404;
+    const status = result.reason === "missing_denue_token" ? 409 : result.reason === "denue_failed" ? 502 : 404;
     const message =
       result.reason === "missing_denue_token"
         ? "Configura el token DENUE en Conexiones → Inteligencia"
-        : "Nicho no encontrado";
+        : result.reason === "denue_failed"
+          ? "DENUE no respondió (puede ser rate limit de INEGI). Intenta de nuevo en unos minutos."
+          : "Nicho no encontrado";
     return Response.json({ error: { code: result.reason, message } }, { status });
   }
   return Response.json(result);

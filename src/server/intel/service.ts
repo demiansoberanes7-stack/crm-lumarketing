@@ -128,17 +128,21 @@ export type TrendCard = {
 /**
  * Estado 1: tendencias actuales. Por término, z-score de la ventana reciente
  * contra el histórico; se ordena de mayor a menor z (los null al final).
+ * Prefiere la serie Google Trends (0–100) cuando está habilitada y tiene
+ * datos; si no, usa el fallback YouTube normalizado.
  */
 export async function getTrends(
   organizationId: string
 ): Promise<{ trends: TrendCard[]; lastIngestAt: string | null }> {
   const creds = await getIntelCredentials(organizationId);
+  const gtActive = creds?.gtEnabled ?? false;
   const terms = await listActiveTerms(organizationId);
   const end = utcDay();
   const start = addDays(end, -27);
 
   const db = getDb();
-  const rows = terms.length
+  const termIds = terms.map((t) => t.id);
+  const rows = termIds.length
     ? await db
         .select()
         .from(schema.intelSnapshot)
@@ -146,7 +150,7 @@ export async function getTrends(
           scoped(
             schema.intelSnapshot.organizationId,
             organizationId,
-            inArray(schema.intelSnapshot.termId, terms.map((t) => t.id))
+            inArray(schema.intelSnapshot.termId, termIds)
           )
         )
         .orderBy(schema.intelSnapshot.day)
@@ -159,12 +163,50 @@ export async function getTrends(
     byTerm.set(row.termId, list);
   }
 
+  // Serie GT por término (si está habilitada y hay datos ingeridos).
+  const gtByTerm = new Map<string, Array<{ day: string; value: number }>>();
+  if (gtActive && termIds.length) {
+    const gtRows = await db
+      .select()
+      .from(schema.intelGtSnapshot)
+      .where(
+        scoped(
+          schema.intelGtSnapshot.organizationId,
+          organizationId,
+          inArray(schema.intelGtSnapshot.termId, termIds)
+        )
+      )
+      .orderBy(schema.intelGtSnapshot.day);
+    for (const row of gtRows) {
+      const list = gtByTerm.get(row.termId) ?? [];
+      list.push({ day: row.day, value: row.value });
+      gtByTerm.set(row.termId, list);
+    }
+  }
+
   const trends: TrendCard[] = [];
   for (const term of terms) {
-    const history = (byTerm.get(term.id) ?? []).filter(
+    const gtHistory = (gtByTerm.get(term.id) ?? []).filter(
       (s) => s.day >= start && s.day <= end
     );
+    const ytHistory = (byTerm.get(term.id) ?? []).filter(
+      (s) => s.day >= start && s.day <= end
+    );
+
+    // Prefiere GT; si no hay serie GT para este término, usa YouTube.
+    let history: Array<{ day: string; value: number; videoCount: number }>;
+    if (gtHistory.length > 0) {
+      const ytCountByDay = new Map(ytHistory.map((s) => [s.day, s.videoCount]));
+      history = gtHistory.map((s) => ({
+        day: s.day,
+        value: s.value,
+        videoCount: ytCountByDay.get(s.day) ?? 0,
+      }));
+    } else {
+      history = ytHistory;
+    }
     if (history.length === 0) continue;
+
     const recent = history.slice(-7).map((s) => s.value);
     const prior = history.slice(0, -7).map((s) => s.value);
     const last = history[history.length - 1]!;

@@ -17,7 +17,6 @@ import { KeywordView, type KeywordOverviewView } from "@/components/inteligencia
 import { ShareBars } from "@/components/inteligencia/share-bars";
 import { AudiencePanel } from "@/components/inteligencia/audience-panel";
 import { GeoPanel } from "@/components/inteligencia/geo-panel";
-import { FunnelPanel } from "@/components/inteligencia/funnel-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
@@ -350,7 +349,8 @@ export function IntelClient() {
               <h2 className="font-semibold">Interés comparado · últimos 28 días</h2>
               <p className="mt-1 text-xs text-text-3">
                 Cada nicho normalizado a su propio máximo (0–100). Sirve para ver de un
-                vistazo cuáles suben y cuáles bajan. Fuente: YouTube mostPopular (MX).
+                vistazo cuáles suben y cuáles bajan. Fuente: Google Trends (MX) cuando hay
+                datos; si no, YouTube mostPopular.
               </p>
               <div className="mt-3">
                 <GtCompareChart trends={trends.trends} />
@@ -505,8 +505,6 @@ export function IntelClient() {
           <AudiencePanel />
 
           <GeoPanel terms={geoTerms} />
-
-          <FunnelPanel />
 
           <ContentPanel />
 

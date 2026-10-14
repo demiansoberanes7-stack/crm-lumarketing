@@ -29,6 +29,28 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 let lastRequestAt = 0;
 const cache = new Map<string, { at: number; data: GtResponse }>();
 
+/** Cookie NID de sesión: sin ella Google responde 429 a las APIs de Trends. */
+let nidCookie: string | null = null;
+
+async function ensureNidCookie(): Promise<string | null> {
+  if (nidCookie) return nidCookie;
+  try {
+    const home = await fetch("https://trends.google.com/trends/?geo=MX", {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { "User-Agent": UA },
+      redirect: "follow",
+    });
+    const setCookies = home.headers.getSetCookie?.() ?? [];
+    const nid = setCookies
+      .map((c) => c.split(";")[0] ?? "")
+      .find((c) => c.startsWith("NID="));
+    if (nid) nidCookie = nid;
+    return nidCookie;
+  } catch {
+    return null;
+  }
+}
+
 function cacheKey(parts: string[]): string {
   return parts.join("|");
 }
@@ -41,6 +63,7 @@ async function rateLimitedFetch(path: string): Promise<unknown> {
   }
   lastRequestAt = Date.now();
 
+  const cookie = await ensureNidCookie();
   let response: Response;
   try {
     response = await fetch(`${BASE}${path}`, {
@@ -48,9 +71,15 @@ async function rateLimitedFetch(path: string): Promise<unknown> {
       headers: {
         "User-Agent": UA,
         Accept: "application/json",
+        ...(cookie ? { Cookie: cookie } : {}),
       },
     });
   } catch {
+    return null;
+  }
+  if (response.status === 429) {
+    // Cookie vencida o rate limit: la descartamos para reintentar con una nueva.
+    nidCookie = null;
     return null;
   }
   if (!response.ok) return null;

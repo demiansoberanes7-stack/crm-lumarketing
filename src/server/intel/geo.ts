@@ -43,7 +43,7 @@ export type GeoReport =
     };
 
 export type GeoIngestResult =
-  | { ok: false; reason: "missing_denue_token" | "term_not_found" }
+  | { ok: false; reason: "missing_denue_token" | "term_not_found" | "denue_failed" }
   | {
       ok: true;
       termId: string;
@@ -82,7 +82,7 @@ export async function runGeoIngest(
     const denue = await countEstablishments(creds.denueToken, [term.name], state.code);
     if (denue) results.push({ state, count: denue.count, censored: denue.censored });
   }
-  if (results.length === 0) return { ok: false, reason: "missing_denue_token" };
+  if (results.length === 0) return { ok: false, reason: "denue_failed" };
 
   for (const r of results) {
     await db
