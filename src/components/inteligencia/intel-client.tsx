@@ -12,8 +12,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { DottedAreaChart } from "@/components/ui/chart";
 import { TrendCard } from "@/components/inteligencia/trend-card";
 import { KeywordView, type KeywordOverviewView } from "@/components/inteligencia/keyword-view";
 import { ShareBars } from "@/components/inteligencia/share-bars";
@@ -24,6 +22,7 @@ import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
 import { GtRelatedPanel } from "@/components/inteligencia/gt-related-panel";
+import { GtCompareChart, GtRanking, buildRanking } from "@/components/inteligencia/gt-ranking";
 
 /* ── Tipos ───────────────────────────────────────────────────────────────── */
 
@@ -94,7 +93,6 @@ export function IntelClient() {
   // Selección de término para el reporte GT.
   const [activeTermId, setActiveTermId] = useState<string>("");
   const [gtReport, setGtReport] = useState<GtReport | null>(null);
-  const [loadingGt, setLoadingGt] = useState(false);
 
   const loadTrends = useCallback(async () => {
     setLoadingTrends(true);
@@ -121,11 +119,9 @@ export function IntelClient() {
   // Carga el reporte GT cuando cambia el término activo.
   const loadGt = useCallback(async (termId: string) => {
     if (!termId) return;
-    setLoadingGt(true);
     const res = await fetch(`/api/intel/gt?termId=${encodeURIComponent(termId)}`, {
       cache: "no-store",
     }).catch(() => null);
-    setLoadingGt(false);
     if (res?.ok) {
       const data = await res.json().catch(() => null) as GtReport | null;
       setGtReport(data);
@@ -186,23 +182,7 @@ export function IntelClient() {
   );
 
   // Serie para la gráfica GT (con suavizado MA7, sin alterar el dato crudo).
-  const gtChartData = useMemo(() => {
-    if (!gtReport || gtReport.series.length === 0) return [];
-    const values = gtReport.series.map((s) => s.value);
-    // Media móvil centrada ventana 7 para suavizar; el tooltip muestra el crudo.
-    const half = 3;
-    return gtReport.series.map((p, i) => {
-      const start = Math.max(0, i - half);
-      const end = Math.min(values.length, i + half + 1);
-      const slice = values.slice(start, end);
-      const smooth = slice.reduce((a, b) => a + b, 0) / slice.length;
-      return {
-        day: p.day,
-        smooth: Math.round(smooth * 10) / 10,
-        raw: p.value,
-      };
-    });
-  }, [gtReport]);
+  // (Se eliminó: la pestaña Tendencias ahora usa el ranking + comparativa multi-nicho.)
 
   function toggleSelect(termId: string) {
     setCompareItems(null);
@@ -298,19 +278,9 @@ export function IntelClient() {
     blurTimer.current = setTimeout(() => setShowSuggest(false), 150);
   }
 
-  const sourceBadge =
-    gtReport?.seriesSource === "google_trends" ? (
-      <Badge variant="outline" className="border-success-soft bg-success-tint text-success-text">
-        Google Trends
-      </Badge>
-    ) : gtReport?.seriesSource === "youtube_fallback" ? (
-      <Badge variant="outline" className="border-warning-soft bg-warning-tint text-warning-text">
-        YouTube (fallback)
-      </Badge>
-    ) : null;
-
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
@@ -369,10 +339,40 @@ export function IntelClient() {
 
       {tab === "gt" ? (
         <>
-          {/* Selector de término + chip */}
+          {/* Ranking accionable: qué nichos conviene atacar */}
           {trends && trends.trends.length > 0 && (
+            <GtRanking ranking={buildRanking(trends.trends)} />
+          )}
+
+          {/* Gráfica comparativa multi-nicho (todas las líneas normalizadas) */}
+          {trends && trends.trends.length > 0 && (
+            <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
+              <h2 className="font-semibold">Interés comparado · últimos 28 días</h2>
+              <p className="mt-1 text-xs text-text-3">
+                Cada nicho normalizado a su propio máximo (0–100). Sirve para ver de un
+                vistazo cuáles suben y cuáles bajan. Fuente: YouTube mostPopular (MX).
+              </p>
+              <div className="mt-3">
+                <GtCompareChart trends={trends.trends} />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {trends.trends.slice(0, 6).map((t, i) => (
+                  <span key={t.termId} className="flex items-center gap-1 text-[11px] text-text-2">
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ background: ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"][i % 6] }}
+                    />
+                    {t.name}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Selector de nicho para paneles GT (subregiones, temas) */}
+          {trends && trends.trends.length > 0 && gtReport && (gtReport.regionsSource !== "none" || gtReport.topics.length > 0 || gtReport.queries.length > 0) && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-text-2">Nicho:</span>
+              <span className="text-xs font-medium text-text-2">Ver detalle de:</span>
               <div className="flex flex-wrap gap-1.5">
                 {trends.trends.map((t) => (
                   <button
@@ -392,47 +392,8 @@ export function IntelClient() {
             </div>
           )}
 
-          {/* Serie principal 0–100 */}
-          <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Interés a lo largo del tiempo">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold">Interés a lo largo del tiempo</h2>
-              {sourceBadge}
-            </div>
-            <p className="mt-1 text-xs text-text-3">
-              Índice 0–100 · {gtReport?.method.ventana ?? "últimos 28 días"} ·{" "}
-              {gtReport?.method.fuente ?? "sin datos"}
-            </p>
-
-            {loadingGt ? (
-              <p className="mt-4 rounded-md bg-subtle p-3 text-sm text-text-2">Cargando serie…</p>
-            ) : gtChartData.length === 0 ? (
-              <div className="mt-4 rounded-md bg-subtle p-5 text-sm text-text-2">
-                <p className="font-medium">Sin datos de serie para este nicho.</p>
-                <p className="mt-1 text-text-3">
-                  Ejecuta una ingesta de Google Trends o «Actualizar datos» (YouTube) para
-                  poblar el historial.
-                </p>
-              </div>
-            ) : (
-              <>
-                <DottedAreaChart
-                  data={gtChartData}
-                  series={[{ key: "smooth", color: "var(--chart-1)", label: "Índice (MA7)" }]}
-                  xKey="day"
-                  height={200}
-                  yFormatter={(v) => String(Math.round(v))}
-                />
-                <p className="mt-2 text-[11px] leading-snug text-text-3">
-                  La línea es la media móvil centrada de 7 días (suavizado); el dato crudo
-                  se muestra en el tooltip. 100 = máximo de la ventana. Fuente:{" "}
-                  {gtReport?.method.fuente ?? "—"}.
-                </p>
-              </>
-            )}
-          </section>
-
-          {/* Subregiones */}
-          {gtReport && (
+          {/* Subregiones (solo si hay datos GT) */}
+          {gtReport && gtReport.regionsSource !== "none" && (
             <GtRegionPanel
               regions={gtReport.regions}
               regionsSource={gtReport.regionsSource}
@@ -440,9 +401,38 @@ export function IntelClient() {
             />
           )}
 
-          {/* Temas y consultas */}
-          {gtReport && (
+          {/* Temas y consultas (solo si hay datos GT) */}
+          {gtReport && (gtReport.topics.length > 0 || gtReport.queries.length > 0) && (
             <GtRelatedPanel topics={gtReport.topics} queries={gtReport.queries} />
+          )}
+
+          {/* Cards de tendencia (compatibilidad con el flujo de comparar) */}
+          {trends && trends.trends.length > 0 && (
+            <section aria-label="Tendencias actuales" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold tracking-tight text-text-2">
+                  Detalle por nicho · selecciona para comparar
+                </h2>
+                <Button
+                  onClick={() => void handleCompare()}
+                  disabled={selected.length < 2 || comparing}
+                  variant={selected.length >= 2 ? "default" : "outline"}
+                >
+                  <GitCompareArrows className="mr-2 h-4 w-4" />
+                  {comparing ? "Comparando…" : `Comparar (${selected.length})`}
+                </Button>
+              </div>
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {trends.trends.map((trend) => (
+                  <TrendCard
+                    key={trend.termId}
+                    trend={trend}
+                    selected={selected.includes(trend.termId)}
+                    onSelect={() => toggleSelect(trend.termId)}
+                  />
+                ))}
+              </div>
+            </section>
           )}
         </>
       ) : overview ? (
@@ -561,6 +551,7 @@ export function IntelClient() {
           </section>
         </>
       )}
+      </div>
     </div>
   );
 }
