@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { changeQuoteStatus, createQuote } from "@/server/quotes/service";
 import { renderCatalog } from "@/server/ai/prompts";
-import { renderProductCard, stockLabel } from "@/server/ai/product-card";
+import { renderProductCard, renderProductShare, stockLabel } from "@/server/ai/product-card";
 import { schema } from "@/lib/db";
 
 const mocks = vi.hoisted(() => ({
@@ -95,6 +95,25 @@ describe("ficha de producto en el chat (renderProductCard)", () => {
     );
     expect(card).not.toContain("Sitio:");
     expect(card.split("\n").filter((l) => l === "")).toHaveLength(0);
+  });
+});
+
+describe("ficha para compartir (renderProductShare)", () => {
+  it("incluye nombre, precio, descripciones y sitio, pero NUNCA la cantidad de piezas", () => {
+    const card = renderProductShare(PRODUCT);
+    expect(card).toContain("*Ramo primavera*");
+    expect(card).toContain("Precio: $350.00");
+    expect(card).toContain("Ramo pequeño de estación.");
+    expect(card).toContain("Incluye 9 tallos");
+    expect(card).toContain("Sitio: https://tienda.ejemplo.com/ramo");
+    expect(card).not.toContain("Disponibilidad");
+    expect(card).not.toContain("pieza");
+  });
+
+  it("aunque el producto tenga stock, la ficha compartida no lo filtra", () => {
+    const card = renderProductShare({ ...PRODUCT, stock: 0 });
+    expect(card).not.toContain("Agotado");
+    expect(card).not.toContain("Disponibilidad");
   });
 });
 

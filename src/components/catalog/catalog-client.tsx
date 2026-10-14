@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Download, Package, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { Download, Package, Pencil, Plus, Send, Trash2, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImportInventoryDialog } from "@/components/catalog/import-inventory-dialog";
+import { SendProductDialog } from "@/components/catalog/send-product-dialog";
 
 interface Product {
   id: string;
@@ -55,6 +56,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [sendingProduct, setSendingProduct] = useState<Product | null>(null);
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/catalog").catch(() => null);
@@ -178,6 +180,18 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                         </a>
                       )}
                     </div>
+                     {!compact && (
+                       <Button
+                         variant="ghost"
+                         size="icon"
+                         className="h-7 w-7 shrink-0"
+                         onClick={() => setSendingProduct(p)}
+                         aria-label={`Enviar ${p.name}`}
+                         title="Enviar producto a un chat"
+                       >
+                         <Send className="h-3.5 w-3.5" />
+                       </Button>
+                     )}
                      <Button
                        variant="ghost"
                        size="icon"
@@ -334,6 +348,14 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
         <ImportInventoryDialog
           onClose={() => setShowImport(false)}
           onImported={() => void refetch()}
+        />
+      )}
+
+      {sendingProduct && (
+        <SendProductDialog
+          productId={sendingProduct.id}
+          productName={sendingProduct.name}
+          onClose={() => setSendingProduct(null)}
         />
       )}
     </div>
