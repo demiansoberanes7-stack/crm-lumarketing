@@ -15,13 +15,15 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setLoading(true);
-    const { error: err } = await signUp.email({ name, email, password });
+    const { error: err, data } = await signUp.email({ name, email, password });
     setLoading(false);
     if (err) {
       if (err.status === 403) {
@@ -33,6 +35,13 @@ export default function RegisterPage() {
       } else {
         setError(err.message ?? "No se pudo crear la cuenta.");
       }
+      return;
+    }
+    // Con verificación de email activada (SMTP configurado) el alta no crea
+    // sesión: el enlace de verificación llega por correo. Sin ella, `token`
+    // existe y se entra directo.
+    if (!data?.token) {
+      setInfo("Cuenta creada. Revisa tu correo y confirma el enlace para entrar.");
       return;
     }
     router.push("/inbox");
@@ -83,6 +92,7 @@ export default function RegisterPage() {
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {info && <p className="text-sm text-muted-foreground">{info}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creando…" : "Crear cuenta"}
           </Button>

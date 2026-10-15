@@ -5,7 +5,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
 import { getDb, schema } from "@/lib/db";
 import { getEnv } from "@/lib/env";
-import { AUTH_RATE_LIMIT, checkRateLimit } from "@/lib/rate-limit";
+import { AUTH_RATE_LIMIT, checkDistributedRateLimit } from "@/lib/rate-limit";
 import {
   onUserCreated,
   resolveActiveOrganizationId,
@@ -46,6 +46,12 @@ function createAuth() {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
+  // Verificación de email SOLO si hay SMTP configurado. Exigirla sin SMTP
+  // dejaría a todo usuario nuevo fuera sin forma de verificar — el guard es
+  // de activación progresiva, no un martillo.
+  const smtpConfigured = Boolean(
+    env.AUTH_SMTP_HOST && env.AUTH_SMTP_USER && env.AUTH_SMTP_PASSWORD && env.AUTH_SMTP_FROM
+  );
   return betterAuth({
     baseURL: env.APP_BASE_URL,
     secret: env.BETTER_AUTH_SECRET,
@@ -64,9 +70,33 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: false,
+      requireEmailVerification: smtpConfigured,
       minPasswordLength: 8,
     },
+    ...(smtpConfigured
+      ? {
+          emailVerification: {
+            sendOnSignUp: true,
+            autoSignInAfterVerification: true,
+            sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+              const nodemailer = await import("nodemailer");
+              const transporter = nodemailer.createTransport({
+                host: env.AUTH_SMTP_HOST,
+                port: env.AUTH_SMTP_PORT,
+                secure: env.AUTH_SMTP_PORT === 465,
+                auth: { user: env.AUTH_SMTP_USER, pass: env.AUTH_SMTP_PASSWORD },
+              });
+              await transporter.sendMail({
+                from: env.AUTH_SMTP_FROM,
+                to: user.email,
+                subject: "Verifica tu correo electrónico",
+                text: `Confirma tu correo abriendo este enlace:\n\n${url}`,
+                html: `<p>Confirma tu correo electrónico para activar tu cuenta.</p><p><a href="${url}">Verificar correo</a></p>`,
+              });
+            },
+          },
+        }
+      : {}),
     plugins: [organization({ creatorRole: "owner" })],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
@@ -87,7 +117,7 @@ function createAuth() {
             ctx.headers?.get("x-real-ip") ||
             lastHop ||
             "local";
-          const result = checkRateLimit(`${ctx.path}:${ip}`, AUTH_RATE_LIMIT);
+          const result = await checkDistributedRateLimit(`${ctx.path}:${ip}`, AUTH_RATE_LIMIT);
           if (!result.allowed) {
             throw new APIError("TOO_MANY_REQUESTS", {
               message: "Demasiados intentos; espera unos minutos",

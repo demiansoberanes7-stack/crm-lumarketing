@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapPinned, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { pollIntelJob } from "@/lib/intel-jobs-client";
 
 /**
  * Competencia por estado (DENUE) — mapa de rejilla de México con celdas
@@ -56,6 +57,7 @@ export function GeoPanel({ terms }: { terms: TermOption[] }) {
   const [report, setReport] = useState<GeoReportView | null>(null);
   const [loading, setLoading] = useState(false);
   const [ingesting, setIngesting] = useState(false);
+  const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -84,18 +86,39 @@ export function GeoPanel({ terms }: { terms: TermOption[] }) {
     if (!termId) return;
     setIngesting(true);
     setError("");
+    setProgress("");
     const res = await fetch("/api/intel/geo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ termId }),
     }).catch(() => null);
-    setIngesting(false);
-    if (res?.ok) {
-      await load(termId);
-    } else {
+    if (!res?.ok) {
+      setIngesting(false);
       const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
       setError(data?.error?.message ?? "No se pudo calcular el mapa.");
+      return;
     }
+    const data = await res.json().catch(() => null) as { job?: { id?: string } } | null;
+    const jobId = data?.job?.id;
+    if (!jobId) {
+      setIngesting(false);
+      return;
+    }
+    // Las 32 consultas corren fuera de la petición: se sigue el avance n/32.
+    const job = await pollIntelJob(jobId, (j) => {
+      setProgress(`Consultando estados… ${j.completed}/${j.total || 32}`);
+    });
+    setIngesting(false);
+    setProgress("");
+    if (!job) {
+      setError("El cálculo está tardando más de lo esperado. Refresca en un momento.");
+      return;
+    }
+    if (job.status === "error") {
+      setError(job.error ?? "No se pudo calcular el mapa.");
+      return;
+    }
+    await load(termId);
   }
 
   const max = useMemo(
@@ -133,7 +156,7 @@ export function GeoPanel({ terms }: { terms: TermOption[] }) {
           </select>
           <Button variant="outline" onClick={() => void handleIngest()} disabled={ingesting || !termId}>
             <RefreshCw className={`mr-2 h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
-            {ingesting ? "Consultando 32 estados…" : "Calcular mapa"}
+            {ingesting ? (progress || "Consultando 32 estados…") : "Calcular mapa"}
           </Button>
         </div>
       </div>

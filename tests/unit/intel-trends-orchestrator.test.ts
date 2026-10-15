@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // Mock the DB and credentials module before importing the orchestrator
 vi.mock("@/server/intel/credentials", () => ({
   getIntelCredentials: vi.fn().mockResolvedValue(null),
-  incrementSerpApiUsage: vi.fn().mockResolvedValue(undefined),
+  reserveSerpApiUsage: vi.fn().mockResolvedValue(true),
   incrementApifyUsage: vi.fn().mockResolvedValue(undefined),
   markSerpApiSynced: vi.fn().mockResolvedValue(undefined),
   markApifySynced: vi.fn().mockResolvedValue(undefined),
@@ -49,13 +49,14 @@ vi.mock("@/server/intel/sources/google-trends", () => ({
 }));
 
 const { getTrendsFromProviders, testTrendProvider } = await import("@/server/intel/trends-orchestrator");
-const { getIntelCredentials } = await import("@/server/intel/credentials");
+const { getIntelCredentials, reserveSerpApiUsage } = await import("@/server/intel/credentials");
 const { fetchSerpApiTrends } = await import("@/server/intel/sources/serpapi-trends");
 const { fetchGt } = await import("@/server/intel/sources/google-trends");
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getIntelCredentials).mockResolvedValue(null);
+  vi.mocked(reserveSerpApiUsage).mockResolvedValue(true);
   vi.mocked(fetchSerpApiTrends).mockResolvedValue({
     timeSeries: null, regions: [], topics: [], queries: [], partial: true, provider: "serpapi",
   });
@@ -125,5 +126,23 @@ describe("Trends orchestrator — flujo SerpApi", () => {
     expect(result.usedFallback).toBe(false);
     expect(result.data?.timeSeries?.points).toHaveLength(2);
     expect(fetchSerpApiTrends).toHaveBeenCalledWith("fake-key", ["tecnología"], "MX", "today 1-m");
+  });
+
+  it("con la cuota agotada NO llama a SerpApi (no se gasta de más)", async () => {
+    vi.mocked(getIntelCredentials).mockResolvedValue({
+      serpapiKey: "fake-key",
+      denueToken: null, apifyToken: null, apifyActorId: null,
+      youtubeKey: null, lastIngestAt: null, status: "connected",
+      youtubeStatus: null, youtubeLastTestAt: null,
+      denueStatus: null, denueLastTestAt: null,
+      serpapiStatus: "ok", serpapiLastTestAt: null, serpapiLastSyncAt: null, serpapiQueriesUsed: 250,
+      apifyStatus: null, apifyLastTestAt: null, apifyLastSyncAt: null, apifyQueriesUsed: 0,
+      gtEnabled: true, gtStatus: null, gtLastTestAt: null, gtLastSyncAt: null,
+    } as never);
+    vi.mocked(reserveSerpApiUsage).mockResolvedValue(false);
+
+    const result = await getTrendsFromProviders("org_test", ["tecnología"]);
+    expect(fetchSerpApiTrends).not.toHaveBeenCalled();
+    expect(result.provider).toBe("none");
   });
 });

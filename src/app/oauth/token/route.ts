@@ -1,4 +1,4 @@
-import { exchangeAuthorizationCode, isAllowedClient, mcpResourceUrl } from "@/server/mcp/oauth";
+import { clientIsAllowed, exchangeAuthorizationCode, mcpResourceUrl } from "@/server/mcp/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export async function POST(request: Request): Promise<Response> {
   const resource = String(form.get("resource") ?? "");
   const codeVerifier = String(form.get("code_verifier") ?? "");
 
-  if (grantType !== "authorization_code" || !isAllowedClient(clientId) || resource !== mcpResourceUrl()) {
+  if (grantType !== "authorization_code" || !(await clientIsAllowed(clientId)) || resource !== mcpResourceUrl()) {
     return Response.json({ error: "invalid_grant" }, { status: 400 });
   }
   const result = await exchangeAuthorizationCode({ code, clientId, redirectUri, resource, codeVerifier });

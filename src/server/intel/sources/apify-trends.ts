@@ -49,7 +49,6 @@ async function apifyFetch(
   init?: RequestInit
 ): Promise<Rec | null> {
   const url = new URL(`${APIFY_API}${path}`);
-  url.searchParams.set("token", token);
   let res: Response;
   try {
     res = await fetch(url.toString(), {
@@ -57,6 +56,7 @@ async function apifyFetch(
       signal: AbortSignal.timeout(30_000),
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
         ...(init?.headers ?? {}),
       },
     });
@@ -106,17 +106,26 @@ export async function runApifyActor(
 
   // 2. Esperar a que termine
   const deadline = Date.now() + MAX_WAIT_MS;
+  let succeeded = false;
   while (Date.now() < deadline) {
     const statusData = await apifyFetch(token, `/acts/${actorPath}/runs/${runId}`);
     if (!statusData) return null;
     const statusRec = asRec(statusData.data);
     const status = statusRec?.status;
-    if (status === "SUCCEEDED") break;
+    if (status === "SUCCEEDED") {
+      succeeded = true;
+      break;
+    }
     if (status === "FAILED" || status === "ABORTED" || status === "TIMED-OUT") {
       return null;
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
+
+  // No leer el dataset después de agotar el límite: puede contener una
+  // ejecución incompleta y convertir un timeout en un resultado aparentemente
+  // válido.
+  if (!succeeded) return null;
 
   // 3. Leer dataset
   const datasetData = await apifyFetch(

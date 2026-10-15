@@ -1,12 +1,12 @@
 import { getAuth } from "@/lib/auth";
 import { resolveMembership } from "@/server/auth/on-signup";
 import {
+  clientIsAllowed,
   createAuthorizationCode,
-  isAllowedClient,
-  isAllowedRedirectUri,
   mcpResourceUrl,
   normalizeScopes,
   oauthErrorRedirect,
+  redirectUriIsAllowed,
 } from "@/server/mcp/oauth";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET(request: Request): Promise<Response> {
   const codeChallenge = url.searchParams.get("code_challenge") ?? "";
   const resource = url.searchParams.get("resource") ?? "";
 
-  if (!isAllowedClient(clientId) || !isAllowedRedirectUri(redirectUri)) {
+  if (!(await clientIsAllowed(clientId)) || !(await redirectUriIsAllowed(clientId, redirectUri))) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   }
   if (url.searchParams.get("response_type") !== "code") {

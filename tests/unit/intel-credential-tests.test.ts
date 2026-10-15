@@ -342,7 +342,7 @@ describe("Probar conexión: Apify", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(h.state.fetches[0]).toContain("token=apify-real-token");
+    expect(h.state.fetches[0]).not.toContain("token=apify-real-token");
     expect(h.state.updates[0]).toMatchObject({ apifyStatus: "ok" });
   });
 

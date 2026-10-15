@@ -20,6 +20,7 @@ import { CompareView, type CompareItem } from "@/components/inteligencia/compare
 import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
 import { GtRelatedPanel } from "@/components/inteligencia/gt-related-panel";
 import { GtCompareChart, GtRanking, buildRanking } from "@/components/inteligencia/gt-ranking";
+import { pollIntelJob } from "@/lib/intel-jobs-client";
 
 /* ── Tipos ───────────────────────────────────────────────────────────────── */
 
@@ -69,8 +70,11 @@ export function IntelClient() {
   const [loadingTrends, setLoadingTrends] = useState(true);
   const [searching, setSearching] = useState(false);
   const [ingesting, setIngesting] = useState(false);
+  const [ingestProgress, setIngestProgress] = useState("");
   const [error, setError] = useState("");
   const suggestSeq = useRef(0);
+  const suggestAbort = useRef<AbortController | null>(null);
+  const suggestCache = useRef<Map<string, string[]>>(new Map());
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [tab, setTab] = useState<"gt" | "overview">("gt");
@@ -119,21 +123,45 @@ export function IntelClient() {
       setSuggestions([]);
       return;
     }
+    // Caché corto en memoria: teclear, borrar y reescribir la misma consulta
+    // no vuelve a golpear la red.
+    const cached = suggestCache.current.get(q);
+    if (cached) {
+      setSuggestions(cached);
+      setShowSuggest(true);
+      return;
+    }
     const seq = ++suggestSeq.current;
     const timer = setTimeout(() => {
+      suggestAbort.current?.abort();
+      const controller = new AbortController();
+      suggestAbort.current = controller;
       void (async () => {
         const res = await fetch(`/api/intel/suggest?q=${encodeURIComponent(q)}`, {
           cache: "no-store",
+          signal: controller.signal,
         }).catch(() => null);
-        if (seq !== suggestSeq.current) return;
+        if (seq !== suggestSeq.current || controller.signal.aborted) return;
         if (res?.ok) {
           const data = await res.json().catch(() => null) as { suggestions?: string[] } | null;
-          setSuggestions(data?.suggestions ?? []);
+          const list = data?.suggestions ?? [];
+          suggestCache.current.set(q, list);
+          // Tope del caché: 50 consultas; la más vieja sale primero.
+          if (suggestCache.current.size > 50) {
+            const oldest = suggestCache.current.keys().next().value;
+            if (oldest !== undefined) suggestCache.current.delete(oldest);
+          }
+          setSuggestions(list);
           setShowSuggest(true);
         }
       })();
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // Cancelar el request pendiente: la secuencia ya descartaba la
+      // respuesta vieja, pero seguía corriendo y gastando cuota.
+      suggestAbort.current?.abort();
+    };
   }, [query]);
 
   const geoTerms = useMemo(
@@ -215,15 +243,36 @@ export function IntelClient() {
   async function handleIngest() {
     setIngesting(true);
     setError("");
+    setIngestProgress("");
     const res = await fetch("/api/intel/ingest", { method: "POST" }).catch(() => null);
-    setIngesting(false);
-    if (res?.ok) {
-      clearCompare();
-      await loadTrends();
-    } else {
+    if (!res?.ok) {
+      setIngesting(false);
       const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
       setError(data?.error?.message ?? "No se pudo actualizar Google Trends.");
+      return;
     }
+    const data = await res.json().catch(() => null) as { job?: { id?: string } } | null;
+    const jobId = data?.job?.id;
+    if (!jobId) {
+      setIngesting(false);
+      return;
+    }
+    // El trabajo corre fuera de la petición: aquí se sigue el avance real.
+    const job = await pollIntelJob(jobId, (j) => {
+      setIngestProgress(j.total > 0 ? `${j.completed}/${j.total} nichos` : "Iniciando…");
+    });
+    setIngesting(false);
+    setIngestProgress("");
+    if (!job) {
+      setError("La ingesta está tardando más de lo esperado. Refresca en un momento.");
+      return;
+    }
+    if (job.status === "error") {
+      setError(job.error ?? "La ingesta de Google Trends falló.");
+      return;
+    }
+    clearCompare();
+    await loadTrends();
   }
 
   function onSuggestFocus() {
@@ -258,7 +307,7 @@ export function IntelClient() {
           )}
           <Button variant="outline" onClick={() => void handleIngest()} disabled={ingesting}>
             <RefreshCw className={`mr-2 h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
-            {ingesting ? "Actualizando…" : "Actualizar datos"}
+            {ingesting ? (ingestProgress || "Actualizando…") : "Actualizar datos"}
           </Button>
         </div>
       </header>

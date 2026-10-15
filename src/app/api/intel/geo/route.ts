@@ -1,6 +1,9 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { withAuth } from "@/lib/api";
 import { intelDisabledResponse, intelEnabled } from "@/server/intel/flag";
+import { getIntelCredentials } from "@/server/intel/credentials";
+import { createIntelJob, runGeoJob, serializeIntelJob } from "@/server/intel/jobs";
 import { getGeoReport } from "@/server/intel/geo";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +25,12 @@ export const GET = withAuth(async (session, req: Request) => {
 
 const ingestSchema = z.object({ termId: z.string().min(1).max(255) });
 
-/** Captura: 32 consultas DENUE (una por estado) para el nicho indicado. */
+/**
+ * Captura: 32 consultas DENUE (una por estado) para el nicho indicado.
+ * Responde 202 con `jobId`; el avance (n/32) se sigue en
+ * `GET /api/intel/jobs/[id]`. Un segundo POST del mismo nicho recibe 409
+ * mientras haya uno en curso: no se duplican las 32 consultas.
+ */
 export const POST = withAuth(async (session, req: Request) => {
   if (!intelEnabled()) return intelDisabledResponse();
   const body = await req.json().catch(() => null);
@@ -33,17 +41,44 @@ export const POST = withAuth(async (session, req: Request) => {
       { status: 422 }
     );
   }
-  const { runGeoIngest } = await import("@/server/intel/geo");
-  const result = await runGeoIngest(session.organizationId, parsed.data.termId);
-  if (!result.ok) {
-    const status = result.reason === "missing_denue_token" ? 409 : result.reason === "denue_failed" ? 502 : 404;
-    const message =
-      result.reason === "missing_denue_token"
-        ? "Configura el token DENUE en Conexiones → Inteligencia"
-        : result.reason === "denue_failed"
-          ? "DENUE no respondió (puede ser rate limit de INEGI). Intenta de nuevo en unos minutos."
-          : "Nicho no encontrado";
-    return Response.json({ error: { code: result.reason, message } }, { status });
+
+  const creds = await getIntelCredentials(session.organizationId);
+  if (!creds?.denueToken) {
+    return Response.json(
+      {
+        error: {
+          code: "missing_denue_token",
+          message: "Configura el token DENUE en Conexiones → Inteligencia",
+        },
+      },
+      { status: 409 }
+    );
   }
-  return Response.json(result);
+
+  const job = await createIntelJob({
+    organizationId: session.organizationId,
+    kind: "geo",
+    termId: parsed.data.termId,
+  });
+  if (!job) {
+    return Response.json(
+      {
+        error: {
+          code: "job_running",
+          message: "Ya hay un cálculo del mapa en curso para este nicho. Espera a que termine.",
+        },
+      },
+      { status: 409 }
+    );
+  }
+
+  after(() =>
+    runGeoJob({
+      jobId: job.id,
+      organizationId: session.organizationId,
+      termId: parsed.data.termId,
+    })
+  );
+
+  return Response.json({ job: serializeIntelJob(job) }, { status: 202 });
 });

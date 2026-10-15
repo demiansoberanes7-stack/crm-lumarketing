@@ -61,6 +61,12 @@ const envSchema = z.object({
   // API key de un cerebro externo que conduzca la conversación por /api/bot/*.
   // Sin ella, toda esa superficie responde 401.
   BOT_API_KEY: z.string().optional(),
+  // SMTP global para verificaciones de email de Better Auth.
+  AUTH_SMTP_HOST: z.string().optional(),
+  AUTH_SMTP_PORT: z.coerce.number().int().positive().default(587),
+  AUTH_SMTP_USER: z.string().optional(),
+  AUTH_SMTP_PASSWORD: z.string().optional(),
+  AUTH_SMTP_FROM: z.string().email().optional(),
   // 008: volumen local de adjuntos (constitución II: sin S3/R2).
   MEDIA_DIR: z.string().default("./.dev-media"),
   NODE_ENV: z.string().default("development"),

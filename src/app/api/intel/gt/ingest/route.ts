@@ -1,8 +1,9 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { apiError, withAuth } from "@/lib/api";
 import { intelDisabledResponse, intelEnabled } from "@/server/intel/flag";
 import { getIntelCredentials } from "@/server/intel/credentials";
-import { runGtIngest } from "@/server/intel/service";
+import { createIntelJob, runGtTermJob, serializeIntelJob } from "@/server/intel/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ const bodySchema = z.object({
  * Dispara la ingesta de Google Trends para un término (serie, regiones,
  * relacionados). Re-ejecutable: upsert por día. El control es el checkbox
  * `gtEnabled` de la BD (GT es gratis y sin credenciales, no necesita env var).
+ * Responde 202 con `jobId`; si ya hay una ingesta del mismo término en curso,
+ * 409. El avance se sigue en `GET /api/intel/jobs/[id]`.
  */
 export const POST = withAuth(async (session, req: Request) => {
   if (!intelEnabled()) return intelDisabledResponse();
@@ -29,9 +32,28 @@ export const POST = withAuth(async (session, req: Request) => {
     return apiError(400, "invalid_body", "termId y geo requeridos");
   }
 
-  const result = await runGtIngest(session.organizationId, parsed.data.termId, parsed.data.geo);
-  if (!result.ok) {
-    return apiError(422, "gt_source_failed", result.reason ?? "Google Trends no devolvió datos.");
+  const job = await createIntelJob({
+    organizationId: session.organizationId,
+    kind: "gt_term",
+    termId: parsed.data.termId,
+    geo: parsed.data.geo,
+  });
+  if (!job) {
+    return apiError(
+      409,
+      "job_running",
+      "Ya hay una ingesta en curso para este término. Espera a que termine."
+    );
   }
-  return Response.json(result);
+
+  after(() =>
+    runGtTermJob({
+      jobId: job.id,
+      organizationId: session.organizationId,
+      termId: parsed.data.termId,
+      geo: parsed.data.geo,
+    })
+  );
+
+  return Response.json({ job: serializeIntelJob(job) }, { status: 202 });
 });

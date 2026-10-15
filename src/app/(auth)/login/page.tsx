@@ -27,10 +27,13 @@ export default function LoginPage() {
     const { error: err } = await signIn.email({ email, password });
     setLoading(false);
     if (err) {
+      const code = (err as { code?: string }).code;
       setError(
         err.status === 429
           ? "Demasiados intentos. Espera unos minutos."
-          : "Correo o contraseña incorrectos."
+          : err.status === 403 || code === "EMAIL_NOT_VERIFIED"
+            ? "Tu correo aún no está verificado. Revisa tu bandeja de entrada."
+            : "Correo o contraseña incorrectos."
       );
       return;
     }

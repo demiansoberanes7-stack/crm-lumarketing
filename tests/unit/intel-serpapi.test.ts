@@ -8,6 +8,12 @@ describe("SerpApi cuota", () => {
     expect(quota.used).toBe(0);
     expect(quota.remaining).toBe(250);
   });
+
+  it("refleja el uso real y no se sale del rango", () => {
+    expect(getSerpApiQuota(40)).toEqual({ limit: 250, used: 40, remaining: 210 });
+    expect(getSerpApiQuota(999)).toEqual({ limit: 250, used: 250, remaining: 0 });
+    expect(getSerpApiQuota(-5)).toEqual({ limit: 250, used: 0, remaining: 250 });
+  });
 });
 
 describe("TrendsResponse shape", () => {

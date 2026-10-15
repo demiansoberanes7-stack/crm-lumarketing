@@ -1,5 +1,70 @@
-import { describe, expect, it } from "vitest";
-import { normalizeApifyItems } from "@/server/intel/sources/apify-trends";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { normalizeApifyItems, runApifyActor } from "@/server/intel/sources/apify-trends";
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+const fetchMock = vi.fn();
+
+describe("runApifyActor — seguridad y timeout del polling", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("manda el token en Authorization y JAMÁS en la URL", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "run_1" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { status: "SUCCEEDED" } }))
+      .mockResolvedValueOnce(jsonResponse([{ date: "2025-01-01", value: 10 }]));
+
+    const items = await runApifyActor("secreto-apify", "user/actor", ["kw"]);
+    expect(items).toHaveLength(1);
+
+    for (const [url, init] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
+      expect(String(url)).not.toContain("secreto-apify");
+      expect(init.headers).toMatchObject({ Authorization: "Bearer secreto-apify" });
+    }
+  });
+
+  it("si el run nunca llega a SUCCEEDED devuelve null SIN leer el dataset", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/dataset/items")) {
+        throw new Error("no debe leerse el dataset de un run sin SUCCEEDED");
+      }
+      if (String(url).endsWith("/runs")) return jsonResponse({ data: { id: "run_1" } });
+      return jsonResponse({ data: { status: "RUNNING" } });
+    });
+
+    const promise = runApifyActor("token", "user~actor", ["kw"]);
+    await vi.advanceTimersByTimeAsync(61_000);
+    const result = await promise;
+
+    expect(result).toBeNull();
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("/dataset/items"))).toBe(false);
+  });
+
+  it("un run FAILED corta de inmediato", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "run_1" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { status: "FAILED" } }));
+
+    const result = await runApifyActor("token", "user~actor", ["kw"]);
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe("Apify normalización", () => {
   it("devuelve vacío con partial=true si no hay items", () => {

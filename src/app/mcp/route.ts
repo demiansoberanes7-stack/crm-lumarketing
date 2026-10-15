@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "@/server/mcp/server";
 import { withMcpPrincipal } from "@/server/mcp/context";
-import { resolveMcpBearerToken } from "@/server/mcp/oauth";
+import { resolveMcpBearerToken, unauthorizedChallengeResponse } from "@/server/mcp/oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ function jsonError(message: string, status: number): Response {
 
 async function handleMcpRequest(request: Request): Promise<Response> {
   const principal = await resolveMcpBearerToken(request);
+  if (!principal) return unauthorizedChallengeResponse();
   const sessionId = request.headers.get("mcp-session-id");
 
   if (sessionId) {

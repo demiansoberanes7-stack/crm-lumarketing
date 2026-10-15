@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
@@ -254,21 +255,36 @@ export async function markGtSynced(organizationId: string): Promise<void> {
 
 /** Incrementa el contador de consultas del mes para SerpApi. */
 export async function incrementSerpApiUsage(organizationId: string): Promise<void> {
-  const creds = await getIntelCredentials(organizationId);
-  const used = (creds?.serpapiQueriesUsed ?? 0) + 1;
   await getDb()
     .update(schema.intelCredentials)
-    .set({ serpapiQueriesUsed: used, updatedAt: new Date() })
+    .set({ serpapiQueriesUsed: sql`${schema.intelCredentials.serpapiQueriesUsed} + 1`, updatedAt: new Date() })
     .where(scoped(schema.intelCredentials.organizationId, organizationId));
+}
+
+/** Reserva una consulta de la cuota antes de llamar al proveedor. */
+export async function reserveSerpApiUsage(organizationId: string): Promise<boolean> {
+  const rows = await getDb()
+    .update(schema.intelCredentials)
+    .set({
+      serpapiQueriesUsed: sql`${schema.intelCredentials.serpapiQueriesUsed} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(
+      scoped(
+        schema.intelCredentials.organizationId,
+        organizationId,
+        sql`${schema.intelCredentials.serpapiQueriesUsed} < 250`
+      )
+    )
+    .returning({ used: schema.intelCredentials.serpapiQueriesUsed });
+  return rows.length > 0;
 }
 
 /** Incrementa el contador de consultas del mes para Apify. */
 export async function incrementApifyUsage(organizationId: string): Promise<void> {
-  const creds = await getIntelCredentials(organizationId);
-  const used = (creds?.apifyQueriesUsed ?? 0) + 1;
   await getDb()
     .update(schema.intelCredentials)
-    .set({ apifyQueriesUsed: used, updatedAt: new Date() })
+    .set({ apifyQueriesUsed: sql`${schema.intelCredentials.apifyQueriesUsed} + 1`, updatedAt: new Date() })
     .where(scoped(schema.intelCredentials.organizationId, organizationId));
 }
 

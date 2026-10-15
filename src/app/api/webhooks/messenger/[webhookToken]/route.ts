@@ -8,6 +8,8 @@ import {
 } from "@/server/channels/enabled";
 import { isValidZernioSignature, looksLikeMetaPayload, zernioSignatureFrom } from "@/server/zernio";
 import { processZernioPayload, resolveZernioSecret } from "@/server/zernio/dispatch";
+import { readLimitedBody, requestClientKey } from "@/lib/http/body";
+import { checkDistributedRateLimit, WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
 
 /**
  * 017 — Webhook público del canal de Messenger.
@@ -50,7 +52,14 @@ export async function POST(req: Request, { params }: Params) {
     return new Response(null, { status: 404 });
   }
 
-  const rawBody = await req.text();
+  const rate = await checkDistributedRateLimit(
+    `webhook:messenger:${webhookToken}:${requestClientKey(req)}`,
+    WEBHOOK_RATE_LIMIT
+  );
+  if (!rate.allowed) return new Response(null, { status: 429 });
+
+  const rawBody = await readLimitedBody(req, 2_000_000);
+  if (rawBody === null) return new Response(null, { status: 413 });
 
   let payload: unknown;
   try {

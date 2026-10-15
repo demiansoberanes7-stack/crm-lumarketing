@@ -6,6 +6,8 @@ import {
   type WebhookPayload,
 } from "@/server/inbox/webhook";
 import { processEchoesValue, processMessagesValue } from "@/server/inbox/ingest";
+import { readLimitedBody, requestClientKey } from "@/lib/http/body";
+import { checkDistributedRateLimit, WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
 
 /**
  * Webhook público de WhatsApp (contrato webhook.md).
@@ -42,7 +44,14 @@ export async function POST(req: Request, { params }: Params) {
     return new Response(null, { status: 404 });
   }
 
-  const rawBody = await req.text();
+  const rate = await checkDistributedRateLimit(
+    `webhook:wa:${webhookToken}:${requestClientKey(req)}`,
+    WEBHOOK_RATE_LIMIT
+  );
+  if (!rate.allowed) return new Response(null, { status: 429 });
+
+  const rawBody = await readLimitedBody(req, 2_000_000);
+  if (rawBody === null) return new Response(null, { status: 413 });
   const signature = req.headers.get("x-hub-signature-256");
   if (!isValidSignature(rawBody, signature, env.META_APP_SECRET)) {
     return new Response(null, { status: 401 });

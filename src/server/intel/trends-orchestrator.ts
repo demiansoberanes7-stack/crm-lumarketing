@@ -1,4 +1,4 @@
-import { getIntelCredentials, incrementApifyUsage, incrementSerpApiUsage, markApifySynced, markSerpApiSynced } from "@/server/intel/credentials";
+import { getIntelCredentials, incrementApifyUsage, markApifySynced, markSerpApiSynced, reserveSerpApiUsage } from "@/server/intel/credentials";
 import { fetchSerpApiTrends, type TrendsResponse } from "@/server/intel/sources/serpapi-trends";
 import { runApifyActor, normalizeApifyItems } from "@/server/intel/sources/apify-trends";
 import { fetchGt } from "@/server/intel/sources/google-trends";
@@ -44,17 +44,19 @@ export async function getTrendsFromProviders(
 
   // 1. SerpApi (principal)
   if (creds?.serpapiKey) {
-    const result = await fetchSerpApiTrends(creds.serpapiKey, keywords, geo, timeframe);
-    if (result.timeSeries && result.timeSeries.points.length > 0) {
-      await incrementSerpApiUsage(organizationId);
-      await markSerpApiSynced(organizationId);
-      return {
-        data: result,
-        provider: "serpapi",
-        sourceLabel: "Google Trends · SerpApi",
-        error: null,
-        usedFallback: false,
-      };
+    const reserved = await reserveSerpApiUsage(organizationId);
+    if (reserved) {
+      const result = await fetchSerpApiTrends(creds.serpapiKey, keywords, geo, timeframe);
+      if (result.timeSeries && result.timeSeries.points.length > 0) {
+        await markSerpApiSynced(organizationId);
+        return {
+          data: result,
+          provider: "serpapi",
+          sourceLabel: "Google Trends · SerpApi",
+          error: null,
+          usedFallback: false,
+        };
+      }
     }
     // SerpApi falló: continuar a Apify
   }

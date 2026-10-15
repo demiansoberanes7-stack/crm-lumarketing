@@ -121,6 +121,14 @@ export const mcpAccessToken = pgTable(
   (t) => [index("mcp_access_token_expiry_idx").on(t.expiresAt)]
 );
 
+export const mcpOauthClient = pgTable("mcp_oauth_client", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  clientId: text("client_id").notNull().unique(),
+  clientName: text("client_name"),
+  redirectUris: text("redirect_uris").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const organization = pgTable("organization", {
   id: varchar("id", { length: 255 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -2695,5 +2703,47 @@ export const intelGtRelated = pgTable(
       t.day
     ),
     index("intel_gt_related_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);
+
+/** Bucket atómico de rate limit compartido entre réplicas del monolito. */
+export const rateLimitBucket = pgTable("rate_limit_bucket", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  windowStartedAt: timestamp("window_started_at").notNull(),
+  count: integer("count").notNull().default(0),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+/**
+ * Job asíncrono de las ingestas INTEL (todos los nichos, un término, mapa
+ * DENUE). El índice único parcial sobre (org, kind, term) en estado
+ * "running" es el candado anti-ingestas duplicadas: dos clics en «Actualizar»
+ * comparten un solo job y no gastan dos veces la cuota.
+ */
+export const intelJob = pgTable(
+  "intel_job",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** "gt_all" (todos los nichos) | "gt_term" (uno) | "geo" (mapa DENUE). */
+    kind: varchar("kind", { length: 20 }).notNull(),
+    termId: varchar("term_id", { length: 255 }),
+    geo: varchar("geo", { length: 10 }),
+    /** "running" | "done" | "error". */
+    status: varchar("status", { length: 20 }).notNull().default("running"),
+    total: integer("total").notNull().default(0),
+    completed: integer("completed").notNull().default(0),
+    result: jsonb("result"),
+    error: text("error"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    finishedAt: timestamp("finished_at"),
+  },
+  (t) => [
+    uniqueIndex("intel_job_active_uq")
+      .on(t.organizationId, t.kind, sql`COALESCE(${t.termId}, '')`)
+      .where(sql`${t.status} = 'running'`),
+    index("intel_job_org_created_idx").on(t.organizationId, t.createdAt),
   ]
 );

@@ -81,7 +81,8 @@ export type GeoIngestResult =
 
 export async function runGeoIngest(
   organizationId: string,
-  termId: string
+  termId: string,
+  onProgress?: (done: number, total: number) => void | Promise<void>
 ): Promise<GeoIngestResult> {
   const creds = await getIntelCredentials(organizationId);
   if (!creds?.denueToken) {
@@ -101,6 +102,8 @@ export async function runGeoIngest(
   const day = utcDay();
   const results: Array<{ state: MexicoState; count: number; censored: boolean }> = [];
   let idx = 0;
+  const totalStates = MEXICO_STATES.length;
+  await onProgress?.(0, totalStates);
   for (const state of MEXICO_STATES) {
     // Pausa entre llamadas: INEGI limita ráfagas; 500 ms evita el 429.
     if (idx > 0) await new Promise((r) => setTimeout(r, 500));
@@ -112,6 +115,7 @@ export async function runGeoIngest(
       denue = await countEstablishments(creds.denueToken, [term.name], state.code);
     }
     if (denue) results.push({ state, count: denue.count, censored: denue.censored });
+    await onProgress?.(idx, totalStates);
   }
   // Éxito parcial: si al menos 1 estado respondió, se guarda y se declara ok.
   // Solo se reporta denue_failed si NINGÚN estado respondió.

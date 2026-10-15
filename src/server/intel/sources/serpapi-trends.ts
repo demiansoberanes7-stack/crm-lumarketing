@@ -333,7 +333,12 @@ export async function getSerpApiKey(
   }
 }
 
-/** Cuota mensual de SerpApi (plan gratuito = 250). */
-export function getSerpApiQuota(): { limit: number; used: number; remaining: number } {
-  return { limit: QUOTA_LIMIT, used: 0, remaining: QUOTA_LIMIT };
+/**
+ * Cuota mensual de SerpApi (plan gratuito = 250). `used` viene del contador
+ * real de la BD (`serpapiQueriesUsed`): la versión anterior devolvía 0 fijo y
+ * podía hacer creer que nunca se había gastado nada.
+ */
+export function getSerpApiQuota(used = 0): { limit: number; used: number; remaining: number } {
+  const clamped = Math.max(0, Math.min(Math.trunc(used), QUOTA_LIMIT));
+  return { limit: QUOTA_LIMIT, used: clamped, remaining: QUOTA_LIMIT - clamped };
 }

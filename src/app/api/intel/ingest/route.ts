@@ -1,14 +1,16 @@
+import { after } from "next/server";
 import { apiError, withAuth } from "@/lib/api";
 import { intelDisabledResponse, intelEnabled } from "@/server/intel/flag";
-import { runGtIngest } from "@/server/intel/service";
-import { getIntelCredentials, markGtSynced } from "@/server/intel/credentials";
-import { listActiveTerms } from "@/server/intel/terms";
+import { getIntelCredentials } from "@/server/intel/credentials";
+import { createIntelJob, runGtAllJob, serializeIntelJob } from "@/server/intel/jobs";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Dispara la ingesta del día SOLO con Google Trends (fuente externa).
- * No toca YouTube Data API ni datos internos del CRM.
+ * Responde 202 con el `jobId`: el trabajo corre fuera de la petición y la UI
+ * sigue su progreso en `GET /api/intel/jobs/[id]`. Si ya hay una ingesta en
+ * curso, responde 409 — el candado impide gastar la cuota dos veces.
  * Re-ejecutable: los snapshots GT del día se upsertean (dedupe por día).
  */
 export const POST = withAuth(async (session) => {
@@ -23,21 +25,21 @@ export const POST = withAuth(async (session) => {
     );
   }
 
-  const terms = await listActiveTerms(session.organizationId);
-  let gtIngested = 0;
-  let gtFailed = 0;
-  for (const term of terms) {
-    const gt = await runGtIngest(session.organizationId, term.id, term.geo || "MX");
-    if (gt.ok) gtIngested += 1;
-    else gtFailed += 1;
-  }
-  if (gtIngested > 0) await markGtSynced(session.organizationId);
-
-  return Response.json({
-    ok: gtIngested > 0,
-    gtIngested,
-    gtFailed,
-    total: terms.length,
-    source: "google_trends",
+  const job = await createIntelJob({
+    organizationId: session.organizationId,
+    kind: "gt_all",
   });
+  if (!job) {
+    return apiError(
+      409,
+      "job_running",
+      "Ya hay una ingesta de Google Trends en curso. Espera a que termine."
+    );
+  }
+
+  after(() =>
+    runGtAllJob({ jobId: job.id, organizationId: session.organizationId })
+  );
+
+  return Response.json({ job: serializeIntelJob(job) }, { status: 202 });
 });

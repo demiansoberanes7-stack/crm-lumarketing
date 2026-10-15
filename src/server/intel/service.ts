@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -61,7 +61,11 @@ export async function getTrends(
         scoped(
           schema.intelGtSnapshot.organizationId,
           organizationId,
-          inArray(schema.intelGtSnapshot.termId, termIds)
+          inArray(schema.intelGtSnapshot.termId, termIds),
+          // La ventana se filtra EN SQL: traer todo el histórico y recortarlo
+          // en memoria crece sin límite con los días.
+          gte(schema.intelGtSnapshot.day, start),
+          lte(schema.intelGtSnapshot.day, end)
         )
       )
       .orderBy(schema.intelGtSnapshot.day);
@@ -74,9 +78,7 @@ export async function getTrends(
 
   const trends: TrendCard[] = [];
   for (const term of terms) {
-    const history = (gtByTerm.get(term.id) ?? []).filter(
-      (s) => s.day >= start && s.day <= end
-    );
+    const history = gtByTerm.get(term.id) ?? [];
     if (history.length === 0) continue;
 
     const recent = history.slice(-7).map((s) => s.value);
@@ -135,7 +137,9 @@ export async function compareTerms(
           scoped(
             schema.intelGtSnapshot.organizationId,
             organizationId,
-            inArray(schema.intelGtSnapshot.termId, terms.map((t) => t.id))
+            inArray(schema.intelGtSnapshot.termId, terms.map((t) => t.id)),
+            gte(schema.intelGtSnapshot.day, start),
+            lte(schema.intelGtSnapshot.day, end)
           )
         )
         .orderBy(schema.intelGtSnapshot.day)
@@ -149,17 +153,13 @@ export async function compareTerms(
   }
 
   const lastValues = terms.map((term) => {
-    const history = (byTerm.get(term.id) ?? []).filter(
-      (s) => s.day >= start && s.day <= end
-    );
+    const history = byTerm.get(term.id) ?? [];
     return history.length > 0 ? history[history.length - 1]!.value : 0;
   });
   const totalLast = lastValues.reduce((a, b) => a + b, 0);
 
   const items: TermCompareItem[] = terms.map((term, i) => {
-    const history = (byTerm.get(term.id) ?? []).filter(
-      (s) => s.day >= start && s.day <= end
-    );
+    const history = byTerm.get(term.id) ?? [];
     const seriesValues = history.map((s) => s.value);
     const recent = seriesValues.slice(-7);
     const prior = seriesValues.slice(0, -7);
@@ -419,7 +419,13 @@ export async function getGtReport(
         .select()
         .from(schema.intelGtSnapshot)
         .where(
-          scoped(schema.intelGtSnapshot.organizationId, organizationId, eq(schema.intelGtSnapshot.termId, termId))
+          scoped(
+            schema.intelGtSnapshot.organizationId,
+            organizationId,
+            eq(schema.intelGtSnapshot.termId, termId),
+            gte(schema.intelGtSnapshot.day, start),
+            lte(schema.intelGtSnapshot.day, end)
+          )
         )
         .orderBy(schema.intelGtSnapshot.day)
     : [];
@@ -427,17 +433,23 @@ export async function getGtReport(
   let series: GtReport["series"] = [];
   let seriesSource: GtReport["seriesSource"] = "none";
   if (gtRows.length > 0) {
-    series = gtRows.filter((r) => r.day >= start && r.day <= end).map((r) => ({ day: r.day, value: r.value }));
+    series = gtRows.map((r) => ({ day: r.day, value: r.value }));
     seriesSource = "google_trends";
   }
 
-  // Regiones GT (solo si está habilitado)
+  // Regiones GT (solo si está habilitado). La última lectura por estado gana
+  // (orden ascendente sobre la ventana).
   const gtRegionRows = gtActive
     ? await db
         .select()
         .from(schema.intelGtRegion)
         .where(
-          scoped(schema.intelGtRegion.organizationId, organizationId, eq(schema.intelGtRegion.termId, termId))
+          scoped(
+            schema.intelGtRegion.organizationId,
+            organizationId,
+            eq(schema.intelGtRegion.termId, termId),
+            gte(schema.intelGtRegion.day, start)
+          )
         )
         .orderBy(schema.intelGtRegion.day)
     : [];
@@ -457,13 +469,19 @@ export async function getGtReport(
     regionsSource = "google_trends";
   }
 
-  // Relacionados (solo si está habilitado)
+  // Relacionados (solo si está habilitado). Ventana en SQL: el histórico
+  // completo de un término popular puede ser enorme.
   const relatedRows = gtActive
     ? await db
         .select()
         .from(schema.intelGtRelated)
         .where(
-          scoped(schema.intelGtRelated.organizationId, organizationId, eq(schema.intelGtRelated.termId, termId))
+          scoped(
+            schema.intelGtRelated.organizationId,
+            organizationId,
+            eq(schema.intelGtRelated.termId, termId),
+            gte(schema.intelGtRelated.day, start)
+          )
         )
         .orderBy(desc(schema.intelGtRelated.day))
     : [];
