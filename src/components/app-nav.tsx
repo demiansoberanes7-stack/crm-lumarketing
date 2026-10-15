@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import { cn, initials } from "@/lib/utils";
 import { signOut } from "@/lib/auth/client";
@@ -139,31 +139,28 @@ export function AppNav({
 
       <div className="flex-1" />
 
-      {/* Usuario: en escritorio solo avatar con tooltip; en drawer, completo. */}
+      {/* Usuario: en escritorio solo avatar (clic = cerrar sesión); en drawer, completo. */}
       <div className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:justify-center lg:px-0">
-        <span
+        <button
+          type="button"
+          aria-label={`Cerrar sesión de ${userName}`}
+          title={`${userName} · cerrar sesión`}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand-text"
-          title={userName}
+          onClick={async () => {
+            if (!confirm("¿Cerrar sesión?")) return;
+            await signOut();
+            router.push("/login");
+            router.refresh();
+          }}
         >
           {initials(userName)}
-        </span>
+        </button>
         <span className="min-w-0 flex-1 lg:hidden">
           <span className="block truncate text-[13px] font-semibold">{userName}</span>
           <span className="block truncate text-[11px] text-text-3">
             {role === "owner" ? "Propietario" : "Equipo"} · En línea
           </span>
         </span>
-        <button
-          aria-label="Cerrar sesión"
-          className="hidden min-h-9 min-w-9 items-center justify-center rounded text-text-3 hover:text-foreground lg:hidden"
-          onClick={async () => {
-            await signOut();
-            router.push("/login");
-            router.refresh();
-          }}
-        >
-          <LogOut className="h-4 w-4" strokeWidth={1.7} />
-        </button>
         {/* Tooltip del usuario en escritorio. */}
         <span className="hidden lg:contents">
           <NavTooltip label={`${userName} · cerrar sesión`} />
