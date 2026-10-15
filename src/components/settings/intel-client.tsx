@@ -237,7 +237,8 @@ export function IntelSettingsClient() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        denueToken: denueToken || `····${connection?.denueConfigured ? "" : ""}`,
+        // Campo vacío = probar el token guardado (el endpoint lo resuelve).
+        denueToken: denueToken || "····",
         keyword: denueKeyword || undefined,
       }),
     }).catch(() => null);
