@@ -231,6 +231,31 @@ export async function runGtIngest(
       reason: orch.error ?? "No hay proveedores de Google Trends configurados.",
     };
   }
+
+  // Si SerpApi es el proveedor, traer regiones y relacionados (llamadas extra)
+  let allRegions = data.regions;
+  let allTopics = data.topics;
+  let allQueries = data.queries;
+  if (orch.provider === "serpapi" && data.timeSeries) {
+    try {
+      const creds = await getIntelCredentials(organizationId);
+      if (creds?.serpapiKey) {
+        const { fetchSerpApiRegions, fetchSerpApiRelated } = await import("@/server/intel/sources/serpapi-trends");
+        const [regionsData, relatedData] = await Promise.all([
+          fetchSerpApiRegions(creds.serpapiKey, term.name, geo),
+          fetchSerpApiRelated(creds.serpapiKey, term.name, geo),
+        ]);
+        if (regionsData.length > 0) allRegions = regionsData;
+        if (relatedData.topics.length > 0 || relatedData.queries.length > 0) {
+          allTopics = relatedData.topics;
+          allQueries = relatedData.queries;
+        }
+      }
+    } catch {
+      // Regiones/relacionados son opcionales: no fallar la ingesta por esto
+    }
+  }
+
   const day = utcDay();
 
   let points = 0;
@@ -260,10 +285,22 @@ export async function runGtIngest(
     }
   }
 
-  // Regiones: mapeamos geoCode de Google → clave INEGI si coincide (2 dígitos).
-  for (const r of data.regions) {
-    const state = r.geoCode.padStart(2, "0");
-    if (!/^\d{2}$/.test(state)) continue;
+  // Regiones: mapeamos geoCode de Google → clave INEGI (2 dígitos).
+  // Google usa códigos como "MX-CMX", "MX-TAB", "09", "15", etc.
+  const GOOGLE_TO_INEGI: Record<string, string> = {
+    "MX-AGU": "01", "MX-BCN": "02", "MX-BCS": "03", "MX-CAM": "04",
+    "MX-COH": "05", "MX-COL": "06", "MX-CHP": "07", "MX-CHH": "08",
+    "MX-CMX": "09", "MX-DUR": "10", "MX-GUA": "11", "MX-GRO": "12",
+    "MX-HID": "13", "MX-JAL": "14", "MX-MEX": "15", "MX-MIC": "16",
+    "MX-MOR": "17", "MX-NAY": "18", "MX-NLE": "19", "MX-OAX": "20",
+    "MX-PUE": "21", "MX-QUE": "22", "MX-ROO": "23", "MX-SLP": "24",
+    "MX-SIN": "25", "MX-SON": "26", "MX-TAB": "27", "MX-TAM": "28",
+    "MX-TLA": "29", "MX-VER": "30", "MX-YUC": "31", "MX-ZAC": "32",
+  };
+  for (const r of allRegions) {
+    // Si es "MX-XXX", mapear; si ya es de 2 dígitos, usar directo
+    const state = GOOGLE_TO_INEGI[r.geoCode] ?? (/^\d{2}$/.test(r.geoCode) ? r.geoCode : null);
+    if (!state) continue;
     await db
       .insert(schema.intelGtRegion)
       .values({
@@ -283,7 +320,7 @@ export async function runGtIngest(
 
   // Relacionados (temas y consultas) — iteramos por separado para evitar
   // el identity check frágil `topics.includes(r)` que fallaba con clones.
-  for (const r of data.topics) {
+  for (const r of allTopics) {
     const label = r.label.slice(0, 300);
     await db
       .insert(schema.intelGtRelated)
@@ -304,7 +341,7 @@ export async function runGtIngest(
       });
     related += 1;
   }
-  for (const r of data.queries) {
+  for (const r of allQueries) {
     const label = r.label.slice(0, 300);
     await db
       .insert(schema.intelGtRelated)

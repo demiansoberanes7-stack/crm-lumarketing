@@ -79,8 +79,9 @@ export async function runApifyActor(
   keywords: string[],
   geo = "MX"
 ): Promise<unknown[] | null> {
-  // Normalizar actorId: Apify acepta "user~name" o "userId~name"
-  const actorPath = actorId.replace(/[^a-zA-Z0-9_~-]/g, "");
+  // Normalizar actorId: Apify acepta "user~name". El usuario puede escribir
+  // "user/name" o "user~name"; convertimos "/" → "~".
+  const actorPath = actorId.replace(/\//g, "~").replace(/[^a-zA-Z0-9_~-]/g, "");
 
   const input = {
     searchTerms: keywords.slice(0, 5),
@@ -262,7 +263,7 @@ export async function verifyApify(
   token: string,
   actorId: string
 ): Promise<{ ok: boolean; reason?: string }> {
-  const actorPath = actorId.replace(/[^a-zA-Z0-9_~-]/g, "");
+  const actorPath = actorId.replace(/\//g, "~").replace(/[^a-zA-Z0-9_~-]/g, "");
   const data = await apifyFetch(token, `/acts/${actorPath}`);
   if (!data) {
     return { ok: false, reason: "Apify no respondió. Verifica el token y el Actor ID." };
