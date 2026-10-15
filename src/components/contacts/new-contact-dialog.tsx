@@ -13,6 +13,7 @@ const SOURCES: { value: SourceValue; label: string }[] = [
   { value: "organico", label: "Contenido orgánico" },
   { value: "conocido", label: "Conocido" },
   { value: "anuncio", label: "Anuncio" },
+  { value: "compra", label: "Compra" },
   { value: "otro", label: "Otro" },
 ];
 

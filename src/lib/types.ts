@@ -101,6 +101,10 @@ export type ContactDto = {
   archivedAt: string | null;
   /** De dónde salió el prospecto, capturada o deducida. */
   source?: SourceDto;
+  /** Detalle de la compra, solo cuando la fuente es "compra". */
+  purchaseProduct?: string | null;
+  purchaseDate?: string | null;
+  purchaseAmountCents?: number | null;
   /** Por qué canal llegó la primera conversación; null mientras no se capture. */
   medium?: MediumValue | null;
   /** La red social elegida, solo cuando `medium = "red_social"`. */
@@ -146,6 +150,7 @@ export type SourceValue =
   | "organico"
   | "referido"
   | "conocido"
+  | "compra"
   | "otro";
 
 export type SourceDto = {

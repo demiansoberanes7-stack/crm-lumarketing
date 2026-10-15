@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import type { ContactDto } from "@/lib/types";
 import { formatPhone } from "@/lib/utils";
-import { formatMoneyCents } from "@/lib/money";
+import { formatMoneyCents, parseMoneyToCents } from "@/lib/money";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ContactAvatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { mediumLabel, normalizeMedium } from "@/lib/contact-medium";
-import { SOURCE_LABELS } from "@/server/contact-source";
+import { SOURCE_LABELS, SOURCE_VALUES } from "@/server/contact-source";
 import { MediumPicker } from "./medium-picker";
 import { priorityRank } from "@/server/leads/priority";
 import { PriorityBadge } from "@/components/pipeline/priority-picker";
@@ -48,7 +48,12 @@ export function ContactsClient() {
   const router = useRouter();
   const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [query, setQuery] = useState("");
-  const [stage, setStage] = useState("all");
+  /**
+   * Por defecto solo se ven los que ya son Cliente: Contactos es la cartera de
+   * clientes, el embudo vive en el Pipeline. "Todas las etapas" es la salida
+   * para revisar prospectos sin ir al tablero.
+   */
+  const [stage, setStage] = useState("clientes");
   const [stages, setStages] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<ContactDto | null>(null);
@@ -76,7 +81,8 @@ export function ContactsClient() {
   const refetch = useCallback(async () => {
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
-    if (stage !== "all") params.set("stage", stage);
+    if (stage === "clientes") params.set("won", "1");
+    else if (stage !== "todas") params.set("stage", stage);
     if (showArchived) params.set("archived", "true");
     const res = await fetch(`/api/contacts?${params}`).catch(() => null);
     if (!res?.ok) return;
@@ -135,7 +141,8 @@ export function ContactsClient() {
             onClick={() => {
               const params = new URLSearchParams();
               if (query.trim()) params.set("q", query.trim());
-              if (stage !== "all") params.set("stage", stage);
+              if (stage === "clientes") params.set("won", "1");
+              else if (stage !== "todas") params.set("stage", stage);
               if (showArchived) params.set("archived", "true");
               window.open(`/api/contacts/export?${params}`, "_blank");
             }}
@@ -161,12 +168,13 @@ export function ContactsClient() {
               aria-label="Filtrar por etapa del embudo"
               className="h-9 rounded-md border border-input bg-card px-2 text-sm"
             >
-              <option value="all">Toda etapa</option>
+              <option value="clientes">Solo clientes</option>
               {stages.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
+              <option value="todas">Todas las etapas</option>
             </select>
           )}
           <div className="relative w-full sm:w-auto">
@@ -186,22 +194,26 @@ export function ContactsClient() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {contacts.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            {query.trim() || stage !== "all" ? (
+            {query.trim() || stage !== "clientes" ? (
               <>
                 <p className="text-sm font-medium">Sin resultados</p>
                 <p className="max-w-sm text-xs text-muted-foreground">
                   Nadie coincide con
                   {query.trim() ? ` «${query.trim()}»` : ""}
-                  {query.trim() && stage !== "all" ? " en" : ""}
-                  {stage !== "all" ? ` la etapa «${stage}»` : ""}.
+                  {query.trim() && stage !== "clientes" ? " en" : ""}
+                  {stage === "clientes"
+                    ? " entre los clientes."
+                    : stage === "todas"
+                      ? "."
+                      : ` la etapa «${stage}».`}
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm font-medium">Sin contactos</p>
+                <p className="text-sm font-medium">Aún no hay clientes</p>
                 <p className="max-w-sm text-xs text-muted-foreground">
-                  Cada persona que escriba a tu WhatsApp quedará registrada aquí
-                  automáticamente.
+                  Los contactos aparecen aquí cuando su trato llega a la etapa
+                  «Cliente» del Pipeline.
                 </p>
               </>
             )}
@@ -308,11 +320,16 @@ export function ContactsClient() {
                     )}
                   </div>
 
-                  {/* Footer: canal + medio + acciones rápidas */}
+                  {/* Footer: canal + medio + fuente + acciones rápidas */}
                   <div className="mt-3 flex items-center justify-between border-t pt-3">
                     <div className="flex flex-wrap gap-1">
                       <Badge variant="secondary" className="text-[10px]">{channelLabel}</Badge>
                       {med && <Badge variant="outline" className="text-[10px]">{med}</Badge>}
+                      {c.source?.source === "capturada" && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {SOURCE_LABELS[c.source.value]}
+                        </Badge>
+                      )}
                       {c.archivedAt && <Badge variant="secondary" className="text-[10px]">Archivado</Badge>}
                     </div>
                     <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -463,6 +480,23 @@ function ContactDetailDialog({
           <DetailField label="Medio de contacto" value={medium} />
           <DetailField label="Monto" value={money} />
           <DetailField label="Fuente" value={contact.source ? `${SOURCE_LABELS[contact.source.value]} · ${contact.source.source === "capturada" ? "capturada" : "deducida"}` : null} />
+          {contact.source?.value === "compra" && (
+            <>
+              <DetailField label="Producto comprado" value={contact.purchaseProduct ?? null} />
+              <DetailField
+                label="Fecha de compra"
+                value={contact.purchaseDate ? contact.purchaseDate.slice(0, 10) : null}
+              />
+              <DetailField
+                label="Monto de compra"
+                value={
+                  contact.purchaseAmountCents != null
+                    ? formatMoneyCents(contact.purchaseAmountCents, "MXN")
+                    : null
+                }
+              />
+            </>
+          )}
           <DetailField label="Prioridad" value={contact.priority ?? null} />
           <DetailField label="Estado" value={contact.archivedAt ? "Archivado" : "Activo"} />
         </dl>
@@ -525,6 +559,20 @@ function EditDialog({
   const [notes, setNotes] = useState(contact.notes ?? "");
   const [medium, setMedium] = useState(contact.medium ?? "");
   const [mediumDetail, setMediumDetail] = useState(contact.mediumDetail ?? "");
+  // La fuente deducida ("desconocida") no se puede elegir: o la captura el
+  // dueño o sigue sin identificar.
+  const [source, setSource] = useState(
+    contact.source?.source === "capturada" ? contact.source.value : ""
+  );
+  const [purchaseProduct, setPurchaseProduct] = useState(contact.purchaseProduct ?? "");
+  const [purchaseDate, setPurchaseDate] = useState(
+    contact.purchaseDate ? contact.purchaseDate.slice(0, 10) : ""
+  );
+  const [purchaseAmount, setPurchaseAmount] = useState(
+    contact.purchaseAmountCents != null ? (contact.purchaseAmountCents / 100).toFixed(2) : ""
+  );
+  const compraParse = purchaseAmount.trim() ? parseMoneyToCents(purchaseAmount) : null;
+  const compraInvalida = purchaseAmount.trim().length > 0 && compraParse === null;
 
   return (
     <div
@@ -580,6 +628,72 @@ function EditDialog({
             }}
           />
           <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="edit-source">
+              Fuente
+            </label>
+            <select
+              id="edit-source"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
+            >
+              <option value="">Sin identificar</option>
+              {SOURCE_VALUES.map((v) => (
+                <option key={v} value={v}>
+                  {SOURCE_LABELS[v]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {source === "compra" && (
+            <div className="space-y-3 rounded-lg border p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                Detalle de la compra
+              </p>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="edit-purchase-product">
+                  Producto
+                </label>
+                <Input
+                  id="edit-purchase-product"
+                  value={purchaseProduct}
+                  onChange={(e) => setPurchaseProduct(e.target.value)}
+                  placeholder="Ej: Cámara de seguridad x4"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="edit-purchase-date">
+                    Fecha
+                  </label>
+                  <Input
+                    id="edit-purchase-date"
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="edit-purchase-amount">
+                    Monto (MXN)
+                  </label>
+                  <Input
+                    id="edit-purchase-amount"
+                    inputMode="decimal"
+                    value={purchaseAmount}
+                    onChange={(e) => setPurchaseAmount(e.target.value)}
+                    placeholder="12,500.00"
+                  />
+                </div>
+              </div>
+              {compraInvalida && (
+                <p className="text-xs text-danger-text">
+                  No reconozco ese monto. Escríbelo como 12500 o 12,500.00
+                </p>
+              )}
+            </div>
+          )}
+          <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="edit-interests">
               Intereses / Servicios de interés
             </label>
@@ -608,12 +722,22 @@ function EditDialog({
             Cancelar
           </Button>
           <Button
-            disabled={!name.trim() || !normalizeMedium({ medium, mediumDetail }).ok}
+            disabled={
+              !name.trim() ||
+              !normalizeMedium({ medium, mediumDetail }).ok ||
+              compraInvalida
+            }
             onClick={() => {
               const patch: Record<string, unknown> = { name: name.trim(), notes };
               if (phone !== (contact.phone ?? "")) patch.phone = phone || null;
               patch.medium = medium || null;
               patch.mediumDetail = medium === "red_social" ? mediumDetail || null : null;
+              patch.source = source || null;
+              if (source === "compra") {
+                patch.purchaseProduct = purchaseProduct.trim() || null;
+                patch.purchaseDate = purchaseDate || null;
+                patch.purchaseAmountCents = compraParse;
+              }
               const ficha: Record<string, unknown> = {};
               if (email !== originalEmail) ficha.email = email || null;
               if (interests !== originalInterests) ficha.interests = interests || null;

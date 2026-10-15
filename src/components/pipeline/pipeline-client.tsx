@@ -16,8 +16,10 @@ import {
 import { MessageSquareText, Settings2, Trophy, XCircle, Calendar, Filter } from "lucide-react";
 import type { LossReason, PriorityValue, StageDto } from "@/lib/types";
 import { formatMoneyCents, sumable } from "@/lib/money";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { cn } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatTime } from "@/components/inbox/helpers";
@@ -508,11 +510,18 @@ function LeadCard({
             <p className="truncate text-sm font-semibold">{lead.contact.name}</p>
             {lead.priority && <PriorityBadge value={lead.priority} />}
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            {lead.lastActivityAt
-              ? `Actividad: ${formatTime(lead.lastActivityAt)}`
-              : "Sin actividad"}
-          </p>
+          <div className="flex items-center gap-1.5">
+            {/* De qué canal vino el trato: se distingue de un vistazo al
+                recorrer la columna, sin abrir cada cajón. */}
+            <Badge variant="outline" className="text-[10px]">
+              {CHANNEL_LABEL[lead.channel as Channel] ?? lead.channel}
+            </Badge>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {lead.lastActivityAt
+                ? `Actividad: ${formatTime(lead.lastActivityAt)}`
+                : "Sin actividad"}
+            </p>
+          </div>
         </div>
         {lead.conversationId && (
           <Link

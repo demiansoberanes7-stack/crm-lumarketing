@@ -15,7 +15,14 @@ const importSchema = z.object({
   csv: z.string().min(1, "CSV vacío").max(2_000_000, "Archivo demasiado grande (máx 2 MB)"),
 });
 
-const VALID_SOURCES = new Set(["anuncio", "organico", "referido", "conocido", "otro"]);
+const VALID_SOURCES = new Set([
+  "anuncio",
+  "organico",
+  "referido",
+  "conocido",
+  "compra",
+  "otro",
+]);
 
 /** Mapea headers comunes del CSV a campos internos. */
 function mapRow(row: Record<string, string>): { name: string; phone: string; notes?: string; source?: string; stage?: string } | null {

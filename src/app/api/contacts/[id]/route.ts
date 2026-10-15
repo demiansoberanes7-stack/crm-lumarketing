@@ -49,6 +49,21 @@ const patchSchema = z.object({
   ficha: z.record(z.unknown()).optional(),
   medium: z.unknown().optional(),
   mediumDetail: z.unknown().optional(),
+  source: z
+    .enum(["anuncio", "organico", "referido", "conocido", "compra", "otro"])
+    .nullable()
+    .optional(),
+  /** Detalle de la compra: solo tiene sentido con `source = "compra"`. */
+  purchaseProduct: z.string().trim().max(255).nullable().optional(),
+  purchaseDate: z
+    .string()
+    .max(30)
+    .nullable()
+    .optional()
+    .refine((v) => v == null || v === "" || !Number.isNaN(Date.parse(v)), {
+      message: "Fecha de compra inválida",
+    }),
+  purchaseAmountCents: z.number().int().nullable().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
@@ -103,6 +118,25 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   if (body.data.notes !== undefined) set.notes = body.data.notes;
   if (body.data.archived !== undefined) {
     set.archivedAt = body.data.archived ? new Date() : null;
+  }
+  if (body.data.source !== undefined) set.source = body.data.source;
+  // El detalle de compra solo aplica a la fuente "Compra": cambiar la fuente a
+  // otro valor borra el rastro para que la ficha no muestre una compra que ya
+  // no es la fuente de este contacto.
+  const fuenteEsCompra =
+    body.data.source !== undefined ? body.data.source === "compra" : current.source === "compra";
+  if (fuenteEsCompra) {
+    if (body.data.purchaseProduct !== undefined) set.purchaseProduct = body.data.purchaseProduct;
+    if (body.data.purchaseDate !== undefined) {
+      set.purchaseDate = body.data.purchaseDate ? new Date(body.data.purchaseDate) : null;
+    }
+    if (body.data.purchaseAmountCents !== undefined) {
+      set.purchaseAmountCents = body.data.purchaseAmountCents;
+    }
+  } else if (body.data.source !== undefined) {
+    set.purchaseProduct = null;
+    set.purchaseDate = null;
+    set.purchaseAmountCents = null;
   }
 
   const db = getDb();

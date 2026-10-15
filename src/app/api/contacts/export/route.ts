@@ -10,6 +10,9 @@ export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const stage = url.searchParams.get("stage")?.trim();
+  // Mismo filtro que la lista: la pantalla de Contactos envía won=1 y el CSV
+  // debe salir con lo que se ve, no con el directorio entero.
+  const soloClientes = url.searchParams.get("won") === "1";
   const includeArchived = url.searchParams.get("archived") === "true";
 
   const db = getDb();
@@ -19,12 +22,16 @@ export const GET = withAuth(async (session, req: Request) => {
     .select({
       contactId: schema.lead.contactId,
       stageName: schema.pipelineStage.name,
+      stageKind: schema.pipelineStage.kind,
       priority: schema.lead.priority,
     })
     .from(schema.lead)
     .innerJoin(schema.pipelineStage, eq(schema.pipelineStage.id, schema.lead.stageId))
     .where(scoped(schema.lead.organizationId, session.organizationId));
   const stageByContact = new Map(leadStages.map((r) => [r.contactId, r.stageName]));
+  const clienteContactIds = new Set(
+    leadStages.filter((r) => r.stageKind === "won").map((r) => r.contactId)
+  );
 
   const rows = await db
     .select()
@@ -37,6 +44,7 @@ export const GET = withAuth(async (session, req: Request) => {
     .filter((c) => {
       if (!includeArchived && c.archivedAt) return false;
       if (stage && stageByContact.get(c.id) !== stage) return false;
+      if (soloClientes && !clienteContactIds.has(c.id)) return false;
       if (q) {
         const ql = q.toLowerCase();
         const nameMatch = c.name.toLowerCase().includes(ql);
@@ -51,6 +59,9 @@ export const GET = withAuth(async (session, req: Request) => {
       notas: c.notes ?? "",
       etapa: stageByContact.get(c.id) ?? "",
       fuente: c.source ?? "",
+      producto_compra: c.purchaseProduct ?? "",
+      fecha_compra: c.purchaseDate?.toISOString().slice(0, 10) ?? "",
+      monto_compra: c.purchaseAmountCents != null ? (c.purchaseAmountCents / 100).toFixed(2) : "",
       medio: c.medium ?? "",
       archivado: c.archivedAt ? "si" : "no",
       creado: c.createdAt.toISOString().slice(0, 10),
@@ -62,6 +73,9 @@ export const GET = withAuth(async (session, req: Request) => {
     "notas",
     "etapa",
     "fuente",
+    "producto_compra",
+    "fecha_compra",
+    "monto_compra",
     "medio",
     "archivado",
     "creado",

@@ -26,6 +26,10 @@ export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const stage = url.searchParams.get("stage")?.trim();
+  // `won=1`: solo contactos cuyo lead llegó a una etapa ganadora ("Cliente").
+  // La pantalla de Contactos lo envía siempre; los selectores de contacto
+  // (agenda, proyectos) no, porque allí sí se quiere elegir a un prospecto.
+  const soloClientes = url.searchParams.get("won") === "1";
   const includeArchived = url.searchParams.get("archived") === "true";
 
   const db = getDb();
@@ -37,6 +41,7 @@ export const GET = withAuth(async (session, req: Request) => {
     .select({
       contactId: schema.lead.contactId,
       stageName: schema.pipelineStage.name,
+      stageKind: schema.pipelineStage.kind,
       priority: schema.lead.priority,
       amountCents: schema.lead.amountCents,
     })
@@ -74,10 +79,14 @@ export const GET = withAuth(async (session, req: Request) => {
       : undefined;
 
   // El filtro de etapa se aplica ANTES del límite: si no, un contacto de la
-  // etapa buscada podría quedar fuera por el corte de 200.
+  // etapa buscada podría quedar fuera por el corte de 200. Un filtro explícito
+  // por etapa manda sobre `won=1` (si pides una etapa concreta, la quieres
+  // aunque no sea ganadora).
   const stageContactIds = stage
     ? leadStages.filter((r) => r.stageName === stage).map((r) => r.contactId)
-    : null;
+    : soloClientes
+      ? leadStages.filter((r) => r.stageKind === "won").map((r) => r.contactId)
+      : null;
   if (stageContactIds?.length === 0) return Response.json({ contacts: [] });
 
   const rows = await db
@@ -121,7 +130,9 @@ const createSchema = z.object({
     .trim()
     .regex(/^\d{7,15}$/, "Teléfono en dígitos, con código de país (ej. 5215512345678)"),
   notes: z.string().max(4000).optional(),
-  source: z.enum(["anuncio", "organico", "referido", "conocido", "otro"]).optional(),
+  source: z
+    .enum(["anuncio", "organico", "referido", "conocido", "compra", "otro"])
+    .optional(),
   /** Cómo se contactó; el detalle (la red) lo resuelve `normalizeMedium`. */
   medium: z.unknown().optional(),
   mediumDetail: z.unknown().optional(),

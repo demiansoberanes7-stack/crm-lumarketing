@@ -21,6 +21,9 @@ export function serializeContact(
     amountCents,
     archivedAt: c.archivedAt?.toISOString() ?? null,
     source: effectiveSource(c.source),
+    purchaseProduct: c.purchaseProduct,
+    purchaseDate: c.purchaseDate?.toISOString() ?? null,
+    purchaseAmountCents: c.purchaseAmountCents,
     // Nace NULL como `source`: nadie captura a mano el medio de los cientos de
     // contactos ya existentes, y un valor inventado en el listado sería peor
     // que "sin capturar".

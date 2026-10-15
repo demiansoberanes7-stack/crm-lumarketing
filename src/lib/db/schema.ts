@@ -70,6 +70,7 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+
 export const organization = pgTable("organization", {
   id: varchar("id", { length: 255 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -129,6 +130,12 @@ export const contact = pgTable(
     notes: text("notes"),
     ficha: jsonb("ficha"),
     source: varchar("source", { length: 20 }),
+    /** Producto comprado, solo cuando `source = 'compra'`. */
+    purchaseProduct: varchar("purchase_product", { length: 255 }),
+    /** Fecha de la compra, solo cuando `source = 'compra'`. */
+    purchaseDate: timestamp("purchase_date"),
+    /** Monto de la compra en centavos (el del lead es el del trato en curso). */
+    purchaseAmountCents: integer("purchase_amount_cents"),
     /** Cómo se contactó: red social, llamada, correo o presencial (lib/contact-medium). */
     medium: varchar("medium", { length: 30 }),
     /** La red social elegida, solo cuando `medium = 'red_social'`. */

@@ -14,6 +14,7 @@ export const SOURCE_VALUES: readonly SourceValue[] = [
   "organico",
   "referido",
   "conocido",
+  "compra",
   "otro",
 ];
 
@@ -22,6 +23,7 @@ export const SOURCE_LABELS: Record<SourceValue | "desconocida", string> = {
   organico: "Contenido orgánico",
   referido: "Referido",
   conocido: "Conocido",
+  compra: "Compra",
   otro: "Otro",
   desconocida: "Sin identificar",
 };

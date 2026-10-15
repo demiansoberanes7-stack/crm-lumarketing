@@ -423,10 +423,17 @@
       "breakpoints": true
     },
     {
-      "idx": 60,
+      "idx": 61,
       "version": "7",
-      "when": 1792000000001,
-      "tag": "0060_intel_cred_status",
+      "when": 1792000000002,
+      "tag": "0061_intel_provider_creds",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792000000004,
+      "tag": "0063_contact_purchase",
       "breakpoints": true
     }
   ]
