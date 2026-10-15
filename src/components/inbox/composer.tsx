@@ -5,6 +5,7 @@ import {
   FileText,
   MapPin,
   Paperclip,
+  Plus,
   Send,
   UserRound,
   X,
@@ -48,6 +49,8 @@ export function Composer({
   const [placeName, setPlaceName] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  /** Hoja inferior de adjuntos (solo celular): el patrón «+» de las apps de mensajería. */
+  const [sheetOpen, setSheetOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -291,6 +294,66 @@ export function Composer({
         </div>
       )}
 
+      {/* Hoja inferior de adjuntos — solo celular. Mismo patrón que los
+          diálogos del CRM: velo + panel pegado al piso con safe-area. */}
+      {sheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-overlay sm:hidden"
+          onClick={() => setSheetOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-label="Adjuntar"
+            className="w-full max-w-md rounded-t-2xl border-t border-border-strong bg-background pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 shadow-pop"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-border-strong" />
+            {canAttach && (
+              <button
+                onClick={() => {
+                  setSheetOpen(false);
+                  fileRef.current?.click();
+                }}
+                className="flex w-full min-h-12 items-center gap-3 px-4 text-left text-sm hover:bg-secondary"
+              >
+                <Paperclip className="h-[18px] w-[18px] text-text-3" strokeWidth={1.7} />
+                Archivo (imagen, video, audio, documento)
+              </button>
+            )}
+            {canStructured && (
+              <button
+                onClick={() => {
+                  setSheetOpen(false);
+                  setPanel("location");
+                }}
+                className="flex w-full min-h-12 items-center gap-3 px-4 text-left text-sm hover:bg-secondary"
+              >
+                <MapPin className="h-[18px] w-[18px] text-text-3" strokeWidth={1.7} />
+                Ubicación
+              </button>
+            )}
+            {canStructured && (
+              <button
+                onClick={() => {
+                  setSheetOpen(false);
+                  setPanel("contact");
+                }}
+                className="flex w-full min-h-12 items-center gap-3 px-4 text-left text-sm hover:bg-secondary"
+              >
+                <UserRound className="h-[18px] w-[18px] text-text-3" strokeWidth={1.7} />
+                Contacto
+              </button>
+            )}
+            <button
+              onClick={() => setSheetOpen(false)}
+              className="mt-1 w-full min-h-12 border-t border-border-strong text-center text-sm font-semibold text-text-2"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* La caja de escritura en píldora, como la del mockup de la landing */}
       <div className="flex items-end gap-2 rounded-[23px] border border-border-strong bg-background py-1.5 pl-2 pr-1.5 shadow-sm transition-[border-color,box-shadow] focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand-soft">
         <input
@@ -305,7 +368,20 @@ export function Composer({
             e.target.value = "";
           }}
         />
-        <div className="flex shrink-0 items-center gap-0.5">
+        {/* Celular: un solo «+» que abre la hoja de adjuntos — los tres íconos
+            en línea dejaban el campo de texto casi sin ancho. */}
+        {(canAttach || canStructured) && (
+          <button
+            onClick={() => setSheetOpen(true)}
+            aria-label="Adjuntar"
+            aria-expanded={sheetOpen}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-text-3 transition-colors hover:bg-secondary hover:text-foreground sm:hidden"
+          >
+            <Plus className="h-5 w-5" strokeWidth={1.7} />
+          </button>
+        )}
+        {/* Tablet y escritorio: los tres accesos directos en línea. */}
+        <div className="hidden shrink-0 items-center gap-0.5 sm:flex">
           {canAttach && (
             <button
               onClick={() => fileRef.current?.click()}
@@ -354,6 +430,10 @@ export function Composer({
           }
           value={text}
           rows={1}
+          enterKeyHint="send"
+          autoCapitalize="sentences"
+          autoCorrect="on"
+          spellCheck
           onFocus={(event) => {
             const textarea = event.currentTarget;
             window.setTimeout(() => textarea.scrollIntoView({ block: "nearest" }), 120);
