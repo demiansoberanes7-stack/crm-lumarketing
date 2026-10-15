@@ -123,6 +123,9 @@ export function BrandLogo({
       )}
       <span
         className={cn(
+          // Siempre contraste con el fondo del tema: blanco sobre negro,
+          // negro sobre blanco (el color heredado del botón era gris).
+          "text-foreground",
           lumark
             ? "font-[800] leading-none tracking-[-0.045em]"
             : "truncate font-[750] leading-none tracking-tight",
