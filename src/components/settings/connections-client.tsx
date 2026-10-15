@@ -44,7 +44,7 @@ const DATA_CONNECTIONS = [
     key: "intel",
     name: "Inteligencia de Mercado",
     href: "/settings/intel",
-    detail: "API keys gratuitas (YouTube + DENUE/INEGI) para tendencias y reportes de ideas.",
+    detail: "SerpApi y Apify para Google Trends, token INEGI-DENUE para competencia local.",
     activationSetting: "INTEL=on",
     hint: null as string | null,
     account: (s: ConnectionsStatus) =>
@@ -281,15 +281,13 @@ export function ConnectionsClient() {
                       : status === "connected"
                         ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success-text" />
                         : <CircleAlert className="h-4 w-4 shrink-0 text-warning-text" />}
-                    <span className="truncate">
-                      {!connections
-                        ? (loading ? "Consultando…" : "Sin conexión")
-                        : STATUS_LABEL[status ?? ""] ?? "Estado no disponible"}
-                    </span>
+                  <span className="truncate">
+                    {!connections
+                      ? (loading ? "Consultando…" : "Sin conexión")
+                      : STATUS_LABEL[status ?? ""] ?? "Estado no disponible"}
                   </span>
-                  {connections && !disabled && (
-                    <Link className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent" href={connection.href}>Configurar</Link>
-                  )}
+                </span>
+                <Link className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-medium hover:bg-accent" href={connection.href}>Configurar</Link>
                 </div>
                 {connections && disabled && connection.activationSetting && (
                   <p className="rounded-md bg-subtle p-3 text-xs leading-relaxed text-text-2">
