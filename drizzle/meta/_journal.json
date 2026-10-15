@@ -442,6 +442,13 @@
       "when": 1792000000004,
       "tag": "0063_contact_purchase",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1792000000005,
+      "tag": "0064_mcp_oauth_repair",
+      "breakpoints": true
     }
   ]
 }
