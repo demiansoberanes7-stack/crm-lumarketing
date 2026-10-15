@@ -194,12 +194,15 @@ export type GtIngestResult = {
   related: number;
   partial: boolean;
   reason?: string;
+  /** Proveedor real usado (serpapi, apify, web). */
+  provider?: string;
 };
 
 /**
- * Ingesta de Google Trends para UN término. Guarda la serie diaria, las
- * regiones y los relacionados en sus tablas GT (dedupe por día, re-ejecutable).
- * Nunca lanza: cualquier fallo devuelve `ok=false` con razón.
+ * Ingesta de Google Trends para UN término. Usa el orquestador de
+ * proveedores (SerpApi → Apify → web). Guarda la serie diaria, las
+ * regiones y los relacionados en sus tablas GT (dedupe por día,
+ * re-ejecutable). Nunca lanza: cualquier fallo devuelve `ok=false` con razón.
  */
 export async function runGtIngest(
   organizationId: string,
@@ -219,8 +222,15 @@ export async function runGtIngest(
     return { termId, ok: false, points: 0, regions: 0, related: 0, partial: false, reason: "Término no encontrado." };
   }
 
-  const { fetchGt } = await import("@/server/intel/sources/google-trends");
-  const data = await fetchGt(term.name, geo, "now 1-m");
+  const { getTrendsFromProviders } = await import("@/server/intel/trends-orchestrator");
+  const orch = await getTrendsFromProviders(organizationId, [term.name], geo, "today 1-m");
+  const data = orch.data;
+  if (!data) {
+    return {
+      termId, ok: false, points: 0, regions: 0, related: 0, partial: false,
+      reason: orch.error ?? "No hay proveedores de Google Trends configurados.",
+    };
+  }
   const day = utcDay();
 
   let points = 0;
@@ -271,9 +281,9 @@ export async function runGtIngest(
     regions += 1;
   }
 
-  // Relacionados (temas y consultas)
-  for (const r of [...data.topics, ...data.queries]) {
-    const kind = data.topics.includes(r) ? "topic" : "query";
+  // Relacionados (temas y consultas) — iteramos por separado para evitar
+  // el identity check frágil `topics.includes(r)` que fallaba con clones.
+  for (const r of data.topics) {
     const label = r.label.slice(0, 300);
     await db
       .insert(schema.intelGtRelated)
@@ -281,7 +291,28 @@ export async function runGtIngest(
         id: newId("intelGtRelated"),
         organizationId,
         termId,
-        kind,
+        kind: "topic",
+        label,
+        value: r.value,
+        pct: r.pct !== null ? Math.round(r.pct) : null,
+        isBreakout: r.isBreakout,
+        day,
+      })
+      .onConflictDoUpdate({
+        target: [schema.intelGtRelated.termId, schema.intelGtRelated.kind, schema.intelGtRelated.label, schema.intelGtRelated.day],
+        set: { value: r.value, pct: r.pct !== null ? Math.round(r.pct) : null, isBreakout: r.isBreakout },
+      });
+    related += 1;
+  }
+  for (const r of data.queries) {
+    const label = r.label.slice(0, 300);
+    await db
+      .insert(schema.intelGtRelated)
+      .values({
+        id: newId("intelGtRelated"),
+        organizationId,
+        termId,
+        kind: "query",
         label,
         value: r.value,
         pct: r.pct !== null ? Math.round(r.pct) : null,
@@ -295,7 +326,7 @@ export async function runGtIngest(
     related += 1;
   }
 
-  return { termId, ok: points > 0 || regions > 0 || related > 0, points, regions, related, partial: data.partial };
+  return { termId, ok: points > 0 || regions > 0 || related > 0, points, regions, related, partial: data.partial, provider: orch.provider };
 }
 
 export type GtReport = {
@@ -411,6 +442,14 @@ export async function getGtReport(
 
   const usedFallback = regionsSource === "none" && seriesSource === "none";
 
+  // Determinar el proveedor basado en qué sincronización es más reciente
+  let fuenteLabel = "Google Trends (sin datos)";
+  if (creds?.serpapiLastSyncAt && (!creds.apifyLastSyncAt || creds.serpapiLastSyncAt > creds.apifyLastSyncAt)) {
+    fuenteLabel = "Google Trends · SerpApi (índice 0–100)";
+  } else if (creds?.apifyLastSyncAt) {
+    fuenteLabel = "Google Trends · Apify (índice 0–100)";
+  }
+
   return {
     termId,
     termName: term.name,
@@ -422,7 +461,7 @@ export async function getGtReport(
     queries,
     usedFallback,
     method: {
-      fuente: "Google Trends (endpoint no oficial, fuente externa)",
+      fuente: fuenteLabel,
       ventana: "últimos 30 días",
     },
     generatedAt: new Date().toISOString(),

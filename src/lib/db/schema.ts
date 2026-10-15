@@ -2364,7 +2364,12 @@ export const socialComment = pgTable(
  * patrón que google_business_credentials.
  * ============================================================ */
 
-/** API keys del módulo: YouTube Data API + token DENUE (INEGI). */
+/**
+ * Credenciales del módulo de inteligencia. Cada proveedor es independiente:
+ * SerpApi y Apify para Google Trends, DENUE para INEGI, YouTube opcional.
+ * Secretos cifrados AES-256-GCM (triple cipher/iv/tag). YouTubeKey* ahora
+ * es opcional: no se exige para configurar SerpApi/Apify/INEGI.
+ */
 export const intelCredentials = pgTable(
   "intel_credentials",
   {
@@ -2372,13 +2377,32 @@ export const intelCredentials = pgTable(
     organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    youtubeKeyCipher: text("youtube_key_cipher").notNull(),
-    youtubeKeyIv: text("youtube_key_iv").notNull(),
-    youtubeKeyTag: text("youtube_key_tag").notNull(),
+    // YouTube (opcional)
+    youtubeKeyCipher: text("youtube_key_cipher"),
+    youtubeKeyIv: text("youtube_key_iv"),
+    youtubeKeyTag: text("youtube_key_tag"),
+    // INEGI DENUE
     denueTokenCipher: text("denue_token_cipher"),
     denueTokenIv: text("denue_token_iv"),
     denueTokenTag: text("denue_token_tag"),
-    /** Último ingest exitoso (fuente YouTube). */
+    // SerpApi (Google Trends principal)
+    serpapiKeyCipher: text("serpapi_key_cipher"),
+    serpapiKeyIv: text("serpapi_key_iv"),
+    serpapiKeyTag: text("serpapi_key_tag"),
+    serpapiStatus: varchar("serpapi_status", { length: 20 }),
+    serpapiLastTestAt: timestamp("serpapi_last_test_at"),
+    serpapiLastSyncAt: timestamp("serpapi_last_sync_at"),
+    serpapiQueriesUsed: integer("serpapi_queries_used").notNull().default(0),
+    // Apify (Google Trends respaldo)
+    apifyTokenCipher: text("apify_token_cipher"),
+    apifyTokenIv: text("apify_token_iv"),
+    apifyTokenTag: text("apify_token_tag"),
+    apifyActorId: varchar("apify_actor_id", { length: 255 }),
+    apifyStatus: varchar("apify_status", { length: 20 }),
+    apifyLastTestAt: timestamp("apify_last_test_at"),
+    apifyLastSyncAt: timestamp("apify_last_sync_at"),
+    apifyQueriesUsed: integer("apify_queries_used").notNull().default(0),
+    /** Último ingest exitoso (fuente YouTube legacy). */
     lastIngestAt: timestamp("last_ingest_at"),
     status: varchar("status", { length: 20 }).notNull().default("connected"),
     // Estado de pruebas en vivo por fuente (distingue "guardado" de "conectado")

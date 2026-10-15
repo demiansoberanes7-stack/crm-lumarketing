@@ -32,6 +32,7 @@ type TrendsPayload = {
     series: Array<{ day: string; value: number }>;
   }>;
   lastIngestAt: string | null;
+  source?: string;
 };
 
 type GtReport = {
@@ -243,9 +244,9 @@ export function IntelClient() {
             <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-text-2">
-            Tendencias de búsqueda en México desde fuentes externas: Google Trends
-            (interés relativo 0–100, subregiones, temas/consultas) y DENUE · INEGI
-            (competencia local). Sin datos de tus canales ni del CRM.
+            Fuentes externas: Google Trends vía SerpApi/Apify (interés relativo 0–100,
+            subregiones, temas/consultas) e INEGI · DENUE (competencia local).
+            Cada dato muestra su fuente. Sin datos de tus canales ni del CRM.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -304,7 +305,12 @@ export function IntelClient() {
           {/* Gráfica comparativa multi-nicho (todas las líneas normalizadas) */}
           {trends && trends.trends.length > 0 && (
             <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
-              <h2 className="font-semibold">Interés comparado · últimos 30 días</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Interés comparado · últimos 30 días</h2>
+                <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-medium text-text-2">
+                  Google Trends
+                </span>
+              </div>
               <p className="mt-1 text-xs text-text-3">
                 Cada nicho normalizado a su propio máximo (0–100). Fuente: Google Trends (MX).
               </p>
@@ -398,8 +404,8 @@ export function IntelClient() {
             <div className="rounded-xl border bg-card p-5 text-sm text-text-2 shadow-sm">
               <p className="font-medium">Aún no hay datos de Google Trends.</p>
               <p className="mt-1 text-text-3">
-                Activa Google Trends en Conexiones → Inteligencia y pulsa «Actualizar datos»
-                para ingerir el interés de búsqueda de los 16 nichos (fuente externa, gratis).
+                Configura SerpApi o Apify en Configuración → Inteligencia y pulsa «Actualizar datos»
+                para ingerir el interés de búsqueda de los 15 nichos (fuente externa).
               </p>
             </div>
           )}
