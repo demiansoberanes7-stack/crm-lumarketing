@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, ChevronDown, Search } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import type { ThemePreference } from "@/lib/theme";
 import { breadcrumbsFor } from "@/config/nav";
@@ -35,21 +35,20 @@ export function AppHeader({
   const crumbs = breadcrumbsFor(pathname);
 
   return (
-    <header className="header-surface sticky top-0 z-30 flex h-12 shrink-0 items-center gap-1 border-b px-2 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:h-14 sm:px-3">
-      {/* Móvil: hamburguesa + marca. */}
+    <header className="header-surface sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1 border-b px-2 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:px-3">
+      {/* Móvil/tableta: la marca grande abre el cajón (en lugar de la
+          hamburguesa, que comía espacio y encima empujaba el logo). */}
       <button
         type="button"
         onClick={onOpenDrawer}
         aria-label="Abrir el menú"
-        className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
+        className="flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg pr-1.5 text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
       >
-        <Menu className="h-5 w-5" strokeWidth={1.8} />
+        <BrandLogo branding={branding} logoUrl={logoUrl} size="lg" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-text-3" strokeWidth={2} />
       </button>
 
       <div className="min-w-0 flex-1 lg:px-2">
-        <div className="lg:hidden">
-          <BrandLogo branding={branding} logoUrl={logoUrl} />
-        </div>
         <nav aria-label="Migas de pan" className="hidden min-w-0 items-center gap-1.5 lg:flex">
           {crumbs.map((crumb, i) => (
             <span key={crumb.label} className="flex min-w-0 items-center gap-1.5">
