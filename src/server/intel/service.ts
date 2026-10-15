@@ -477,7 +477,10 @@ export async function getGtReport(
     .slice(0, 5)
     .map((r) => ({ label: r.label, value: r.value, pct: r.pct, isBreakout: r.isBreakout }));
 
-  const usedFallback = regionsSource === "none" && seriesSource === "none";
+  // Sin fallback YouTube (la serie es 100 % GT): usedFallback es siempre
+  // false. Antes marcaba true cuando NO había datos, lo cual invertía su
+  // significado ("se usó el fallback") y habría mentido si la UI lo leyera.
+  const usedFallback = false;
 
   // Determinar el proveedor basado en qué sincronización es más reciente
   let fuenteLabel = "Google Trends (sin datos)";
