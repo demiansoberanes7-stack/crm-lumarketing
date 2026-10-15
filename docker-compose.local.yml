@@ -18,6 +18,9 @@ services:
       OPENROUTER_BASE_URL: http://localhost:3000/api/dev/ai-mock
       CHANNELS: whatsapp,instagram,messenger
       MEDIA_DIR: /data/media
+      MCP_AUTH_BASE_URL: http://localhost:3100
+      MCP_RESOURCE_URL: http://localhost:3100/mcp
+      MCP_WRITE_ENABLED: "false"
     volumes:
       - lumark_media:/data/media
     depends_on:

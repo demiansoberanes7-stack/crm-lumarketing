@@ -34,7 +34,11 @@ export default function LoginPage() {
       );
       return;
     }
-    router.push("/inbox");
+    const callbackURL = new URLSearchParams(window.location.search).get("callbackURL");
+    const safeCallback = callbackURL && new URL(callbackURL, window.location.origin).origin === window.location.origin
+      ? callbackURL
+      : "/inbox";
+    router.push(safeCallback);
     router.refresh();
   }
 

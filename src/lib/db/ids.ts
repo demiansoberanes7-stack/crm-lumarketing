@@ -92,6 +92,8 @@ const prefixes = {
   intelGtSnapshot: "igs",
   intelGtRegion: "igr",
   intelGtRelated: "irl",
+  mcpCode: "mcpc",
+  mcpToken: "mcpt",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

@@ -125,6 +125,15 @@ export async function createQuote(
       .where(scoped(schema.catalogProduct.organizationId, organizationId, inArray(schema.catalogProduct.id, productIds)))
       .for("share");
     const stockById = new Map(stocks.map((row) => [row.id, row.stock]));
+    // Aislamiento: todo productId declarado debe existir EN ESTA organización.
+    // Sin esto, un productId ajeno se guardaba igual (el stock se saltaba) y
+    // getQuote lo unía sin filtro, filtrando el catálogo de otro tenant.
+    for (const item of input.items) {
+      if (!item.productId) continue;
+      if (!stockById.has(item.productId)) {
+        throw new Error("Producto no válido");
+      }
+    }
     for (const item of input.items) {
       if (!item.productId) continue;
       const stock = stockById.get(item.productId);
@@ -240,6 +249,32 @@ export async function updateQuote(
   if (quote.status !== "draft") throw new Error("Solo se pueden editar cotizaciones en borrador");
   const previous = await getQuote(organizationId, quoteId);
   input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...input };
+
+  // Aislamiento: los productId de las partidas nuevas tienen que existir en
+  // ESTA organización (aquí no se toca stock, pero sí se enlaza el catálogo).
+  const productIds = [
+    ...new Set(
+      (input.items ?? [])
+        .map((i) => i.productId)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  if (productIds.length) {
+    const owned = await db
+      .select({ id: schema.catalogProduct.id })
+      .from(schema.catalogProduct)
+      .where(
+        scoped(
+          schema.catalogProduct.organizationId,
+          organizationId,
+          inArray(schema.catalogProduct.id, productIds)
+        )
+      );
+    const ownedIds = new Set(owned.map((row) => row.id));
+    if (productIds.some((id) => !ownedIds.has(id))) {
+      throw new Error("Producto no válido");
+    }
+  }
 
   const totals = calculateTotals(input.items!, {
     discountType: input.discountType,
@@ -412,7 +447,12 @@ export async function getQuote(organizationId: string, quoteId: string) {
     .from(schema.quoteItem)
     .leftJoin(
       schema.catalogProduct,
-      eq(schema.quoteItem.productId, schema.catalogProduct.id)
+      and(
+        eq(schema.quoteItem.productId, schema.catalogProduct.id),
+        // Tenant en el join: un producto de OTRA organización no puede filtrar
+        // su descripción larga en la API/PDF de esta.
+        eq(schema.catalogProduct.organizationId, organizationId)
+      )
     )
     .where(eq(schema.quoteItem.quoteId, quoteId))
     .orderBy(schema.quoteItem.position);

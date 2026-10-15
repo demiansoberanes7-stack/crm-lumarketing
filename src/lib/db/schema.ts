@@ -70,6 +70,56 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+/* ============================================================
+ * MCP OAuth (ChatGPT connection)
+ * ============================================================ */
+
+export const mcpAuthorizationCode = pgTable(
+  "mcp_authorization_code",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    codeHash: varchar("code_hash", { length: 64 }).notNull().unique(),
+    clientId: text("client_id").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    resource: text("resource").notNull(),
+    codeChallenge: varchar("code_challenge", { length: 128 }).notNull(),
+    codeChallengeMethod: varchar("code_challenge_method", { length: 10 })
+      .notNull()
+      .default("S256"),
+    scopes: text("scopes").notNull(),
+    userId: varchar("user_id", { length: 255 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("mcp_auth_code_expiry_idx").on(t.expiresAt)]
+);
+
+export const mcpAccessToken = pgTable(
+  "mcp_access_token",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+    clientId: text("client_id").notNull(),
+    resource: text("resource").notNull(),
+    scopes: text("scopes").notNull(),
+    userId: varchar("user_id", { length: 255 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("mcp_access_token_expiry_idx").on(t.expiresAt)]
+);
 
 export const organization = pgTable("organization", {
   id: varchar("id", { length: 255 }).primaryKey(),

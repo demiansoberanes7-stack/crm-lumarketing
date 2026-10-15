@@ -42,6 +42,10 @@ services:
       WAHA_TRUSTED_HOSTS: ${WAHA_TRUSTED_HOSTS:-}
       WEBHOOK_TRUSTED_HOSTS: ${WEBHOOK_TRUSTED_HOSTS:-}
       MEDIA_DIR: ${MEDIA_DIR:-/data/media}
+      MCP_AUTH_BASE_URL: ${MCP_AUTH_BASE_URL:-}
+      MCP_RESOURCE_URL: ${MCP_RESOURCE_URL:-}
+      MCP_OAUTH_ISSUER: ${MCP_OAUTH_ISSUER:-}
+      MCP_WRITE_ENABLED: ${MCP_WRITE_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

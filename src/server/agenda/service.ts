@@ -126,6 +126,14 @@ export async function createSessionBooking(input: {
       .limit(1);
     const conv = rows[0];
     if (!conv) throw new BookingError("not_found", "Conversación no encontrada");
+    // Aislamiento: si el llamador trae UN contacto y UNA conversación, tienen
+    // que ser de la misma persona — mezclarlos enlazaría hilos ajenos.
+    if (contactId && contactId !== conv.contactId) {
+      throw new BookingError(
+        "invalid",
+        "El contacto no corresponde a esta conversación"
+      );
+    }
     isTest = conv.isTest;
     contactId = contactId ?? conv.contactId;
   }
@@ -133,7 +141,10 @@ export async function createSessionBooking(input: {
   if (!contactId) {
     throw new BookingError("invalid", "La cita necesita un contacto");
   }
-  contactName = await getContactName(input.organizationId, contactId);
+  // El contacto viene crudo del cliente en la ruta manual: tiene que existir
+  // EN ESTA organización. Sin esto, un contactId ajeno creaba la cita igual
+  // (el nombre quedaba vacío y nadie se daba cuenta).
+  contactName = await requireContactName(input.organizationId, contactId);
 
   // REGLA 1: solo se reserva lo que se ofreció.
   if (input.requireOffer) {
@@ -701,6 +712,33 @@ async function getContactName(
     )
     .limit(1);
   return rows[0]?.name ?? "";
+}
+
+/**
+ * Como `getContactName`, pero el desconocido es un error: se usa donde el
+ * contactId llegó del cliente y no podemos crear un registro apuntando a un
+ * contacto inexistente o de otra organización.
+ */
+async function requireContactName(
+  organizationId: string,
+  contactId: string
+): Promise<string> {
+  const db = getDb();
+  const rows = await db
+    .select({ name: schema.contact.name })
+    .from(schema.contact)
+    .where(
+      scoped(
+        schema.contact.organizationId,
+        organizationId,
+        eq(schema.contact.id, contactId)
+      )
+    )
+    .limit(1);
+  if (!rows[0]) {
+    throw new BookingError("not_found", "Contacto no encontrado");
+  }
+  return rows[0].name;
 }
 
 /**
