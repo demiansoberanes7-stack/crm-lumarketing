@@ -1,0 +1,1115 @@
+table_sql,schema_export,field_orm,column_sql,drizzle_constructor,required_from_column_declaration,primary_key,column_unique_explicit,reference_detected,description_or_note,source_file
+user,user,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+user,user,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+user,user,email,email,varchar,yes,no,yes,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+user,user,emailVerified,email_verified,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+user,user,image,image,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+user,user,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+user,user,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+session,session,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+session,session,expiresAt,expires_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+session,session,token,token,varchar,yes,no,yes,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+session,session,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+session,session,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+session,session,ipAddress,ip_address,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+session,session,userAgent,user_agent,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+session,session,userId,user_id,varchar,yes,no,no,user.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+session,session,activeOrganizationId,active_organization_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+account,account,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+account,account,accountId,account_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+account,account,providerId,provider_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+account,account,userId,user_id,varchar,yes,no,no,user.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+account,account,accessToken,access_token,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+account,account,refreshToken,refresh_token,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+account,account,idToken,id_token,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+account,account,accessTokenExpiresAt,access_token_expires_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+account,account,refreshTokenExpiresAt,refresh_token_expires_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+account,account,scope,scope,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+account,account,password,password,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+account,account,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+account,account,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+verification,verification,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+verification,verification,identifier,identifier,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+verification,verification,value,value,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+verification,verification,expiresAt,expires_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+verification,verification,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+verification,verification,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+organization,organization,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+organization,organization,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+organization,organization,slug,slug,varchar,no,no,yes,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+organization,organization,logo,logo,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+organization,organization,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+organization,organization,metadata,metadata,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+member,member,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+member,member,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+member,member,userId,user_id,varchar,yes,no,no,user.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+member,member,role,role,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+member,member,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+invitation,invitation,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+invitation,invitation,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+invitation,invitation,email,email,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+invitation,invitation,role,role,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+invitation,invitation,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+invitation,invitation,expiresAt,expires_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+invitation,invitation,inviterId,inviter_id,varchar,yes,no,no,user.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+contact,contact,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+contact,contact,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+contact,contact,channel,channel,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,waIdentity,wa_identity,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,phone,phone,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,waUserId,wa_user_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+contact,contact,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,nameSource,name_source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,ficha,ficha,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,source,source,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact,contact,purchaseProduct,purchase_product,varchar,no,no,no,,"/** Producto comprado, solo cuando `source = 'compra'`. */",src/lib/db/schema.ts
+contact,contact,purchaseDate,purchase_date,timestamp,no,no,no,,"/** Fecha de la compra, solo cuando `source = 'compra'`. */",src/lib/db/schema.ts
+contact,contact,purchaseAmountCents,purchase_amount_cents,integer,no,no,no,,/** Monto de la compra en centavos (el del lead es el del trato en curso). */,src/lib/db/schema.ts
+contact,contact,medium,medium,varchar,no,no,no,,"/** Cómo se contactó: red social, llamada, correo o presencial (lib/contact-medium). */",src/lib/db/schema.ts
+contact,contact,mediumDetail,medium_detail,varchar,no,no,no,,"/** La red social elegida, solo cuando `medium = 'red_social'`. */",src/lib/db/schema.ts
+contact,contact,acquisitionChannelId,acquisition_channel_id,varchar,no,no,no,,/** Canal de adquisición normalizado (catálogo `acquisition_channel`). */,src/lib/db/schema.ts
+contact,contact,archivedAt,archived_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+contact,contact,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+contact,contact,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+pipeline_stage,pipelineStage,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+pipeline_stage,pipelineStage,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+pipeline_stage,pipelineStage,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+pipeline_stage,pipelineStage,position,position,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+pipeline_stage,pipelineStage,kind,kind,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+pipeline_stage,pipelineStage,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+lead,lead,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+lead,lead,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+lead,lead,contactId,contact_id,varchar,yes,no,no,contact.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead,lead,stageId,stage_id,varchar,yes,no,no,pipelineStage.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead,lead,position,position,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead,lead,amountCents,amount_cents,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead,lead,currency,currency,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead,lead,priority,priority,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead,lead,priorityUpdatedAt,priority_updated_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+lead,lead,lastActivityAt,last_activity_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+lead,lead,isPrimary,is_primary,boolean,yes,no,no,,/** Lead principal del contacto (las rutas 1:1 existentes operan sobre él). */,src/lib/db/schema.ts
+lead,lead,qualifiedAt,qualified_at,timestamp,no,no,no,,"/** Cuándo se calificó, si lo estuvo. */",src/lib/db/schema.ts
+lead,lead,qualificationData,qualification_data,jsonb,no,no,no,,/** Qué criterios de calificación se cumplieron (jsonb). */,src/lib/db/schema.ts
+lead,lead,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+lead,lead,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,leadId,lead_id,varchar,yes,no,no,lead.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,contactId,contact_id,varchar,yes,no,no,contact.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,fromStageId,from_stage_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,fromStageName,from_stage_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,toStageId,to_stage_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,toStageName,to_stage_name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,toStageKind,to_stage_kind,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,occurredAt,occurred_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,actorUserId,actor_user_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,approximate,approximate,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,lossReason,loss_reason,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,lossNote,loss_note,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+lead_stage_event,leadStageEvent,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+conversation,conversation,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+conversation,conversation,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+conversation,conversation,contactId,contact_id,varchar,yes,no,no,contact.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+conversation,conversation,isTest,is_test,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversation,conversation,channel,channel,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversation,conversation,channelThreadRef,channel_thread_ref,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversation,conversation,aiEnabled,ai_enabled,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversation,conversation,handoffAt,handoff_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+conversation,conversation,handoffReason,handoff_reason,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversation,conversation,lastInboundAt,last_inbound_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+conversation,conversation,lastMessageAt,last_message_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+conversation,conversation,unreadCount,unread_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversation,conversation,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+conversation,conversation,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+message,message,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+message,message,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+message,message,conversationId,conversation_id,varchar,yes,no,no,conversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+message,message,waMessageId,wa_message_id,varchar,no,no,yes,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+message,message,provider,provider,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,providerAccount,provider_account,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,providerMessageId,provider_message_id,text,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+message,message,direction,direction,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,type,type,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,text,text,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,error,error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,aiGenerated,ai_generated,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,origin,origin,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,mediaAssetId,media_asset_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+message,message,waTimestamp,wa_timestamp,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+message,message,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+automation_execution,automationExecution,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+automation_execution,automationExecution,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+automation_execution,automationExecution,conversationId,conversation_id,varchar,yes,no,no,conversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+automation_execution,automationExecution,ruleId,rule_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+automation_execution,automationExecution,triggeredBy,triggered_by,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+automation_execution,automationExecution,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+automation_execution,automationExecution,scheduledAt,scheduled_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+automation_execution,automationExecution,startedAt,started_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+automation_execution,automationExecution,sentAt,sent_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+automation_execution,automationExecution,attempts,attempts,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+automation_execution,automationExecution,error,error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+automation_execution,automationExecution,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+automation_execution,automationExecution,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+media_asset,mediaAsset,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+media_asset,mediaAsset,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+media_asset,mediaAsset,kind,kind,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,waMediaId,wa_media_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+media_asset,mediaAsset,provider,provider,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,providerRef,provider_ref,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,providerAccount,provider_account,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,mimeType,mime_type,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,fileName,file_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,fileSize,file_size,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,caption,caption,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,payload,payload,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,storagePath,storage_path,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,fetchStatus,fetch_status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,fetchError,fetch_error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+media_asset,mediaAsset,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+media_asset,mediaAsset,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,wabaId,waba_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,phoneNumberId,phone_number_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,displayPhoneNumber,display_phone_number,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,verifiedName,verified_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,tokenCipher,token_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,tokenIv,token_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,tokenTag,token_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+meta_credentials,metaCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,igUserId,ig_user_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,accountRef,account_ref,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,username,username,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,tokenCipher,token_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,tokenIv,token_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,tokenTag,token_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,webhookSecret,webhook_secret,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+instagram_credentials,instagramCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,pageId,page_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,pageName,page_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,accountRef,account_ref,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,tokenCipher,token_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,tokenIv,token_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,tokenTag,token_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,webhookSecret,webhook_secret,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+messenger_credentials,messengerCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,tiktokUserId,tiktok_user_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,username,username,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,accountRef,account_ref,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,tokenCipher,token_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,tokenIv,token_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,tokenTag,token_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,webhookSecret,webhook_secret,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+tiktok_credentials,tiktokCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+agent_profile,agentProfile,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+agent_profile,agentProfile,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+agent_profile,agentProfile,enabled,enabled,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,tone,tone,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,instructions,instructions,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,escalationRules,escalation_rules,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,greeting,greeting,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,pipelineKeywords,pipeline_keywords,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,fichaFields,ficha_fields,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,rules,rules,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,aiToken,ai_token,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,aiTokenCipher,ai_token_cipher,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,aiTokenIv,ai_token_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,aiTokenTag,ai_token_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,aiModel,ai_model,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,maxResponseWaitSeconds,max_response_wait_seconds,integer,yes,no,no,,LUMARK — configuraciones extra del bot,src/lib/db/schema.ts
+agent_profile,agentProfile,responseLanguage,response_language,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,fallbackLanguage,fallback_language,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,reactWithEmoji,react_with_emoji,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,activeInNewConversations,active_in_new_conversations,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,businessIndustry,business_industry,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,businessLocation,business_location,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,businessDescription,business_description,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_profile,agentProfile,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+agent_profile,agentProfile,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+kb_entry,kbEntry,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+kb_entry,kbEntry,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+kb_entry,kbEntry,kind,kind,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+kb_entry,kbEntry,question,question,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+kb_entry,kbEntry,answer,answer,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+kb_entry,kbEntry,content,content,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+kb_entry,kbEntry,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+kb_entry,kbEntry,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,score,score,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,error,error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,startedAt,started_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+agent_test_run,agentTestRun,finishedAt,finished_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,weeklyHours,weekly_hours,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,slotMinutes,slot_minutes,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,bufferMinutes,buffer_minutes,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,minNoticeHours,min_notice_hours,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,maxDaysAhead,max_days_ahead,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,timezone,timezone,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,connector,connector,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,meetingLink,meeting_link,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+calendar_settings,calendarSettings,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+booking,booking,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+booking,booking,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+booking,booking,kind,kind,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+booking,booking,projectId,project_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+booking,booking,conversationId,conversation_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+booking,booking,leadId,lead_id,varchar,no,no,no,lead.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+booking,booking,scheduledAt,scheduled_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+booking,booking,durationMinutes,duration_minutes,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,connector,connector,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,externalRef,external_ref,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,meetingLink,meeting_link,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,linkPending,link_pending,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,isTest,is_test,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+booking,booking,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+booking,booking,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+offered_slot,offeredSlot,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+offered_slot,offeredSlot,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+offered_slot,offeredSlot,conversationId,conversation_id,varchar,yes,no,no,conversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+offered_slot,offeredSlot,startUtc,start_utc,timestamp,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offered_slot,offeredSlot,label,label,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offered_slot,offeredSlot,offeredAt,offered_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,accountId,account_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,clientId,client_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,secretCipher,secret_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,secretIv,secret_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,secretTag,secret_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+zoom_credentials,zoomCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+google_credentials,googleCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+google_credentials,googleCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+google_credentials,googleCredentials,clientId,client_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+google_credentials,googleCredentials,clientSecretCipher,client_secret_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,clientSecretIv,client_secret_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,clientSecretTag,client_secret_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,refreshTokenCipher,refresh_token_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,refreshTokenIv,refresh_token_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,refreshTokenTag,refresh_token_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,calendarId,calendar_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+google_credentials,googleCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,syncTasks,sync_tasks,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_credentials,googleCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+google_credentials,googleCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,runId,run_id,varchar,yes,no,no,agentTestRun.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,persona,persona,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,conversationId,conversation_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,transcript,transcript,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,veredicto,veredicto,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,hallazgos,hallazgos,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+agent_test_case,agentTestCase,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+ad_attribution,adAttribution,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+ad_attribution,adAttribution,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+ad_attribution,adAttribution,contactId,contact_id,varchar,yes,no,no,contact.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_attribution,adAttribution,conversationId,conversation_id,varchar,yes,no,no,conversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_attribution,adAttribution,ctwaClid,ctwa_clid,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,sourceId,source_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_attribution,adAttribution,sourceType,source_type,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,sourceUrl,source_url,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,headline,headline,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,body,body,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,mediaType,media_type,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,raw,raw,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_attribution,adAttribution,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+conversion_event,conversionEvent,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+conversion_event,conversionEvent,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+conversion_event,conversionEvent,conversationId,conversation_id,varchar,yes,no,no,conversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+conversion_event,conversionEvent,attributionId,attribution_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+conversion_event,conversionEvent,eventName,event_name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversion_event,conversionEvent,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversion_event,conversionEvent,error,error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+conversion_event,conversionEvent,fbTraceId,fb_trace_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+conversion_event,conversionEvent,sentAt,sent_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+conversion_event,conversionEvent,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+capi_settings,capiSettings,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+capi_settings,capiSettings,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+capi_settings,capiSettings,datasetId,dataset_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+capi_settings,capiSettings,tokenCipher,token_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+capi_settings,capiSettings,tokenIv,token_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+capi_settings,capiSettings,tokenTag,token_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+capi_settings,capiSettings,qualifiedStageId,qualified_stage_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+capi_settings,capiSettings,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+capi_settings,capiSettings,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+capi_settings,capiSettings,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,baseUrl,base_url,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,apiKeyCipher,api_key_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,apiKeyIv,api_key_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,apiKeyTag,api_key_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,sessionName,session_name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+waha_credentials,wahaCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,url,url,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,secretCipher,secret_cipher,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,secretIv,secret_iv,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,secretTag,secret_tag,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,events,events,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,active,active,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,maxRetries,max_retries,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+outbound_webhook,outboundWebhook,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,webhookId,webhook_id,varchar,yes,no,no,outboundWebhook.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,event,event,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,payload,payload,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,attempts,attempts,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,lastStatusCode,last_status_code,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,lastError,last_error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,nextRetryAt,next_retry_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+outbound_delivery,outboundDelivery,deliveredAt,delivered_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project_stage,projectStage,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+project_stage,projectStage,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+project_stage,projectStage,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_stage,projectStage,position,position,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+project,project,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+project,project,code,code,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project,project,service,service,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,estado,estado,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,projectType,project_type,varchar,yes,no,no,,/** Clave del tipo en `src/lib/project-types.ts` (marketing|maintenance|web_service|…). */,src/lib/db/schema.ts
+project,project,status,status,varchar,yes,no,no,,/** Workflow del expediente (borrador|planeacion|en_proceso|en_revision|completado|cancelado). */,src/lib/db/schema.ts
+project,project,startDate,start_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project,project,endDate,end_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project,project,stageId,stage_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project,project,avance,avance,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,prioridad,prioridad,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,riesgo,riesgo,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,notas,notas,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project,project,assignedUserId,assigned_user_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project,project,nextMeetingAt,next_meeting_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project,project,archivedAt,archived_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project,project,lastActivityAt,last_activity_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project,project,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+project,project,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+project_step,projectStep,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+project_step,projectStep,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+project_step,projectStep,projectId,project_id,varchar,yes,no,no,project.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_step,projectStep,stepKey,step_key,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_step,projectStep,position,position,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_step,projectStep,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_step,projectStep,data,data,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_step,projectStep,completedAt,completed_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project_step,projectStep,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+project_step,projectStep,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,projectId,project_id,varchar,yes,no,no,project.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,fromStageId,from_stage_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,fromStageName,from_stage_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,toStageId,to_stage_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,toStageName,to_stage_name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,actorUserId,actor_user_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_stage_event,projectStageEvent,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+project_task,projectTask,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+project_task,projectTask,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+project_task,projectTask,projectId,project_id,varchar,yes,no,no,project.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_task,projectTask,title,title,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_task,projectTask,description,description,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_task,projectTask,assigneeId,assignee_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_task,projectTask,priority,priority,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_task,projectTask,estado,estado,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_task,projectTask,dueDate,due_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+project_task,projectTask,googleEventId,google_event_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_task,projectTask,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+project_task,projectTask,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+project_item,projectItem,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+project_item,projectItem,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+project_item,projectItem,projectId,project_id,varchar,yes,no,no,project.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+project_item,projectItem,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_item,projectItem,description,description,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_item,projectItem,quantity,quantity,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_item,projectItem,unitPrice,unit_price,integer,yes,no,no,,"/** Centavos, como en quote_item. */",src/lib/db/schema.ts
+project_item,projectItem,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_item,projectItem,position,position,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+project_item,projectItem,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+project_item,projectItem,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+catalog_product,catalogProduct,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+catalog_product,catalogProduct,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+catalog_product,catalogProduct,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,description,description,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,shortDescription,short_description,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,longDescription,long_description,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,websiteUrl,website_url,varchar,no,no,no,,"/** URL pública del producto (sitio web, marketplace, tienda). */",src/lib/db/schema.ts
+catalog_product,catalogProduct,stock,stock,integer,no,no,no,,"/** Piezas disponibles. null = sin control de inventario (mostrar ""consultar""). */",src/lib/db/schema.ts
+catalog_product,catalogProduct,price,price,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,available,available,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+catalog_product,catalogProduct,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+catalog_product,catalogProduct,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+quote,quote,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+quote,quote,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+quote,quote,quoteNumber,quote_number,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+quote,quote,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,validUntil,valid_until,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,subtotal,subtotal,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,discountType,discount_type,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,discountValue,discount_value,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,discountAmount,discount_amount,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,taxRate,tax_rate,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,taxAmount,tax_amount,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,total,total,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,paymentPlan,payment_plan,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,paymentMethod,payment_method,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,sendChannel,send_channel,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,message,message,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,version,version,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,lockedAt,locked_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+quote,quote,createdBy,created_by,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote,quote,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+quote,quote,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+quote,quote,archivedAt,archived_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+whatsapp_zernio,whatsappZernio,organizationId,organization_id,varchar,yes,yes,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+whatsapp_zernio,whatsappZernio,accountId,account_id,varchar,yes,no,yes,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+whatsapp_zernio,whatsappZernio,cipher,cipher,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+whatsapp_zernio,whatsappZernio,iv,iv,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+whatsapp_zernio,whatsappZernio,tag,tag,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+whatsapp_zernio,whatsappZernio,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+quote_item,quoteItem,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+quote_item,quoteItem,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+quote_item,quoteItem,quoteId,quote_id,varchar,yes,no,no,quote.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+quote_item,quoteItem,productId,product_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+quote_item,quoteItem,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_item,quoteItem,description,description,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_item,quoteItem,quantity,quantity,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_item,quoteItem,unitPrice,unit_price,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_item,quoteItem,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_item,quoteItem,position,position,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_event,quoteEvent,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+quote_event,quoteEvent,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+quote_event,quoteEvent,quoteId,quote_id,varchar,yes,no,no,quote.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+quote_event,quoteEvent,eventType,event_type,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_event,quoteEvent,channel,channel,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_event,quoteEvent,actorId,actor_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+quote_event,quoteEvent,metadata,metadata,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+quote_event,quoteEvent,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+charge,charge,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+charge,charge,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+charge,charge,quoteId,quote_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+charge,charge,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+charge,charge,concept,concept,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+charge,charge,totalAmount,total_amount,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+charge,charge,paidAmount,paid_amount,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+charge,charge,dueDate,due_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+charge,charge,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+charge,charge,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+charge,charge,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+payment,payment,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+payment,payment,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+payment,payment,chargeId,charge_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+payment,payment,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+payment,payment,fecha,fecha,timestamp,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,monto,monto,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,metodo,metodo,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,referencia,referencia,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,comprobanteUrl,comprobante_url,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,notas,notas,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,createdBy,created_by,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+payment,payment,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+expense,expense,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+expense,expense,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+expense,expense,fecha,fecha,timestamp,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,descripcion,descripcion,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,categoria,categoria,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,proveedor,proveedor,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,monto,monto,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,metodo,metodo,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,referencia,referencia,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,comprobanteUrl,comprobante_url,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,notas,notas,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,createdBy,created_by,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+expense,expense,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+email_account,emailAccount,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+email_account,emailAccount,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+email_account,emailAccount,label,label,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,emailAddress,email_address,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,fromName,from_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpHost,smtp_host,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpPort,smtp_port,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpSecure,smtp_secure,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpUser,smtp_user,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpPassCipher,smtp_pass_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpPassIv,smtp_pass_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,smtpPassTag,smtp_pass_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapHost,imap_host,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapPort,imap_port,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapSecure,imap_secure,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapUser,imap_user,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapPassCipher,imap_pass_cipher,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapPassIv,imap_pass_iv,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,imapPassTag,imap_pass_tag,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,signature,signature,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,dailyLimit,daily_limit,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,enabled,enabled,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_account,emailAccount,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+email_account,emailAccount,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+email_message,emailMessage,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+email_message,emailMessage,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+email_message,emailMessage,accountId,account_id,varchar,yes,no,no,emailAccount.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+email_message,emailMessage,messageId,message_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+email_message,emailMessage,threadId,thread_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+email_message,emailMessage,from,from_email,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,to,to,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,cc,cc,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,subject,subject,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,bodyText,body_text,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,bodyHtml,body_html,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,attachments,attachments,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,direction,direction,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+email_message,emailMessage,campaignId,campaign_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+email_message,emailMessage,seen,seen,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+email_message,emailMessage,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,organizationId,organization_id,varchar,yes,no,no,,Identificador de la organización propietaria.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,userId,user_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,projectId,project_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,title,title,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,details,details,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,urgent,urgent,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,duration,duration,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,scheduledStart,scheduled_start,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,scheduledEnd,scheduled_end,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,completed,completed,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,completedAt,completed_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,priority,priority,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,googleEventId,google_event_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+caltodo_task,caltodoTask,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,organizationId,organization_id,varchar,yes,no,no,,Identificador de la organización propietaria.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,userId,user_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,workStartHour,work_start_hour,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,workEndHour,work_end_hour,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,timezone,timezone,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+caltodo_settings,caltodoSettings,defaultDuration,default_duration,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+supplier,supplier,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+supplier,supplier,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,tradeName,trade_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,contactName,contact_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,phone,phone,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,email,email,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,rfc,rfc,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,address,address,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,website,website,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,category,category,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,paymentTerms,payment_terms,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,rating,rating,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+supplier,supplier,archivedAt,archived_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+supplier,supplier,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+supplier,supplier,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+integration,integration,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+integration,integration,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+integration,integration,provider,provider,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+integration,integration,credentials,credentials,jsonb,yes,no,no,,"Legado en claro: se conserva como fallback de lectura hasta correr `scripts/encrypt-integrations.mjs`. Las escrituras nuevas van al triple cifrado de abajo (AES-256-GCM, patrón 0007).",src/lib/db/schema.ts
+integration,integration,credentialsCipher,credentials_cipher,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+integration,integration,credentialsIv,credentials_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+integration,integration,credentialsTag,credentials_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+integration,integration,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+integration,integration,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,clientId,client_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,clientSecretCipher,client_secret_cipher,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,clientSecretIv,client_secret_iv,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,clientSecretTag,client_secret_tag,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,refreshTokenCipher,refresh_token_cipher,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,refreshTokenIv,refresh_token_iv,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,refreshTokenTag,refresh_token_tag,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,lastSyncedAt,last_synced_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+google_business_credentials,googleBusinessCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,name,name,varchar,yes,no,no,,/** Resource name: `accounts/{a}/locations/{l}`. */,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,displayName,display_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,averageRating,average_rating,numeric,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,reviewCount,review_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+google_business_location,googleBusinessLocation,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,locationId,location_id,varchar,yes,no,no,googleBusinessLocation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,reviewName,review_name,varchar,yes,no,no,,/** Resource name: `accounts/{a}/locations/{l}/reviews/{r}`. */,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,reviewerName,reviewer_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,rating,rating,integer,yes,no,no,,/** Estrellas 1-5 de la API (ONE..FIVE normalizado a entero). */,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,comment,comment,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,createTime,create_time,timestamp,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,updateTime,update_time,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,replyComment,reply_comment,text,no,no,no,,/** Reply público actual (null = sin respuesta). */,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,repliedAt,replied_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+google_business_review,googleBusinessReview,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,userId,user_id,varchar,no,no,no,,/** user_id de la cuenta vendedora (se guarda al conectar vía /users/me). */,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,siteId,site_id,varchar,no,no,no,,"/** Sitio del vendedor (MLM, MLB, MCO, MLC…). */",src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,clientId,client_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,clientSecretCipher,client_secret_cipher,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,clientSecretIv,client_secret_iv,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,clientSecretTag,client_secret_tag,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,refreshTokenCipher,refresh_token_cipher,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,refreshTokenIv,refresh_token_iv,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,refreshTokenTag,refresh_token_tag,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,accessTokenCipher,access_token_cipher,text,no,no,no,,/** Access token de corta vida; se refresca con el refresh token. */,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,accessTokenIv,access_token_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,accessTokenTag,access_token_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,accessTokenExpiresAt,access_token_expires_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,lastPolledAt,last_polled_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+marketplace_credentials,marketplaceCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+acquisition_channel,acquisitionChannel,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+acquisition_channel,acquisitionChannel,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+acquisition_channel,acquisitionChannel,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+acquisition_channel,acquisitionChannel,kind,kind,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+acquisition_channel,acquisitionChannel,sortOrder,sort_order,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+acquisition_channel,acquisitionChannel,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+campaign,campaign,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+campaign,campaign,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+campaign,campaign,platform,platform,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,externalId,external_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+campaign,campaign,objective,objective,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,budgetPlannedCents,budget_planned_cents,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,startDate,start_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+campaign,campaign,endDate,end_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+campaign,campaign,raw,raw,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign,campaign,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+campaign,campaign,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+ad_set,adSet,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+ad_set,adSet,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+ad_set,adSet,campaignId,campaign_id,varchar,yes,no,no,campaign.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_set,adSet,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_set,adSet,externalId,external_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_set,adSet,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_set,adSet,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+ad_creative,adCreative,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+ad_creative,adCreative,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+ad_creative,adCreative,adSetId,ad_set_id,varchar,no,no,no,adSet.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_creative,adCreative,campaignId,campaign_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_creative,adCreative,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_creative,adCreative,externalId,external_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+ad_creative,adCreative,creativeType,creative_type,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_creative,adCreative,headline,headline,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_creative,adCreative,body,body,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_creative,adCreative,mediaUrl,media_url,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+ad_creative,adCreative,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+offer,offer,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+offer,offer,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+offer,offer,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offer,offer,service,service,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offer,offer,discountType,discount_type,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offer,offer,discountValue,discount_value,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offer,offer,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offer,offer,startDate,start_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+offer,offer,endDate,end_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+offer,offer,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+offer,offer,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+offer,offer,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+attribution_event,attributionEvent,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+attribution_event,attributionEvent,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+attribution_event,attributionEvent,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,conversationId,conversation_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,channelId,channel_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,campaignId,campaign_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,offerId,offer_id,varchar,no,no,no,offer.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,creativeId,creative_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,touchType,touch_type,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,attributionType,attribution_type,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,source,source,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,medium,medium,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,campaignName,campaign_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,utmSource,utm_source,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,utmMedium,utm_medium,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,utmCampaign,utm_campaign,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,utmContent,utm_content,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,utmTerm,utm_term,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+attribution_event,attributionEvent,clickId,click_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+attribution_event,attributionEvent,occurredAt,occurred_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+attribution_event,attributionEvent,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+activity_event,activityEvent,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+activity_event,activityEvent,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+activity_event,activityEvent,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+activity_event,activityEvent,leadId,lead_id,varchar,no,no,no,lead.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+activity_event,activityEvent,conversationId,conversation_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+activity_event,activityEvent,type,type,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+activity_event,activityEvent,direction,direction,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+activity_event,activityEvent,outcome,outcome,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+activity_event,activityEvent,durationMinutes,duration_minutes,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+activity_event,activityEvent,actorUserId,actor_user_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+activity_event,activityEvent,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+activity_event,activityEvent,occurredAt,occurred_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+activity_event,activityEvent,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+service_cost,serviceCost,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+service_cost,serviceCost,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+service_cost,serviceCost,catalogProductId,catalog_product_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+service_cost,serviceCost,service,service,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,costCents,cost_cents,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,effectiveFrom,effective_from,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,effectiveTo,effective_to,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+service_cost,serviceCost,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+service_cost,serviceCost,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+sync_state,syncState,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+sync_state,syncState,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+sync_state,syncState,provider,provider,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,lastSyncAt,last_sync_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+sync_state,syncState,lastStatus,last_status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,lastError,last_error,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,periodStart,period_start,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,periodEnd,period_end,timestamp,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,recordsImported,records_imported,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,duplicatesDetected,duplicates_detected,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,currency,currency,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,detail,detail,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+sync_state,syncState,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+sync_state,syncState,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+experiment,experiment,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+experiment,experiment,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+experiment,experiment,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,hypothesis,hypothesis,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,problem,problem,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,service,service,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,channelId,channel_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment,experiment,campaignId,campaign_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment,experiment,offerId,offer_id,varchar,no,no,no,offer.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment,experiment,primaryMetric,primary_metric,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,evidenceStatus,evidence_status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,conclusion,conclusion,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,budgetPlannedCents,budget_planned_cents,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,startDate,start_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+experiment,experiment,endDate,end_date,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+experiment,experiment,createdBy,created_by,varchar,no,no,no,user.id,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment,experiment,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+experiment,experiment,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,experimentId,experiment_id,varchar,yes,no,no,experiment.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,key,key,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,creativeId,creative_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,offerId,offer_id,varchar,no,no,no,offer.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,message,message,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,isControl,is_control,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_variant,experimentVariant,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,experimentId,experiment_id,varchar,yes,no,no,experiment.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,variantId,variant_id,varchar,yes,no,no,experimentVariant.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,observedOn,observed_on,date,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,impressions,impressions,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,clicks,clicks,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,leads,leads,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,qualifiedLeads,qualified_leads,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,quotes,quotes,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,sales,sales,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,revenueCents,revenue_cents,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,costCents,cost_cents,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,contributionCents,contribution_cents,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,sampleSize,sample_size,integer,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,confidenceLow,confidence_low,numeric,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,confidenceHigh,confidence_high,numeric,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+experiment_observation,experimentObservation,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,definition,definition,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,active,active,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+qualification_criteria,qualificationCriteria,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,key,key,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,label,label,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,sortOrder,sort_order,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,active,active,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+loss_reason,lossReasonCatalog,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,platform,platform,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,externalId,external_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,orderNumber,order_number,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,contactId,contact_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,itemName,item_name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,quantity,quantity,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,amountCents,amount_cents,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,commissionCents,commission_cents,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,orderedAt,ordered_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,notes,notes,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+marketplace_order,marketplaceOrder,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+contact_note,contactNote,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+contact_note,contactNote,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+contact_note,contactNote,contactId,contact_id,varchar,yes,no,no,contact.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+contact_note,contactNote,body,body,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact_note,contactNote,source,source,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact_note,contactNote,createdBy,created_by,varchar,no,no,no,user.id,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+contact_note,contactNote,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,channel,channel,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,senderAccountId,sender_account_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,subject,subject,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,messageText,message_text,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,templateName,template_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,templateLanguage,template_language,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,templateParams,template_params,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,filters,filters,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,recipientCount,recipient_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,sentCount,sent_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,deliveredCount,delivered_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,readCount,read_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,failedCount,failed_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,skippedCount,skipped_count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,createdBy,created_by,varchar,no,no,no,user.id,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,scheduledAt,scheduled_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,startedAt,started_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,completedAt,completed_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+broadcast_campaign,broadcastCampaign,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,campaignId,campaign_id,varchar,yes,no,no,broadcastCampaign.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,contactId,contact_id,varchar,no,no,no,contact.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,conversationId,conversation_id,varchar,no,no,no,conversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,channel,channel,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,messageId,message_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,providerMessageId,provider_message_id,text,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,errorCode,error_code,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,errorMessage,error_message,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,skipReason,skip_reason,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,attempts,attempts,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,scheduledAt,scheduled_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,startedAt,started_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,sentAt,sent_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,deliveredAt,delivered_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,readAt,read_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+broadcast_recipient,broadcastRecipient,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+watsi_conversation,watsiConversation,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+watsi_conversation,watsiConversation,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+watsi_conversation,watsiConversation,userId,user_id,varchar,yes,no,no,user.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+watsi_conversation,watsiConversation,title,title,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+watsi_conversation,watsiConversation,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+watsi_conversation,watsiConversation,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+watsi_message,watsiMessage,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+watsi_message,watsiMessage,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+watsi_message,watsiMessage,conversationId,conversation_id,varchar,yes,no,no,watsiConversation.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+watsi_message,watsiMessage,role,role,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+watsi_message,watsiMessage,content,content,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+watsi_message,watsiMessage,sources,sources,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+watsi_message,watsiMessage,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+copilot_settings,copilotSettings,organizationId,organization_id,varchar,yes,yes,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+copilot_settings,copilotSettings,accessMode,access_mode,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+copilot_settings,copilotSettings,dataSources,data_sources,jsonb,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+copilot_settings,copilotSettings,updatedBy,updated_by,varchar,no,no,no,user.id,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+copilot_settings,copilotSettings,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+copilot_settings,copilotSettings,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,platform,platform,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,campaignExternalId,campaign_external_id,varchar,yes,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,campaignName,campaign_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,campaignObjective,campaign_objective,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,status,status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,dateStart,date_start,date,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,dateStop,date_stop,date,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,currency,currency,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,spendCents,spend_cents,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,impressions,impressions,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,reach,reach,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,clicks,clicks,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,uniqueClicks,unique_clicks,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,conversions,conversions,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,conversionValueCents,conversion_value_cents,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoViews,video_views,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,thruplay,thruplay,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,avgWatchTimeMs,avg_watch_time_ms,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoP25,video_p25,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoP50,video_p50,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoP75,video_p75,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoP100,video_p100,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoPlays,video_plays,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,uniqueVideoViews,unique_video_views,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,videoPlays2s,video_plays_2s,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,actions,actions,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,raw,raw,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+campaign_insight,campaignInsight,syncedAt,synced_at,timestamp,yes,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+social_comment,socialComment,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+social_comment,socialComment,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+social_comment,socialComment,platform,platform,varchar,yes,no,no,,"/** Plataforma de origen: ""instagram"" | ""messenger"" | ""tiktok"". */",src/lib/db/schema.ts
+social_comment,socialComment,externalCommentId,external_comment_id,varchar,yes,no,no,,/** Id del comentario en la plataforma. */,src/lib/db/schema.ts
+social_comment,socialComment,postExternalId,post_external_id,varchar,yes,no,no,,/** Id de la publicación (media de IG / post de la página). */,src/lib/db/schema.ts
+social_comment,socialComment,postCaption,post_caption,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+social_comment,socialComment,authorExternalId,author_external_id,varchar,yes,no,no,,/** Id del autor del comentario (ig userId / PSID de la página). */,src/lib/db/schema.ts
+social_comment,socialComment,authorName,author_name,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+social_comment,socialComment,body,body,text,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+social_comment,socialComment,parentExternalId,parent_external_id,varchar,no,no,no,,/** Comentario padre cuando es una respuesta dentro de la misma hebra. */,src/lib/db/schema.ts
+social_comment,socialComment,commentTime,comment_time,timestamp,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+social_comment,socialComment,replyText,reply_text,text,no,no,no,,/** Reply público del negocio (null = sin responder). */,src/lib/db/schema.ts
+social_comment,socialComment,repliedAt,replied_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+social_comment,socialComment,raw,raw,jsonb,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+social_comment,socialComment,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+social_comment,socialComment,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,youtubeKeyCipher,youtube_key_cipher,text,no,no,no,,YouTube (opcional),src/lib/db/schema.ts
+intel_credentials,intelCredentials,youtubeKeyIv,youtube_key_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,youtubeKeyTag,youtube_key_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,denueTokenCipher,denue_token_cipher,text,no,no,no,,INEGI DENUE,src/lib/db/schema.ts
+intel_credentials,intelCredentials,denueTokenIv,denue_token_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,denueTokenTag,denue_token_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiKeyCipher,serpapi_key_cipher,text,no,no,no,,SerpApi (Google Trends principal),src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiKeyIv,serpapi_key_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiKeyTag,serpapi_key_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiStatus,serpapi_status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiLastTestAt,serpapi_last_test_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiLastSyncAt,serpapi_last_sync_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,serpapiQueriesUsed,serpapi_queries_used,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyTokenCipher,apify_token_cipher,text,no,no,no,,Apify (Google Trends respaldo),src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyTokenIv,apify_token_iv,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyTokenTag,apify_token_tag,text,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyActorId,apify_actor_id,varchar,no,no,no,,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyStatus,apify_status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyLastTestAt,apify_last_test_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyLastSyncAt,apify_last_sync_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,apifyQueriesUsed,apify_queries_used,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,lastIngestAt,last_ingest_at,timestamp,no,no,no,,/** Último ingest exitoso (fuente YouTube legacy). */,src/lib/db/schema.ts
+intel_credentials,intelCredentials,status,status,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,youtubeLastTestAt,youtube_last_test_at,timestamp,no,no,no,,"Estado de pruebas en vivo por fuente (distingue ""guardado"" de ""conectado"")",src/lib/db/schema.ts
+intel_credentials,intelCredentials,youtubeStatus,youtube_status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,denueLastTestAt,denue_last_test_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,denueStatus,denue_status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,gtEnabled,gt_enabled,boolean,yes,no,no,,Google Trends (ADR-001): habilitado por org + estado de la última prueba,src/lib/db/schema.ts
+intel_credentials,intelCredentials,gtLastSyncAt,gt_last_sync_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,gtStatus,gt_status,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,gtLastTestAt,gt_last_test_at,timestamp,no,no,no,,Campo temporal; confirmar semántica en el consumidor.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_credentials,intelCredentials,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+intel_term,intelTerm,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_term,intelTerm,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_term,intelTerm,name,name,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_term,intelTerm,keywords,keywords,jsonb,yes,no,no,,/** JSON array de palabras clave (minúsculas) con las que se matchean videos. */,src/lib/db/schema.ts
+intel_term,intelTerm,geo,geo,varchar,yes,no,no,,/** ISO 3166-1 alpha-2 del geo monitoreado. */,src/lib/db/schema.ts
+intel_term,intelTerm,active,active,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_term,intelTerm,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_term,intelTerm,updatedAt,updated_at,timestamp,yes,no,no,,Fecha/hora de última actualización.,src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,termId,term_id,varchar,yes,no,no,intelTerm.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,day,day,varchar,yes,no,no,,"/** Día UTC del snapshot, formato ""YYYY-MM-DD"". */",src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,value,value,bigint,yes,no,no,,/** Suma de vistas de los videos coincidentes del día (proxy de interés). */,src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,videoCount,video_count,integer,yes,no,no,,/** Videos coincidentes del día. */,src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,source,source,varchar,yes,no,no,,"/** Origen del dato: ""youtube_mostpopular"". */",src/lib/db/schema.ts
+intel_snapshot,intelSnapshot,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_video,intelVideo,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_video,intelVideo,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_video,intelVideo,termId,term_id,varchar,yes,no,no,intelTerm.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_video,intelVideo,videoId,video_id,varchar,yes,no,no,,/** Id del video en YouTube. */,src/lib/db/schema.ts
+intel_video,intelVideo,title,title,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_video,intelVideo,views,views,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_video,intelVideo,likes,likes,bigint,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_video,intelVideo,durationSeconds,duration_seconds,integer,no,no,no,,/** Duración en segundos (contentDetails del API). */,src/lib/db/schema.ts
+intel_video,intelVideo,publishedAt,published_at,timestamp,no,no,no,,/** Fecha de publicación del video. */,src/lib/db/schema.ts
+intel_video,intelVideo,channelTitle,channel_title,varchar,no,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_video,intelVideo,day,day,varchar,yes,no,no,,"/** Día UTC de captura, ""YYYY-MM-DD"". */",src/lib/db/schema.ts
+intel_video,intelVideo,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_search_log,intelSearchLog,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_search_log,intelSearchLog,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_search_log,intelSearchLog,query,query,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_search_log,intelSearchLog,termId,term_id,varchar,no,no,no,intelTerm.id,/** Término con el que se resolvió la búsqueda (null si no hubo match). */,src/lib/db/schema.ts
+intel_search_log,intelSearchLog,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,termId,term_id,varchar,yes,no,no,intelTerm.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,state,state,varchar,yes,no,no,,"/** Clave INEGI de la entidad federativa, ""01""…""32"". */",src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,count,count,integer,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,censored,censored,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,day,day,varchar,yes,no,no,,"/** Día UTC del conteo, formato ""YYYY-MM-DD"". */",src/lib/db/schema.ts
+intel_geo_snapshot,intelGeoSnapshot,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_gt_snapshot,intelGtSnapshot,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_gt_snapshot,intelGtSnapshot,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_gt_snapshot,intelGtSnapshot,termId,term_id,varchar,yes,no,no,intelTerm.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_gt_snapshot,intelGtSnapshot,day,day,varchar,yes,no,no,,"/** Día UTC ""YYYY-MM-DD"". */",src/lib/db/schema.ts
+intel_gt_snapshot,intelGtSnapshot,value,value,integer,yes,no,no,,/** Índice 0–100 de Google Trends (100 = máximo de la ventana). */,src/lib/db/schema.ts
+intel_gt_snapshot,intelGtSnapshot,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,termId,term_id,varchar,yes,no,no,intelTerm.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,state,state,varchar,yes,no,no,,"/** Clave INEGI de la entidad, ""01""…""32"". */",src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,value,value,integer,yes,no,no,,/** Índice 0–100 (100 = estado con más interés). */,src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,day,day,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_gt_region,intelGtRegion,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,id,id,varchar,yes,yes,no,,Identificador del registro.,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,organizationId,organization_id,varchar,yes,no,no,organization.id,Identificador de la organización propietaria.,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,termId,term_id,varchar,yes,no,no,intelTerm.id,Identificador de entidad relacionada; revisar la relación declarada.,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,kind,kind,varchar,yes,no,no,,"/** ""topic"" (tema) o ""query"" (consulta). */",src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,label,label,varchar,yes,no,no,,/** Texto del tema/consulta. */,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,value,value,integer,yes,no,no,,/** Índice 0–100 (para top) o valor crudo del rising. */,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,pct,pct,integer,no,no,no,,/** Cambio % vs periodo previo; null si es breakout o sin base. */,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,isBreakout,is_breakout,boolean,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,day,day,varchar,yes,no,no,,Sin descripción explícita; consultar los usos en el backend.,src/lib/db/schema.ts
+intel_gt_related,intelGtRelated,createdAt,created_at,timestamp,yes,no,no,,Fecha/hora de creación.,src/lib/db/schema.ts
