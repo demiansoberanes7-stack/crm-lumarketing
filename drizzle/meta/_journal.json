@@ -512,6 +512,13 @@
       "when": 1792000000014,
       "tag": "0074_metric_source_google_ads",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "8",
+      "when": 1792000000015,
+      "tag": "0075_sales_strategy",
+      "breakpoints": true
     }
   ]
 }

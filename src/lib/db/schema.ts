@@ -2307,6 +2307,43 @@ export const experimentObservation = pgTable(
   ]
 );
 
+/** Estrategia de venta: une una oferta, experimento o campaña con un objetivo
+ * numérico (ingresos objetivo, conversiones objetivo) y canal de adquisición.
+ * Varios equipos pueden tener sus propias estrategias sobre los mismos activos. */
+export const strategy = pgTable(
+  "strategy",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    /** Tipo de activo objetivo: 'offer', 'experiment' o 'campaign'. */
+    objectType: varchar("object_type", { length: 20 }).notNull(),
+    /** ID del activo objetivo. */
+    objectId: varchar("object_id", { length: 255 }).notNull(),
+    /** Canal de adquisición asociado (opcional). */
+    acquisitionChannelId: varchar("acquisition_channel_id", { length: 255 }).references(
+      () => acquisitionChannel.id,
+      { onDelete: "set null" }
+    ),
+    /** Objetivo de ingresos en céntimos (null = ilimitado). */
+    revenueTargetCents: integer("revenue_target_cents"),
+    /** Objetivo de conversiones (null = ilimitado). */
+    conversionTarget: integer("conversion_target"),
+    /** Estado de la estrategia. */
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("strategy_org_idx").on(t.organizationId),
+    index("strategy_object_idx").on(t.objectType, t.objectId),
+    index("strategy_channel_idx").on(t.acquisitionChannelId),
+  ]
+);
+
 /** Criterios de calificación configurables por organización. */
 export const qualificationCriteria = pgTable(
   "qualification_criteria",
