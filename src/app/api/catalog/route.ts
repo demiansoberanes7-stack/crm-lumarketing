@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
-import { getDb, schema } from "@/lib/db";
-import { newId } from "@/lib/db/ids";
-import { scoped } from "@/lib/db/tenant";
 import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
+import {
+  createCatalogProduct,
+  listCatalogProducts,
+} from "@/server/catalog/service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +12,8 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
-  const db = getDb();
 
-  const products = await db
-    .select()
-    .from(schema.catalogProduct)
-    .where(scoped(schema.catalogProduct.organizationId, session.organizationId))
-    .limit(limit);
+  const products = await listCatalogProducts(session.organizationId, { limit });
 
   return Response.json({ products });
 });
@@ -36,11 +32,8 @@ export const POST = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, postSchema);
   if (!body.ok) return body.response;
 
-  const db = getDb();
-  const id = newId("catalogProduct");
-
-  await db.insert(schema.catalogProduct).values({
-    id,
+  // Misma fuente que el MCP: alta idéntica venga de la UI o de ChatGPT.
+  const { id } = await createCatalogProduct({
     organizationId: session.organizationId,
     name: body.data.name,
     shortDescription: body.data.shortDescription ?? null,

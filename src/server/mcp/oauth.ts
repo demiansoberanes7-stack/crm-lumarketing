@@ -11,15 +11,31 @@ export const MCP_READ_SCOPES = [
   "crm.quotes.read",
   "crm.catalog.read",
   "crm.metrics.read",
+  "crm.conversations.read",
+  "crm.email.read",
+  "crm.settings.read",
 ] as const;
 
 export const MCP_WRITE_SCOPES = [
   "crm.contacts.write",
   "crm.pipeline.write",
   "crm.quotes.write",
+  "crm.catalog.write",
 ] as const;
 
+export const MCP_DELETE_SCOPES = ["crm.contacts.delete", "crm.quotes.delete"] as const;
+
+export const MCP_SEND_SCOPES = [
+  "crm.messages.send",
+  "crm.quotes.send",
+  "crm.email.send",
+] as const;
+
+export const MCP_ADMIN_SCOPES = ["crm.audit.read"] as const;
+
 export type McpReadScope = (typeof MCP_READ_SCOPES)[number];
+
+export type McpActionKind = "read" | "write" | "delete" | "send" | "admin";
 
 export type McpPrincipal = {
   userId: string;
@@ -67,10 +83,28 @@ export function unauthorizedChallengeResponse(): Response {
   });
 }
 
+export function actionKindEnabled(kind: McpActionKind): boolean {
+  switch (kind) {
+    case "read":
+      return true;
+    case "write":
+      return process.env.MCP_WRITE_ENABLED === "true";
+    case "delete":
+      return process.env.MCP_DELETE_ENABLED === "true";
+    case "send":
+      return process.env.MCP_SEND_ENABLED === "true";
+    case "admin":
+      return process.env.MCP_ADMIN_ENABLED === "true";
+  }
+}
+
 export function supportedScopes(): string[] {
-  return process.env.MCP_WRITE_ENABLED === "true"
-    ? [...MCP_READ_SCOPES, ...MCP_WRITE_SCOPES]
-    : [...MCP_READ_SCOPES];
+  const scopes: string[] = [...MCP_READ_SCOPES];
+  if (actionKindEnabled("write")) scopes.push(...MCP_WRITE_SCOPES);
+  if (actionKindEnabled("delete")) scopes.push(...MCP_DELETE_SCOPES);
+  if (actionKindEnabled("send")) scopes.push(...MCP_SEND_SCOPES);
+  if (actionKindEnabled("admin")) scopes.push(...MCP_ADMIN_SCOPES);
+  return scopes;
 }
 
 export function normalizeScopes(scope: string | null | undefined): string[] {
@@ -299,6 +333,11 @@ export async function exchangeAuthorizationCode(input: {
     organizationId: code.organizationId,
     expiresAt: new Date(Date.now() + expiresIn * 1000),
   });
+  // Marca al cliente como vivo: el mantenimiento solo poda clientes muertos.
+  await db
+    .update(mcpOauthClient)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(mcpOauthClient.clientId, code.clientId));
 
   return {
     accessToken,

@@ -1230,7 +1230,11 @@ export const projectItem = pgTable(
     projectId: varchar("project_id", { length: 255 })
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 255 }).notNull(),
+    productId: varchar("product_id", { length: 255 }).references(
+      () => catalogProduct.id,
+      { onDelete: "set null" }
+    ),
+    name: varchar("name").notNull(),
     description: text("description"),
     quantity: integer("quantity").notNull().default(1),
     /** Centavos, como en quote_item. */
@@ -1241,8 +1245,8 @@ export const projectItem = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    index("project_item_org_idx").on(t.organizationId),
     index("project_item_project_idx").on(t.projectId),
+    index("project_item_product_idx").on(t.productId),
   ]
 );
 

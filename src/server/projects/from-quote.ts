@@ -179,6 +179,7 @@ export async function acceptQuoteIntoProjectTx(
       description: schema.quoteItem.description,
       quantity: schema.quoteItem.quantity,
       unitPrice: schema.quoteItem.unitPrice,
+      productId: schema.quoteItem.productId,
     })
     .from(schema.quoteItem)
     .where(
@@ -288,7 +289,7 @@ export async function acceptQuoteIntoProjectTx(
       .limit(1);
     const nextPos = (maxPos ?? -1) + 1;
     await db.insert(schema.projectItem).values(
-      items.map((item: { name: string; description: string | null; quantity: number; unitPrice: number }, idx: number) => ({
+      items.map((item: { name: string; description: string | null; quantity: number; unitPrice: number; productId: string | null }, idx: number) => ({
         id: newId("projectItem"),
         organizationId,
         projectId,
@@ -296,6 +297,7 @@ export async function acceptQuoteIntoProjectTx(
         description: item.description ?? null,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
+        productId: item.productId,
         position: nextPos + idx,
       }))
     );

@@ -32,5 +32,9 @@ export async function register(): Promise<void> {
     // correo solo llegaba cuando alguien pulsaba el sync manual.
     const { startEmailWorker } = await import("./server/email/poller");
     await startEmailWorker();
+    // MCP: poda de códigos/tokens/auditoría/clientes caducados; barre su
+    // propia bandera en cada tick, así registrarla es inofensivo sin MCP.
+    const { startMcpMaintenance } = await import("./server/mcp/maintenance");
+    await startMcpMaintenance();
   }
 }

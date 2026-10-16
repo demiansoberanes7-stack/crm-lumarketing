@@ -498,6 +498,13 @@
       "when": 1792000000012,
       "tag": "0071_multi_oportunidad_atribucion",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792000000013,
+      "tag": "0072_project_item_product",
+      "breakpoints": true
     }
   ]
 }

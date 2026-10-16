@@ -75,7 +75,7 @@ export const METRIC_CATALOG: readonly MetricDefinition[] = [
   { id: "quote_to_won", name: "Cotizado → ganado", category: "embudo", unit: "percent", formula: "Ganados ÷ cotizados × 100", requires: ["lead_stage_event"], mayBeUnavailable: true },
 
   // Publicidad
-  { id: "ad_spend", name: "Inversión publicitaria", category: "publicidad", unit: "currency", formula: "Suma del costo de campañas en el periodo", requires: ["campaign"], mayBeUnavailable: true },
+  { id: "ad_spend", name: "Inversión publicitaria", category: "publicidad", unit: "currency", formula: "Suma del costo de campañas en el periodo", requires: ["meta_ads"], mayBeUnavailable: true },
   { id: "roas", name: "ROAS", category: "publicidad", unit: "ratio", formula: "Ingresos atribuidos ÷ inversión publicitaria", requires: ["campaign", "payment"], mayBeUnavailable: true },
   { id: "romi", name: "ROMI", category: "publicidad", unit: "percent", formula: "(Ingresos atribuidos − inversión) ÷ inversión × 100", requires: ["campaign", "payment"], mayBeUnavailable: true },
   { id: "cac", name: "CAC", category: "publicidad", unit: "currency", formula: "Costo de adquisición ÷ clientes nuevos", requires: ["campaign", "lead_stage_event"], mayBeUnavailable: true },

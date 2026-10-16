@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  MCP_DELETE_SCOPES,
   MCP_READ_SCOPES,
+  actionKindEnabled,
   clientIsAllowed,
   isAllowedClient,
   isAllowedRedirectUri,
   normalizeScopes,
+  supportedScopes,
   unauthorizedChallengeResponse,
   validateRegistrationRedirectUris,
 } from "@/server/mcp/oauth";
@@ -17,6 +20,9 @@ beforeEach(() => {
   delete process.env.MCP_RESOURCE_URL;
   delete process.env.MCP_OAUTH_ISSUER;
   delete process.env.MCP_WRITE_ENABLED;
+  delete process.env.MCP_DELETE_ENABLED;
+  delete process.env.MCP_SEND_ENABLED;
+  delete process.env.MCP_ADMIN_ENABLED;
   delete process.env.MCP_DCR_ENABLED;
   delete process.env.MCP_DCR_ALLOWED_HOSTS;
   delete process.env.MCP_ALLOWED_CLIENT_IDS;
@@ -118,5 +124,64 @@ describe("clientIsAllowed", () => {
   it("acepta CIMD sin tocar la base de datos", async () => {
     await expect(clientIsAllowed("https://chatgpt.com/oauth/client.json")).resolves.toBe(true);
     await expect(clientIsAllowed("https://evil.example.com/x")).resolves.toBe(false);
+  });
+});
+
+describe("actionKindEnabled (tiers)", () => {
+  it("lectura siempre; escritura/borrado/envío/admin solo con su bandera", () => {
+    expect(actionKindEnabled("read")).toBe(true);
+    expect(actionKindEnabled("write")).toBe(false);
+    expect(actionKindEnabled("delete")).toBe(false);
+    expect(actionKindEnabled("send")).toBe(false);
+    expect(actionKindEnabled("admin")).toBe(false);
+
+    process.env.MCP_WRITE_ENABLED = "true";
+    process.env.MCP_DELETE_ENABLED = "true";
+    expect(actionKindEnabled("write")).toBe(true);
+    expect(actionKindEnabled("delete")).toBe(true);
+    expect(actionKindEnabled("send")).toBe(false);
+    expect(actionKindEnabled("admin")).toBe(false);
+  });
+});
+
+describe("supportedScopes por tier", () => {
+  it("apagado: solo lectura (credentials del CRM nunca entran)", () => {
+    expect(supportedScopes()).toEqual([...MCP_READ_SCOPES]);
+  });
+
+  it("encendido: agrega los scopes de ese tier", () => {
+    process.env.MCP_WRITE_ENABLED = "true";
+    expect(supportedScopes()).toContain("crm.contacts.write");
+    expect(supportedScopes()).not.toContain("crm.contacts.delete");
+
+    process.env.MCP_DELETE_ENABLED = "true";
+    expect(supportedScopes()).toEqual(expect.arrayContaining([...MCP_DELETE_SCOPES]));
+    expect(supportedScopes()).not.toContain("crm.messages.send");
+
+    process.env.MCP_SEND_ENABLED = "true";
+    expect(supportedScopes()).toEqual(
+      expect.arrayContaining(["crm.messages.send", "crm.quotes.send", "crm.email.send"])
+    );
+    expect(supportedScopes()).not.toContain("crm.audit.read");
+  });
+
+  it("el tier admin agrega crm.audit.read solo con MCP_ADMIN_ENABLED", () => {
+    expect(supportedScopes()).not.toContain("crm.audit.read");
+    expect(() => normalizeScopes("crm.audit.read")).toThrow(/Unsupported MCP scope/);
+
+    process.env.MCP_ADMIN_ENABLED = "true";
+    expect(supportedScopes()).toContain("crm.audit.read");
+    expect(normalizeScopes("crm.audit.read")).toEqual(["crm.audit.read"]);
+  });
+
+  it("crm.settings.read siempre está en los scopes de lectura", () => {
+    expect(MCP_READ_SCOPES).toContain("crm.settings.read");
+    expect(supportedScopes()).toContain("crm.settings.read");
+  });
+
+  it("acepta el scope de borrado solo con el tier de borrado", () => {
+    expect(() => normalizeScopes("crm.contacts.delete")).toThrow(/Unsupported MCP scope/);
+    process.env.MCP_DELETE_ENABLED = "true";
+    expect(normalizeScopes("crm.contacts.delete")).toEqual(["crm.contacts.delete"]);
   });
 });

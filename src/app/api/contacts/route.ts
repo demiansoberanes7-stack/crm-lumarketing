@@ -2,14 +2,9 @@ import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
-import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
-import { normalizeMx } from "@/lib/meta/client";
 import { digitsOnly, normalizeText } from "@/lib/search";
-import { normalizeMedium } from "@/lib/contact-medium";
-import { serializeContact } from "@/server/contacts";
-import { createLeadForContact } from "@/server/inbox/lead-activity";
-import { publishWebhook } from "@/server/webhooks/dispatcher";
+import { createContact, serializeContact } from "@/server/contacts";
 
 export const dynamic = "force-dynamic";
 
@@ -144,82 +139,19 @@ export const POST = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, createSchema);
   if (!body.ok) return body.response;
 
-  const medium = normalizeMedium(body.data);
-  if (!medium.ok) return apiError(422, "medium", medium.error);
-
-  const db = getDb();
-  // 003: la identidad WhatsApp se deriva del teléfono normalizado.
-  const phone = normalizeMx(body.data.phone);
-  const contactId = newId("contact");
-  await db
-    .insert(schema.contact)
-    .values({
-      id: contactId,
-      organizationId: session.organizationId,
-      name: body.data.name,
-      phone,
-      waIdentity: phone,
-      notes: body.data.notes ?? null,
-      source: body.data.source ?? null,
-      medium: medium.medium,
-      mediumDetail: medium.mediumDetail,
-    })
-    // El canal entra en el target porque entra en el índice único desde 014
-    // (`contact_org_channel_identity_uq`). Postgres exige que el ON CONFLICT
-    // nombre EXACTAMENTE las columnas de un índice existente: sin `channel`,
-    // el alta manual falla con "no unique or exclusion constraint matching".
-    .onConflictDoNothing({
-      target: [
-        schema.contact.organizationId,
-        schema.contact.channel,
-        schema.contact.waIdentity,
-      ],
-    });
-  const [existingContact] = await db
-    .select()
-    .from(schema.contact)
-    .where(eq(schema.contact.id, contactId))
-    .limit(1);
-  if (!existingContact) {
-    return apiError(409, "duplicate", "Ya existe un contacto con ese teléfono");
-  }
-
-  if (body.data.notes?.trim()) {
-    await db.insert(schema.contactNote).values({
-      id: newId("contactNote"),
-      organizationId: session.organizationId,
-      contactId: existingContact.id,
-      body: body.data.notes,
-      source: "manual",
-      createdBy: session.userId,
-    });
-  }
-
-  // Y su lead: un contacto sin lead es invisible en el Pipeline, que es la
-  // pantalla donde se trabaja el embudo. Dar de alta a alguien y no verlo ahí
-  // es la mitad de la función.
-  const lead = await createLeadForContact({
+  // Toda la alta (lead + webhook + normalización) vive en el servicio para que
+  // la UI y el MCP creen contactos idénticos; aquí solo se traduce a HTTP.
+  const result = await createContact({
     organizationId: session.organizationId,
-    contactId: existingContact.id,
-    stageId: body.data.stageId,
-    source: "dueno",
     actorUserId: session.userId,
+    ...body.data,
   });
-  if (!lead) {
-    return apiError(
-      422,
-      "no_stage",
-      "El tablero no tiene etapas abiertas donde colocar al prospecto"
-    );
+  if (!result.ok) {
+    const status = result.code === "duplicate" ? 409 : 422;
+    return apiError(status, result.code, result.message);
   }
-
-  publishWebhook(session.organizationId, "contact.created", {
-    contact: { id: existingContact.id, name: existingContact.name, phone: existingContact.phone },
-    lead: { id: lead.id },
-  });
-
   return Response.json(
-    { contact: serializeContact(existingContact), lead: { id: lead.id } },
+    { contact: result.contact, lead: result.lead },
     { status: 201 }
   );
 });
