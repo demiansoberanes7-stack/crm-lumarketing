@@ -3,6 +3,7 @@ import { apiError, parseBody, withOwner } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
+import { getAiDbToken } from "@/server/ai/credentials";
 import { normalizeAgentFichaFields, normalizeAgentRules, AGENT_FICHA_KEY_PATTERN } from "@/lib/agent-config";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,8 @@ export const GET = withOwner(async (session) => {
       businessLocation: p.businessLocation,
       businessDescription: p.businessDescription,
     },
-    aiConfigured: isAiConfigured(),
+    // Clave de IA: variable de entorno O la guardada desde Configuración.
+    aiConfigured: isAiConfigured((await getAiDbToken(session.organizationId)) ?? undefined),
   });
 });
 

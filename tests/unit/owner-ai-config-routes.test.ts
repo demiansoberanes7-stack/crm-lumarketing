@@ -3,6 +3,8 @@ import { GET as getAgentProfile } from "@/app/api/agent/profile/route";
 import { GET as getKnowledgeBase } from "@/app/api/kb/route";
 import { GET as getAutomationRules } from "@/app/api/automations/rules/route";
 import { GET as getIntegration } from "@/app/api/integrations/[provider]/route";
+import { DELETE as deleteAiKey, GET as getAiKey } from "@/app/api/settings/ai/route";
+import { POST as postAiKeyTest } from "@/app/api/settings/ai/test/route";
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
@@ -37,6 +39,21 @@ describe("configuración global restringida al owner", () => {
     ]);
 
     expect(responses.map((response) => response.status)).toEqual([403, 403, 403, 403]);
+    expect(mocks.getDb).not.toHaveBeenCalled();
+  });
+
+  it("bloquea también la clave LLM compartida (agente y copiloto)", async () => {
+    const responses = await Promise.all([
+      getAiKey(),
+      deleteAiKey(),
+      postAiKeyTest(new Request("http://localhost/api/settings/ai/test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "sk-nueva-clave-123" }),
+      })),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([403, 403, 403]);
     expect(mocks.getDb).not.toHaveBeenCalled();
   });
 });

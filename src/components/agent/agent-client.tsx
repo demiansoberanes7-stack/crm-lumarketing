@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Package, Plus, Trash2, Clock, Globe, Building2 } from "lucide-react";
+import { AiProviderCard } from "@/components/settings/ai-provider-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -146,6 +147,7 @@ export function AgentClient() {
 
       <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
         {saveError && <p role="alert" className="rounded-md border border-danger-soft bg-danger-tint p-3 text-sm text-danger-text">{saveError}</p>}
+        <AiProviderCard />
         <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
           <div className="min-w-0 space-y-4 sm:space-y-6">
             <ProfileSection profile={profile} onSave={saveProfile} />

@@ -129,9 +129,9 @@ export function LabClient() {
             Configura tu proveedor de IA para usar el Laboratorio
           </p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-            El Laboratorio necesita el agente activo: agrega{" "}
-            <code className="rounded bg-secondary px-1">OPENROUTER_API_TOKEN</code> a la
-            instancia y vuelve aquí.
+            El Laboratorio necesita el agente activo: guarda la clave de IA en{" "}
+            <code className="rounded bg-secondary px-1">Configuración → Agente</code> y
+            vuelve aquí.
           </p>
         </div>
       </div>
@@ -544,7 +544,7 @@ function LabChat({ aiConfigured }: { aiConfigured: boolean }) {
         <Sparkles className="mx-auto mb-2 h-8 w-8 text-primary" />
         <p className="font-medium">Configura tu proveedor de IA para usar el chat</p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Agrega <code className="rounded bg-secondary px-1">OPENROUTER_API_TOKEN</code> a la instancia.
+          Guarda la clave de IA en <code className="rounded bg-secondary px-1">Configuración → Agente</code>.
         </p>
       </div>
     );
