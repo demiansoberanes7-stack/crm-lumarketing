@@ -43,7 +43,8 @@ export type MetricSource =
   | "marketplace_order"
   | "experiment_observation"
   | "ga4"
-  | "meta_ads";
+  | "meta_ads"
+  | "google_ads";
 
 export type MetricDefinition = {
   id: string;

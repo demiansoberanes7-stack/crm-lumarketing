@@ -2118,6 +2118,35 @@ export const activityEvent = pgTable(
   ]
 );
 
+/** Google Ads métricas: impresiones, clics, costo, conversiones, CTR, CPC, ROAS.
+ *  Cada fila representa el rendimiento de un anuncio o grupo de anuncios en
+ *  una fecha concreta, asociado a una campaña. Sirve para el dashboard de
+ *   rentabilidad y el módulo de integración Google Ads. */
+export const googleAdsMetric = pgTable(
+  "google_ads_metric",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    campaignId: varchar("campaign_id", { length: 255 }).notNull(),
+    adGroupId: varchar("ad_group_id", { length: 255 }),
+    date: date("date").notNull(),
+    impressions: integer("impressions").notNull().default(0),
+    clicks: integer("clicks").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+    conversions: integer("conversions").notNull().default(0),
+    currency: varchar("currency", { length: 10 }).notNull().default("MXN"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("google_ads_metric_org_idx").on(t.organizationId),
+    index("google_ads_metric_campaign_idx").on(t.campaignId),
+    index("google_ads_metric_date_idx").on(t.date),
+  ]
+);
+
 /** Costo de prestación por servicio/producto, con vigencia. */
 export const serviceCost = pgTable(
   "service_cost",
