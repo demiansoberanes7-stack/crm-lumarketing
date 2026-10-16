@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   insert: vi.fn(),
   updateCalls: [] as { table: unknown; set: Record<string, unknown> }[],
   publishWebhook: vi.fn(),
+  acceptQuoteIntoProjectTx: vi.fn(),
 }));
 
 let selectQueue: unknown[][] = [];
@@ -44,6 +45,12 @@ vi.mock("@/lib/db", async (importOriginal) => ({
   getDb: mocks.getDb,
 }));
 vi.mock("@/server/webhooks/dispatcher", () => ({ publishWebhook: mocks.publishWebhook }));
+// Este archivo prueba el DESCUENTO de inventario; la conversión a proyecto/OS
+// se sustituye para que el mock de db de aquí no tenga que emular esas tablas.
+vi.mock("@/server/projects/from-quote", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/projects/from-quote")>(),
+  acceptQuoteIntoProjectTx: mocks.acceptQuoteIntoProjectTx,
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -56,6 +63,15 @@ beforeEach(() => {
   mocks.execute.mockResolvedValue(undefined);
   mocks.select.mockImplementation(() => thenableChain(selectQueue.shift() ?? []));
   mocks.insert.mockReturnValue({ values: () => Promise.resolve([]) });
+  mocks.acceptQuoteIntoProjectTx.mockResolvedValue({
+    projectId: "prj_1",
+    serviceOrderId: "os_1",
+    projectCreated: false,
+    serviceOrderCreated: false,
+    projectCode: "",
+    serviceOrderCode: "",
+    taskIds: [],
+  });
 });
 
 const PRODUCT = {

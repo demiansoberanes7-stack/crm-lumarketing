@@ -1,6 +1,6 @@
 {
-  "version": "7",
   "dialect": "postgresql",
+  "version": "7",
   "entries": [
     {
       "idx": 0,
@@ -469,6 +469,20 @@
       "version": "7",
       "when": 1792000000008,
       "tag": "0067_mcp_oauth_dcr",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1792000000009,
+      "tag": "0068_mcp_action_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792000000010,
+      "tag": "0069_ciclo_comercial",
       "breakpoints": true
     }
   ]

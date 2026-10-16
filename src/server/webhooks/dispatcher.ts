@@ -40,6 +40,8 @@ export type WebhookEvent =
   | "balance.closed"
   | "project.created"
   | "project.stage_changed"
+  | "service_order.created"
+  | "service_order.status_changed"
   | "email.received"
   | "email.sent"
   /** Prueba manual desde Ajustes · Webhooks · "Probar envío". */

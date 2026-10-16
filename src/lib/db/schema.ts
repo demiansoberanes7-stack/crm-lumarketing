@@ -126,8 +126,34 @@ export const mcpOauthClient = pgTable("mcp_oauth_client", {
   clientId: text("client_id").notNull().unique(),
   clientName: text("client_name"),
   redirectUris: text("redirect_uris").notNull(),
+  // Último token emitido: permite podar clientes muertos sin borrar vivos.
+  lastUsedAt: timestamp("last_used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+/** Trazabilidad de cada acción MCP no-leída (escritura/borrado/envío/admin). */
+export const mcpActionAudit = pgTable(
+  "mcp_action_audit",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 255 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    action: varchar("action", { length: 128 }).notNull(),
+    domain: varchar("domain", { length: 64 }).notNull(),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    scope: varchar("scope", { length: 64 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull(),
+    input: text("input"),
+    resultSummary: text("result_summary"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("mcp_action_audit_org_created_idx").on(t.organizationId, t.createdAt)]
+);
 
 export const organization = pgTable("organization", {
   id: varchar("id", { length: 255 }).primaryKey(),
@@ -1320,10 +1346,110 @@ export const quoteEvent = pgTable(
   ]
 );
 
+/**
+ * Cotizaciones vinculadas a un proyecto (tabla puente del ciclo comercial).
+ *
+ * Un proyecto puede agrupar varias cotizaciones relacionadas (complementarias
+ * o adicionales del mismo trabajo); cada cotización pertenece a un solo
+ * proyecto — de ahí el índice único por `quoteId`, que además hace idempotente
+ * la conversión "cotización aceptada → proyecto".
+ */
+export const projectQuote = pgTable(
+  "project_quote",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    projectId: varchar("project_id", { length: 255 })
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    quoteId: varchar("quote_id", { length: 255 })
+      .notNull()
+      .references(() => quote.id, { onDelete: "cascade" }),
+    linkedAt: timestamp("linked_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("project_quote_org_quote_uq").on(t.organizationId, t.quoteId),
+    index("project_quote_project_idx").on(t.projectId),
+    index("project_quote_org_idx").on(t.organizationId),
+  ]
+);
+
+/**
+ * Orden de servicio: la unidad operativa derivada de una cotización aceptada.
+ * Rastreable hasta su proyecto, cotización y cliente. Los renglones y tareas
+ * viven en `project_item` / `project_task` (no se duplican aquí).
+ */
+export const serviceOrder = pgTable(
+  "service_order",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    code: varchar("code", { length: 50 }).notNull(),
+    projectId: varchar("project_id", { length: 255 })
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    quoteId: varchar("quote_id", { length: 255 }).references(() => quote.id, {
+      onDelete: "set null",
+    }),
+    contactId: varchar("contact_id", { length: 255 }).references(
+      () => contact.id,
+      { onDelete: "set null" }
+    ),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: text("description"),
+    /** pendiente | asignada | en_proceso | en_revision | entregada | cancelada */
+    status: varchar("status", { length: 20 }).notNull().default("pendiente"),
+    priority: varchar("priority", { length: 20 }),
+    assignedUserId: varchar("assigned_user_id", { length: 255 }).references(
+      () => user.id,
+      { onDelete: "set null" }
+    ),
+    startDate: timestamp("start_date"),
+    dueDate: timestamp("due_date"),
+    deliveredAt: timestamp("delivered_at"),
+    notes: text("notes"),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("service_order_org_code_uq").on(t.organizationId, t.code),
+    uniqueIndex("service_order_org_quote_uq").on(t.organizationId, t.quoteId),
+    index("service_order_org_idx").on(t.organizationId),
+    index("service_order_project_idx").on(t.projectId),
+  ]
+);
+
+/** Bitácora de estados de la orden de servicio (trazabilidad sin borrar historial). */
+export const serviceOrderEvent = pgTable(
+  "service_order_event",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    serviceOrderId: varchar("service_order_id", { length: 255 })
+      .notNull()
+      .references(() => serviceOrder.id, { onDelete: "cascade" }),
+    fromStatus: varchar("from_status", { length: 20 }),
+    toStatus: varchar("to_status", { length: 20 }).notNull(),
+    actorId: varchar("actor_id", { length: 255 }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("service_order_event_org_idx").on(t.organizationId, t.createdAt),
+    index("service_order_event_order_idx").on(t.serviceOrderId, t.createdAt),
+  ]
+);
+
 /* ============================================================
  * Cobranza — cuentas por cobrar, pagos y gastos
  * ============================================================ */
-
 export const charge = pgTable(
   "charge",
   {

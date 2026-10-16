@@ -9,6 +9,8 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
+import { acceptQuoteIntoProjectTx } from "@/server/projects/from-quote";
+import { syncTaskById } from "@/server/agenda/tasks-sync";
 
 export type QuoteStatus =
   | "draft"
@@ -475,7 +477,8 @@ export async function getQuote(organizationId: string, quoteId: string) {
 export async function changeQuoteStatus(
   organizationId: string,
   quoteId: string,
-  newStatus: "accepted" | "rejected"
+  newStatus: "accepted" | "rejected",
+  opts?: { actorUserId?: string | null }
 ): Promise<void> {
   const done = await getDb().transaction(async (db) => {
     const rows = await db
@@ -530,7 +533,20 @@ export async function changeQuoteStatus(
       eventType: newStatus,
     });
 
-    return { quoteNumber: quote.quoteNumber };
+    // Cotización aceptada → proyecto + orden de servicio, en la MISMA
+    // transacción: si la conversión falla, nada queda a medias (la cotización
+    // no se marca aceptada con relaciones incompletas). Idempotente por el
+    // índice único (org, quoteId) de `project_quote` / `service_order`.
+    let conversion: Awaited<ReturnType<typeof acceptQuoteIntoProjectTx>> | null = null;
+    if (newStatus === "accepted") {
+      conversion = await acceptQuoteIntoProjectTx(db, {
+        organizationId,
+        quote: { id: quoteId, quoteNumber: quote.quoteNumber, contactId: quote.contactId },
+        actorUserId: opts?.actorUserId ?? null,
+      });
+    }
+
+    return { quoteNumber: quote.quoteNumber, conversion };
   });
 
   publishWebhook(
@@ -542,6 +558,36 @@ export async function changeQuoteStatus(
       status: newStatus,
     }
   );
+
+  // Efectos posteriores al commit (fuera de la transacción): webhooks de las
+  // entidades creadas y sincronización de las tareas iniciales con Calendar.
+  if (done.conversion) {
+    const { projectId, projectCode, serviceOrderId, serviceOrderCode, projectCreated, serviceOrderCreated, taskIds } =
+      done.conversion;
+    if (projectCreated) {
+      publishWebhook(organizationId, "project.created", {
+        projectId,
+        code: projectCode,
+        quoteId,
+        serviceOrderId,
+      });
+    }
+    if (serviceOrderCreated) {
+      publishWebhook(organizationId, "service_order.created", {
+        serviceOrderId,
+        code: serviceOrderCode,
+        projectId,
+        quoteId,
+      });
+    }
+    for (const taskId of taskIds) {
+      try {
+        await syncTaskById(organizationId, taskId);
+      } catch {
+        // La agenda/Calendar es best-effort: no rompe la aceptación.
+      }
+    }
+  }
 }
 
 /** Listar cotizaciones de una organización */

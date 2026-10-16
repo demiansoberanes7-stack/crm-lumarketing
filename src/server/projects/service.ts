@@ -21,7 +21,7 @@ export type ProjectRiesgo = "bajo" | "medio" | "alto";
 
 /** Generar código secuencial de proyecto (usa advisory lock para evitar race condition) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function nextProjectCode(db: any, organizationId: string): Promise<string> {
+export async function nextProjectCode(db: any, organizationId: string): Promise<string> {
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':projects'}))`);
   const last = await db
     .select({ code: schema.project.code })

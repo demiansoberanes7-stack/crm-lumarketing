@@ -17,6 +17,8 @@ export const AVAILABLE_EVENTS = [
   "booking.updated",
   "project.created",
   "project.stage_changed",
+  "service_order.created",
+  "service_order.status_changed",
 ] as const;
 
 export type AvailableEvent = (typeof AVAILABLE_EVENTS)[number];
@@ -40,4 +42,6 @@ export const EVENT_LABELS: Record<AvailableEvent, string> = {
   "booking.updated": "Cita actualizada",
   "project.created": "Proyecto creado",
   "project.stage_changed": "Cambio de etapa en proyecto",
+  "service_order.created": "Orden de servicio creada",
+  "service_order.status_changed": "Cambio de estado en orden de servicio",
 };
