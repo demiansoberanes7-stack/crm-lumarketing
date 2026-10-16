@@ -819,6 +819,36 @@ export const googleCredentials = pgTable(
   (t) => [uniqueIndex("google_credentials_org_uq").on(t.organizationId)]
 );
 
+/**
+ * Estado pendiente de un flujo OAuth de Google (un solo uso, ~10 minutos).
+ *
+ * Vive en su tabla y no dentro de `google_credentials` porque ahí
+ * `refresh_token` es NOT NULL: mientras el dueño autoriza en Google aún no lo
+ * tiene. Aquí viaja solo el client secret (cifrado igual que en credenciales)
+ * para poder canjear el `code` al volver del consentimiento.
+ */
+export const googleOauthState = pgTable(
+  "google_oauth_state",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    state: varchar("state", { length: 255 }).notNull(),
+    clientId: varchar("client_id", { length: 255 }).notNull(),
+    clientSecretCipher: varchar("client_secret_cipher", { length: 1024 }).notNull(),
+    clientSecretIv: varchar("client_secret_iv", { length: 255 }).notNull(),
+    clientSecretTag: varchar("client_secret_tag", { length: 255 }).notNull(),
+    calendarId: varchar("calendar_id", { length: 255 }).notNull().default("primary"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("google_oauth_state_uq").on(t.state),
+    index("google_oauth_state_org_idx").on(t.organizationId),
+  ]
+);
+
 export const agentTestCase = pgTable(
   "agent_test_case",
   {

@@ -101,6 +101,7 @@ const prefixes = {
   projectQuote: "pq",
   serviceOrder: "os",
   serviceOrderEvent: "ose",
+  googleOauthState: "gos",
 } as const;
 
 export type IdKind = keyof typeof prefixes;
