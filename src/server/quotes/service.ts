@@ -617,6 +617,46 @@ export async function listQuotes(
   return rows;
 }
 
+/**
+ * Cotizaciones aptas para vincular a un proyecto desde el desplegable de
+ * "Nuevo proyecto": no archivadas y SIN proyecto vinculado (el índice único
+ * project_quote_org_quote_uq no permite dos proyectos por cotización).
+ * Une el nombre del contacto para armar "COT-0042 — María López", el
+ * identificador que se usa como nombre del proyecto.
+ */
+export async function listQuotesForProjectLink(organizationId: string, limit = 100) {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: schema.quote.id,
+      quoteNumber: schema.quote.quoteNumber,
+      status: schema.quote.status,
+      total: schema.quote.total,
+      currency: schema.quote.currency,
+      contactId: schema.quote.contactId,
+      contactName: schema.contact.name,
+    })
+    .from(schema.quote)
+    .leftJoin(
+      schema.contact,
+      and(
+        eq(schema.contact.id, schema.quote.contactId),
+        eq(schema.contact.organizationId, organizationId)
+      )
+    )
+    .where(
+      and(
+        scoped(schema.quote.organizationId, organizationId),
+        sql`${schema.quote.archivedAt} IS NULL`,
+        sql`NOT EXISTS (SELECT 1 FROM project_quote pq WHERE pq.organization_id = ${organizationId} AND pq.quote_id = ${schema.quote.id})`
+      )
+    )
+    .orderBy(desc(schema.quote.createdAt))
+    .limit(limit);
+
+  return rows;
+}
+
 /** Archivar una cotización */
 export async function archiveQuote(
   organizationId: string,
