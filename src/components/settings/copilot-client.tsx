@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, RefreshCw, Sparkles } from "lucide-react";
+import { AiProviderCard } from "@/components/settings/ai-provider-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { COPILOT_DATA_SOURCES, type CopilotAccessMode, type CopilotDataSource } from "@/lib/copilot-config";
@@ -159,6 +160,8 @@ export function CopilotClient() {
           </div>
         </CardContent>
       </Card>
+
+      <AiProviderCard />
     </div>
   );
 }

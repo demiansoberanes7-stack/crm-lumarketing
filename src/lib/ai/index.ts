@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { getEnv, isAiConfigured, resolveAiToken } from "@/lib/env";
+import { getAiDbToken } from "@/server/ai/credentials";
 
 /**
  * Adaptador LLM OpenRouter-compatible — ÚNICA frontera con el proveedor de IA
@@ -66,9 +67,25 @@ function parseRetryAfterMs(res: Response, body: string): number | undefined {
   return undefined;
 }
 
-/** Resolve AI token+model — env vars only (DB fields are deprecated). */
-export async function resolveAiConfig(_organizationId: string) {
-  return { token: resolveAiToken(), model: process.env.OPENROUTER_MODEL?.trim() || undefined };
+/**
+ * Resuelve token+model para una organización. La clave guardada desde
+ * Configuración (BD, cifrada; agente y copiloto comparten una sola) tiene
+ * PRIORIDAD sobre la variable de entorno `OPENROUTER_API_TOKEN`, que queda
+ * como respaldo de despliegue. El modelo sigue definiéndose en el entorno.
+ */
+export async function resolveAiConfig(organizationId: string) {
+  let dbToken: string | null = null;
+  if (organizationId) {
+    try {
+      dbToken = await getAiDbToken(organizationId);
+    } catch {
+      dbToken = null; // degradación: si la BD falla, se usa el respaldo del entorno
+    }
+  }
+  return {
+    token: dbToken || resolveAiToken(),
+    model: process.env.OPENROUTER_MODEL?.trim() || undefined,
+  };
 }
 
 export async function chatJson<T>(
@@ -95,7 +112,7 @@ export async function chatJson<T>(
     return {
       ok: false,
       error: "not_configured",
-      detail: "Sin OPENROUTER_API_TOKEN configurado",
+      detail: "Sin clave de IA configurada (Configuración → Agente)",
     };
   }
   const env = getEnv();

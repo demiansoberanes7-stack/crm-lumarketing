@@ -110,13 +110,13 @@ export const POST = withAuth(async (session, req: Request) => {
   const result = await chatJson(
     z.object({ response: z.string() }),
     messages,
-    { timeoutMs: 30_000 }
+    { timeoutMs: 30_000, organizationId: session.organizationId }
   );
 
   const reply = result.ok
     ? result.data.response
     : result.error === "not_configured"
-      ? "No tengo configurado un modelo de IA. Configura OPENROUTER_API_TOKEN en el entorno para usarme."
+      ? "No tengo configurado un modelo de IA. Guarda la clave en Configuración → Agente para usarme."
       : "No pude procesar tu pregunta en este momento. Intenta de nuevo.";
 
   // Guardar respuesta

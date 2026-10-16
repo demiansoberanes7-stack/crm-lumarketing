@@ -261,15 +261,13 @@ export function ContactPanel({
                 <p className="text-[11px] leading-relaxed text-warning-text">
                   {aiConfigured
                     ? "El agente de LUMARK no responde por su cuenta. Configura lo básico y enciéndelo (o conecta tu propio bot por la API)."
-                    : "Falta la clave de IA de la instancia (OPENROUTER_API_TOKEN) para que el agente responda, o conecta tu propio bot por la API."}
-                  {aiConfigured && (
-                    <Link
-                      href="/agent"
-                      className="ml-1 whitespace-nowrap font-medium text-brand-text underline underline-offset-2 hover:text-brand"
-                    >
-                      Configurar agente →
-                    </Link>
-                  )}
+                    : "Falta la clave de IA de la instancia para que el agente responda, o conecta tu propio bot por la API."}
+                  <Link
+                    href={aiConfigured ? "/agent" : "/settings/agent"}
+                    className="ml-1 whitespace-nowrap font-medium text-brand-text underline underline-offset-2 hover:text-brand"
+                  >
+                    {aiConfigured ? "Configurar agente →" : "Guardar clave de IA →"}
+                  </Link>
                 </p>
               </div>
             )}
