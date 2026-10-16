@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { apiError, parseBody } from "@/lib/api";
@@ -73,6 +73,7 @@ export async function POST(req: Request) {
           eq(schema.lead.contactId, conv.contactId)
         )
       )
+      .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
       .limit(1);
     if (first && leadRows[0]) {
       // Por la puerta única: devolver la conversación de pruebas al inicio

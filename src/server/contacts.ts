@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isMediumValue, isSocialNetwork } from "@/lib/contact-medium";
@@ -78,6 +78,9 @@ export async function getContactStage(
         eq(schema.lead.contactId, contactId)
       )
     )
+    // Multi-oportunidad: el contacto puede tener varias. Las rutas 1:1 (UI,
+    // bot, agenda) operan sobre la principal y, de igual, la más activa.
+    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
     .limit(1);
   return rows[0] ?? null;
 }

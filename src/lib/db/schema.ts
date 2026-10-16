@@ -290,7 +290,10 @@ export const lead = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("lead_contact_uq").on(t.contactId),
+    // Un contacto puede tener varias oportunidades (multi-oportunidad): el
+    // lead "de siempre" es el que está marcado como principal, no un índice
+    // que impedía abrir la segunda. Ver `lead.isPrimary`.
+    index("lead_contact_idx").on(t.contactId),
     index("lead_org_stage_idx").on(t.organizationId, t.stageId, t.position),
   ]
 );
@@ -2064,6 +2067,11 @@ export const attributionEvent = pgTable(
       t.touchType,
       t.occurredAt
     ),
+    // Un solo primer toque por contacto: hace de idempotencia para el
+    // productor (dos webhooks simultáneos no anotan dos "first").
+    uniqueIndex("attribution_event_first_uq")
+      .on(t.organizationId, t.contactId)
+      .where(sql`touch_type = 'first'`),
   ]
 );
 

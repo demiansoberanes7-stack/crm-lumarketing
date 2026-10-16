@@ -572,6 +572,7 @@ async function moveLeadToStage(
         eq(schema.lead.contactId, contactId)
       )
     )
+    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
     .limit(1);
   const leadId = rows[0]?.id;
   if (!leadId) return;

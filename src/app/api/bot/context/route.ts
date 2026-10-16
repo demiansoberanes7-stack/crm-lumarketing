@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { apiError } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
@@ -124,6 +124,7 @@ export async function GET(req: Request) {
         eq(schema.lead.contactId, contact.id)
       )
     )
+    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
     .limit(1);
 
   return Response.json({
