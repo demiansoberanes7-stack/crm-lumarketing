@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
-import { listQuotes, createQuote } from "@/server/quotes/service";
+import { listQuotes, createQuote, listQuotesForProjectLink } from "@/server/quotes/service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,13 @@ export const GET = withAuth(async (session, req: Request) => {
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50") || 50, 100);
   const offset = parseInt(url.searchParams.get("offset") ?? "0") || 0;
   const archived = url.searchParams.get("archived") === "1";
+
+  // Desplegable de "Nuevo proyecto": no archivadas y sin proyecto vinculado,
+  // con el nombre del contacto para armar el identificador de la cotización.
+  if (url.searchParams.get("forProject") === "1") {
+    const quotes = await listQuotesForProjectLink(session.organizationId, limit);
+    return Response.json({ quotes });
+  }
 
   const quotes = await listQuotes(session.organizationId, { status, limit, offset, archived });
   return Response.json({ quotes });

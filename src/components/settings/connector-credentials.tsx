@@ -46,7 +46,7 @@ const FIELDS: Record<ExternalConnector, Field[]> = {
       name: "refreshToken",
       label: "Refresh token",
       secret: true,
-      help: "Se obtiene una sola vez autorizando tu propia app.",
+      help: "Lo entrega el botón «Autorizar con Google»; puedes pegarlo a mano solo si ya lo tienes.",
     },
     {
       name: "calendarId",
@@ -70,10 +70,24 @@ const HELP: Record<ExternalConnector, { title: string; items: string[] }> = {
   google: {
     title: "Crea un proyecto en Google Cloud con la API de Calendar activada",
     items: [
-      "Necesitas Client ID, Client Secret y un refresh token con el permiso de eventos de calendario (calendar.events).",
+      "Necesitas Client ID y Client Secret; el refresh token lo obtiene el propio CRM al autorizar, sin copiar ni pegar nada.",
+      "Registra la URI de redirección de abajo como «URI de redirección autorizada» en la pantalla de credenciales OAuth.",
       "IMPORTANTE: publica tu app OAuth «en producción». Si la dejas en modo prueba, Google revoca el permiso a los 7 días y las citas dejarán de crear su enlace sin previo aviso.",
     ],
   },
+};
+
+/** Motivos de vuelta del callback → lo que le hace falta entender al dueño. */
+const OAUTH_ERRORS: Record<string, string> = {
+  state_invalid:
+    "El enlace de conexión caducó o ya se usó. Vuelve a iniciar la conexión.",
+  missing_code: "Google no devolvió el código de autorización.",
+  exchange_failed: "No se pudo canjear el código por una credencial.",
+  access_denied: "Cancelaste la autorización en Google.",
+  invalid_client: "El Client ID o el Client Secret no son válidos.",
+  invalid_grant: "El código caducó o la app sigue en modo prueba; repite la conexión.",
+  redirect_uri_mismatch:
+    "La URI de redirección no coincide con la registrada en Google Cloud.",
 };
 
 type Connection = {
@@ -95,6 +109,7 @@ export function ConnectorCredentials({
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [syncTasks, setSyncTasks] = useState(false);
+  const [redirectUri, setRedirectUri] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     kind: "ok" | "error";
     text: string;
@@ -111,12 +126,68 @@ export function ConnectorCredentials({
       const data = (await res.json()) as {
         connection: Connection | null;
         syncTasks?: boolean;
+        redirectUri?: string;
       };
       setConnection(data.connection);
       setSyncTasks(Boolean(data.syncTasks));
+      setRedirectUri(data.redirectUri ?? null);
       if (data.connection) setValues({ ...data.connection.fields });
     })();
   }, [connector]);
+
+  /**
+   * Resultado del vuelco OAuth (Google redirige aquí). Se lee del historial y
+   * no con `useSearchParams` para no exigir un <Suspense> en toda la página.
+   */
+  useEffect(() => {
+    if (connector !== "google") return;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const error = params.get("error");
+    if (connected) {
+      setMessage({ kind: "ok", text: "Google conectado" });
+    } else if (error) {
+      setMessage({ kind: "error", text: OAUTH_ERRORS[error] ?? error });
+    }
+    if (connected || error) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [connector]);
+
+  /** Abre el consentimiento de Google; vuelve aquí con el refresh token. */
+  async function connectWithGoogle() {
+    if (!values.clientId?.trim() || !values.clientSecret?.trim()) {
+      setMessage({
+        kind: "error",
+        text: "Escribe primero el Client ID y el Client Secret de tu proyecto de Google Cloud.",
+      });
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    const res = await fetch(`/api/settings/${connector}/oauth/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId: values.clientId,
+        clientSecret: values.clientSecret,
+        calendarId: values.calendarId,
+      }),
+    }).catch(() => null);
+    if (!res?.ok) {
+      setBusy(false);
+      const data = (await res?.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setMessage({
+        kind: "error",
+        text: data?.error?.message ?? "No se pudo abrir la autorización de Google.",
+      });
+      return;
+    }
+    const data = (await res.json()) as { url: string };
+    window.location.assign(data.url);
+  }
 
   async function submit(mode: "test" | "save") {
     setBusy(true);
@@ -209,6 +280,16 @@ export function ConnectorCredentials({
           ))}
         </ul>
 
+        {connector === "google" && redirectUri && (
+          <div className="space-y-1.5">
+            <Label htmlFor={`${connector}-redirectUri`}>URI de redirección</Label>
+            <Input id={`${connector}-redirectUri`} readOnly value={redirectUri} />
+            <p className="text-xs text-text-3">
+              Pégala en Google Cloud → Credenciales OAuth → URIs de redirección autorizadas.
+            </p>
+          </div>
+        )}
+
         {connection?.status === "error" && (
           <p className="rounded-sm border border-danger-soft bg-danger-tint px-3 py-2 text-sm text-danger-text">
             {meta.label} rechazó las últimas credenciales. Las citas se siguen
@@ -260,6 +341,15 @@ export function ConnectorCredentials({
         )}
 
         <div className="flex flex-wrap items-center gap-3">
+          {connector === "google" && (
+            <Button
+              variant="outline"
+              onClick={() => void connectWithGoogle()}
+              disabled={busy}
+            >
+              Autorizar con Google
+            </Button>
+          )}
           <Button variant="outline" onClick={() => submit("test")} disabled={busy}>
             Probar
           </Button>

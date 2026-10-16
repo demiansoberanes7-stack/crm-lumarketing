@@ -24,6 +24,9 @@ const postSchema = z.object({
   contactId: z.string().nullable().optional(),
   service: z.string().max(100).nullable().optional(),
   projectType: z.enum(PROJECT_TYPE_KEYS).optional(),
+  // Cotización que originó el proyecto: queda vinculada en project_quote
+  // (una cotización solo puede tener un proyecto).
+  quoteId: z.string().trim().min(1).max(255).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-DD").nullable().optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa el formato AAAA-MM-DD").nullable().optional(),
   estado: z.enum(["activo", "reunion", "cerrado"]).optional(),
@@ -42,6 +45,7 @@ export const POST = withAuth(async (session, req: Request) => {
   const id = await createProject(session.organizationId, {
     name: body.data.name,
     contactId: body.data.contactId ?? undefined,
+    quoteId: body.data.quoteId,
     service: body.data.service ?? undefined,
     projectType: body.data.projectType,
     startDate: body.data.startDate ? new Date(`${body.data.startDate}T00:00:00.000Z`) : null,

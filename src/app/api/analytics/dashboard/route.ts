@@ -7,20 +7,8 @@ export const dynamic = "force-dynamic";
 
 type Source = "google" | "meta" | "ga4";
 type ConnectionStatus = "disconnected" | "configured" | "connected" | "error";
-type DashboardMetric = {
-  source: Source;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  currency: string;
-};
-type DashboardCampaign = DashboardMetric & { id: string; name: string };
-type ChartPoint = { name: string; meta: number };
 type SourceConnection = { status: ConnectionStatus; message?: string };
 type DashboardData = {
-  metrics: DashboardMetric[];
-  campaigns: DashboardCampaign[];
-  chartData: ChartPoint[];
   connections: Record<Source, SourceConnection>;
   ga4: Ga4Metrics | null;
 };
@@ -58,9 +46,6 @@ export const GET = withAuth(async (session, req: Request) => {
     },
     ga4: ga4Connection,
   };
-  const metrics: DashboardMetric[] = [];
-  const campaigns: DashboardCampaign[] = [];
-  const chartData: ChartPoint[] = [];
   let ga4Metrics: Ga4Metrics | null = null;
 
   // GA4 sí tiene lectura real: la Data API corre del lado del servidor y su
@@ -82,5 +67,5 @@ export const GET = withAuth(async (session, req: Request) => {
   // Meta Ads: las métricas de campaña viven en el Campaign Explorer (datos
   // persistidos por el poller cada 15 min), no aquí. Este endpoint solo
   // reporta el estado de la conexión para no duplicar llamadas a Graph.
-  return NextResponse.json({ metrics, campaigns, chartData, connections, ga4: ga4Metrics } satisfies DashboardData);
+  return NextResponse.json({ connections, ga4: ga4Metrics } satisfies DashboardData);
 });

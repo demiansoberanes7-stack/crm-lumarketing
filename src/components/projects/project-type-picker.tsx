@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Layers, Hammer, MonitorSmartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,16 @@ const TYPE_ICONS: Record<string, typeof Layers> = {
   web_service: MonitorSmartphone,
 };
 
+type QuoteOption = { id: string; label: string };
+
 /**
  * Selector de tipo de proyecto: punto de entrada de "Nuevo Proyecto".
  * Crea el proyecto en borrador y abre el stepper (wizard).
+ *
+ * El nombre del proyecto es un DESPLEGABLE de cotizaciones sin proyecto
+ * vinculado: al elegir una, el nombre pasa a ser "COT-0042 — Contacto" y el
+ * proyecto queda relacionado con esa cotización (project_quote). La opción
+ * manual ("sin cotización") conserva el campo de texto libre.
  */
 export function ProjectTypePicker({
   onClose,
@@ -28,18 +35,54 @@ export function ProjectTypePicker({
 }) {
   const [selected, setSelected] = useState<ProjectTypeDef | null>(null);
   const [name, setName] = useState("");
+  const [quoteId, setQuoteId] = useState("");
+  const [quotes, setQuotes] = useState<QuoteOption[]>([]);
+  const [quotesLoaded, setQuotesLoaded] = useState(false);
+  const [quotesFailed, setQuotesFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/quotes?forProject=1&limit=100", { cache: "no-store" });
+        const data = await res.json().catch(() => null) as {
+          quotes?: Array<{ id: string; quoteNumber: string; contactName: string | null }>;
+        } | null;
+        if (cancelled) return;
+        if (!res.ok || !Array.isArray(data?.quotes)) throw new Error("sin cotizaciones");
+        setQuotes(data.quotes.map((q) => ({
+          id: q.id,
+          label: `${q.quoteNumber} — ${q.contactName?.trim() || "Sin contacto"}`,
+        })));
+        setQuotesLoaded(true);
+      } catch {
+        if (!cancelled) {
+          setQuotesFailed(true);
+          setQuotesLoaded(true);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const selectedQuote = quotes.find((q) => q.id === quoteId) ?? null;
+  const finalName = selectedQuote ? selectedQuote.label : name.trim();
+
   async function crear() {
-    if (!selected || !name.trim()) return;
+    if (!selected || !finalName) return;
     setSaving(true);
     setError(null);
     try {
       const res = await taskRequest<{ projectId: string }>("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), projectType: selected.key }),
+        body: JSON.stringify({
+          name: finalName,
+          projectType: selected.key,
+          quoteId: selectedQuote?.id || undefined,
+        }),
       });
       onCreated(res.projectId);
     } catch (e) {
@@ -92,13 +135,44 @@ export function ProjectTypePicker({
         </div>
 
         <div className="mt-4 space-y-1.5">
-          <Label htmlFor="np-name">Nombre del proyecto</Label>
-          <Input
-            id="np-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Campaña de lanzamiento 2026"
-          />
+          <Label htmlFor="np-quote">Nombre del proyecto</Label>
+          <select
+            id="np-quote"
+            value={quoteId}
+            onChange={(e) => setQuoteId(e.target.value)}
+            className="w-full rounded border bg-background p-2 text-sm"
+          >
+            <option value="">Sin cotización (escribir nombre)</option>
+            {quotes.map((q) => (
+              <option key={q.id} value={q.id}>{q.label}</option>
+            ))}
+          </select>
+          {selectedQuote ? (
+            <p className="text-xs text-muted-foreground">
+              El proyecto llevará el nombre{" "}
+              <span className="font-medium text-foreground">{selectedQuote.label}</span>{" "}
+              y quedará vinculado a esta cotización.
+            </p>
+          ) : (
+            <>
+              <Input
+                id="np-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Campaña de lanzamiento 2026"
+              />
+              {quotesFailed && (
+                <p className="text-xs text-danger-text">
+                  No se pudieron cargar las cotizaciones; puedes crear el proyecto sin vincular.
+                </p>
+              )}
+              {quotesLoaded && !quotesFailed && quotes.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No hay cotizaciones disponibles para vincular.
+                </p>
+              )}
+            </>
+          )}
         </div>
 
         {error && (
@@ -111,7 +185,7 @@ export function ProjectTypePicker({
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancelar
           </Button>
-          <Button disabled={!selected || !name.trim() || saving} onClick={() => void crear()}>
+          <Button disabled={!selected || !finalName || saving} onClick={() => void crear()}>
             {saving ? "Creando…" : "Crear y continuar"}
             <ArrowRight className="ml-1.5 h-4 w-4" />
           </Button>

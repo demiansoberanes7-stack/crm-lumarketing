@@ -4,6 +4,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
+import { getCatalogProduct, updateCatalogProduct } from "@/server/catalog/service";
 
 export const dynamic = "force-dynamic";
 
@@ -12,21 +13,9 @@ type _Params = { params: Promise<{ id: string }> };
 /** GET — obtener producto */
 export const GET = withAuth(async (session, _req, { params }) => {
   const { id } = await params;
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(schema.catalogProduct)
-    .where(
-      scoped(
-        schema.catalogProduct.organizationId,
-        session.organizationId,
-        eq(schema.catalogProduct.id, id)
-      )
-    )
-    .limit(1);
-
-  if (!rows[0]) return apiError(404, "not_found", "Producto no encontrado");
-  return Response.json({ product: rows[0] });
+  const product = await getCatalogProduct(session.organizationId, id);
+  if (!product) return apiError(404, "not_found", "Producto no encontrado");
+  return Response.json({ product });
 });
 
 const patchSchema = z.object({
@@ -43,20 +32,13 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
   const body = await parseBody(req, patchSchema);
   if (!body.ok) return body.response;
 
-  const db = getDb();
-  const updated = await db
-    .update(schema.catalogProduct)
-    .set({ ...body.data, updatedAt: new Date() })
-    .where(
-      scoped(
-        schema.catalogProduct.organizationId,
-        session.organizationId,
-        eq(schema.catalogProduct.id, id)
-      )
-    )
-    .returning({ id: schema.catalogProduct.id });
-
-  if (!updated.length) return apiError(404, "not_found", "Producto no encontrado");
+  // Misma fuente que el MCP (actions/catalog): una sola implementación.
+  const result = await updateCatalogProduct({
+    organizationId: session.organizationId,
+    productId: id,
+    ...body.data,
+  });
+  if (!result.ok) return apiError(404, result.code, result.message);
 
   return Response.json({ ok: true });
 });

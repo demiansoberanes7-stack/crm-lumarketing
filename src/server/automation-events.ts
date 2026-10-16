@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { decryptSecret } from "@/lib/crypto";
@@ -85,6 +85,7 @@ async function leadOf(
         eq(schema.lead.contactId, contactId)
       )
     )
+    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
     .limit(1);
   return row ?? null;
 }

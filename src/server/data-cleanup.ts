@@ -31,4 +31,8 @@ export const TABLE_MAP: Record<string, TableEntry> = {
   agentTestRuns: { table: schema.agentTestRun, orgColumn: schema.agentTestRun.organizationId, dateColumn: schema.agentTestRun.startedAt },
   agentTestCases: { table: schema.agentTestCase, orgColumn: schema.agentTestCase.organizationId, dateColumn: schema.agentTestCase.createdAt },
   emailMessages: { table: schema.emailMessage, orgColumn: schema.emailMessage.organizationId, dateColumn: schema.emailMessage.createdAt },
+  // MCP: al purgar una organización no deben quedar credenciales ni bitácora.
+  mcpActionAudit: { table: schema.mcpActionAudit, orgColumn: schema.mcpActionAudit.organizationId, dateColumn: schema.mcpActionAudit.createdAt },
+  mcpAuthorizationCodes: { table: schema.mcpAuthorizationCode, orgColumn: schema.mcpAuthorizationCode.organizationId, dateColumn: schema.mcpAuthorizationCode.createdAt },
+  mcpAccessTokens: { table: schema.mcpAccessToken, orgColumn: schema.mcpAccessToken.organizationId, dateColumn: schema.mcpAccessToken.createdAt },
 };

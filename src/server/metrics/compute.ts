@@ -232,3 +232,33 @@ export const formatCurrency = (cents: number): string =>
 export const formatPercent = (n: number): string => `${n.toFixed(1)}%`;
 
 export const formatRatio = (n: number): string => `${n.toFixed(2)}x`;
+
+/** Ingreso menos costo. Devuelve null si no hay datos. */
+export function grossMargin(
+  revenueCents: number | null | undefined,
+  costCents: number | null | undefined
+): number | null {
+  if (revenueCents == null || costCents == null) return null;
+  return revenueCents - costCents;
+}
+
+/** Margen bruto en porcentaje. null si ingresos ≤ 0. */
+export function grossMarginPercent(
+  revenueCents: number | null | undefined,
+  costCents: number | null | undefined
+): number | null {
+  if (revenueCents == null || costCents == null) return null;
+  if (revenueCents <= 0) return null;
+  return safePercent(revenueCents - costCents, revenueCents);
+}
+
+/** Varianza de presupuesto de campaña: planeado vs real (en céntimos y %). */
+export function campaignBudgetVariance(
+  plannedCents: number | null | undefined,
+  actualCents: number | null | undefined
+): { diffCents: number | null; percent: number | null } {
+  if (plannedCents == null || actualCents == null) return { diffCents: null, percent: null };
+  const diff = plannedCents - actualCents;
+  const percent = safeDivide(diff, plannedCents)?.toFixed(2) ? Number(safeDivide(diff, plannedCents) ?? "0") : null;
+  return { diffCents: diff, percent };
+}

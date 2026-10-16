@@ -59,6 +59,11 @@ const isoDate = (date: Date): string => date.toISOString().slice(0, 10);
  * del CRM (etapas, cotizaciones, pagos, gastos) y desde las tablas nuevas
  * (campañas, atribución, experimentos, costos). Cada métrica lleva su
  * disponibilidad: si falta la fuente, se marca "no disponible" — jamás un 0.
+ *
+ * Los filtros `channelId`/`campaignId`/`service` se aplican a los bloques con
+ * vínculo real en el modelo (embudo y cotizaciones/pagos por contacto→canal,
+ * atribución y gasto real por campaña, costo de prestación por servicio);
+ * el resto de bloques queda a nivel organización por no existir la relación.
  */
 export async function queryCommercial(
   orgId: string,
@@ -68,6 +73,56 @@ export async function queryCommercial(
   const { from, to, label } = dashboardRange(filters.period);
 
   const orgScope = (organizationColumn: PgColumn) => scoped(organizationColumn, orgId);
+
+  // ── Filtros del contrato (canal / campaña / servicio) ──
+  // Cada uno aplica a los bloques donde el modelo de datos tiene el vínculo
+  // real; los bloques sin vínculo (gastos, mensajería, calidad de datos, ML,
+  // experimentos) quedan a nivel organización — filtrarlos sería inventar una
+  // relación que no existe.
+  const channelIdFilter =
+    typeof filters.channelId === "string" && filters.channelId.trim() !== ""
+      ? filters.channelId.trim()
+      : null;
+  const campaignIdFilter =
+    typeof filters.campaignId === "string" && filters.campaignId.trim() !== ""
+      ? filters.campaignId.trim()
+      : null;
+  const serviceFilter =
+    typeof filters.service === "string" && filters.service.trim() !== ""
+      ? filters.service.trim()
+      : null;
+
+  /** Contactos del canal filtrado: subconsulta reutilizable por bloque. */
+  const channelContacts = (channelId: string) =>
+    db
+      .select({ id: schema.contact.id })
+      .from(schema.contact)
+      .where(
+        and(
+          orgScope(schema.contact.organizationId),
+          eq(schema.contact.acquisitionChannelId, channelId)
+        )
+      );
+  /** Condición "pertenece al canal filtrado" sobre una columna de contacto. */
+  const byChannel = (contactColumn: PgColumn) =>
+    channelIdFilter ? inArray(contactColumn, channelContacts(channelIdFilter)) : undefined;
+
+  // El gasto real vive en campaign_insight (por external_id); si la campaña
+  // filtrada no tiene external_id, el gasto del periodo es cero para ella.
+  let campaignExternalId: string | null = null;
+  if (campaignIdFilter) {
+    const [campaignRow] = await db
+      .select({ externalId: schema.campaign.externalId })
+      .from(schema.campaign)
+      .where(scoped(schema.campaign.organizationId, orgId, eq(schema.campaign.id, campaignIdFilter)))
+      .limit(1);
+    campaignExternalId = campaignRow?.externalId ?? null;
+  }
+  const insightCampaignCondition = campaignIdFilter
+    ? campaignExternalId
+      ? eq(schema.campaignInsight.campaignExternalId, campaignExternalId)
+      : sql`false`
+    : undefined;
 
   // ── Ventas / embudo desde la bitácora de etapas ──
   const [
@@ -90,6 +145,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.leadStageEvent.organizationId),
+            byChannel(schema.leadStageEvent.contactId),
             isNull(schema.leadStageEvent.fromStageId),
             gte(schema.leadStageEvent.occurredAt, from),
             lte(schema.leadStageEvent.occurredAt, to)
@@ -103,6 +159,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.leadStageEvent.organizationId),
+            byChannel(schema.leadStageEvent.contactId),
             eq(schema.leadStageEvent.toStageKind, "qualified"),
             gte(schema.leadStageEvent.occurredAt, from),
             lte(schema.leadStageEvent.occurredAt, to)
@@ -114,6 +171,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.leadStageEvent.organizationId),
+            byChannel(schema.leadStageEvent.contactId),
             eq(schema.leadStageEvent.toStageKind, "won"),
             gte(schema.leadStageEvent.occurredAt, from),
             lte(schema.leadStageEvent.occurredAt, to)
@@ -125,6 +183,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.leadStageEvent.organizationId),
+            byChannel(schema.leadStageEvent.contactId),
             eq(schema.leadStageEvent.toStageKind, "lost"),
             gte(schema.leadStageEvent.occurredAt, from),
             lte(schema.leadStageEvent.occurredAt, to)
@@ -136,6 +195,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.quote.organizationId),
+            byChannel(schema.quote.contactId),
             inArray(schema.quote.status, ["sent", "accepted", "rejected", "expired"]),
             gte(schema.quote.createdAt, from),
             lte(schema.quote.createdAt, to)
@@ -147,6 +207,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.quote.organizationId),
+            byChannel(schema.quote.contactId),
             eq(schema.quote.status, "accepted"),
             gte(schema.quote.createdAt, from),
             lte(schema.quote.createdAt, to)
@@ -155,7 +216,7 @@ export async function queryCommercial(
       db
         .select({ total: sql<number>`coalesce(sum(${schema.payment.monto}), 0)`, cnt: count() })
         .from(schema.payment)
-        .where(and(orgScope(schema.payment.organizationId), gte(schema.payment.fecha, from), lte(schema.payment.fecha, to))),
+        .where(and(orgScope(schema.payment.organizationId), byChannel(schema.payment.contactId), gte(schema.payment.fecha, from), lte(schema.payment.fecha, to))),
       db
         .select({ total: sql<number>`coalesce(sum(${schema.expense.monto}), 0)` })
         .from(schema.expense)
@@ -170,6 +231,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.campaignInsight.organizationId),
+            insightCampaignCondition,
             gte(schema.campaignInsight.dateStart, isoDate(from)),
             lte(schema.campaignInsight.dateStart, isoDate(to))
           )
@@ -181,6 +243,7 @@ export async function queryCommercial(
         .where(
           and(
             orgScope(schema.payment.organizationId),
+            byChannel(schema.payment.contactId),
             isNotNull(schema.payment.contactId),
             gte(schema.payment.fecha, from),
             lte(schema.payment.fecha, to)
@@ -210,7 +273,7 @@ export async function queryCommercial(
       campaigns: count(),
     })
     .from(schema.campaign)
-    .where(and(orgScope(schema.campaign.organizationId), gte(schema.campaign.createdAt, from), lte(schema.campaign.createdAt, to)));
+    .where(and(orgScope(schema.campaign.organizationId), campaignIdFilter ? eq(schema.campaign.id, campaignIdFilter) : undefined, gte(schema.campaign.createdAt, from), lte(schema.campaign.createdAt, to)));
   const plannedBudget = n(campaignRows[0]?.plannedBudget);
   const hasCampaigns = n(campaignRows[0]?.campaigns) > 0;
 
@@ -226,6 +289,8 @@ export async function queryCommercial(
     .where(
       and(
         orgScope(schema.attributionEvent.organizationId),
+        channelIdFilter ? eq(schema.attributionEvent.channelId, channelIdFilter) : undefined,
+        campaignIdFilter ? eq(schema.attributionEvent.campaignId, campaignIdFilter) : undefined,
         eq(schema.attributionEvent.touchType, "first"),
         gte(schema.attributionEvent.occurredAt, from),
         lte(schema.attributionEvent.occurredAt, to)
@@ -239,7 +304,12 @@ export async function queryCommercial(
   const costRows = await db
     .select({ cost: schema.serviceCost.costCents, service: schema.serviceCost.service })
     .from(schema.serviceCost)
-    .where(orgScope(schema.serviceCost.organizationId));
+    .where(
+      and(
+        orgScope(schema.serviceCost.organizationId),
+        serviceFilter ? eq(schema.serviceCost.service, serviceFilter) : undefined
+      )
+    );
   const hasCosts = costRows.length > 0;
   const totalDeliveryCost = costRows.reduce((sum, r) => sum + n(r.cost), 0);
   // Contribución de prestación: se informa antes de publicidad porque aún no
@@ -326,6 +396,7 @@ export async function queryCommercial(
     .where(
       and(
         orgScope(schema.leadStageEvent.organizationId),
+        byChannel(schema.leadStageEvent.contactId),
         eq(schema.leadStageEvent.toStageKind, "lost"),
         gte(schema.leadStageEvent.occurredAt, from),
         lte(schema.leadStageEvent.occurredAt, to)

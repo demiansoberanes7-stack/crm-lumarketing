@@ -21,7 +21,7 @@ export type ProjectRiesgo = "bajo" | "medio" | "alto";
 
 /** Generar código secuencial de proyecto (usa advisory lock para evitar race condition) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function nextProjectCode(db: any, organizationId: string): Promise<string> {
+export async function nextProjectCode(db: any, organizationId: string): Promise<string> {
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':projects'}))`);
   const last = await db
     .select({ code: schema.project.code })
@@ -45,6 +45,7 @@ export async function createProject(
   input: {
     name: string;
     contactId?: string;
+    quoteId?: string;
     service?: string;
     projectType?: string;
     startDate?: Date | null;
@@ -66,6 +67,19 @@ export async function createProject(
       .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId))).limit(1);
     if (!contact) throw new ProjectError(422, "El contacto no pertenece a tu organización");
   }
+  // Cotización elegida en el desplegable: debe existir, ser de esta org y no
+  // estar archivada. Su contacto se hereda si no se envió contactId.
+  let quoteContactId: string | null = null;
+  if (input.quoteId) {
+    const [quoteRow] = await getDb()
+      .select({ contactId: schema.quote.contactId, archivedAt: schema.quote.archivedAt })
+      .from(schema.quote)
+      .where(scoped(schema.quote.organizationId, organizationId, eq(schema.quote.id, input.quoteId)))
+      .limit(1);
+    if (!quoteRow) throw new ProjectError(422, "La cotización no pertenece a tu organización");
+    if (quoteRow.archivedAt) throw new ProjectError(422, "La cotización está archivada");
+    quoteContactId = quoteRow.contactId;
+  }
   const stages = await getProjectStages(organizationId);
   const stepDefs = stepsForType(projectType);
   const created = await getDb().transaction(async (db) => {
@@ -77,7 +91,7 @@ export async function createProject(
     organizationId,
     code,
     name: input.name,
-    contactId: input.contactId ?? null,
+    contactId: input.contactId ?? quoteContactId ?? null,
     service: input.service ?? null,
     projectType,
     status: "borrador",
@@ -91,6 +105,25 @@ export async function createProject(
     notas: input.notas ?? null,
     assignedUserId: input.assignedUserId ?? null,
   });
+
+  // Vínculo cotización → proyecto (índice único por org: una cotización, un
+  // proyecto). Si otra transacción lo ganó, onConflictDoNothing devuelve []
+  // y se revierte todo con un 409 claro.
+  if (input.quoteId) {
+    const linked = await db
+      .insert(schema.projectQuote)
+      .values({
+        id: newId("projectQuote"),
+        organizationId,
+        projectId: id,
+        quoteId: input.quoteId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.projectQuote.id });
+    if (linked.length === 0) {
+      throw new ProjectError(409, "La cotización ya tiene un proyecto vinculado");
+    }
+  }
 
   // Sembrar el stepper del expediente (borrador con todos los pasos pendientes).
   await db.insert(schema.projectStep).values(stepDefs.map((def, position) => ({
@@ -109,7 +142,7 @@ export async function createProject(
   publishWebhook(organizationId, "project.created", {
     projectId: created.id,
     name: input.name,
-    contactId: input.contactId ?? null,
+    contactId: input.contactId ?? quoteContactId ?? null,
     projectType,
   });
 

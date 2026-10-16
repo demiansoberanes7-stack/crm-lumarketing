@@ -21,6 +21,7 @@ import {
 import { applyStatusUpdate } from "@/server/inbox/status";
 import { atribucionEnabled } from "@/server/attribution/flag";
 import { recordAttribution } from "@/server/attribution/store";
+import { recordReferralTouch } from "@/server/attribution/touch";
 import { onLeadActivity } from "@/server/inbox/lead-activity";
 import { maybeRunAgentTurn } from "@/server/ai/trigger";
 import type { MessageDto, MessageMediaDto } from "@/lib/types";
@@ -463,6 +464,15 @@ export async function ingestInboundMessage(input: {
       contactId: contact.id,
       conversationId: conversation.id,
       referral: input.referral,
+    });
+    // Y el ÚLTIMO toque en `attribution_event` (UTMs de la URL del anuncio,
+    // clic, campaña). El primero ya se anotó al nacer la oportunidad.
+    await recordReferralTouch({
+      organizationId,
+      contactId: contact.id,
+      conversationId: conversation.id,
+      referral: input.referral,
+      occurredAt: toDate(input.timestamp),
     });
   }
 

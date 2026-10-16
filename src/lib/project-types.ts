@@ -659,6 +659,55 @@ export function findStep(typeKey: string, stepKey: string): ProjectStepDef | und
   return stepsForType(typeKey).find((s) => s.key === stepKey);
 }
 
+/* ─── Plantillas de tareas iniciales por tipo de proyecto ───────────────────
+ *
+ * Igual que los pasos, viven aquí (fuente única declarativa): al convertir una
+ * cotización aceptada en proyecto se siembran estas tareas sin tocar
+ * componentes, endpoints ni base de datos. Para ampliar un tipo por servicio,
+ * basta con añadir o editar su entrada.
+ */
+
+export interface ProjectTaskTemplate {
+  title: string;
+  description?: string;
+}
+
+export const PROJECT_TASK_TEMPLATES: Record<string, ProjectTaskTemplate[]> = {
+  web_service: [
+    { title: "Levantamiento de requerimientos" },
+    { title: "Diseño", description: "Propuesta visual para aprobación del cliente." },
+    { title: "Aprobación del cliente" },
+    { title: "Desarrollo" },
+    { title: "Pruebas" },
+    { title: "Correcciones" },
+    { title: "Publicación" },
+    { title: "Entrega y capacitación" },
+    { title: "Cierre del proyecto" },
+  ],
+  maintenance: [
+    { title: "Recepción del equipo" },
+    { title: "Diagnóstico" },
+    { title: "Autorización del trabajo" },
+    { title: "Ejecución" },
+    { title: "Pruebas" },
+    { title: "Entrega" },
+    { title: "Confirmación del cliente" },
+  ],
+  marketing: [
+    { title: "Levantamiento de objetivos" },
+    { title: "Definición de buyer person" },
+    { title: "Plan de contenidos" },
+    { title: "Ejecución de campaña" },
+    { title: "Medición de resultados" },
+    { title: "Reporte y cierre" },
+  ],
+};
+
+/** Tareas iniciales del tipo dado; arreglo vacío si el tipo no tiene plantilla. */
+export function taskTemplatesForType(typeKey: string): ProjectTaskTemplate[] {
+  return PROJECT_TASK_TEMPLATES[typeKey] ?? [];
+}
+
 /* ─── Validación derivada de los campos ─── */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

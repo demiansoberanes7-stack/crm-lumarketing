@@ -9,6 +9,7 @@ import {
   secretLast4,
   setGoogleTasksSync,
 } from "@/server/agenda/connectors/google-credentials";
+import { googleOAuthRedirectUri } from "@/server/agenda/google-oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,12 @@ export const dynamic = "force-dynamic";
 export const GET = withOwner(async (session) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
   const creds = await getGoogleCredentials(session.organizationId);
-  if (!creds) return Response.json({ connection: null, syncTasks: false });
+  if (!creds)
+    return Response.json({
+      connection: null,
+      syncTasks: false,
+      redirectUri: googleOAuthRedirectUri(),
+    });
   return Response.json({
     connection: {
       status: creds.status,
@@ -25,6 +31,7 @@ export const GET = withOwner(async (session) => {
       fields: { clientId: creds.clientId, calendarId: creds.calendarId },
     },
     syncTasks: creds.syncTasks,
+    redirectUri: googleOAuthRedirectUri(),
   });
 });
 

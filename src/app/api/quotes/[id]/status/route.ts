@@ -15,7 +15,9 @@ export const POST = withAuth(async (session, req: Request, { params }) => {
   if (!body.ok) return body.response;
 
   try {
-    await changeQuoteStatus(session.organizationId, id, body.data.status);
+    await changeQuoteStatus(session.organizationId, id, body.data.status, {
+      actorUserId: session.userId,
+    });
     return Response.json({ ok: true });
   } catch (err) {
     return apiError(400, "status_change_failed", String(err));

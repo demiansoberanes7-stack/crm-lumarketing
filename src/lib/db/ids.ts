@@ -96,6 +96,12 @@ const prefixes = {
   mcpCode: "mcpc",
   mcpToken: "mcpt",
   mcpClient: "mcpcl",
+  mcpAudit: "mcpa",
+  // Ciclo comercial: vínculo cotización ↔ proyecto y orden de servicio
+  projectQuote: "pq",
+  serviceOrder: "os",
+  serviceOrderEvent: "ose",
+  googleOauthState: "gos",
 } as const;
 
 export type IdKind = keyof typeof prefixes;
