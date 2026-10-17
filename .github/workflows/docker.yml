@@ -20,6 +20,10 @@ concurrency:
 env:
   DOCKER_IMAGE: ghostbreakfast69/lumark-crm
 
+# El build solo necesita leer el repositorio; nada aquí escribe de vuelta en GitHub.
+permissions:
+  contents: read
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -28,6 +32,23 @@ jobs:
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
+
+      # Node declarado en vez de confiar en el que trae la imagen del runner:
+      # si el gate dependiera de un binario que un día cambia, el fallo sería
+      # «no se puede desplegar» sin que nada esté roto en el repo.
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # El fallo de verdad de este pipeline no es que el build rompa: es que
+      # rompa DOS MINUTOS DESPUÉS dentro del contenedor. `CMD = node migrate.mjs
+      # && node server.js`, así que una entrada del journal sin su `.sql`
+      # commiteado sube una imagen que no arranca y deja el sitio en crash loop
+      # — con `latest` apuntando a algo inservible. `next build` no abre
+      # `_journal.json`, nunca lo va a ver. Aquí sí. Sin node_modules: node + fs.
+      - name: db:guard (migraciones coherentes antes de publicar)
+        run: node scripts/check-migrations.mjs
 
       - name: Configurar Docker Buildx
         uses: docker/setup-buildx-action@v3
