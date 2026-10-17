@@ -71,6 +71,14 @@ jobs:
       - name: install
         run: pnpm install --frozen-lockfile
 
+      # Va antes que los cuatro gates y no necesita dependencias: solo node + fs.
+      # `Dockerfile` arranca con `node migrate.mjs && node server.js`, así que un
+      # `entry.tag` del journal sin su `.sql` commiteado no falla en `next build`:
+      # falla en el arranque del contenedor de producción, en crash loop, con el
+      # sitio caído. Esto es lo único que lo ve antes del push.
+      - name: db:guard
+        run: pnpm db:guard
+
       # Los cuatro corren AUNQUE uno falle. Es a propósito: si se detuviera en
       # el primero, arreglar tres cosas costaría tres vueltas de ida y vuelta a
       # alguien que no puede reproducirlas en su máquina. Una corrida, la lista
