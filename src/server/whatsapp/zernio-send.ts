@@ -29,7 +29,7 @@ export async function sendWhatsappZernio(creds: WhatsappZernioCredentials, threa
       accountId: creds.accountId,
       attachmentUrl: uploaded.url,
       attachmentType,
-      ...(attachmentType === "file" ? { attachmentName: uploaded.filename } : {}),
+      ...(attachmentType === "file" ? { attachmentName: file.fileName ?? uploaded.filename } : {}),
     },
     headers: { "Idempotency-Key": idempotencyKey },
   }));

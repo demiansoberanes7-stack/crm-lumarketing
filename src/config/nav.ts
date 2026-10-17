@@ -12,6 +12,8 @@ import {
   Send,
   Settings,
   Sparkles,
+  Target,
+  TrendingUp,
   Truck,
   Users,
   type LucideIcon,
@@ -44,6 +46,8 @@ export const NAV: NavItem[] = [
   { href: "/todo", label: "Pendientes", icon: ListTodo },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
   { href: "/inteligencia", label: "Inteligencia", icon: BarChart3 },
+  { href: "/rentabilidad", label: "Rentabilidad", icon: TrendingUp },
+  { href: "/estrategias", label: "Estrategias", icon: Target },
 ];
 
 /** Pie de la barra lateral: siempre visibles, fuera del grupo principal. */

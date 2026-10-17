@@ -102,6 +102,9 @@ const prefixes = {
   serviceOrder: "os",
   serviceOrderEvent: "ose",
   googleOauthState: "gos",
+  // Estrategias de ventas y métricas de Google Ads
+  strategy: "str",
+  googleAdsMetric: "gam",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

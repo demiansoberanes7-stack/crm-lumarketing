@@ -378,7 +378,16 @@ export async function sendQuote(
       ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, targetContactId))).limit(1)
       : [];
     const contactName = contactRow?.name?.trim() || quote.quoteNumber;
-    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: `cotizacion para ${contactName}.pdf` } });
+    const [firstItem] = await db
+      .select({ name: schema.quoteItem.name })
+      .from(schema.quoteItem)
+      .where(scoped(schema.quoteItem.organizationId, organizationId, eq(schema.quoteItem.quoteId, quoteId)))
+      .orderBy(schema.quoteItem.position)
+      .limit(1);
+    const productName = firstItem?.name?.trim() || quote.quoteNumber;
+    const safeProduct = productName.replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim() || "Cotizacion";
+    const safeContact = contactName.replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim() || "Cliente";
+    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: `Cotizacion ${safeProduct} - ${safeContact}.pdf` } });
   } else {
     const full = await getQuote(organizationId, quoteId);
     if (!full) throw new Error("Cotización no encontrada");
