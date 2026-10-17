@@ -109,6 +109,14 @@ if (journal) {
       errors.push(
         `allowlist: quita "${waived.tag}" de scripts/migrations-guard.allowlist.json, su .sql ya existe`
       );
+    } else if (!tags.has(waived.tag)) {
+      // El tag eximido ya no está en el journal (se renombró, como pasó con los
+      // 0074/0075 originales): la entrada no exime de nada y se queda dormida en
+      // el archivo. Aviso y no error: una fila huérfana del allowlist no debe
+      // bloquear un despliegue que por lo demás está sano.
+      warnings.push(
+        `allowlist: "${waived.tag}" ya no está en el journal; la exención no exime de nada, quítala`
+      );
     }
   }
 }

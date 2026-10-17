@@ -1,18 +1,4 @@
 {
-  "_motivo": "Exención temporal del guardia de CI (scripts/check-migrations.mjs). Estos dos .sql los referencia el journal de main pero nunca se commitearon: el autor los generó en su máquina y no están en ninguna rama del remoto. Mientras falten, main NO es desplegable, así que se exime el error para poder tener el guardia activo y que salte ante cualquier rotura NUEVA. Cuando aparezca el .sql de verdad, se borra su entrada; el propio guardia falla si la entrada sobra.",
-  "_reversion": "Borrar este fichero devuelve el guardia a 'todo error es fatal'.",
-  "waived": [
-    {
-      "tag": "0074_metric_source_google_ads",
-      "reason": "Fichero .sql ausente en git (Fase G). Solo existe en la laptop del desarrollador.",
-      "until": "2026-10-31",
-      "tracking": "LUM-002"
-    },
-    {
-      "tag": "0075_sales_strategy",
-      "reason": "Fichero .sql ausente en git (Fase H). Solo existe en la laptop del desarrollador.",
-      "until": "2026-10-31",
-      "tracking": "LUM-002"
-    }
-  ]
+  "comment": "Exenciones del gate de migraciones. Cada entrada necesita tag, reason y until (YYYY-MM-DD). Se borra sola cuando el .sql aparece: el guardia convierte esa entrada en error.",
+  "waived": []
 }
