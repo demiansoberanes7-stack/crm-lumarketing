@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { quotePdfFileName } from "@/server/quotes/filename";
 
 /**
  * Nombre del archivo PDF enviado por WhatsApp.
@@ -81,21 +82,27 @@ describe("sendWhatsappZernio - attachmentName", () => {
   });
 });
 
-describe("formato del nombre del PDF en sendQuote", () => {
+describe("quotePdfFileName (código real)", () => {
+  it("arma nombre producto - cliente", () => {
+    expect(quotePdfFileName("Landing Page", "Juan Perez")).toBe(
+      "Cotizacion Landing Page - Juan Perez.pdf"
+    );
+  });
+
   it("sanitiza caracteres peligrosos para nombres de archivo", () => {
-    const productName = 'Landing Page / "Premium" <v2>';
-    const safeProduct = productName.replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim();
-    expect(safeProduct).toBe("Landing Page  Premium v2");
+    expect(quotePdfFileName('Landing Page / "Premium" <v2>', "Ana/Maria")).toBe(
+      "Cotizacion Landing Page  Premium v2 - AnaMaria.pdf"
+    );
   });
 
-  it("limita la longitud a 60 caracteres", () => {
-    const longName = "A".repeat(100);
-    const safe = longName.replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim();
-    expect(safe.length).toBe(60);
+  it("limita cada segmento a 60 caracteres", () => {
+    const name = quotePdfFileName("A".repeat(100), "B".repeat(100));
+    const [product, contact] = name.replace(/\.pdf$/, "").split(" - ");
+    expect(product!.length - "Cotizacion ".length).toBe(60);
+    expect(contact!.length).toBe(60);
   });
 
-  it("maneja nombre vacío con fallback", () => {
-    const safe = "".replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim() || "Cotizacion";
-    expect(safe).toBe("Cotizacion");
+  it("usa fallbacks cuando los segmentos quedan vacíos tras sanitizar", () => {
+    expect(quotePdfFileName("", '""')).toBe("Cotizacion Cotizacion - Cliente.pdf");
   });
 });

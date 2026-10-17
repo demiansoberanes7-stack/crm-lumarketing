@@ -53,12 +53,17 @@ describe("projectMargin", () => {
     expect(result.marginPercent).toBe(60);
   });
 
-  it("margen null si costo > ingreso", () => {
+  it("margen negativo si costo > ingreso (pérdida visible, no null)", () => {
     const items = [{ quantity: 1, unitPrice: 10000, productId: "prod_1" }];
     const costs = new Map([["prod_1", 20000]]);
     const result = projectMargin(items, costs);
-    expect(result.margin).toBeNull();
+    expect(result.margin).toBe(-10000);
     expect(result.marginPercent).toBe(-100);
+  });
+
+  it("margin null solo cuando no hay nada que medir", () => {
+    const result = projectMargin([], new Map<string, number>());
+    expect(result.margin).toBeNull();
   });
 
   it("marginPercent null si ingreso es 0", () => {

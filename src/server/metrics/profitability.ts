@@ -23,14 +23,18 @@ export function projectCost(items: { quantity: number; unitPrice: number; produc
   return total;
 }
 
-/** Margen bruto de un proyecto: ingreso − costo. null si no hay datos. */
+/** Margen bruto de un proyecto: ingreso − costo. Negativo = pérdida real. */
 export function projectMargin(
   items: { quantity: number; unitPrice: number; productId: string | null }[],
   costs: Map<string, number>
 ): { revenue: number; cost: number; margin: number | null; marginPercent: number | null } {
   const revenue = projectRevenue(items);
   const cost = projectCost(items, costs);
-  const margin = revenue >= cost ? revenue - cost : null;
+  // null solo si no hay nada que medir (sin items y sin costo). Convertir un
+  // margen negativo en null escondía una pérdida como "Sin datos" en el
+  // dashboard, que es justo la lectura opuesta.
+  const hasData = items.length > 0 || cost > 0;
+  const margin = hasData ? revenue - cost : null;
   const marginPercent = revenue > 0 ? ((revenue - cost) / revenue) * 100 : null;
   return { revenue, cost, margin, marginPercent };
 }

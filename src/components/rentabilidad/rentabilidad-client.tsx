@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DollarSign, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -50,10 +50,15 @@ export function RentabilidadClient() {
   const [projectMargins, setProjectMargins] = useState<ProjectMargin[]>([]);
   const [campaignMargins, setCampaignMargins] = useState<CampaignMargin[]>([]);
   const [loading, setLoading] = useState(true);
+  // Secuenciación: clics rápidos dejan dos fetch en vuelo y la respuesta
+  // lenta puede sobreescribir la rápida (período activo ≠ datos mostrados).
+  const reqRef = useRef(0);
 
   const refetch = useCallback(async () => {
+    const reqId = ++reqRef.current;
     setLoading(true);
     const res = await fetch(`/api/metrics/profitability?period=${period}`).catch(() => null);
+    if (reqId !== reqRef.current) return; // respuesta obsoleta
     if (res?.ok) {
       const data = (await res.json()) as {
         projectMargins: ProjectMargin[];
@@ -86,7 +91,7 @@ export function RentabilidadClient() {
               className={`px-3 py-1 rounded-md text-sm ${
                 period === p
                   ? "bg-primary text-primary-foreground"
-                  : "bg-muted hover:bg-muted/80"
+                  : "bg-muted hover:bg-accent"
               }`}
             >
               {p}
@@ -117,7 +122,7 @@ export function RentabilidadClient() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b bg-muted/50">
+                    <tr className="border-b bg-muted">
                       <th className="p-3 text-left font-medium">Proyecto</th>
                       <th className="p-3 text-right font-medium">Ingreso</th>
                       <th className="p-3 text-right font-medium">Costo</th>
@@ -161,7 +166,7 @@ export function RentabilidadClient() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b bg-muted/50">
+                    <tr className="border-b bg-muted">
                       <th className="p-3 text-left font-medium">Campaña</th>
                       <th className="p-3 text-right font-medium">Presupuesto</th>
                       <th className="p-3 text-right font-medium">Gastado</th>

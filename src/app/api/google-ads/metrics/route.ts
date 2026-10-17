@@ -1,7 +1,7 @@
 import { apiError, withAuth } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { schema } from "@/lib/db";
-import { eq, gte, lte } from "drizzle-orm";
+import { eq, gte, lte, isNull } from "drizzle-orm";
 import { scoped } from "@/lib/db/tenant";
 import { newId } from "@/lib/db/ids";
 import { z } from "zod";
@@ -12,10 +12,10 @@ const googleAdsMetricCreateSchema = z.object({
   campaignId: z.string().min(1).max(255),
   adGroupId: z.string().max(255).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  impressions: z.number().int().nonnegative().default(0),
-  clicks: z.number().int().nonnegative().default(0),
-  costCents: z.number().int().nonnegative().default(0),
-  conversions: z.number().nonnegative().default(0),
+  impressions: z.number().int().min(0).max(2147483647).default(0),
+  clicks: z.number().int().min(0).max(2147483647).default(0),
+  costCents: z.number().int().min(0).max(2147483647).default(0),
+  conversions: z.number().int().min(0).max(2147483647).default(0),
   currency: z.string().max(10).default("MXN"),
 });
 
@@ -64,63 +64,63 @@ export const POST = withAuth(async (session, req: Request) => {
 
   const db = getDb();
   const { campaignId, adGroupId, date, impressions, clicks, costCents, conversions, currency } = parsed.data;
+  const orgId = session.organizationId;
 
-  // Upsert: si ya existe métrica para (org, campaignId, adGroupId, date), actualizar
-  const [existing] = await db
-    .select({ id: schema.googleAdsMetric.id })
-    .from(schema.googleAdsMetric)
-    .where(
-      scoped(
-        schema.googleAdsMetric.organizationId,
-        session.organizationId,
-        eq(schema.googleAdsMetric.campaignId, campaignId),
-        eq(schema.googleAdsMetric.date, date),
-        adGroupId
-          ? eq(schema.googleAdsMetric.adGroupId, adGroupId)
-          : eq(schema.googleAdsMetric.adGroupId, null as unknown as string)
+  // Upsert atómico dentro de una transacción: sin ella, dos POST concurrentes
+  // pasan ambos el SELECT y quedan duplicados (no hay índice único sobre
+  // (org, campaign, ad_group, date) que los rescate).
+  const metric = await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ id: schema.googleAdsMetric.id })
+      .from(schema.googleAdsMetric)
+      .where(
+        scoped(
+          schema.googleAdsMetric.organizationId,
+          orgId,
+          eq(schema.googleAdsMetric.campaignId, campaignId),
+          eq(schema.googleAdsMetric.date, date),
+          // eq(col, null) genera "= NULL" que nunca matchea en SQL: adGroupId
+          // es opcional y la mayoría de las métricas vienen a nivel campaña.
+          adGroupId ? eq(schema.googleAdsMetric.adGroupId, adGroupId) : isNull(schema.googleAdsMetric.adGroupId)
+        )
       )
-    )
-    .limit(1);
+      .orderBy(schema.googleAdsMetric.id)
+      .limit(1)
+      .for("update");
 
-  if (existing) {
-    await db
-      .update(schema.googleAdsMetric)
-      .set({
-        impressions,
-        clicks,
-        costCents,
-        conversions,
-        currency,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.googleAdsMetric.id, existing.id));
-    const [updated] = await db
+    if (existing) {
+      await tx
+        .update(schema.googleAdsMetric)
+        .set({ impressions, clicks, costCents, conversions, currency, updatedAt: new Date() })
+        .where(scoped(schema.googleAdsMetric.organizationId, orgId, eq(schema.googleAdsMetric.id, existing.id)));
+      const [updated] = await tx
+        .select()
+        .from(schema.googleAdsMetric)
+        .where(scoped(schema.googleAdsMetric.organizationId, orgId, eq(schema.googleAdsMetric.id, existing.id)))
+        .limit(1);
+      return updated;
+    }
+
+    const id = newId("googleAdsMetric");
+    await tx.insert(schema.googleAdsMetric).values({
+      id,
+      organizationId: orgId,
+      campaignId,
+      adGroupId: adGroupId ?? null,
+      date,
+      impressions,
+      clicks,
+      costCents,
+      conversions,
+      currency,
+    });
+    const [inserted] = await tx
       .select()
       .from(schema.googleAdsMetric)
-      .where(eq(schema.googleAdsMetric.id, existing.id))
+      .where(scoped(schema.googleAdsMetric.organizationId, orgId, eq(schema.googleAdsMetric.id, id)))
       .limit(1);
-    return Response.json({ metric: updated });
-  }
-
-  const id = newId("googleAdsMetric");
-  await db.insert(schema.googleAdsMetric).values({
-    id,
-    organizationId: session.organizationId,
-    campaignId,
-    adGroupId: adGroupId ?? null,
-    date,
-    impressions,
-    clicks,
-    costCents,
-    conversions,
-    currency,
+    return inserted;
   });
-
-  const [metric] = await db
-    .select()
-    .from(schema.googleAdsMetric)
-    .where(eq(schema.googleAdsMetric.id, id))
-    .limit(1);
 
   return Response.json({ metric }, { status: 201 });
 });

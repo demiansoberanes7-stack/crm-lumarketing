@@ -11,6 +11,7 @@ import { scoped } from "@/lib/db/tenant";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { acceptQuoteIntoProjectTx } from "@/server/projects/from-quote";
 import { syncTaskById } from "@/server/agenda/tasks-sync";
+import { quotePdfFileName } from "./filename";
 
 export type QuoteStatus =
   | "draft"
@@ -85,6 +86,42 @@ function calculateTotals(items: QuoteInput["items"], input: {
   return { subtotal, discountAmount, taxAmount, total };
 }
 
+/**
+ * Valida que los productId existan EN ESTA organización y que el stock vigente
+ * alcance para la cantidad pedida (null = sin control, no valida).
+ * Se usa en createQuote, updateQuote y changeQuoteStatus: sin la tercera
+ * llamada, aprobar una cotización vieja sobre un stock que ya bajó permitía
+ * overselling silencioso (GREATEST(...,0) tapaba el déficit).
+ */
+/** Tx dentro de getDb().transaction(...) — el helper corre SIEMPRE dentro de una. */
+type QuoteTx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+
+async function assertStockAvailable(
+  db: QuoteTx,
+  organizationId: string,
+  items: QuoteInput["items"]
+): Promise<void> {
+  const productIds = [...new Set(items.map((i) => i.productId).filter((id): id is string => Boolean(id)))];
+  if (!productIds.length) return;
+  const stocks = await db
+    .select({ id: schema.catalogProduct.id, name: schema.catalogProduct.name, stock: schema.catalogProduct.stock })
+    .from(schema.catalogProduct)
+    .where(scoped(schema.catalogProduct.organizationId, organizationId, inArray(schema.catalogProduct.id, productIds)))
+    .for("share");
+  const byId = new Map(stocks.map((row) => [row.id, row]));
+  for (const item of items) {
+    if (!item.productId) continue;
+    const product = byId.get(item.productId);
+    if (!product) throw new Error("Producto no válido");
+    if (product.stock === null || product.stock === undefined) continue;
+    if (item.quantity > product.stock) {
+      throw new Error(
+        `Inventario insuficiente para "${product.name}": ${product.stock === 0 ? "está agotado" : `quedan ${product.stock} pieza${product.stock === 1 ? "" : "s"}`}.`
+      );
+    }
+  }
+}
+
 /** Crear una cotización nueva */
 export async function createQuote(
   organizationId: string,
@@ -119,32 +156,7 @@ export async function createQuote(
     if (!contact) throw new Error("Contacto no válido");
   }
   // Inventario: contra el stock vigente. null = sin control (no valida).
-  const productIds = [...new Set(input.items.map((i) => i.productId).filter((id): id is string => Boolean(id)))];
-  if (productIds.length) {
-    const stocks = await db
-      .select({ id: schema.catalogProduct.id, stock: schema.catalogProduct.stock })
-      .from(schema.catalogProduct)
-      .where(scoped(schema.catalogProduct.organizationId, organizationId, inArray(schema.catalogProduct.id, productIds)))
-      .for("share");
-    const stockById = new Map(stocks.map((row) => [row.id, row.stock]));
-    // Aislamiento: todo productId declarado debe existir EN ESTA organización.
-    // Sin esto, un productId ajeno se guardaba igual (el stock se saltaba) y
-    // getQuote lo unía sin filtro, filtrando el catálogo de otro tenant.
-    for (const item of input.items) {
-      if (!item.productId) continue;
-      if (!stockById.has(item.productId)) {
-        throw new Error("Producto no válido");
-      }
-    }
-    for (const item of input.items) {
-      if (!item.productId) continue;
-      const stock = stockById.get(item.productId);
-      if (stock === null || stock === undefined) continue;
-      if (item.quantity > stock) {
-        throw new Error(`Inventario insuficiente para "${item.name}": ${stock === 0 ? "está agotado" : `quedan ${stock} pieza${stock === 1 ? "" : "s"}`}.`);
-      }
-    }
-  }
+  await assertStockAvailable(db, organizationId, input.items);
   const id = newId("quote");
   const quoteNumber = await nextQuoteNumber(db, organizationId);
   const totals = calculateTotals(input.items, {
@@ -253,30 +265,9 @@ export async function updateQuote(
   input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...input };
 
   // Aislamiento: los productId de las partidas nuevas tienen que existir en
-  // ESTA organización (aquí no se toca stock, pero sí se enlaza el catálogo).
-  const productIds = [
-    ...new Set(
-      (input.items ?? [])
-        .map((i) => i.productId)
-        .filter((id): id is string => Boolean(id))
-    ),
-  ];
-  if (productIds.length) {
-    const owned = await db
-      .select({ id: schema.catalogProduct.id })
-      .from(schema.catalogProduct)
-      .where(
-        scoped(
-          schema.catalogProduct.organizationId,
-          organizationId,
-          inArray(schema.catalogProduct.id, productIds)
-        )
-      );
-    const ownedIds = new Set(owned.map((row) => row.id));
-    if (productIds.some((id) => !ownedIds.has(id))) {
-      throw new Error("Producto no válido");
-    }
-  }
+  // ESTA organización, y el stock vigente tiene que alcanzar — sin esto, un
+  // draft con qty 1 se editaba a qty 100 y se aprobaba directo al clamp.
+  await assertStockAvailable(db, organizationId, input.items ?? []);
 
   const totals = calculateTotals(input.items!, {
     discountType: input.discountType,
@@ -385,9 +376,7 @@ export async function sendQuote(
       .orderBy(schema.quoteItem.position)
       .limit(1);
     const productName = firstItem?.name?.trim() || quote.quoteNumber;
-    const safeProduct = productName.replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim() || "Cotizacion";
-    const safeContact = contactName.replace(/[\/\\:*?"<>|]/g, "").slice(0, 60).trim() || "Cliente";
-    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: `Cotizacion ${safeProduct} - ${safeContact}.pdf` } });
+    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: quotePdfFileName(productName, contactName) } });
   } else {
     const full = await getQuote(organizationId, quoteId);
     if (!full) throw new Error("Cotización no encontrada");
@@ -523,6 +512,25 @@ export async function changeQuoteStatus(
         .where(scoped(schema.quoteItem.organizationId, organizationId, eq(schema.quoteItem.quoteId, quoteId)));
       for (const item of items) {
         if (!item.productId) continue;
+        // Re-validar el stock VIGENTE dentro de la misma transacción: entre
+        // crear la cotización y aprobarla pudo bajar (otra aprobación, un
+        // PATCH del catálogo, un import CSV). FOR UPDATE serializa contra
+        // aprobaciones concurrentes del mismo producto. GREATEST(...,0) solo
+        // es defensa, no regla de negocio: si enmascarara un déficit aquí,
+        // venderíamos más piezas de las que hay sin avisar.
+        const [product] = await db
+          .select({ name: schema.catalogProduct.name, stock: schema.catalogProduct.stock })
+          .from(schema.catalogProduct)
+          .where(
+            scoped(schema.catalogProduct.organizationId, organizationId, eq(schema.catalogProduct.id, item.productId))
+          )
+          .limit(1)
+          .for("update");
+        if (product && product.stock !== null && product.stock < item.quantity) {
+          throw new Error(
+            `Inventario insuficiente para «${product.name}»: quedan ${product.stock} pieza${product.stock === 1 ? "" : "s"} y la cotización pide ${item.quantity}`
+          );
+        }
         await db
           .update(schema.catalogProduct)
           .set({

@@ -23,7 +23,8 @@ async function getCost(orgId: string, id: string) {
 const patchSchema = z.object({
   service: z.string().max(100).nullable().optional(),
   name: z.string().trim().min(1).max(255).optional(),
-  costCents: z.number().int().min(0).optional(),
+  costCents: z.number().int().min(0).max(2147483647).optional(),
+  catalogProductId: z.string().max(255).nullable().optional(),
   effectiveFrom: z.coerce.date().nullable().optional(),
   effectiveTo: z.coerce.date().nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
@@ -41,6 +42,7 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
   if (body.data.service !== undefined) set.service = body.data.service;
   if (body.data.name !== undefined) set.name = body.data.name;
   if (body.data.costCents !== undefined) set.costCents = body.data.costCents;
+  if (body.data.catalogProductId !== undefined) set.catalogProductId = body.data.catalogProductId;
   if (body.data.effectiveFrom !== undefined) set.effectiveFrom = body.data.effectiveFrom;
   if (body.data.effectiveTo !== undefined) set.effectiveTo = body.data.effectiveTo;
   if (body.data.notes !== undefined) set.notes = body.data.notes;

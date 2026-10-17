@@ -103,11 +103,14 @@ export function EstrategiasClient() {
     try {
       const payload = {
         name: form.name.trim(),
-        description: form.description.trim() || undefined,
+        // null explícito (no undefined): JSON.stringify ELIMINA las claves
+        // undefined, así que el servidor las interpretaría como "no cambiar"
+        // y un campo vaciado volvería a mostrar el valor viejo.
+        description: form.description.trim() || null,
         objectType: form.objectType,
         objectId: form.objectId.trim(),
-        revenueTargetCents: form.revenueTargetCents ? parseInt(form.revenueTargetCents) : undefined,
-        conversionTarget: form.conversionTarget ? parseInt(form.conversionTarget) : undefined,
+        revenueTargetCents: form.revenueTargetCents ? parseInt(form.revenueTargetCents) : null,
+        conversionTarget: form.conversionTarget ? parseInt(form.conversionTarget) : null,
       };
       const res = await fetch(
         editingId ? `/api/strategies/${editingId}` : "/api/strategies",
@@ -129,19 +132,34 @@ export function EstrategiasClient() {
     }
   }
 
+  /** Lee {error:{message}} si la respuesta no es ok; null si no se pudo leer. */
+  async function apiErrorMessage(res: Response | null): Promise<string | null> {
+    if (!res || res.ok) return null;
+    const err = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return err?.error?.message ?? "No se pudo completar la operación";
+  }
+
   async function deleteStrategy(id: string) {
     if (!confirm("¿Eliminar esta estrategia?")) return;
-    await fetch(`/api/strategies/${id}`, { method: "DELETE" }).catch(() => null);
+    const res = await fetch(`/api/strategies/${id}`, { method: "DELETE" }).catch(() => null);
+    const message = await apiErrorMessage(res);
+    if (message) {
+      // Sin esto el DELETE fallido se traga y la estrategia "revive" en el
+      // refetch sin ningún aviso al usuario.
+      alert(message);
+    }
     await refetch();
   }
 
   async function toggleStatus(strategy: Strategy) {
     const next = strategy.status === "active" ? "paused" : "active";
-    await fetch(`/api/strategies/${strategy.id}`, {
+    const res = await fetch(`/api/strategies/${strategy.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next }),
     }).catch(() => null);
+    const message = await apiErrorMessage(res);
+    if (message) alert(message);
     await refetch();
   }
 
@@ -269,7 +287,7 @@ export function EstrategiasClient() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-muted/50">
+                <tr className="border-b bg-muted">
                   <th className="p-3 text-left font-medium">Nombre</th>
                   <th className="p-3 text-left font-medium">Tipo</th>
                   <th className="p-3 text-left font-medium">Estado</th>
@@ -298,7 +316,7 @@ export function EstrategiasClient() {
                       </button>
                     </td>
                     <td className="p-3 text-right">
-                      {s.revenueTargetCents ? formatMXN(s.revenueTargetCents) : "—"}
+                      {s.revenueTargetCents != null ? formatMXN(s.revenueTargetCents) : "—"}
                     </td>
                     <td className="p-3 text-right">{s.conversionTarget ?? "—"}</td>
                     <td className="p-3 text-right">

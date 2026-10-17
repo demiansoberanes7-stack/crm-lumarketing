@@ -123,7 +123,7 @@ export async function sendMessengerMedia(input: {
           accountId: input.credentials.accountRef,
           attachmentUrl: uploaded.url,
           attachmentType: input.attachmentType,
-          ...(input.attachmentType === "file" ? { attachmentName: uploaded.filename } : {}),
+          ...(input.attachmentType === "file" ? { attachmentName: input.fileName ?? uploaded.filename } : {}),
           ...(input.humanAgentTag
             ? { messagingType: "MESSAGE_TAG", messageTag: "HUMAN_AGENT" }
             : {}),

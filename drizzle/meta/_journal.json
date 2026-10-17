@@ -519,6 +519,13 @@
       "when": 1792000000015,
       "tag": "0074_sales_strategy",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792000000016,
+      "tag": "0060_intel_cred_status",
+      "breakpoints": true
     }
   ]
 }

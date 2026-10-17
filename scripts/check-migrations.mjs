@@ -100,7 +100,11 @@ if (journal) {
     .filter((f) => f.endsWith(".sql"))
     .map((f) => f.slice(0, -4));
   for (const orphan of onDisk.filter((t) => !tags.has(t))) {
-    warnings.push(`${orphan}.sql existe pero no está en el journal: nunca se aplicará`);
+    // Error y no aviso: un .sql huérfano con columnas load-bearing compila la
+    // imagen y la BD nueva revienta en runtime (pasó con 0060_intel_cred_status).
+    errors.push(
+      `${orphan}.sql existe pero no está en el journal: nunca se aplicará en una BD nueva`
+    );
   }
 
   // Exención que dejó de hacer falta: hay que borrarla, si no el guardia se apaga solo.

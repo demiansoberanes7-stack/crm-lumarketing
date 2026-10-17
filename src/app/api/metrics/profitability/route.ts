@@ -1,7 +1,7 @@
 import { apiError, withAuth } from "@/lib/api";
 import { getDb } from "@/lib/db";
 import { schema } from "@/lib/db";
-import { eq, gte, inArray } from "drizzle-orm";
+import { eq, gte, lte, inArray, isNotNull } from "drizzle-orm";
 import { scoped } from "@/lib/db/tenant";
 import { projectMargin, campaignBudgetVariance } from "@/server/metrics/profitability";
 import { grossMargin, grossMarginPercent } from "@/server/metrics/compute";
@@ -27,6 +27,10 @@ export const GET = withAuth(async (session, req: Request) => {
   const daysMap: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
   const days = daysMap[period] ?? 30;
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  // campaignInsight.dateStart es columna `date`: drizzle la compara con string
+  // 'YYYY-MM-DD', no con Date.
+  const sinceDay = since.toISOString().slice(0, 10);
+  const untilDay = now.toISOString().slice(0, 10);
 
   // 1. Proyectos
   const projects = await db
@@ -70,7 +74,9 @@ export const GET = withAuth(async (session, req: Request) => {
     if (cost.catalogProductId) costMap.set(cost.catalogProductId, cost.costCents);
   }
 
-  // 4. Margen por proyecto
+  // 4. Margen por proyecto. margin negativo = pérdida real, se devuelve igual:
+  // el cliente lo pinta con el badge de advertencia, y null queda reservado
+  // para "no hay datos" (revenue y cost siempre existen, son 0 por defecto).
   const projectMargins = projects.map((project) => {
     const projectItems = items.filter((i) => i.projectId === project.id);
     const margin = projectMargin(projectItems, costMap);
@@ -79,6 +85,8 @@ export const GET = withAuth(async (session, req: Request) => {
       projectName: project.name,
       revenue: margin.revenue,
       cost: margin.cost,
+      // null solo cuando el proyecto no tiene nada que medir; una pérdida
+      // (cost > revenue) es un número negativo y el cliente la pinta en rojo.
       margin: margin.margin,
       marginPercent: margin.marginPercent,
       grossMargin: grossMargin(margin.revenue, margin.cost),
@@ -86,13 +94,15 @@ export const GET = withAuth(async (session, req: Request) => {
     };
   });
 
-  // 5. Campañas + insights (varianza de presupuesto)
+  // 5. Campañas: NO se filtran por createdAt — una campaña creada hace 60 días
+  // que sigue gastando dentro del período debe aparecer. El eje temporal del
+  // informe es el del gasto (campaignInsight.dateStart), aplicado abajo.
   const campaigns = await db
     .select()
     .from(schema.campaign)
-    .where(scoped(schema.campaign.organizationId, orgId, gte(schema.campaign.createdAt, since)))
+    .where(scoped(schema.campaign.organizationId, orgId, isNotNull(schema.campaign.externalId)))
     .orderBy(schema.campaign.createdAt)
-    .limit(50);
+    .limit(200);
 
   const campaignExternalIds = campaigns.map((c) => c.externalId).filter((id): id is string => Boolean(id));
   const insights =
@@ -104,7 +114,9 @@ export const GET = withAuth(async (session, req: Request) => {
             scoped(
               schema.campaignInsight.organizationId,
               orgId,
-              inArray(schema.campaignInsight.campaignExternalId, campaignExternalIds)
+              inArray(schema.campaignInsight.campaignExternalId, campaignExternalIds),
+              gte(schema.campaignInsight.dateStart, sinceDay),
+              lte(schema.campaignInsight.dateStart, untilDay)
             )
           )
       : [];
@@ -118,7 +130,6 @@ export const GET = withAuth(async (session, req: Request) => {
     const variance = campaignBudgetVariance(plannedSpend, actualSpend);
     const revenue = campaignInsights.reduce((sum, i) => sum + i.conversionValueCents, 0);
     const cost = actualSpend;
-    const margin = revenue >= cost ? revenue - cost : null;
     return {
       campaignId: campaign.id,
       campaignName: campaign.name,
@@ -127,7 +138,10 @@ export const GET = withAuth(async (session, req: Request) => {
       variance,
       revenue,
       cost,
-      margin,
+      // null SOLO si la campaña no tuvo ni un insight en el período (no hay
+      // datos). Si hubo actividad, un margen negativo es una pérdida real y
+      // se devuelve igual — esconde una pérdida como "sin datos" sería mentir.
+      margin: campaignInsights.length === 0 ? null : revenue - cost,
       marginPercent: revenue > 0 ? ((revenue - cost) / revenue) * 100 : null,
     };
   });
