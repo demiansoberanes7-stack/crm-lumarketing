@@ -33,6 +33,14 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      # Node declarado en vez de confiar en el que trae la imagen del runner:
+      # si el gate dependiera de un binario que un día cambia, el fallo sería
+      # «no se puede desplegar» sin que nada esté roto en el repo.
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       # El fallo de verdad de este pipeline no es que el build rompa: es que
       # rompa DOS MINUTOS DESPUÉS dentro del contenedor. `CMD = node migrate.mjs
       # && node server.js`, así que una entrada del journal sin su `.sql`
