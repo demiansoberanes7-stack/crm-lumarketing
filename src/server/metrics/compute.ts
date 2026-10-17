@@ -2,7 +2,7 @@
  * Fórmulas de métricas centralizadas (Ciclo 1).
  *
  * Funciones PURAS, sin BD ni red: todo el mundo (dashboard, marketing hub,
- * rentabilidad, experimentos) llama aquí en vez de reimplementar. Reglas que
+ * experimentos) llama aquí en vez de reimplementar. Reglas que
  * se cumplen en un solo lugar:
  *
  *  - "no disponible" NUNCA es 0: `safeDivide` devuelve `null`, no Infinity ni

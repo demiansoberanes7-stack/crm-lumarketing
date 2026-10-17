@@ -58,7 +58,6 @@ Puntos duros confirmados:
 
 - `project.quoteId` (o tabla puente `project_quote`) + unique idempotente — vínculo P1.
 - `service_order` (folio `OS-XXXX`, estados propios, `projectId`+`quoteId`+`contactId`) — P1.
-- `strategy` / `strategy_goal` / `strategy_channel_budget` / `strategy_activity` — módulo Estrategias.
 - `catalog_product.cost` y/o `serviceType` — margen por producto (P4).
 
 ## Restricciones a modificar (con cuidado)

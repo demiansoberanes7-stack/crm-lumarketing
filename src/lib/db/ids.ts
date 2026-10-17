@@ -102,8 +102,7 @@ const prefixes = {
   serviceOrder: "os",
   serviceOrderEvent: "ose",
   googleOauthState: "gos",
-  // Estrategias de ventas y métricas de Google Ads
-  strategy: "str",
+  // Métricas de Google Ads
   googleAdsMetric: "gam",
 } as const;
 

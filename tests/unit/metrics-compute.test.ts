@@ -20,6 +20,8 @@ import {
   formatCurrency,
   formatPercent,
   formatRatio,
+  grossMargin,
+  grossMarginPercent,
 } from "@/server/metrics/compute";
 import { METRIC_CATALOG, getMetric, metricsByCategory } from "@/server/metrics/catalog";
 
@@ -190,5 +192,19 @@ describe("metrics: catálogo", () => {
     const publicidad = metricsByCategory("publicidad");
     expect(publicidad.every((m) => m.category === "publicidad")).toBe(true);
     expect(publicidad.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("metrics: margen bruto", () => {
+  it("ingreso − costo, y admite pérdida", () => {
+    expect(grossMargin(100000, 40000)).toBe(60000);
+    expect(grossMargin(40000, 100000)).toBe(-60000);
+  });
+  it("sin datos (null) en vez de 0", () => {
+    expect(grossMargin(null, 40000)).toBeNull();
+  });
+  it("porcentaje de margen bruto (null si ingreso ≤ 0)", () => {
+    expect(grossMarginPercent(100000, 40000)).toBe(60);
+    expect(grossMarginPercent(0, 10000)).toBeNull();
   });
 });

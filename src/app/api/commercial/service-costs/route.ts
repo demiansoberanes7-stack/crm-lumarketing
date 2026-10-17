@@ -23,8 +23,8 @@ const createSchema = z.object({
   service: z.string().max(100).nullable().optional(),
   name: z.string().trim().min(1, "Nombre requerido").max(255),
   costCents: z.number().int().min(0).max(2147483647),
-  // Vínculo con el catálogo: sin él, projectMargin no puede cruzar el costo
-  // con el item del proyecto y el margen sale siempre = ingreso.
+  // Vínculo con el catálogo: permite cruzar el costo de prestación con el
+  // producto que se vende (serialize lo expone al panel Comercial).
   catalogProductId: z.string().max(255).nullable().optional(),
   effectiveFrom: z.coerce.date().nullable().optional(),
   effectiveTo: z.coerce.date().nullable().optional(),
