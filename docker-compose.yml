@@ -41,6 +41,11 @@ services:
       AGENDA: ${AGENDA:-}
       GOOGLE_BUSINESS: ${GOOGLE_BUSINESS:-}
       ATRIBUCION: ${ATRIBUCION:-}
+      # El compose es una lista nominal: una variable que no aparece aquí no
+      # llega al proceso aunque exista en .env. INTEL solo estaba en el compose
+      # del servidor (editado a mano), así que levantar este archivo dejaba
+      # /inteligencia y /api/intel/* en 404 sin explicación aparente.
+      INTEL: ${INTEL:-}
       BOT_API_KEY: ${BOT_API_KEY:-}
       AUTH_SMTP_HOST: ${AUTH_SMTP_HOST:-}
       AUTH_SMTP_PORT: ${AUTH_SMTP_PORT:-587}
