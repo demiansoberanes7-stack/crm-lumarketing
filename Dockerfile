@@ -7,7 +7,10 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --no-frozen-lockfile
+# Con `--no-frozen-lockfile`, si package.json y el lockfile discrepan pnpm
+# resuelve otras versiones en silencio y la imagen publicada no es la que se
+# probó en ningún lado. `--frozen-lockfile` falla aquí, antes de subir nada.
+RUN pnpm install --frozen-lockfile
 
 FROM deps AS test
 RUN apk add --no-cache chromium

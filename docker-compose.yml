@@ -11,7 +11,12 @@
 # ============================================================
 services:
   app:
-    image: ghostbreakfast69/lumark-crm:latest
+    # APP_IMAGE permite fijar un digest en el .env del servidor
+    # (ghostbreakfast69/lumark-crm@sha256:…) sin editar este archivo. Fijar por
+    # digest es lo que corta el CD automático; si se edita el compose a mano en
+    # vez de usar la variable, el servidor queda desalineado con el repo y nadie
+    # sabe qué está corriendo de verdad. Sin APP_IMAGE se usa `latest`, como antes.
+    image: ${APP_IMAGE:-ghostbreakfast69/lumark-crm:latest}
     restart: unless-stopped
     environment:
       NODE_OPTIONS: "--max-old-space-size=384"
@@ -36,6 +41,11 @@ services:
       AGENDA: ${AGENDA:-}
       GOOGLE_BUSINESS: ${GOOGLE_BUSINESS:-}
       ATRIBUCION: ${ATRIBUCION:-}
+      # El compose es una lista nominal: una variable que no aparece aquí no
+      # llega al proceso aunque exista en .env. INTEL solo estaba en el compose
+      # del servidor (editado a mano), así que levantar este archivo dejaba
+      # /inteligencia y /api/intel/* en 404 sin explicación aparente.
+      INTEL: ${INTEL:-}
       BOT_API_KEY: ${BOT_API_KEY:-}
       AUTH_SMTP_HOST: ${AUTH_SMTP_HOST:-}
       AUTH_SMTP_PORT: ${AUTH_SMTP_PORT:-587}
@@ -63,6 +73,13 @@ services:
         condition: service_healthy
     volumes:
       - media_data:/data/media
+    # Sin tope, json-file crece hasta llenar el disco y el fallo no es "logs
+    # viejos": es el contenedor de Postgres o de Caddy sin donde escribir.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -126,6 +143,12 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    # Caddy escribe un acceso por petición: es el log que más crece del stack.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
