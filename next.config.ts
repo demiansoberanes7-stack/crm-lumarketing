@@ -26,7 +26,9 @@ const nextConfig: NextConfig = {
   // Tailwind inyecta estilos en línea y una CSP mal calibrada rompería la UI en
   // producción. Lo que sí se acota sin riesgo es lo de abajo; el SVG que un
   // miembro sube como logo recibe su propio CSP+sandbox en la respuesta de media
-  // (ver src/server/media-path.ts).
+  // (ver src/server/media-path.ts). El banner `X-Powered-By` no aporta nada a
+  // un cliente y sí le dice a cualquiera qué stack mirar: fuera.
+  poweredByHeader: false,
   async headers() {
     return [
       {
