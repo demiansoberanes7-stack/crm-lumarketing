@@ -1,12 +1,12 @@
 /** Regresión de proyectos/tareas contra la app real y una BD aislada.
- * DATABASE_URL debe apuntar a lumark_test. E2E_BROWSER=1 incluye flujo visual.
+ * DATABASE_URL debe apuntar a zorro_test. E2E_BROWSER=1 incluye flujo visual.
  */
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
 import postgres from "postgres";
 
 const base = process.env.APP_BASE_URL ?? "http://localhost:3000";
-if (!process.env.DATABASE_URL || new URL(process.env.DATABASE_URL).pathname !== "/lumark_test") throw new Error("Esta prueba requiere la base aislada lumark_test");
+if (!process.env.DATABASE_URL || new URL(process.env.DATABASE_URL).pathname !== "/zorro_test") throw new Error("Esta prueba requiere la base aislada zorro_test");
 const hostBase = new URL(base).hostname;
 if (!["localhost", "127.0.0.1", "::1"].includes(hostBase) && process.env.E2E_ALLOW_REMOTE !== "1")
   throw new Error(`La prueba solo corre contra local (recibido: ${base}); define E2E_ALLOW_REMOTE=1 si realmente quieres remoto`);
