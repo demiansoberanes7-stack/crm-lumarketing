@@ -88,11 +88,15 @@ export const POST = withAuth(async (session, req: Request) => {
     );
     newUserId = created.user.id;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "No se pudo crear la cuenta";
-    if (/exist/i.test(message)) {
+    const message = err instanceof Error ? err.message : "";
+    // El texto crudo de Better Auth (o de Postgres) no sale al navegador: puede
+    // nombrar tablas, columnas o el estado interno de la instancia. Se registra
+    // aquí y al cliente se le devuelve un motivo accionable.
+    console.error("[settings/clients] Alta de cliente falló:", err);
+    if (/exist|in use/i.test(message)) {
       return apiError(409, "duplicate", "Ya existe una cuenta con ese correo");
     }
-    return apiError(422, "invalid", message);
+    return apiError(422, "client_creation_failed", "No se pudo crear la cuenta del cliente");
   }
 
   // Si esto falla el usuario queda sin negocio; al entrar le sobra nombrarlo en

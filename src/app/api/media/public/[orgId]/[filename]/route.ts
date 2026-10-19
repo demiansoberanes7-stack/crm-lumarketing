@@ -1,10 +1,8 @@
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "fs";
 import { NextResponse } from "next/server";
+import { mediaHeaders, resolveMediaFile } from "@/server/media-path";
 
 export const dynamic = "force-dynamic";
-
-const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
 
 /**
  * Serve business logos. Public endpoint (no auth) — logos are not sensitive.
@@ -15,17 +13,18 @@ export async function GET(
   { params }: { params: Promise<{ orgId: string; filename: string }> }
 ) {
   const { orgId, filename } = await params;
-  // Basic sanitization
-  if (!/^[\w-]{1,64}$/.test(orgId) || !/^[\w.-]{1,32}$/.test(filename)) {
+  // Segmento validado y ruta contenida en MEDIA_DIR/{orgId}: ver src/server/media-path.ts.
+  const filePath = resolveMediaFile(orgId, filename);
+  if (!filePath) {
     return NextResponse.json({ error: "invalid path" }, { status: 422 });
   }
 
-  const filePath = join(MEDIA_DIR, orgId, filename);
-  if (!existsSync(filePath)) {
+  let data: Buffer;
+  try {
+    data = readFileSync(filePath);
+  } catch {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-
-  const data = readFileSync(filePath);
   const ext = filename.split(".").pop()?.toLowerCase();
   const mime =
     ext === "png" ? "image/png" :
@@ -33,10 +32,5 @@ export async function GET(
     ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
     "application/octet-stream";
 
-  return new Response(new Uint8Array(data), {
-    headers: {
-      "content-type": mime,
-      "cache-control": "public, max-age=86400",
-    },
-  });
+  return new Response(new Uint8Array(data), { headers: mediaHeaders(mime) });
 }

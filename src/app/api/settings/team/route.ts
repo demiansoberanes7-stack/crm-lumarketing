@@ -60,12 +60,15 @@ export const POST = withAuth(async (session, req: Request) => {
     );
     newUserId = result.user.id;
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "No se pudo crear la cuenta";
-    if (/exist/i.test(message)) {
+    const message = err instanceof Error ? err.message : "";
+    // zod ya validó formato y longitud de la contraseña, así que el texto de
+    // Better Auth nunca aporta algo accionable al usuario: solo filtraría
+    // detalles internos de la instancia.
+    console.error("[settings/team] Alta de miembro falló:", err);
+    if (/exist|in use/i.test(message)) {
       return apiError(409, "duplicate", "Ya existe una cuenta con ese correo");
     }
-    return apiError(422, "invalid", message);
+    return apiError(422, "member_creation_failed", "No se pudo crear la cuenta del miembro");
   }
 
   const db = getDb();

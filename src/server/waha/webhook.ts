@@ -10,7 +10,6 @@
  * - session.status: estado de la sesión WAHA
  */
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 import { ingestInboundMessage } from "@/server/inbox/ingest";
 import { applyStatusUpdate } from "@/server/inbox/status";
 import { publish } from "@/server/events/bus";
@@ -198,10 +197,6 @@ export async function handleWahaWebhook(
 ) {
   const { token } = await params;
 
-  // Buscar credenciales por token (el token es el webhookToken de la URL)
-  // En WAHA, el token se configura en la URL del webhook.
-  // Aquí simplemente procesamos el body sin verificar el token específicamente,
-  // ya que la URL secreta ya protege el endpoint.
   const body = parsedBody as { event?: string; session?: string; payload?: Record<string, unknown> } | null;
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
@@ -215,23 +210,28 @@ export async function handleWahaWebhook(
     return NextResponse.json({ ok: true });
   }
   const { getDb, schema } = await import("@/lib/db");
-  const matches = await getDb().select().from(schema.wahaCredentials).where(eq(schema.wahaCredentials.sessionName, session ?? ""));
-  // El nombre de sesión no es único entre organizaciones y WAHA publica cada
-  // sesión en UNA sola URL de webhook: el token de la URL prueba qué instancia
-  // llamó, pero no de quién es el mensaje. Si la sesión está registrada por dos
-  // negocios, el evento se descarta antes que escribir en el CRM equivocado.
-  const owners = new Set(matches.map((cred) => cred.organizationId));
-  if (owners.size > 1) {
-    console.warn(`[waha] Sesión «${session}» compartida por ${owners.size} negocios; evento descartado`);
-    return NextResponse.json({ error: "ambiguous_session" }, { status: 409 });
+  // El token de la URL es un HMAC del id del negocio, así que identifica al
+  // llamante por sí solo. Se resuelve el dueño ANTES de mirar la sesión: el
+  // nombre de sesión no es único entre negocios (WAHA lo elige quien configura
+  // la instancia) y filtrar por él dejaba todos los eventos en el aire en cuanto
+  // había dos tenants con la sesión «default».
+  const creds = await getDb()
+    .select({
+      organizationId: schema.wahaCredentials.organizationId,
+      sessionName: schema.wahaCredentials.sessionName,
+    })
+    .from(schema.wahaCredentials);
+  const mine = creds.filter((cred) => safeEqual(token, wahaWebhookToken(cred.organizationId)));
+  if (mine.length === 0) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const organizationId = mine[0]!.organizationId;
+  if (!mine.some((cred) => cred.sessionName === (session ?? ""))) {
+    console.warn(`[waha] La sesión «${session}» no está en las credenciales del negocio; el evento se enruta por token`);
   }
-  const authorized = matches.find((cred) => safeEqual(token, wahaWebhookToken(cred.organizationId)));
-  if (!authorized) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (await whatsappProvider(authorized.organizationId) !== "waha" && event !== "message.ack") return NextResponse.json({ ok: true });
+  if (await whatsappProvider(organizationId) !== "waha" && event !== "message.ack") return NextResponse.json({ ok: true });
   try {
-    if (event === "message.any" || event === "message") await processMessageAny(authorized.organizationId, payload);
-    else if (event === "message.ack") await processMessageAck(authorized.organizationId, payload);
-    else if (event === "session.status") processSessionStatus(authorized.organizationId, payload);
+    if (event === "message.any" || event === "message") await processMessageAny(organizationId, payload);
+    else if (event === "message.ack") await processMessageAck(organizationId, payload);
+    else if (event === "session.status") processSessionStatus(organizationId, payload);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "processing_failed" }, { status: 500 });

@@ -23,13 +23,28 @@ export function isValidWebhookToken(
 /**
  * Capa 2 (opcional): firma HMAC-SHA256 de Meta sobre el body CRUDO.
  * Devuelve true si no hay secreto configurado (capa desactivada).
+ *
+ * Sin `META_APP_SECRET` el único control del payload es el segmento secreto de
+ * la URL, y ese es común a toda la instancia: quien lo conozca puede escribir
+ * mensajes en el CRM de cualquier negocio. Se avisa una vez por proceso para que
+ * el despliegue lo note en los logs sin romper la ingesta.
  */
+let warnedMissingAppSecret = false;
+
 export function isValidSignature(
   rawBody: string,
   signatureHeader: string | null,
   appSecret: string | undefined
 ): boolean {
-  if (!appSecret) return true;
+  if (!appSecret) {
+    if (!warnedMissingAppSecret) {
+      warnedMissingAppSecret = true;
+      console.warn(
+        "[webhook] META_APP_SECRET no está configurado: las firmas de Meta se aceptan sin verificar."
+      );
+    }
+    return true;
+  }
   if (!signatureHeader?.startsWith("sha256=")) return false;
   const expected = createHmac("sha256", appSecret)
     .update(rawBody, "utf8")

@@ -35,6 +35,10 @@ export function zernioSignatureFrom(headers: Headers): string | null {
  * cuenta. Sin secreto configurado la capa queda desactivada y protege solo el
  * segmento secreto de la URL — mismo trato que da el webhook de WhatsApp a
  * `META_APP_SECRET`.
+ *
+ * Con secreto, la firma es OBLIGATORIA: aceptar un evento porque no trae
+ * cabecera `x-zernio-signature` dejaría el webhook abierto a cualquiera que
+ * conozca el segmento de la URL, que es justo lo que la firma debe suplir.
  */
 export function isValidZernioSignature(
   rawBody: string,
@@ -42,9 +46,7 @@ export function isValidZernioSignature(
   secret: string | null
 ): boolean {
   if (!secret) return true;
-  // Si Zernio no envía firma (signing secret no configurado en su panel),
-  // aceptamos: el token de la URL ya validó la fuente.
-  if (!signature) return true;
+  if (!signature) return false;
   const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(signature.replace(/^sha256=/i, "").trim().toLowerCase(), "utf8");

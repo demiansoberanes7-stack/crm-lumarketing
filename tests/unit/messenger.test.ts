@@ -269,9 +269,11 @@ describe("017 · firma de Zernio (control de seguridad compartido)", () => {
     expect(isValidZernioSignature(body, good.toUpperCase(), secret)).toBe(true);
     expect(isValidZernioSignature(body, "deadbeef", secret)).toBe(false);
     expect(isValidZernioSignature(body + " ", good, secret)).toBe(false);
-    // v1.4.0: sin firma se acepta — el token de la URL ya valida la fuente
-    // (Zernio no envía firma si el webhook no tiene signing secret configurado)
-    expect(isValidZernioSignature(body, null, secret)).toBe(true);
+    // Con secreto de la cuenta, la firma es obligatoria: omitir la cabecera era
+    // una vía para escribir eventos en el CRM sin conocer el secreto. Si el
+    // webhook no tiene signing secret, `secret` llega vacío y la capa se
+    // desactiva arriba (caso probado más abajo).
+    expect(isValidZernioSignature(body, null, secret)).toBe(false);
   });
 
   it("sin secreto configurado la capa queda desactivada, como en WhatsApp", () => {

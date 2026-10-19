@@ -5,6 +5,7 @@ import {
   isValidWebhookToken,
   safeEqual,
 } from "@/server/inbox/webhook";
+import { isValidZernioSignature } from "@/server/zernio";
 
 describe("capa 1: token en la ruta (FR-041/FR-083)", () => {
   it("segmento correcto → válido", () => {
@@ -49,6 +50,36 @@ describe("capa 2: firma x-hub-signature-256 (FR-042)", () => {
   it("sin secreto configurado la capa está desactivada → pasa", () => {
     expect(isValidSignature(body, null, undefined)).toBe(true);
     expect(isValidSignature(body, "sha256=basura", undefined)).toBe(true);
+  });
+});
+
+describe("firma de Zernio (capa propia por cuenta)", () => {
+  const secret = "zernio-signing-secret";
+  const body = JSON.stringify({ event: "message.received" });
+
+  function sign(payload: string, key: string): string {
+    return createHmac("sha256", key).update(payload, "utf8").digest("hex");
+  }
+
+  it("firma válida → pasa", () => {
+    expect(isValidZernioSignature(body, sign(body, secret), secret)).toBe(true);
+  });
+
+  it("firma con prefijo sha256= → pasa", () => {
+    expect(isValidZernioSignature(body, `sha256=${sign(body, secret)}`, secret)).toBe(true);
+  });
+
+  it("sin cabecera de firma pero con secreto → rechaza", () => {
+    expect(isValidZernioSignature(body, null, secret)).toBe(false);
+  });
+
+  it("firma de otro secreto o de otro body → rechaza", () => {
+    expect(isValidZernioSignature(body, sign(body, "otro"), secret)).toBe(false);
+    expect(isValidZernioSignature("{}", sign(body, secret), secret)).toBe(false);
+  });
+
+  it("cuenta sin signing secret: la capa está desactivada → pasa", () => {
+    expect(isValidZernioSignature(body, null, null)).toBe(true);
   });
 });
 

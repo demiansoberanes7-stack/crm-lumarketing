@@ -3,6 +3,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { getEnv } from "@/lib/env";
+import { isSafeMediaSegment, resolveMediaFile } from "@/server/media-path";
 import { graphRequest, MetaApiError } from "@/lib/meta/client";
 import { getWhatsappZernio } from "./zernio-credentials";
 import { ZERNIO_BASE } from "@/server/zernio";
@@ -92,14 +93,16 @@ export function validateOutgoing(mime: string, sizeBytes: number) {
 /* ---------- Disco local ---------- */
 
 function assertSafeSegment(s: string): void {
-  if (!/^[\w.-]+$/.test(s)) throw new Error(`segmento de ruta inválido: ${s}`);
+  if (!isSafeMediaSegment(s)) throw new Error(`segmento de ruta inválido: ${s}`);
 }
 
 /** Ruta absoluta del archivo de un asset dentro de MEDIA_DIR. */
 export function mediaFilePath(organizationId: string, assetId: string): string {
   assertSafeSegment(organizationId);
   assertSafeSegment(assetId);
-  return path.join(getEnv().MEDIA_DIR, organizationId, assetId);
+  const file = resolveMediaFile(organizationId, assetId);
+  if (file === null) throw new Error(`fuera del árbol de media: ${assetId}`);
+  return file;
 }
 
 export async function saveMediaFile(

@@ -1,14 +1,12 @@
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "fs";
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import { Resvg } from "@resvg/resvg-js";
+import { resolveMediaFile } from "@/server/media-path";
 
 export const PAGE_W = 595.28;
 export const PAGE_H = 841.89;
 export const MARGIN = 50;
 export const CONTENT_W = PAGE_W - MARGIN * 2;
-
-const MEDIA_DIR = process.env.MEDIA_DIR ?? "/data/media";
 
 export const money = (cents: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(cents / 100);
 
@@ -88,8 +86,8 @@ export function tryLoadLogo(
   const match = logoUrl.match(/\/([^/]+)$/);
   if (!match) return null;
   const filename = match[1]!;
-  const filePath = join(MEDIA_DIR, organizationId, filename);
-  if (!existsSync(filePath)) return null;
+  const filePath = resolveMediaFile(organizationId, filename);
+  if (filePath === null) return null;
   try {
     const data = readFileSync(filePath);
     const ext = filename.split(".").pop()?.toLowerCase();

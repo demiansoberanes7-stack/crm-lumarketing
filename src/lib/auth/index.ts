@@ -7,6 +7,7 @@ import { getDb, schema } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { AUTH_RATE_LIMIT, checkDistributedRateLimit } from "@/lib/rate-limit";
 import {
+  isInstanceOwner,
   onUserCreated,
   resolveActiveOrganizationId,
 } from "@/server/auth/on-signup";
@@ -98,7 +99,17 @@ function createAuth() {
           },
         }
       : {}),
-    plugins: [organization({ creatorRole: "owner" })],
+    plugins: [
+      organization({
+        creatorRole: "owner",
+        // El plugin expone POST /api/auth/organization/create a CUALQUIER sesión
+        // válida. Sin este guard, un miembro de un negocio crea un tenant propio
+        // y sin sembrar (embudo, canales y perfil de agente ausentes), saltando
+        // el control de quien opera la instancia. El alta legítima sigue por
+        // Ajustes → Equipo, que escribe la organización sembrada directamente.
+        allowUserToCreateOrganization: async (user) => isInstanceOwner(user.id),
+      }),
+    ],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         // Rate limit por IP en login/registro (FR-062): 10 / 10 min → 429.

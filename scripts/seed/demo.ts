@@ -29,11 +29,37 @@ if (!url) {
 const sql = postgres(url, { max: 1 });
 const db = drizzle(sql, { schema });
 
-const orgs = await db.select().from(schema.organization).limit(1);
-const org = orgs[0];
-if (!org) {
+// Con varios negocios en la instancia, «la primera organización» ya no es una
+// elección inofensiva: el seed escribiría leads y conversaciones falsos dentro
+// del CRM de un cliente. Se exige --org=<id> salvo que haya exactamente una.
+const requestedOrg = process.argv
+  .find((arg) => arg.startsWith("--org="))
+  ?.slice("--org=".length);
+
+const orgs = await db
+  .select({ id: schema.organization.id, name: schema.organization.name })
+  .from(schema.organization)
+  .orderBy(schema.organization.createdAt);
+
+if (orgs.length === 0) {
   console.error(
     "[seed] No hay organización: regístrate primero en la app y vuelve a correr el seed"
+  );
+  await sql.end();
+  process.exit(1);
+}
+
+const org = requestedOrg
+  ? orgs.find((row) => row.id === requestedOrg)
+  : orgs.length === 1
+    ? orgs[0]
+    : undefined;
+
+if (!org) {
+  console.error(
+    requestedOrg
+      ? `[seed] No existe la organización «${requestedOrg}»`
+      : `[seed] Hay ${orgs.length} negocios; indica cuál con --org=<id> para no sembrar datos de prueba en el CRM de un cliente`
   );
   await sql.end();
   process.exit(1);
