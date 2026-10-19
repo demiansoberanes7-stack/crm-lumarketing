@@ -52,7 +52,10 @@ CRM LUMARK es un sistema de gestion de relaciones con clientes (CRM) open source
 - **Agenda**: Programacion de citas con conectores Zoom y Google Calendar
 - **Finanzas**: Cuentas por cobrar, pagos, gastos, balance mensual
 - **Email**: Integracion IMAP/SMTP para envio y recepcion
-- **Branding**: White-label con color de acento personalizable
+- **Branding**: White-label con color de acento personalizable. Se resuelve por
+  peticion: las paginas autenticadas usan la marca del negocio de la sesion
+  (`getBrandingContextForRequest`), y las publicas solo muestran marca de un
+  negocio si la instancia tiene uno; con dos o mas, la neutra.
 - **Real-time**: Server-Sent Events para actualizaciones en vivo
 - **Bot API**: Interface para microservicios externos que guien conversaciones
 - **Atribucion**: Conversions API de Meta para atribucion de anuncios
@@ -1248,6 +1251,7 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | Ruta | Metodo | Descripcion |
 |------|--------|-------------|
 | `/api/email/accounts` | GET/POST | Cuentas email |
+| `/api/email/accounts/[id]` | PATCH/DELETE | Editar cuenta, o apagarla/encenderla con `{"enabled":false}` (unico campo que puede viajar solo); DELETE elimina |
 | `/api/email/accounts/[id]/sync` | POST | Sincronizar IMAP |
 | `/api/email/accounts/[id]/test` | POST | Probar conexion |
 | `/api/email/messages` | GET | Mensajes |

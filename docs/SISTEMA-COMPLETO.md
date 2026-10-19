@@ -563,10 +563,20 @@ El agente utiliza un adaptador compatible con OpenRouter (un solo límite LLM po
 1. Carga conversación y verifica config de IA
 2. Verifica handoff (si el agente ya transfirió a humano)
 3. Verifica ventana de 24h
-4. Backup regex de handoff ANTES del LLM (red de seguridad)
-5. Construye prompt con KB + etapas + slots ofrecidos
-6. Llama al LLM
-7. Despacha acción
+4. Silencio si «Activo en conversaciones nuevas» está apagado y ninguna persona
+   ha respondido todavía en ESA conversación (se busca en todo el historial, no
+   en la ventana de 20 mensajes que lee el prompt)
+5. Backup regex de handoff ANTES del LLM (red de seguridad)
+6. Construye prompt con KB + etapas + slots ofrecidos
+7. Llama al LLM
+8. Despacha acción
+9. Si «Reaccionar con emoji» está encendido y la acción no es `none`, marca 👍 el
+   mensaje del cliente (`/api/reactMessage` de WAHA). Falla en silencio: sin
+   credenciales, con la ventana cerrada o con WAHA Core el turno sigue igual.
+
+Los dos interruptores viven en Ajustes → Agente → «Respuesta automática» y se
+guardan en `agent_profile`. El Laboratorio (`isTest`) los ignora: evalúa el
+comportamiento configurado aunque el agente esté apagado.
 
 ### Acciones del Agente (`src/server/ai/actions.ts`)
 
@@ -1175,6 +1185,27 @@ accentCssVariables(): string
 ### Almacenamiento
 
 Se guarda en `organization.metadata` como JSON.
+
+### Dónde se aplica (resolución por petición)
+
+`src/server/branding.ts` expone dos lecturas distintas y usar la equivocada es
+invisible hasta que hay un segundo negocio en la instancia:
+
+| Función | Quién decide el tenant | Uso |
+|---|---|---|
+| `getBranding(organizationId)` | el que pasa el llamador | páginas y rutas con sesión, PDFs, pipeline |
+| `getBrandingContextForRequest()` | la sesión de la petición | layout raíz, `generateMetadata`, `/api/branding/favicon`, layout de acceso |
+
+La regla de falla-cerrada sigue igual: sin id de organización se leen hasta 2
+negocios y, si hay más de uno, se devuelve `DEFAULT_BRANDING`. Por eso el layout
+raíz NUNCA puede llamar a `getBranding()` a secas: con dos negocios en la
+instancia toda la interfaz autenticada caería al lima neutro y el color guardado
+en Ajustes → Marca no se vería jamás.
+
+Además de las variables CSS del `<head>` (`accentCssVariables`, con los dos
+temas), `BrandingClient` repite el mismo bloque en un `<style id="marca-acento">`
+al guardar, para que el cambio se vea sin recargar. Sale de la misma función: no
+hay dos fuentes de verdad.
 
 ---
 

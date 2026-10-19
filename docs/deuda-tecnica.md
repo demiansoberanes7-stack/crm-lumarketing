@@ -70,6 +70,17 @@ tiene dos definiciones que pueden separarse con el tiempo.
 | `offer` (`schema.ts:1829-1848`) | Inerte | experiment | CRUD/rutas |
 | `sync_state` (`schema.ts:1982-2003`) | Inerte | nadie | Uso en pollers (Meta/Google Ads) |
 | `experiment`/`experiment_variant`/`experiment_observation` (`schema.ts:2006-2110`) | Inerte | commercial (nota) | Rutas + UI + captura de observaciones |
+| `qualification_criteria` (`schema.ts:2310-2325`) | Inerte | nadie | La tabla entera: sin ruta, sin pantalla, sin lector |
+| `loss_reason_catalog` (`schema.ts:2327+`) | Media inerte | nadie | `on-signup.ts:94-101` la SIEMBRA por negocio y nadie la lee: el diálogo de pérdida usa la constante `LOSS_REASON_LABEL` (`lib/types.ts:132`) y el análisis usa `lib/loss-reason.ts` |
+| `google_ads_metric` (`schema.ts:2124`) | Bucle cerrado | su propia ruta | `POST /api/google-ads/metrics` escribe y `GET` lee, pero ningún panel ni Copiloto consume esa tabla (Reportes lee `meta_ads`) |
+
+Columnas muertas confirmadas por inspección (definidas, sin escritor o sin lector):
+`email_account.from_name` / `.signature` / `.daily_limit` (`schema.ts:1599,1614,1615` — el
+envío usa `emailAddress`), `ai_model`, `lead.qualified_at`/`.qualification_data`,
+`message.provider_account`, `project.next_meeting_at`, `outbound_delivery.next_retry_at`,
+`ad_creative.ad_set_id`/`.creative_type`/`.media_url`, `attribution_event.offer_id`/`.creative_id`/`.click_id`,
+`broadcast_campaign.sender_account_id`/`.subject`/`.template*`, `intel_snapshot.video_count`,
+`quote.payment_plan`.
 
 ---
 
@@ -190,8 +201,54 @@ la respuesta de media.
 
 ### 6.4 Cómo verificar lo de esta sección
 
-Hoy la suite local es 124 archivos / 1086 pruebas (`pnpm test`), y producción responde
+Hoy la suite local es 129 archivos / 1123 pruebas (`pnpm test`), y producción responde
 `{"ok":true,"version":"1.3.0","commit":"53f38c0"}` en `/api/health`. Los probes de regresión de
 A-01 se corren **dentro** del contenedor `crm-lumarketing-caddy-1` contra `http://app:3000`
 (HTTPS desde la VM no sirve: se hairpina y devuelve `code=000`): una ruta con `%2e%2e%2f` debe dar **422**,
 un archivo inexistente **404**, y un logo real 200 con `nosniff`.
+
+### 6.5 Pase de «cada configuración hace lo que promete» (2026-10-19, tarde)
+
+El disparador fue un reclamo concreto: se guardaba «Dorado» en Ajustes → Marca y la
+interfaz seguía lima. El defecto no estaba en el guardado —la BD tenía el color—, sino
+en la **lectura**: el layout raíz pedía la marca sin organización y la regla
+falla-cerrada devolvía la neutra en cuanto existe un segundo negocio. Se cerró con
+`getBrandingContextForRequest()` (leer la marca de la sesión de la petición) más cuatro
+pruebas que renderizan el HTML real del layout y del login.
+
+Cerrado en el mismo pase, porque eran la misma clase de defecto (algo se guarda y no se
+aplica, o se aplica pero miente):
+
+- Favicon y `<title>` de las páginas autenticadas caían igual al neutro.
+- La URL del favicon no distinguía negocios: dos tenants con el mismo nombre compartían
+  la entrada de caché del navegador y uno veía el logo del vecino.
+- La pantalla de acceso tenía el logotipo y el naranja de **otra** empresa incrustados,
+  sin variables: ya usa la marca de la instancia (neutra si hay varios negocios).
+- Dos páginas ponían `Zorro Tech CRM` en `metadata.title`, que **pisa** el título del
+  layout: en `/commercial` la pestaña perdía el nombre del negocio. El layout ahora usa
+  `title.template` y las páginas solo nombran la sección.
+- `reactWithEmoji` y `activeInNewConversations` se guardaban, se leían en el GET y salían
+  en la tarjeta, pero el turno del agente no los consultaba: ningún punto de ejecución.
+- `serializeBotProfile` recortaba el perfil a cinco campos: el cerebro externo nunca
+  recibía rubro, ubicación, descripción, idioma, idioma de respaldo, espera máxima ni
+  palabras de etapa.
+- `email_account.enabled` tenía guard en el servicio y badge On/Off en la tarjeta, pero
+  ni la ruta aceptaba el campo ni había dónde moverlo: las cuentas no se podían apagar.
+
+Dejada, con nombre y apellido (es decisión del dueño, no un olvido):
+
+- **Cuenta de bot por instancia.** `/api/bot/*` resuelve el negocio con
+  `resolveInstanceOrg()`, que devuelve `null` cuando la instancia tiene dos o más
+  negocios → el endpoint responde 409 y el cerebro externo queda inutilizable en modo
+  multi-negocio. El arreglo son claves por tenant (`bot_api_key` en el perfil) y ensancha
+  lo que alcanza una filtración de `BOT_API_KEY`; por eso no lo decidí yo.
+- **Borrado global de `/settings/diagnostics`**: la purga del owner borra eventos de
+  TODAS las organizaciones. Sin fugas de lectura, pero sin acotar.
+- **`META_WEBHOOK_VERIFY_TOKEN` es de instancia** (D-08) y **el badge de IA** mira el
+  `.env` antes que la clave por negocio: solo pinta mal, `resolveAiConfig` sí prefiere la
+  del tenant.
+- **`--info` sigue lima** con acento dorado: un solo uso y el color es semántico.
+- **Esquema inerte** de §3 (`loss_reason_catalog` sembrada y nunca leída,
+  `qualification_criteria`, `google_ads_metric` en bucle cerrado, columnas de
+  `email_account` sin escritor): borrar tablas es migración irreversible sobre la BD de
+  producción; se deja documentado.
