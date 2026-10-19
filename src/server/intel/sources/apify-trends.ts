@@ -29,8 +29,10 @@ const MAX_WAIT_MS = 60_000;
 export type ApifyTrendsResult = {
   timeSeries: { points: Array<{ time: number; value: number }>; average: number } | null;
   regions: Array<{ geoCode: string; value: number }>;
-  topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
-  queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
+  // El Actor devuelve los relacionados en una lista plana: no distingue
+  // «Principal» de «Subiendo», así que todo se marca `top` (sin % que heredar).
+  topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" }>;
+  queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" }>;
   partial: boolean;
   provider: "apify";
 };
@@ -246,7 +248,7 @@ function normalizeFullItem(rec: Rec): ApifyTrendsResult {
       const label = e.title ?? e.topic ?? e.label;
       if (typeof label === "string") {
         const value = typeof e.value === "number" ? e.value : 0;
-        topics.push({ label, value, pct: null, isBreakout: false });
+        topics.push({ label, value, pct: null, isBreakout: false, list: "top" });
       }
     }
   }
@@ -258,7 +260,7 @@ function normalizeFullItem(rec: Rec): ApifyTrendsResult {
       const label = e.query ?? e.label;
       if (typeof label === "string") {
         const value = typeof e.value === "number" ? e.value : 0;
-        queries.push({ label, value, pct: null, isBreakout: false });
+        queries.push({ label, value, pct: null, isBreakout: false, list: "top" });
       }
     }
   }

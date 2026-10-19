@@ -3,15 +3,16 @@
  *
  * NO es una API oficial de Google: no hay API key, se accede a los mismos
  * endpoints públicos de `trends.google.com/trends/api/*` que consume la
- * librería pytrends. Es UNPROBADO y puede cambiar cuando Google lo decida:
- * por eso es degradación obligatoria — si falla o cambia, el módulo sigue
- * funcionando con fallback a vistas de YouTube (camino sin dependencia
- * externa, regla de soberanía). Nunca lanza: siempre devuelve null/vacío.
+ * librería pytrends. Es UNPROBADO y puede cambiar cuando Google lo decida: por
+ * eso es el último eslabón de la cadena del orquestador (SerpApi → Apify →
+ * aquí). Si todos fallan, el nicho se queda sin serie ese día y la UI lo dice;
+ * nunca se rellena con vistas de YouTube. Nunca lanza: devuelve null/vacío.
  *
  * Rate limit manual: 1 petición cada 2 segundos (evita el bloqueo 429 de
  * Google). Cache en memoria 1 hora por (kw, geo, timeframe).
  *
- * ADR-001: esta fuente solo se activa con la bandera INTEL_GT.
+ * ADR-001: el interruptor es el checkbox por organización
+ * `intel_credentials.gtEnabled`, no una variable de entorno.
  */
 
 const BASE = "https://trends.google.com/trends/api";
@@ -125,6 +126,8 @@ export type GtRelated = {
   pct: number | null;
   /** Google lo marcó "breakout" → la UI muestra "Aumento puntual". */
   isBreakout: boolean;
+  /** Lista del widget: `rankedList[0]` = Principal, `[1]` = Subiendo. */
+  list: "top" | "rising";
 };
 
 export type GtResponse = {
@@ -192,12 +195,23 @@ function parseRelated(widget: unknown): GtRelated[] {
   const ranked = rec.rankedList;
   if (!Array.isArray(ranked)) return [];
   const out: GtRelated[] = [];
-  for (const rawGroup of ranked) {
+  for (const [groupIndex, rawGroup] of ranked.entries()) {
     const group = asRecord(rawGroup);
     if (!group) continue;
-    const list = group.rankedKeyword;
-    if (!Array.isArray(list)) continue;
-    for (const rawKw of list) {
+    const groupTitle = typeof group.title === "string" ? group.title.toLowerCase() : "";
+    // El widget trae dos `rankedList` (Principal y Subiendo). Google no
+    // garantiza el orden, así que manda el título y la posición es la reserva.
+    const kind: GtRelated["list"] =
+      groupTitle.includes("rising") || groupTitle.includes("subiendo")
+        ? "rising"
+        : groupTitle.includes("top") || groupTitle.includes("principal")
+          ? "top"
+          : groupIndex === 0
+            ? "top"
+            : "rising";
+    const keywords = group.rankedKeyword;
+    if (!Array.isArray(keywords)) continue;
+    for (const rawKw of keywords) {
       const kw = asRecord(rawKw);
       if (!kw) continue;
       // label puede venir como query o como topic.title
@@ -228,7 +242,15 @@ function parseRelated(widget: unknown): GtRelated[] {
         if (!Number.isNaN(parsed)) pct = parsed;
       }
 
-      out.push({ label, value: numValue, pct: isBreakout ? null : pct, isBreakout });
+      out.push({
+        label,
+        value: numValue,
+        pct: isBreakout ? null : pct,
+        isBreakout,
+        // Un «breakout» solo existe en la lista de alza: si el título del
+        // widget no la nombraba, el propio dato dice a qué lista pertenece.
+        list: isBreakout ? "rising" : kind,
+      });
     }
   }
   return out;

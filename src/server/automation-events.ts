@@ -241,6 +241,13 @@ export async function scanInactivity(): Promise<void> {
             })) as { rules?: unknown } | null
           : integration.credentials as { rules?: unknown } | null;
       } catch {
+        // Se omite la fila, pero se dice CUÁL: sin esto una rotación de
+        // ENCRYPTION_KEY apaga las automatizaciones de una organización para
+        // siempre y no queda rastro en los logs.
+        console.warn(
+          "[automations] Reglas de una organización no descifrables; se omite su barrido:",
+          integration.organizationId
+        );
         continue;
       }
       const rules = listAutomationRules(credentials?.rules)

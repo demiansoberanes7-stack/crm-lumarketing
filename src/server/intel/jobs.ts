@@ -4,6 +4,9 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { listActiveTerms } from "@/server/intel/terms";
 import { runGtIngest } from "@/server/intel/service";
+import { runTrendingIngest } from "@/server/intel/trending";
+import { runYoutubeIngest } from "@/server/intel/videos";
+import { YoutubeError } from "@/server/intel/sources/youtube";
 import { runGeoIngest } from "@/server/intel/geo";
 import { markGtSynced } from "@/server/intel/credentials";
 
@@ -22,7 +25,7 @@ import { markGtSynced } from "@/server/intel/credentials";
  *    (se marca `error`) antes de crear el siguiente.
  */
 
-export type IntelJobKind = "gt_all" | "gt_term" | "geo";
+export type IntelJobKind = "gt_all" | "gt_term" | "geo" | "trending";
 export type IntelJob = typeof schema.intelJob.$inferSelect;
 
 /** Un job running más viejo que esto se considera huérfano (proceso muerto). */
@@ -178,13 +181,61 @@ export async function runGtAllJob(input: {
       await markIntelJobProgress(input.jobId, i + 1, terms.length);
     }
     if (gtIngested > 0) await markGtSynced(input.organizationId);
+
+    // Una sola vez por clic, además de los nichos: «Tendencias actuales» es
+    // otra fuente y el usuario no debe tener que refrescarla aparte.
+    const trending = await runTrendingIngest(input.organizationId).catch(() => ({
+      ok: false,
+      rows: 0,
+      source: "none",
+    }));
+
+    // Y la muestra de YouTube que alimenta «Contenido que funciona». Falla en
+    // silencio relativo (no invalida la ingesta GT) pero se reporta en el job.
+    const yt = await runYoutubeIngest(input.organizationId).catch((err: unknown) => ({
+      ok: false,
+      fetched: 0,
+      rows: 0,
+      matchedTerms: 0,
+      reason: err instanceof YoutubeError ? err.message : "youtube_failed",
+    }));
+
     await finishIntelJob(input.jobId, {
       ok: gtIngested > 0,
       gtIngested,
       gtFailed,
       total: terms.length,
+      trendingRows: trending.rows,
+      trendingSource: trending.source,
+      youtubeRows: yt.rows,
+      youtubeReason: yt.ok ? null : yt.reason ?? null,
       source: "google_trends",
     });
+  } catch (err) {
+    await failIntelJob(input.jobId, errorMessage(err));
+  }
+}
+
+/** Refresco de «Tendencias actuales» sin tocar la cuota de los nichos. */
+export async function runTrendingJob(input: {
+  jobId: string;
+  organizationId: string;
+  geo?: string;
+  hours?: number;
+}): Promise<void> {
+  try {
+    await markIntelJobProgress(input.jobId, 0, 1);
+    const result = await runTrendingIngest(
+      input.organizationId,
+      input.geo ?? "MX",
+      input.hours ?? 24
+    );
+    if (!result.ok) {
+      await failIntelJob(input.jobId, result.reason ?? "Ninguna fuente de tendencias respondió.");
+      return;
+    }
+    await markIntelJobProgress(input.jobId, 1, 1);
+    await finishIntelJob(input.jobId, result as unknown as Record<string, unknown>);
   } catch (err) {
     await failIntelJob(input.jobId, errorMessage(err));
   }

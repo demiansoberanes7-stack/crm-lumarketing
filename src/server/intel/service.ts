@@ -25,6 +25,9 @@ export function addDays(day: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Tope de temas/consultas que se sirven por tipo (cubre Principal + Subiendo). */
+const RELATED_CAP = 50;
+
 export type TrendCard = {
   termId: string;
   name: string;
@@ -181,9 +184,9 @@ export async function compareTerms(
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Google Trends (ADR-001 · bandera INTEL_GT).
-   La serie GT manda (índice 0–100); las vistas YouTube son fallback
-   normalizado. Fuentes declaradas siempre en la UI.
+   Google Trends (ADR-001). El interruptor real es el checkbox por organización
+   `intel_credentials.gtEnabled`, no una variable de entorno. La serie es 100 %
+   GT: no se sustituye por vistas de YouTube. Fuentes declaradas en la UI.
    ──────────────────────────────────────────────────────────────────────────── */
 
 export type GtIngestResult = {
@@ -320,6 +323,8 @@ export async function runGtIngest(
 
   // Relacionados (temas y consultas) — iteramos por separado para evitar
   // el identity check frágil `topics.includes(r)` que fallaba con clones.
+  // `list` entra en la llave del upsert: el mismo tema puede estar en
+  // «Principal» y en «Subiendo» el mismo día, y son dos medidas distintas.
   for (const r of allTopics) {
     const label = r.label.slice(0, 300);
     await db
@@ -329,6 +334,7 @@ export async function runGtIngest(
         organizationId,
         termId,
         kind: "topic",
+        list: r.list,
         label,
         value: r.value,
         pct: r.pct !== null ? Math.round(r.pct) : null,
@@ -336,7 +342,13 @@ export async function runGtIngest(
         day,
       })
       .onConflictDoUpdate({
-        target: [schema.intelGtRelated.termId, schema.intelGtRelated.kind, schema.intelGtRelated.label, schema.intelGtRelated.day],
+        target: [
+          schema.intelGtRelated.termId,
+          schema.intelGtRelated.kind,
+          schema.intelGtRelated.list,
+          schema.intelGtRelated.label,
+          schema.intelGtRelated.day,
+        ],
         set: { value: r.value, pct: r.pct !== null ? Math.round(r.pct) : null, isBreakout: r.isBreakout },
       });
     related += 1;
@@ -350,6 +362,7 @@ export async function runGtIngest(
         organizationId,
         termId,
         kind: "query",
+        list: r.list,
         label,
         value: r.value,
         pct: r.pct !== null ? Math.round(r.pct) : null,
@@ -357,7 +370,13 @@ export async function runGtIngest(
         day,
       })
       .onConflictDoUpdate({
-        target: [schema.intelGtRelated.termId, schema.intelGtRelated.kind, schema.intelGtRelated.label, schema.intelGtRelated.day],
+        target: [
+          schema.intelGtRelated.termId,
+          schema.intelGtRelated.kind,
+          schema.intelGtRelated.list,
+          schema.intelGtRelated.label,
+          schema.intelGtRelated.day,
+        ],
         set: { value: r.value, pct: r.pct !== null ? Math.round(r.pct) : null, isBreakout: r.isBreakout },
       });
     related += 1;
@@ -365,6 +384,17 @@ export async function runGtIngest(
 
   return { termId, ok: points > 0 || regions > 0 || related > 0, points, regions, related, partial: data.partial, provider: orch.provider };
 }
+
+export type GtRelatedItem = {
+  label: string;
+  /** Índice 0–100 cuando `list` es «top». */
+  value: number;
+  /** % de alza cuando `list` es «rising»; null si es breakout o «top». */
+  pct: number | null;
+  isBreakout: boolean;
+  /** «Principal» (0–100) o «Subiendo» (% / aumento puntual). */
+  list: "top" | "rising";
+};
 
 export type GtReport = {
   termId: string;
@@ -376,8 +406,8 @@ export type GtReport = {
   /** Regiones 0–100 (GT) o DENUE (fallback, normalizado). */
   regions: Array<{ state: string; index: number; source: "google_trends" | "denue" }>;
   regionsSource: "google_trends" | "denue" | "none";
-  topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
-  queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean }>;
+  topics: GtRelatedItem[];
+  queries: GtRelatedItem[];
   /** true si GT no respondió y se usó fallback YouTube. */
   usedFallback: boolean;
   method: { fuente: string; ventana: string };
@@ -486,14 +516,30 @@ export async function getGtReport(
         .orderBy(desc(schema.intelGtRelated.day))
     : [];
 
-  const topics = relatedRows
-    .filter((r) => r.kind === "topic")
-    .slice(0, 5)
-    .map((r) => ({ label: r.label, value: r.value, pct: r.pct, isBreakout: r.isBreakout }));
-  const queries = relatedRows
-    .filter((r) => r.kind === "query")
-    .slice(0, 5)
-    .map((r) => ({ label: r.label, value: r.value, pct: r.pct, isBreakout: r.isBreakout }));
+  // La lista «Principal» y la «Subiendo» se leen juntas: la UI las separa,
+  // ordena y pagina. Se entrega el listado de la ventana (tope por tipo) porque
+  // el pie necesita decir «Mostrando 1-5 de 25 temas».
+  const collect = (kind: "topic" | "query"): GtRelatedItem[] => {
+    const seen = new Set<string>();
+    const out: GtRelatedItem[] = [];
+    for (const r of relatedRows) {
+      if (r.kind !== kind) continue;
+      const key = `${r.list}|${r.label}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        label: r.label,
+        value: r.value,
+        pct: r.pct,
+        isBreakout: r.isBreakout,
+        list: r.list === "rising" ? "rising" : "top",
+      });
+      if (out.length >= RELATED_CAP) break;
+    }
+    return out;
+  };
+  const topics = collect("topic");
+  const queries = collect("query");
 
   // Sin fallback YouTube (la serie es 100 % GT): usedFallback es siempre
   // false. Antes marcaba true cuando NO había datos, lo cual invertía su

@@ -24,4 +24,7 @@ export const itemFields = {
 export const createItemSchema = z.object(itemFields).strict();
 export const updateItemSchema = createItemSchema.partial().refine((v) => Object.keys(v).length > 0, "Indica al menos un cambio");
 
+/** Anidar una cotización existente a un proyecto ya creado. */
+export const linkQuoteSchema = z.object({ quoteId: z.string().trim().min(1).max(255) }).strict();
+
 export const DEFAULT_PROJECT_STAGES = ["Activación", "Diagnóstico", "Calendario de Entregable", "Creación de Entregable", "Terminación de Entregable", "Reporte de Resultados", "Renovación"];

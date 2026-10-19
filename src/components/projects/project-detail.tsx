@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EditProject } from "./edit-project";
 import { TaskForm, TaskRow, type Task } from "@/components/tasks/task-panel";
 import { ProjectItemsCard } from "./project-items-card";
+import { ProjectQuotesCard } from "./project-quotes-card";
 import { type CrmMember } from "@/components/member-picker";
 import { taskRequest } from "@/components/tasks/api";
 import { PdfActions } from "@/components/pdf-actions";
@@ -213,6 +214,8 @@ export function ProjectDetail({
       </Card>
 
       <ProjectItemsCard projectId={projectId} />
+
+      <ProjectQuotesCard projectId={projectId} />
 
       <Card><CardHeader><CardTitle className="text-sm">Tareas</CardTitle></CardHeader><CardContent className="space-y-4">
         <TaskForm projectId={projectId} members={members} onSaved={() => void refetch()} />

@@ -29,6 +29,8 @@ export type TrendsRelated = {
   value: number;
   pct: number | null;
   isBreakout: boolean;
+  /** Lista de la que salió: «Principal» (índice) o «Subiendo» (%). */
+  list: "top" | "rising";
 };
 export type TrendsResponse = {
   timeSeries: TrendsSeries | null;
@@ -115,7 +117,7 @@ function parseTopics(data: Rec): TrendsRelated[] {
       const title = topic?.title;
       if (typeof title !== "string") continue;
       const value = num(e.extracted_value) ?? num(e.value) ?? 0;
-      out.push({ label: title, value, pct: null, isBreakout: false });
+      out.push({ label: title, value, pct: null, isBreakout: false, list: "top" });
     }
   }
 
@@ -138,6 +140,7 @@ function parseTopics(data: Rec): TrendsRelated[] {
         value: extracted ?? 0,
         pct: isBreakout ? null : pct,
         isBreakout,
+        list: "rising",
       });
     }
   }
@@ -159,7 +162,7 @@ function parseQueries(data: Rec): TrendsRelated[] {
       const query = e.query;
       if (typeof query !== "string") continue;
       const value = num(e.extracted_value) ?? num(e.value) ?? 0;
-      out.push({ label: query, value, pct: null, isBreakout: false });
+      out.push({ label: query, value, pct: null, isBreakout: false, list: "top" });
     }
   }
 
@@ -180,6 +183,7 @@ function parseQueries(data: Rec): TrendsRelated[] {
         value: extracted ?? 0,
         pct: isBreakout ? null : pct,
         isBreakout,
+        list: "rising",
       });
     }
   }

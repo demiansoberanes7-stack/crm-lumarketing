@@ -2868,6 +2868,11 @@ export const intelGtRegion = pgTable(
  * Temas y consultas relacionados de Google Trends.
  * `isBreakout` = Google lo marcó «breakout» (rising); la UI lo muestra como
  * «Aumento puntual» sin % (denominador ~0).
+ *
+ * `list` distingue las dos listas que Google muestra por separado («Principal»
+ * con índice 0–100 y «Subiendo» con % de alza). Sin ella, el mismo tema que
+ * aparece en ambas se pisaba en el upsert por (término, tipo, etiqueta, día)
+ * y se perdía una de las dos mediciones.
  */
 export const intelGtRelated = pgTable(
   "intel_gt_related",
@@ -2881,6 +2886,8 @@ export const intelGtRelated = pgTable(
       .references(() => intelTerm.id, { onDelete: "cascade" }),
     /** "topic" (tema) o "query" (consulta). */
     kind: varchar("kind", { length: 10 }).notNull(),
+    /** "top" (índice 0–100) o "rising" (% de alza / aumento puntual). */
+    list: varchar("list", { length: 10 }).notNull().default("top"),
     /** Texto del tema/consulta. */
     label: varchar("label", { length: 300 }).notNull(),
     /** Índice 0–100 (para top) o valor crudo del rising. */
@@ -2892,13 +2899,68 @@ export const intelGtRelated = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("intel_gt_related_term_kind_label_day_uq").on(
+    uniqueIndex("intel_gt_related_term_kind_list_label_day_uq").on(
       t.termId,
       t.kind,
+      t.list,
       t.label,
       t.day
     ),
     index("intel_gt_related_org_term_idx").on(t.organizationId, t.termId),
+  ]
+);
+
+/**
+ * «Tendencias actuales» de Google Trends (búsquedas en tendencia, no la
+ * comparación de términos). Es otra fuente: el explorador del nicho da series
+ * e índices; esta tabla guarda qué se está buscando ahora mismo en el país,
+ * con su volumen, hora de inicio y el desglose que Google agrupa debajo.
+ *
+ * `breakdown` = JSON array `[{ name, type }]` (consultas/temas del desglose).
+ * No hay serie horaria: ninguna de las dos fuentes la publica, así que la
+ * columna «Últimas 24 horas» de la UI muestra el % de alza, no un invento.
+ */
+export const intelGtTrending = pgTable(
+  "intel_gt_trending",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** ISO 3166-1 alpha-2, "MX". */
+    geo: varchar("geo", { length: 2 }).notNull().default("MX"),
+    /** Día UTC de la lectura, "YYYY-MM-DD". */
+    day: varchar("day", { length: 10 }).notNull(),
+    title: varchar("title", { length: 300 }).notNull(),
+    /** Volumen de búsquedas aproximado; null cuando la fuente no lo publica. */
+    volume: integer("volume"),
+    /** % de incremento vs la ventana previa. */
+    increasePct: integer("increase_pct"),
+    /** Momento en que empezó la tendencia (para «hace 5 horas»). */
+    startedAt: timestamp("started_at"),
+    /** Sigue activa según la fuente. */
+    active: boolean("active").notNull().default(true),
+    /** Categoría publicada por la fuente ("Pop culture", "Sports"…). */
+    category: varchar("category", { length: 120 }),
+    /** "Breakout" | "Trending" | "News" | "Popular spike"… */
+    trendType: varchar("trend_type", { length: 30 }),
+    breakdown: jsonb("breakdown").$type<Array<{ name: string; type?: string }>>(),
+    /** serpapi | rss — declara de dónde viene la fila. */
+    source: varchar("source", { length: 40 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("intel_gt_trending_org_geo_day_title_uq").on(
+      t.organizationId,
+      t.geo,
+      t.day,
+      t.title
+    ),
+    index("intel_gt_trending_org_geo_day_idx").on(
+      t.organizationId,
+      t.geo,
+      t.day
+    ),
   ]
 );
 

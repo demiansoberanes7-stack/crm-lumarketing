@@ -92,6 +92,7 @@ const prefixes = {
   intelGtSnapshot: "igs",
   intelGtRegion: "igr",
   intelGtRelated: "irl",
+  intelGtTrending: "itd",
   intelJob: "ijb",
   mcpCode: "mcpc",
   mcpToken: "mcpt",
