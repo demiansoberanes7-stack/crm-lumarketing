@@ -91,9 +91,38 @@ describe("serializeBotProfile", () => {
         greeting: "¡Hola! Soy Sofi 🦷",
         fichaFields: DEFAULT_AGENT_FICHA_FIELDS,
         rules: DEFAULT_AGENT_RULES,
+        // Lo que el negocio escribió en Ajustes → Agente y que el cerebro
+        // externo también necesita para responder como ese negocio.
+        businessIndustry: null,
+        businessLocation: null,
+        businessDescription: null,
+        responseLanguage: "auto",
+        fallbackLanguage: "es",
+        maxResponseWaitSeconds: 12,
+        pipelineKeywords: null,
       },
       kb: "P: ¿Cuánto cuesta?\nR: $800.",
       resources: [],
+    });
+  });
+
+  it("el rubro, el idioma y las palabras de etapa viajan al cerebro externo", () => {
+    const out = serializeBotProfile(
+      profileRow({
+        businessIndustry: "Clínica dental",
+        businessLocation: "Querétaro",
+        businessDescription: "Limpiezas y ortodoncia.",
+        responseLanguage: "en",
+        pipelineKeywords: "cotiza → Cotizado",
+      }),
+      []
+    );
+    expect(out.profile).toMatchObject({
+      businessIndustry: "Clínica dental",
+      businessLocation: "Querétaro",
+      businessDescription: "Limpiezas y ortodoncia.",
+      responseLanguage: "en",
+      pipelineKeywords: "cotiza → Cotizado",
     });
   });
 

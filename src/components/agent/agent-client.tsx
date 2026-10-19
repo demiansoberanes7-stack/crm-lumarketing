@@ -337,24 +337,37 @@ function ResponseSection({
             </select>
           </div>
         </div>
-        <label className="flex items-center justify-between rounded-md border p-3">
-          <span className="text-sm font-medium">Reaccionar con emoji</span>
-          <input
-            type="checkbox"
-            checked={emoji}
-            onChange={(e) => setEmoji(e.target.checked)}
-            className="h-5 w-5 accent-primary"
-          />
-        </label>
-        <label className="flex items-center justify-between rounded-md border p-3">
-          <span className="text-sm font-medium">Activo en conversaciones nuevas</span>
-          <input
-            type="checkbox"
-            checked={newConv}
-            onChange={(e) => setNewConv(e.target.checked)}
-            className="h-5 w-5 accent-primary"
-          />
-        </label>
+        <div className="space-y-1">
+          <label className="flex items-center justify-between rounded-md border p-3">
+            <span className="text-sm font-medium">Reaccionar con emoji</span>
+            <input
+              type="checkbox"
+              checked={emoji}
+              onChange={(e) => setEmoji(e.target.checked)}
+              className="h-5 w-5 accent-primary"
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">
+            El agente marca 👍 el mensaje del cliente mientras prepara la
+            respuesta. Solo en WhatsApp conectado; si el servidor no lo admite,
+            el turno sigue igual.
+          </p>
+        </div>
+        <div className="space-y-1">
+          <label className="flex items-center justify-between rounded-md border p-3">
+            <span className="text-sm font-medium">Activo en conversaciones nuevas</span>
+            <input
+              type="checkbox"
+              checked={newConv}
+              onChange={(e) => setNewConv(e.target.checked)}
+              className="h-5 w-5 accent-primary"
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Apagado, el agente no saluda primero: espera a que alguien de tu
+            equipo responda y, desde ahí, se suma a esa conversación.
+          </p>
+        </div>
         {dirty && (
           <Button
             className="min-h-11"

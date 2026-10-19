@@ -192,6 +192,28 @@ export async function clearTyping(
   });
 }
 
+/**
+ * Reaccionar a un mensaje (emoji sobre la burbuja del cliente).
+ *
+ * Lo traen WAHA Plus/Enterprise en `/api/reactMessage`; el Core (gratuito)
+ * responde error. Quien llama decide qué hacer con eso —el agente ignora el
+ * fallo—, así que la marca «reaccionar con emoji» encendida no puede romper ni
+ * retrasar una respuesta real.
+ */
+export async function reactMessage(
+  baseUrl: string,
+  apiKey: string,
+  sessionName: string,
+  chatId: string,
+  messageId: string,
+  emoji: string
+): Promise<void> {
+  await wahaRequest(baseUrl, apiKey, "/api/reactMessage", {
+    method: "POST",
+    body: { session: sessionName, chatId, messageId, emoji },
+  });
+}
+
 /** Obtener QR code */
 export async function getQR(
   baseUrl: string,

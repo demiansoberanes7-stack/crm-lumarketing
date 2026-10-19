@@ -50,6 +50,7 @@ vi.mock("@/lib/ai", () => ({
 vi.mock("@/server/inbox/send", () => ({
   SendError: class SendError extends Error { code = "send_failed"; },
   sendText: mocks.sendText,
+  reactToInbound: vi.fn(),
 }));
 vi.mock("@/server/events/bus", () => ({ publish: mocks.publish }));
 vi.mock("@/server/agenda/flag", () => ({ agendaEnabled: () => false }));
@@ -73,7 +74,7 @@ function queueTurn(isTest = false) {
   };
   selectQueue.push(
     [{ id: "cv_1", organizationId: "org_1", contactId: "ct_1", channel: "whatsapp", isTest, aiEnabled: true, handoffAt: null, handoffReason: null, lastInboundAt: inboundAt }],
-    [{ id: "agp_1", organizationId: "org_1", enabled: !isTest, name: "Sofi", rules: DEFAULT_AGENT_RULES, fichaFields: DEFAULT_AGENT_FICHA_FIELDS, maxResponseWaitSeconds: 0 }],
+    [{ id: "agp_1", organizationId: "org_1", enabled: !isTest, name: "Sofi", rules: DEFAULT_AGENT_RULES, fichaFields: DEFAULT_AGENT_FICHA_FIELDS, maxResponseWaitSeconds: 0, activeInNewConversations: true, reactWithEmoji: false }],
     [{ id: "msg_1", direction: "in", text: "Quiero una cotización de dos servicios", createdAt: inboundAt }],
     [],
     [product],

@@ -1,4 +1,4 @@
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Channel } from "@/lib/channels";
 import { newId } from "@/lib/db/ids";
@@ -10,7 +10,7 @@ import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
 import { publish } from "@/server/events/bus";
 import { isWindowOpenFor } from "@/server/inbox/window";
 import { capabilitiesFor } from "@/server/channels/capabilities";
-import { SendError, sendText } from "@/server/inbox/send";
+import { reactToInbound, SendError, sendText } from "@/server/inbox/send";
 import {
   agentActionSchema,
   degradeAction,
@@ -162,6 +162,35 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const lastInbound = [...history].reverse().find((m) => m.direction === "in");
   if (!lastInbound) return;
 
+  /**
+   * «Activo en conversaciones nuevas» (Ajustes → Agente → Respuesta).
+   *
+   * Apagado, el agente no entra hasta que UNA PERSONA haya hablado la
+   * conversación: el dueño quiere saludar él mismo al cliente nuevo y que el bot
+   * se sume después. Se busca en toda la conversación, no en la ventana de 20 de
+   * arriba —si no, un chat largo abierto por un humano volvería a parecer
+   * "nuevo" y el agente se quedaría fuera para siempre.
+   */
+  if (!conversation.isTest && !profile.activeInNewConversations) {
+    const atendida = await db
+      .select({ id: schema.message.id })
+      .from(schema.message)
+      .where(
+        and(
+          eq(schema.message.conversationId, conversationId),
+          eq(schema.message.direction, "out"),
+          eq(schema.message.aiGenerated, false)
+        )
+      )
+      .limit(1);
+    if (atendida.length === 0) {
+      console.info(
+        `[agente] conversación nueva y el agente configurado para no abrirlas: se deja para un humano (org ${organizationId})`
+      );
+      return;
+    }
+  }
+
   // Ventana cerrada: no hay mensaje reciente del cliente que responder. NO se
   // hace handoff (eso dejaba la conversación muda para siempre); el agente se
   // activa solo cuando el cliente vuelve a escribir.
@@ -298,6 +327,18 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   // simular tiempos de escritura.
   if (!conversation.isTest && profile.maxResponseWaitSeconds > 0 && action.action !== "none") {
     await new Promise((resolve) => setTimeout(resolve, profile.maxResponseWaitSeconds * 1000));
+  }
+
+  // «Reaccionar con emoji»: el agente marca el mensaje del cliente justo antes
+  // de contestar (señal de "ya lo vi"). Decorativo: si el canal no tiene
+  // reacciones, reactToInbound no hace nada y el turno sigue igual.
+  if (!conversation.isTest && profile.reactWithEmoji && action.action !== "none") {
+    await reactToInbound({
+      conversationId,
+      organizationId,
+      messageId: lastInbound.waMessageId ?? lastInbound.providerMessageId,
+      emoji: "👍",
+    });
   }
 
   // 015 — Agenda. Un fallo del motor degrada el turno (el agente responde sin

@@ -23,6 +23,19 @@ export function serializeBotProfile(profile: AgentProfile, kb: KbEntry[]) {
       greeting: profile.greeting ?? null,
       fichaFields: normalizeAgentFichaFields(profile.fichaFields),
       rules: normalizeAgentRules(profile.rules),
+      /**
+       * Lo que Ajustes → Agente guarda y el cerebro externo también necesita
+       * para hablar como el negocio: rubro, idioma y tiempos. Viajan aquí
+       * porque `buildAgentSystemPrompt` ya los usa internamente; sin ellos el
+       * bot externo respondía con un perfil más pobre que el propio.
+       */
+      businessIndustry: profile.businessIndustry ?? null,
+      businessLocation: profile.businessLocation ?? null,
+      businessDescription: profile.businessDescription ?? null,
+      responseLanguage: profile.responseLanguage,
+      fallbackLanguage: profile.fallbackLanguage,
+      maxResponseWaitSeconds: profile.maxResponseWaitSeconds,
+      pipelineKeywords: profile.pipelineKeywords ?? null,
     },
     kb: renderKb(kb),
     resources: [] as { label: string; url: string }[],

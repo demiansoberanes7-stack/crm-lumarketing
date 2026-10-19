@@ -50,9 +50,14 @@ El bot externo no adivina el negocio: lo lee de las mismas dos pantallas que
 edita el dueño (Agente y su knowledge base). Este endpoint es el contrato.
 
 14. `GET /api/bot/profile` con la key → **200** con la forma exacta
-    `{profile: {name, tone, instructions, escalationRules, greeting}, kb, resources}`.
-    Los cinco campos del perfil coinciden con lo guardado en la pantalla Agente;
-    los opcionales vacíos viajan como `null`, no como cadena vacía.
+    `{profile: {name, tone, instructions, escalationRules, greeting,
+    fichaFields, rules, businessIndustry, businessLocation, businessDescription,
+    responseLanguage, fallbackLanguage, maxResponseWaitSeconds,
+    pipelineKeywords}, kb, resources}`. Los campos del perfil coinciden con lo
+    guardado en la pantalla Agente; los opcionales vacíos viajan como `null`, no
+    como cadena vacía. El rubro, la ubicación, la descripción, el idioma y la
+    espera máxima se leen aquí: sin ellos, el cerebro externo responde con su
+    propio acento y su propio idioma aunque el dueño haya configurado otro.
 15. `kb` es el knowledge base ya renderizado (`P:`/`R:` para las preguntas,
     los bloques tal cual, en el orden de la pantalla). Con el KB vacío viaja
     la cadena canónica `(knowledge base vacío)`, no `null`: el bot puede

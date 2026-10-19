@@ -3,7 +3,7 @@ import { whatsappProvider } from "@/server/whatsapp/provider";
 import { getWhatsappZernio, zernioWhatsappEnabled, type WhatsappZernioCredentials } from "@/server/whatsapp/zernio-credentials";
 import { sendWhatsappZernio } from "@/server/whatsapp/zernio-send";
 import { getWahaCredentialsFull } from "@/server/waha/credentials";
-import { sendText as wahaText, sendFile as wahaFile } from "@/server/waha/client";
+import { sendText as wahaText, sendFile as wahaFile, reactMessage as wahaReact } from "@/server/waha/client";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import type { Channel } from "@/lib/channels";
@@ -692,6 +692,39 @@ export async function sendText(input: {
   });
 
   return { messageId };
+}
+
+/**
+ * Reacciona al mensaje entrante que el agente acaba de atender.
+ *
+ * Solo WAHA tiene endpoint de reacciones; con Meta, Zernio o cualquier otro
+ * canal la llamada no hace nada, en vez de fallar o de mandar un mensaje
+ * falso. Decorativo y sin consecuencias: los errores se tragan igual que los de
+ * «escribiendo…», porque una reacción que no salió nunca debe frenar la
+ * respuesta al cliente.
+ */
+export async function reactToInbound(input: {
+  conversationId: string;
+  organizationId: string;
+  messageId?: string | null;
+  emoji: string;
+}): Promise<void> {
+  if (!input.messageId) return;
+  try {
+    const target = await prepareSend(input.conversationId, input.organizationId);
+    if (!target.waha) return;
+    await wahaReact(
+      target.waha.baseUrl,
+      target.waha.apiKey,
+      target.waha.sessionName,
+      target.recipient,
+      input.messageId,
+      input.emoji
+    );
+  } catch {
+    // Sin credenciales, ventana cerrada o un WAHA Core que no conoce
+    // `/api/reactMessage`: el turno del agente sigue su curso.
+  }
 }
 
 /**
