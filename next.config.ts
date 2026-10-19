@@ -22,6 +22,32 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: version,
     NEXT_PUBLIC_BUILD_COMMIT: process.env.SOURCE_COMMIT || process.env.GIT_SHA || "",
   },
+  // Cabeceras de seguridad en todas las respuestas. No se declara CSP global:
+  // Tailwind inyecta estilos en línea y una CSP mal calibrada rompería la UI en
+  // producción. Lo que sí se acota sin riesgo es lo de abajo; el SVG que un
+  // miembro sube como logo recibe su propio CSP+sandbox en la respuesta de media
+  // (ver src/server/media-path.ts).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // La única vista embebida es un <iframe> propio sobre un blob: de PDF,
+          // que SAMEORIGIN no afecta; lo que corta es el clickjacking externo.
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // Sin cámara, micrófono ni geolocalización en la app: el audio se sube
+          // como archivo y la ubicación llega de WhatsApp, no del navegador.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // 180 días, sin preload ni includeSubDomains: Caddy renueva el
+          // certificado ACME solo, pero deja salida si algo volviera a servir
+          // esta raíz por HTTP.
+          { key: "Strict-Transport-Security", value: "max-age=15552000" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
