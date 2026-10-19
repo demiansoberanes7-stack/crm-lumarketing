@@ -1634,7 +1634,10 @@ Usuario escribe crm.tudominio.com
 - Sep 18 02:09 - Empiezan los fallos de autenticacion (cientos cada 2 segundos)
 - Sep 18 ~02:20 - Alguien fija la password, el CRM vuelve a funcionar
 
-**Solucion**: Verificar la password actual en EasyPanel -> CRM -> Env vars -> `DATABASE_URL`.
+**Solucion**: Verificar la password actual en el `.env` de la VM (`POSTGRES_PASSWORD`, de la que
+`docker-compose.yml` arma `DATABASE_URL`) y recrear el servicio `app` con
+`docker compose up -d app`. (En la epoca del incidente el panel era EasyPanel; hoy el despliegue
+es VM + compose, ver §15.)
 
 **Leccion aprendida**: Cuando se recrea un contenedor de BD, hay que verificar que la password en `DATABASE_URL` coincida con la nueva instancia.
 

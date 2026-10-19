@@ -202,7 +202,9 @@ Funcionalidades que no son core van detrás de banderas de despliegue:
 
 ### Esquema General
 
-La base de datos PostgreSQL contiene **47+ tablas** organizadas en以下 categorías:
+La base de datos PostgreSQL contiene **102 tablas definidas en el modelo** (`pgTable` en
+`src/lib/db/schema.ts`; en producción son 106 por las cuatro fuera de modelo de
+`docs/deuda-tecnica.md` §6 D-07) organizadas en estas categorías:
 
 #### Autenticación (Better Auth)
 | Tabla | Descripción |
@@ -1000,7 +1002,7 @@ X-Accel-Buffering: no  // Anti-buffering para proxies
 ```
 : ping
 ```
-Cada ~25 segundos (sobrevive Caddy/Traefik).
+Cada ~25 segundos (Caddy no bufferiza la respuesta: `flush_interval -1` en el `Caddyfile`, §27).
 
 #### Formato
 ```
