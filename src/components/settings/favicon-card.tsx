@@ -19,7 +19,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  * con la inicial y el acento. Así queda claro que la instancia ya tiene uno y
  * que subir algo es reemplazarlo, no estrenarlo.
  */
-export function FaviconCard({ branding }: { branding: Branding }) {
+export function FaviconCard({
+  branding,
+  organizationId,
+}: {
+  branding: Branding;
+  organizationId?: string | null;
+}) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -28,7 +34,9 @@ export function FaviconCard({ branding }: { branding: Branding }) {
   const [rev, setRev] = useState(0);
   const [actual, setActual] = useState(branding.favicon);
 
-  const src = `${faviconHref({ ...branding, favicon: actual })}&r=${rev}`;
+  // El `o=` separa las entradas de la caché del navegador por negocio: dos
+  // clientes con la misma versión de icono no comparten URL.
+  const src = `${faviconHref({ ...branding, favicon: actual }, organizationId)}&r=${rev}`;
 
   async function subir(file: File) {
     setError(null);

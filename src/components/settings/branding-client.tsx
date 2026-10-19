@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ACCENT_PRESETS,
+  accentCssVariables,
   DEFAULT_BRANDING,
   DEFAULT_PDF_COLORS,
   isValidHex,
@@ -19,6 +20,30 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+const ID_ESTILO_MARCA = "marca-acento";
+
+/**
+ * Pinta el acento en el documento sin esperar una recarga manual.
+ *
+ * El `<style>` del layout raíz vive en el `<head>` que genera el servidor, y el
+ * `router.refresh()` de `save()` no es garantía de que el navegador suelte el
+ * color viejo: es justamente ese “guardé Dorado y sigue lima” que reportó el
+ * dueño. Se aplica el MISMO bloque de CSS (`accentCssVariables`, con los dos temas) que
+ * emite el layout, así no hay dos fuentes de verdad y el cambio se ve al
+ * instante. Va en su propia etiqueta con id, al final del `<head>`, para ganar
+ * por orden sin pisar el `<style>` de servidor.
+ */
+function pintarAcento(accent: string) {
+  const css = accentCssVariables(accent);
+  let el = document.getElementById(ID_ESTILO_MARCA) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = ID_ESTILO_MARCA;
+    document.head.appendChild(el);
+  }
+  el.textContent = css;
+}
 
 export function BrandingClient() {
   const router = useRouter();
@@ -70,6 +95,7 @@ export function BrandingClient() {
       return;
     }
     setSaved(true);
+    pintarAcento(accent);
     // Re-renderiza el árbol server (layout raíz inyecta el acento y el título)
     router.refresh();
   }
@@ -83,7 +109,9 @@ export function BrandingClient() {
           <CardTitle>Marca del CRM</CardTitle>
           <CardDescription>
             Este CRM es tuyo: ponle el nombre de tu negocio y tu color. Se
-            reflejan en toda la interfaz y en la pantalla de inicio de sesión.
+            reflejan en toda la interfaz que usa tu equipo y en los PDF. La
+            pantalla de inicio de sesión lleva la marca de la instancia: si en
+            ella hay varios negocios, se ve la neutra, nunca el logo de otro.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">

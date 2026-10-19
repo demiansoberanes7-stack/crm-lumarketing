@@ -1,5 +1,5 @@
 import { readMediaFile } from "@/server/whatsapp/media";
-import { getBrandingContext } from "@/server/branding";
+import { getBrandingContextForRequest } from "@/server/branding";
 import { DEFAULT_BRANDING } from "@/lib/branding";
 import { FAVICON_ASSET, generatedFaviconSvg } from "@/lib/favicon";
 
@@ -31,11 +31,17 @@ function cabeceras(mime: string, cacheable: boolean): HeadersInit {
  * ahí todavía no hay sesión. Es la misma decisión que ya toma el GET de la
  * marca — en una instancia de un solo negocio, su nombre y su logo no son un
  * secreto.
+ *
+ * Con sesión, en cambio, se sirve el negocio de esa sesión: si no, en una
+ * instancia con dos clientes el `organizationId` quedaba en null y todos
+ * veían el generado neutro, nunca su logo subido. El `o=` de la URL NO se lee
+ * aquí a propósito: a quién se sirve lo decide únicamente la sesión, así que
+ * pedir el icono «de otro» no compra nada.
  */
 export async function GET(req: Request) {
   const cacheable = new URL(req.url).searchParams.has("v");
 
-  const ctx = await getBrandingContext().catch(() => null);
+  const ctx = await getBrandingContextForRequest().catch(() => null);
   const branding = ctx?.branding ?? DEFAULT_BRANDING;
 
   if (ctx?.organizationId && branding.favicon) {

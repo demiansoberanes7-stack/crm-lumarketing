@@ -15,7 +15,7 @@ export default async function BrandingSettingsPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <BrandingClient />
-      <FaviconCard branding={branding} />
+      <FaviconCard branding={branding} organizationId={session?.organizationId} />
     </div>
   );
 }

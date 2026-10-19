@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { getSessionOrNull } from "@/lib/auth/session";
 import {
   DEFAULT_BRANDING,
   normalizeBranding,
@@ -61,6 +62,32 @@ export async function getBranding(
   organizationId?: string | null
 ): Promise<Branding> {
   return (await getBrandingContext(organizationId)).branding;
+}
+
+/**
+ * Marca de la petición que se está sirviendo: la del negocio de la sesión.
+ *
+ * El layout raíz es el único que inyecta las variables CSS del acento
+ * (`accentCssVariables`) y el título y el favicon del documento. Si llamara a
+ * `getBranding()` a secas, con dos negocios en la instancia caería en la marca
+ * neutra —el acotamiento existe para las páginas públicas, pero el documento ya
+ * autenticado se quedaba sin el color que su dueño sí guardó.
+ *
+ * Sin sesión se conserva la regla pública: una sola organización manda, dos o
+ * más devuelven la marca neutra para no enseñar el logo de un cliente en el
+ * login de otro.
+ *
+ * Devuelve también el `organizationId` resuelto: el icono subido vive en el
+ * volumen bajo ese id y la URL del `<link rel="icon">` tiene que distinguirlo,
+ * o dos negocios con el mismo nombre comparten entrada en la caché del
+ * navegador y uno ve el logo del vecino.
+ */
+export async function getBrandingContextForRequest(): Promise<{
+  organizationId: string | null;
+  branding: Branding;
+}> {
+  const session = await getSessionOrNull();
+  return getBrandingContext(session?.organizationId);
 }
 
 export async function saveBranding(

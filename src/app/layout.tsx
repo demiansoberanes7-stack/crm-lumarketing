@@ -4,7 +4,7 @@ import localFont from "next/font/local";
 import { accentCssVariables, DEFAULT_BRANDING } from "@/lib/branding";
 import { faviconHref } from "@/lib/favicon";
 import { normalizeThemePreference, THEME_COOKIE } from "@/lib/theme";
-import { getBranding } from "@/server/branding";
+import { getBrandingContextForRequest } from "@/server/branding";
 import "./globals.css";
 
 // Fuentes self-hosted (woff2 locales, sin CDN en runtime: soberanía).
@@ -35,20 +35,30 @@ export const viewport: Viewport = {
 };
 
 export async function generateMetadata(): Promise<Metadata> {
-  const branding = await getBranding().catch(() => DEFAULT_BRANDING);
+  const ctx = await getBrandingContextForRequest().catch(() => null);
+  const branding = ctx?.branding ?? DEFAULT_BRANDING;
   return {
-    title: `${branding.name} — CRM de WhatsApp`,
+    // Con `template`, cualquier página que ponga su título lo hace DESPUÉS de la
+    // marca y no en vez de ella. Sin esto, una sección con `metadata.title`
+    // propio borraba el nombre del negocio de la pestaña (y dos páginas lo
+    // tenían escrito a mano con el nombre de otra empresa).
+    title: {
+      default: `${branding.name} — CRM de WhatsApp`,
+      template: `%s — ${branding.name}`,
+    },
     description: "CRM de WhatsApp con agente de IA y Laboratorio de auto-evaluación",
     // El `?v=` cambia con la marca: los navegadores guardan el favicon con una
     // insistencia notable y, sin eso, el logo nuevo tarda días en aparecer.
-    icons: { icon: faviconHref(branding) },
+    icons: { icon: faviconHref(branding, ctx?.organizationId) },
   };
 }
 
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const branding = await getBranding().catch(() => DEFAULT_BRANDING);
+  const branding = (
+    await getBrandingContextForRequest().catch(() => null)
+  )?.branding ?? DEFAULT_BRANDING;
   const theme = normalizeThemePreference(
     (await cookies()).get(THEME_COOKIE)?.value
   );

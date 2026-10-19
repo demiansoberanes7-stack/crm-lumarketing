@@ -154,6 +154,14 @@ export function faviconCacheKey(branding: Branding): string {
 }
 
 /** URL que va en el `<link rel="icon">`. */
-export function faviconHref(branding: Branding): string {
-  return `/api/branding/favicon?v=${faviconCacheKey(branding)}`;
+export function faviconHref(branding: Branding, organizationId?: string | null): string {
+  /**
+   * El `o=` no decide qué archivo se sirve —eso lo decide la sesión en la
+   * ruta—, solo separa las entradas de caché. Sin él, dos negocios con el
+   * mismo nombre y el mismo acento piden exactamente la misma URL y el
+   * navegador (que cachea el icono con `immutable`) le muestra a uno el logo
+   * del otro.
+   */
+  const org = organizationId ? `&o=${encodeURIComponent(organizationId)}` : "";
+  return `/api/branding/favicon?v=${faviconCacheKey(branding)}${org}`;
 }
