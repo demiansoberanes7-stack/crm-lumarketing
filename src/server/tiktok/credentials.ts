@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { pickUnambiguousOrgRow } from "@/server/zernio/account-ref";
 
 /**
  * Credenciales del canal de TikTok.
@@ -57,16 +58,20 @@ export async function getTikTokCredentialsByOrg(
   return rows[0] ? toCredentials(rows[0]) : null;
 }
 
-/** Enrutado del webhook de Zernio: el evento trae `account.id`. */
+/**
+ * Enrutado del webhook de Zernio: el evento trae `account.id`.
+ * `account_ref` no es único entre organizaciones: si dos negocios comparten la
+ * referencia, el evento se descarta en lugar de entrar al CRM equivocado.
+ */
 export async function getTikTokCredentialsByAccountRef(
   accountRef: string
 ): Promise<TikTokCredentials | null> {
   const rows = await getDb()
     .select()
     .from(schema.tiktokCredentials)
-    .where(eq(schema.tiktokCredentials.accountRef, accountRef))
-    .limit(1);
-  return rows[0] ? toCredentials(rows[0]) : null;
+    .where(eq(schema.tiktokCredentials.accountRef, accountRef));
+  const owner = pickUnambiguousOrgRow(rows, "tiktok", accountRef);
+  return owner ? toCredentials(owner) : null;
 }
 
 export async function saveTikTokCredentials(input: {

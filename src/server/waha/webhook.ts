@@ -216,6 +216,15 @@ export async function handleWahaWebhook(
   }
   const { getDb, schema } = await import("@/lib/db");
   const matches = await getDb().select().from(schema.wahaCredentials).where(eq(schema.wahaCredentials.sessionName, session ?? ""));
+  // El nombre de sesión no es único entre organizaciones y WAHA publica cada
+  // sesión en UNA sola URL de webhook: el token de la URL prueba qué instancia
+  // llamó, pero no de quién es el mensaje. Si la sesión está registrada por dos
+  // negocios, el evento se descarta antes que escribir en el CRM equivocado.
+  const owners = new Set(matches.map((cred) => cred.organizationId));
+  if (owners.size > 1) {
+    console.warn(`[waha] Sesión «${session}» compartida por ${owners.size} negocios; evento descartado`);
+    return NextResponse.json({ error: "ambiguous_session" }, { status: 409 });
+  }
   const authorized = matches.find((cred) => safeEqual(token, wahaWebhookToken(cred.organizationId)));
   if (!authorized) return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (await whatsappProvider(authorized.organizationId) !== "waha" && event !== "message.ack") return NextResponse.json({ ok: true });

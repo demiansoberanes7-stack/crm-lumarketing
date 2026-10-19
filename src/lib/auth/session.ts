@@ -44,3 +44,19 @@ export async function getSessionOrNull(): Promise<SessionContext | null> {
     return null;
   }
 }
+
+/**
+ * Sesión válida que todavía no pertenece a ningún negocio.
+ *
+ * Pasa en el alta pública de un cliente (crea el usuario; la organización se
+ * crea en el paso siguiente) y si se borra la última membresía. Sin esta
+ * distinción el usuario autenticado rebotaba `/login → /inbox → /login` para
+ * siempre, porque `requireSession()` trata "sin org" igual que "sin sesión".
+ */
+export async function getOrphanSession(): Promise<{ userId: string; userName: string } | null> {
+  const auth = getAuth();
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return null;
+  if (await resolveMembership(session.user.id)) return null;
+  return { userId: session.user.id, userName: session.user.name };
+}

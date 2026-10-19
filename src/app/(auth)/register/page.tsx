@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 export default function RegisterPage() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,11 +25,11 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     const { error: err, data } = await signUp.email({ name, email, password });
-    setLoading(false);
     if (err) {
+      setLoading(false);
       if (err.status === 403) {
         setError(
-          "El registro está cerrado: esta instancia ya tiene su organización. Pide acceso al propietario."
+          "El registro está cerrado en esta instancia. Pide acceso al propietario o una cuenta de cliente."
         );
       } else if (err.status === 429) {
         setError("Demasiados intentos. Espera unos minutos.");
@@ -38,10 +39,27 @@ export default function RegisterPage() {
       return;
     }
     // Con verificación de email activada (SMTP configurado) el alta no crea
-    // sesión: el enlace de verificación llega por correo. Sin ella, `token`
-    // existe y se entra directo.
+    // sesión: el enlace de verificación llega por correo y el negocio se crea
+    // al primer acceso, en /crear-negocio. Sin ella, `token` existe y se crea
+    // ahora, en el mismo viaje.
     if (!data?.token) {
-      setInfo("Cuenta creada. Revisa tu correo y confirma el enlace para entrar.");
+      setLoading(false);
+      setInfo(
+        "Cuenta creada. Revisa tu correo, confirma el enlace y al entrar nombras tu negocio."
+      );
+      return;
+    }
+    const res = await fetch("/api/auth/organization", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: businessName }),
+    }).catch(() => null);
+    setLoading(false);
+    if (!res?.ok) {
+      // Autenticado pero sin negocio: aquí no se puede quedar (el shell exige
+      // organización), así que se le lleva a la pantalla que lo completa.
+      router.push("/crear-negocio");
+      router.refresh();
       return;
     }
     router.push("/inbox");
@@ -53,9 +71,10 @@ export default function RegisterPage() {
       <CardHeader>
         <CardTitle>Crear cuenta</CardTitle>
         <CardDescription>
-          El primer registro crea la organización de esta instancia y queda
-          como propietario.
-        </CardDescription>
+        Cada cuenta crea su propio negocio y sus datos quedan aislados del
+        resto. Si el registro público está cerrado, el propietario de la
+        instancia te da la cuenta de cliente.
+      </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -64,8 +83,22 @@ export default function RegisterPage() {
             <Input
               id="name"
               required
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="business-name">Nombre del negocio</Label>
+            <Input
+              id="business-name"
+              required
+              minLength={2}
+              maxLength={120}
+              autoComplete="organization"
+              placeholder="Peluquería Aurora"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
             />
           </div>
           <div className="space-y-1.5">

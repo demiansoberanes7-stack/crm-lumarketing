@@ -316,13 +316,29 @@ El sistema utiliza **Better Auth** con plugin de organizaciones para gestión de
 - **Registro público**: Cerrado después de la primera organización (a menos que `ALLOW_SIGNUP=true`)
 
 #### Hooks de Base de Datos
-- **On user create**: `onUserCreated()` crea organización, membresía, etapas del pipeline, perfil del agente
+- **On user create**: `onUserCreated()` crea organización, membresía, etapas del pipeline, perfil del agente — **solo si la instancia está vacía**
 - **On session create**: Resuelve organización activa desde membresía
 
 #### Flujo de Registro
 1. Primer usuario crea organización con advisory lock (`pg_advisory_xact_lock`)
 2. Se crean 5 etapas predeterminadas del pipeline: Nuevo → En conversación → Interesado → Cliente → Perdido
 3. Se crea perfil predeterminado del agente
+
+#### Multi-negocio en una misma instancia
+`ALLOW_SIGNUP=true` no mete a nadie en el negocio que ya existe: cada cuenta nueva
+crea el suyo con `provisionOrganization()` (organización + membresía `owner` +
+sembrado de configuración, bajo `pg_advisory_xact_lock(hashtext(userId))` para que
+dos clics no generen dos tenants). Una cuenta autenticada sin negocio aterriza en
+`/crear-negocio`; el shell de la app redirige allí en lugar de devolver a `/login`
+(con lo cual el usuario rebotaba `/login → /inbox → /login`).
+
+La vía sin registro público es `POST /api/settings/clients`: el **operador de la
+instancia** —propietario de la organización más antigua, `isInstanceOwner()`— crea
+en un solo paso la cuenta y el negocio de un cliente y entrega la contraseña
+temporal. Un `owner` de negocio no puede abrir tenants ni ver el porfolio de otros,
+así que `GET /api/settings/clients` solo responde desde la organización fundacional.
+Con una sola organización en la instancia todo lo anterior es invisible: el
+comportamiento es idéntico al de siempre.
 
 ### Multi-tenancy
 

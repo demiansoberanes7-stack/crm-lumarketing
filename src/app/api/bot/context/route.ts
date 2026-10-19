@@ -29,7 +29,7 @@ export async function GET(req: Request) {
 
   const organizationId = await resolveInstanceOrg();
   if (!organizationId) {
-    return apiError(409, "no_org", "La instancia aún no tiene organización");
+    return apiError(409, "no_org", "Esta instancia no tiene una única organización para el cerebro externo");
   }
 
   const url = new URL(req.url);

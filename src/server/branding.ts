@@ -37,12 +37,17 @@ export async function getBrandingContext(
         .from(schema.organization)
         .where(eq(schema.organization.id, organizationId))
         .limit(1)
-    : // Sin sesión (login, layout raíz): la única organización de la instancia.
+    : // Sin sesión (login, layout raíz). Con UNA organización la marca de la
+      // instancia es la suya; con dos o más, ninguna: la pantalla pública de
+      // acceso no puede mostrar el logo ni el nombre de un cliente concreto.
+      // `limit(2)` distingue "única" de "varias" sin contar la tabla.
       await db
         .select({ id: schema.organization.id, metadata: schema.organization.metadata })
         .from(schema.organization)
-        .limit(1);
-  if (!rows[0]) return { organizationId: null, branding: DEFAULT_BRANDING };
+        .limit(2);
+  if (rows.length !== 1 || !rows[0]) {
+    return { organizationId: null, branding: DEFAULT_BRANDING };
+  }
   const meta = parseMetadata(rows[0].metadata);
   return {
     organizationId: rows[0].id,

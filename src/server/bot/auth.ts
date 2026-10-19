@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { asc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { apiError } from "@/lib/api";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -31,23 +32,35 @@ export function requireBotKey(req: Request): Response | null {
 }
 
 /**
- * Organización única de la instancia (self-hosted, un negocio). Cacheada en
- * memoria: la instancia jamás cambia de organización en runtime.
+ * La organización de la instancia, SOLO si atiende a un único negocio.
+ *
+ * `BOT_API_KEY` es una clave por instancia, no por negocio: un cerebro externo
+ * que conduce conversaciones tiene que saber en qué tenant escribe. Con una
+ * sola organización es la suya; con dos o más ya no se puede deducir —y elegir
+ * "la primera" repartiría contactos y mensajes entre clientes—, así que la
+ * superficie `/api/bot/*` responde 409 hasta que se despeje la ambigüedad (una
+ * instancia por cliente, o una clave por negocio).
+ *
+ * Se cachea con caducidad corta porque el alta de un segundo negocio ocurre en
+ * runtime: un cache permanente seguiría sirviendo el id anterior.
  */
-let cachedOrgId: string | null = null;
+const ORG_CACHE_MS = 60_000;
+let cached: { organizationId: string | null; at: number } | null = null;
 
 export async function resolveInstanceOrg(): Promise<string | null> {
-  if (cachedOrgId) return cachedOrgId;
+  if (cached && Date.now() - cached.at < ORG_CACHE_MS) return cached.organizationId;
   const db = getDb();
   const rows = await db
     .select({ id: schema.organization.id })
     .from(schema.organization)
-    .limit(1);
-  cachedOrgId = rows[0]?.id ?? null;
-  return cachedOrgId;
+    .orderBy(asc(schema.organization.createdAt), asc(schema.organization.id))
+    .limit(2);
+  const organizationId = rows.length === 1 ? (rows[0]?.id ?? null) : null;
+  cached = { organizationId, at: Date.now() };
+  return organizationId;
 }
 
 /** Solo para tests. */
 export function resetInstanceOrgCache(): void {
-  cachedOrgId = null;
+  cached = null;
 }

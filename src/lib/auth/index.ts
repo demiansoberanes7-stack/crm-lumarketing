@@ -13,9 +13,10 @@ import {
 import { isPublicSignupAllowed } from "@/server/auth/registration";
 
 /**
- * Contexto interno del proceso: permite que el alta de cuentas de equipo
- * (owner → API) atraviese el gate de registro cerrado. No es alcanzable
- * desde fuera: solo envuelve llamadas server-side.
+ * Contexto interno del proceso: permite que el alta de cuentas hechas por el
+ * servidor —cuentas de equipo y altas de cliente (Ajustes → Equipo)— atraviese
+ * el gate de registro cerrado. No es alcanzable desde fuera: solo envuelve
+ * llamadas server-side.
  */
 const globalForSignup = globalThis as unknown as {
   __voceroInternalSignup?: AsyncLocalStorage<boolean>;
@@ -124,12 +125,14 @@ function createAuth() {
             });
           }
         }
-        // Registro público cerrado tras la primera organización (FR-060).
+        // Registro público cerrado tras la primera organización (FR-060). Con
+        // `ALLOW_SIGNUP=true` se reabre y cada alta nueva pasa a ser OTRO
+        // negocio: la sesión sin membresía aterriza en /crear-negocio, no en el
+        // negocio que ya existía.
         if (ctx.path === "/sign-up/email") {
           if (!isInternalSignup() && !(await isPublicSignupAllowed())) {
             throw new APIError("FORBIDDEN", {
-              message:
-                "El registro está cerrado: esta instancia ya tiene su organización",
+              message: "El registro público está cerrado en esta instancia",
             });
           }
         }

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { pickUnambiguousOrgRow } from "@/server/zernio/account-ref";
 
 /**
  * 017 — Credenciales del canal de Messenger.
@@ -73,16 +74,20 @@ export async function getMessengerCredentialsByPageId(
   return rows[0] ? toCredentials(rows[0]) : null;
 }
 
-/** Enrutado del webhook de Zernio: el evento trae `account.id`, no la página. */
+/**
+ * Enrutado del webhook de Zernio: el evento trae `account.id`, no la página.
+ * `account_ref` no es único entre organizaciones: si dos negocios comparten la
+ * referencia, el evento se descarta en lugar de entrar al CRM equivocado.
+ */
 export async function getMessengerCredentialsByAccountRef(
   accountRef: string
 ): Promise<MessengerCredentials | null> {
   const rows = await getDb()
     .select()
     .from(schema.messengerCredentials)
-    .where(eq(schema.messengerCredentials.accountRef, accountRef))
-    .limit(1);
-  return rows[0] ? toCredentials(rows[0]) : null;
+    .where(eq(schema.messengerCredentials.accountRef, accountRef));
+  const owner = pickUnambiguousOrgRow(rows, "messenger", accountRef);
+  return owner ? toCredentials(owner) : null;
 }
 
 export async function saveMessengerCredentials(input: {

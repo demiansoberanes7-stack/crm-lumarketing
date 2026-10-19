@@ -140,7 +140,7 @@ async function guard(req: Request): Promise<Gate> {
   const organizationId = await resolveInstanceOrg();
   if (!organizationId) {
     return {
-      response: apiError(409, "no_org", "La instancia aún no tiene organización"),
+      response: apiError(409, "no_org", "Esta instancia no tiene una única organización para el cerebro externo"),
     };
   }
   return { organizationId };
