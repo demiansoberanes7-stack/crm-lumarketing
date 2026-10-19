@@ -10,8 +10,8 @@
 > ningún otro archivo**: Coolify construye directo desde GitHub y los secretos
 > viven como variables de la plataforma.
 
-**Repositorio**: `https://github.com/kevinrivm/vocero-crm` (público, rama `main`,
-`Dockerfile` en la raíz).
+**Repositorio**: `https://github.com/demiansoberanes7-stack/crm-lumarketing` (público,
+rama `main`, `Dockerfile` en la raíz).
 
 ## Reglas para el asistente
 
@@ -76,7 +76,7 @@ integraciones (0044), corre una vez desde la app:
    (`database` tipo `PostgreSQL`), con la contraseña generada y base `lumark`.
    Anota su host interno (algo como `<uuid>:5432`).
 2. **Aplicación**: crea una app tipo **repositorio público** apuntando a
-   `https://github.com/kevinrivm/vocero-crm` (rama `main`, build pack
+   `https://github.com/demiansoberanes7-stack/crm-lumarketing` (rama `main`, build pack
    `dockerfile`, puerto expuesto `3000`) — no requiere GitHub App ni deploy
    keys. Asigna el dominio del usuario con HTTPS.
 3. **Variables**: configura las variables de la tabla en la app (runtime, no
@@ -91,11 +91,16 @@ integraciones (0044), corre una vez desde la app:
 ## Ruta B — docker compose (VPS con Docker)
 
 ```bash
-git clone https://github.com/kevinrivm/vocero-crm.git vocero && cd vocero
+git clone https://github.com/demiansoberanes7-stack/crm-lumarketing.git vocero && cd vocero
 cp .env.example .env
 # rellena .env con el dominio del usuario y los secretos generados
-docker compose up -d --build
+docker build -t lumark-crm-local .
+APP_IMAGE=lumark-crm-local docker compose up -d
 ```
+
+El `docker-compose.yml` del repo no tiene bloque `build:` (`image:` lee `${APP_IMAGE}`),
+así que `docker compose up -d --build` no compila nada: hay que construir la imagen a
+mano y pasarla por `APP_IMAGE`.
 
 - Caddy emite el certificado HTTPS automáticamente con `DOMAIN`.
 - Verifica: `docker compose ps` (tres servicios healthy) y

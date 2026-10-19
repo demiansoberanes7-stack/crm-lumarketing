@@ -35,7 +35,7 @@
 23. [Branding y Personalización](#23-branding-y-personalización)
 24. [Configuración del Sistema](#24-configuración-del-sistema)
 25. [Variables de Entorno](#25-variables-de-entorno)
-26. [Despliegue con EasyPanel](#26-despliegue-con-easypanel)
+26. [Despliegue en producción](#26-despliegue-en-producción)
 27. [Docker y Contenedores](#27-docker-y-contenedores)
 28. [Seguridad](#28-seguridad)
 29. [Constitución y Reglas](#29-constitución-y-reglas)
@@ -71,7 +71,7 @@
 - **Autenticación**: Better Auth con plugin de organizaciones
 - **Multi-tenancy**: Aislamiento completo por organización
 - **Cifrado**: AES-256-GCM para credenciales en reposo
-- **Despliegue**: Docker multi-stage, EasyPanel (Google Cloud)
+- **Despliegue**: Docker multi-stage + docker compose en una VM de Azure, Caddy como proxy
 
 ---
 
@@ -102,7 +102,9 @@
 | Tecnología | Propósito |
 |---|---|
 | Docker | Contenedores multi-stage |
-| EasyPanel | Gestión de contenedores |
+| Docker Compose | Stack de producción en la VM (app + postgres + caddy) |
+| Caddy | Proxy inverso con TLS automático y log de accesos |
+| GitHub Actions | `ci.yml` (calidad) y `docker.yml` (build, push, deploy por SSH) |
 | pnpm | Package manager |
 | Vitest | Tests unitarios |
 | Playwright | Tests E2E |
@@ -311,8 +313,16 @@ El sistema utiliza **Better Auth** con plugin de organizaciones para gestión de
 
 #### Configuración (`src/lib/auth/index.ts`)
 - **Proveedor**: Email + password (mínimo 8 caracteres)
-- **Organizaciones**: Plugin `organization()` con `creatorRole: "owner"`
-- **Rate Limiting**: 10 intentos por 10 minutos por IP en login/registro
+- **Organizaciones**: Plugin `organization()` con `creatorRole: "owner"` y
+  `allowUserToCreateOrganization: (user) => isInstanceOwner(user.id)`
+  (`src/lib/auth/index.ts:110`). El plugin expone `POST /api/auth/organization/create`
+  a cualquier sesión válida; sin ese guard un miembro de un negocio ya creado abría un
+  tenant por su cuenta — y sin sembrar, porque esa ruta no pasa por
+  `provisionOrganization()`. El alta legítima es la tarjeta «Negocios de la instancia»
+  de Ajustes → Equipo (`src/app/api/auth/organization/route.ts`).
+- **Rate Limiting**: 10 intentos por 10 minutos por IP en login/registro; el alta de
+  negocio adicional usa el bucket `org-provision:<userId>` distribuido en PostgreSQL,
+  así que resiste varias réplicas sin Redis.
 - **Registro público**: Cerrado después de la primera organización (a menos que `ALLOW_SIGNUP=true`)
 
 #### Hooks de Base de Datos
@@ -321,7 +331,7 @@ El sistema utiliza **Better Auth** con plugin de organizaciones para gestión de
 
 #### Flujo de Registro
 1. Primer usuario crea organización con advisory lock (`pg_advisory_xact_lock`)
-2. Se crean 5 etapas predeterminadas del pipeline: Nuevo → En conversación → Interesado → Cliente → Perdido
+2. Se crean 6 etapas predeterminadas del pipeline: Nuevo → En conversación → Interesado → Calificado → Cliente → Perdido (`SEED_STAGES`, `src/server/auth/on-signup.ts:9`)
 3. Se crea perfil predeterminado del agente
 
 #### Multi-negocio en una misma instancia
@@ -403,7 +413,10 @@ const CHANNEL_LABEL: Record<Channel, string> = {
 - **Gate**: 404 si Instagram y TikTok están deshabilitados
 - **Fuentes**: Meta (`object: "instagram"`) + Zernio en la misma URL
 - **Meta**: HMAC-SHA256 con `META_APP_SECRET`
-- **Zernio**: Secret por cuenta resuelto desde el body
+- **Zernio**: Secret por cuenta resuelto desde el body. Con secreto configurado la
+  firma es **obligatoria**: un evento sin `x-zernio-signature` se rechaza (antes se
+  aceptaba y bastaba conocer el segmento de la URL). Sin secreto en la cuenta, la
+  capa queda desactivada.
 
 #### Messenger (`/api/webhooks/messenger/[webhookToken]/route.ts`)
 - **Gate**: 404 si Messenger está deshabilitado
@@ -413,6 +426,11 @@ const CHANNEL_LABEL: Record<Channel, string> = {
 #### WAHA (`/api/webhooks/waha/[token]/route.ts`)
 - **POST**: Solo POST, delega a `handleWahaWebhook()`
 - **Autenticación**: Token HMAC-SHA256 por organización
+- **Enrutado**: el negocio se resuelve **por el token de la URL**, y la `session`
+  del payload solo se contrasta como comprobación (avisa si no está registrada,
+  pero no descarta el evento). El nombre de sesión no es único entre negocios:
+  filtrar por él antes de verificar el token dejaba a dos tenants con sesión
+  `default` sin ningún mensaje. Ver `src/server/waha/webhook.ts:224`.
 
 ### Verificación de Webhooks
 
@@ -421,16 +439,24 @@ const CHANNEL_LABEL: Record<Channel, string> = {
 isValidWebhookToken(token: string): boolean
 // Compara con META_WEBHOOK_VERIFY_TOKEN usando safeEqual()
 ```
+El verify token es **común a toda la instancia** (Meta configura una sola URL de
+callback por app), así que no aísla entre negocios: el aislamiento de un evento
+de WhatsApp depende de la capa 2.
 
-#### Capa 2: Firma HMAC (opcional)
+#### Capa 2: Firma HMAC (opcional pero necesaria en producción)
 ```typescript
 isValidSignature(rawBody: string, signature: string | null): boolean
 // HMAC-SHA256 del body con META_APP_SECRET
 ```
+Sin `META_APP_SECRET` la capa está desactivada y **se registra un aviso una vez
+por proceso** (`[webhook] META_APP_SECRET no está configurado…`); no se hace
+fail-closed porque eso cortaría la ingesta de quien aún no lo configure. Con
+secreto, la cabecera ausente o inválida responde 401.
 
 #### Seguridad
 - `safeEqual()`: Comparación segura contra timing attacks
 - Tokens por organización: `wahaWebhookToken(orgId)` genera HMAC de `waha:{orgId}`
+- Secretos de Zernio por cuenta (`webhook_secret`), no por instancia
 
 ---
 
@@ -1075,7 +1101,25 @@ media_asset: {
 ### Directorio
 
 - Path configurable: `MEDIA_DIR=/data/media`
-- Organización por: `{MEDIA_DIR}/{organizationId}/{year}/{month}/{filename}`
+- Organización real por negocio:
+  - `{MEDIA_DIR}/{organizationId}/catalog/{nanoid}.{ext}` — imágenes de catálogo (`/api/media/upload`)
+  - `{MEDIA_DIR}/{organizationId}/logo-{nanoid}.{ext}` — logo (`/api/settings/business/logo`)
+  - `{MEDIA_DIR}/{organizationId}/favicon` — icono del negocio (branding)
+  - `{MEDIA_DIR}/{organizationId}/{assetId}` — adjuntos descargados de WhatsApp/Meta
+
+- **Contención de rutas (`src/server/media-path.ts`)**: toda lectura o escritura
+  de disco pasa por `resolveMediaFile(orgId, ...segmentos)`, que valida segmento a
+  segmento (un nombre de archivo nunca empieza con punto, así que `..` es
+  imposible), normaliza con `resolve` y exige que la ruta siga dentro de
+  `MEDIA_DIR/{organizationId}` comparando además el `realpath` del archivo con el
+  de la raíz — eso cierra también los enlaces simbólicos. Devuelve `null` para una
+  ruta inválida (las rutas públicas responden 422) y la ruta para un archivo que
+  no existe (404). Lo consumen las dos rutas de `/api/media/public/*`, el PDF de
+  cotizaciones y `src/server/whatsapp/media.ts`.
+- **Cabeceras de media (`mediaHeaders()`)**: `nosniff` en todas las respuestas y
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`
+  en los SVG. El logo admite SVG y lo sube un miembro del negocio; sin ese
+  acotamiento, un SVG con script se ejecutaría con la sesión de quien abra la URL.
 
 ---
 
@@ -1214,7 +1258,18 @@ ATRIBUCION=true
 ```bash
 ALLOW_SIGNUP=false
 WAHA_TRUSTED_HOSTS=localhost
+WEBHOOK_TRUSTED_HOSTS=
 ```
+
+`META_APP_SECRET` vacío **no** es un error de configuración: desactiva la verificación de
+firmas de Meta y la app lo avisa una sola vez por proceso en el log
+(`[webhook] META_APP_SECRET no está configurado…`). Se aceptan los eventos por el token
+de la URL para no descartar mensajes reales de clientes. Lo mismo hace Zernio con el
+`webhook_secret` **por cuenta**: sin secreto guardado, la firma no se puede verificar;
+con secreto, un evento sin firma se rechaza con `401`.
+
+Las cabeceras de respuesta (§28) no son variables de entorno: están en `next.config.ts`
+y viajan dentro de la imagen.
 
 ### Medios
 
@@ -1230,55 +1285,104 @@ AGENT_COALESCE_MS=6000
 
 ---
 
-## 26. Despliegue con EasyPanel
+## 26. Despliegue en producción
 
-### Infraestructura Actual
+### Infraestructura actual
 
-- **VPS**: Google Cloud (`demiansoberanes7@lumarkgroup`)
-- **Sistema**: Ubuntu 26.04
-- **Panel**: EasyPanel
-- **Dominio CRM**: `https://crm-crm.or7bqd.easypanel.host`
-- **Dominio WAHA**: `https://chatbot-waha.or7bqd.easypanel.host`
+- **VM**: Azure, tamaño `Standard_B2ats_v2` (1 GiB de RAM + 2 GB de swap). El tope real
+  del sistema es la memoria, no el CPU: los límites por contenedor del compose suman más
+  de 1 GiB, por eso `NODE_OPTIONS=--max-old-space-size=384`.
+- **Sistema**: Ubuntu LTS con Docker + Docker Compose v2.
+- **Directorio de despliegue**: `~/crm-lumarketing/` con `docker-compose.yml`, `.env` y
+  `Caddyfile`. El `Caddyfile` va montado en solo lectura dentro del contenedor `caddy`.
+- **Registro**: la imagen se construye en GitHub Actions y se publica en Docker Hub como
+  `ghostbreakfast69/lumark-crm:latest`; el VPS **no compila**, hace `pull`.
+- **Proxy**: Caddy (HTTPS automático con Let's Encrypt). El puerto 3000 de la app **no
+  está publicado**: todo el tráfico entra por 80/443.
 
-### Pasos de Despliegue
+### Cadena de despliegue
+
+1. `git push` a `main` → `ci.yml` corre `db:guard`, `typecheck`, `lint`, `test`, `build`
+   (matriz `default` y `completo`).
+2. `docker.yml` corre **independiente** de CI: valida el journal (`db:guard`), construye
+   con buildx, sube `latest` a Docker Hub y entra por SSH al VPS a ejecutar
+   `docker compose pull && docker compose up -d`.
+3. El arranque del contenedor nuevo aplica migraciones (`node migrate.mjs`) y luego
+   levanta Next (`node server.js`).
+
+**Consecuencia operativa, y la causa de la caída de 2026-10-16**: `push` a `main` **es**
+el despliegue. No hay paso intermedio ni pin por defecto, y un push directo no lo frena
+la protección de rama (los *required checks* solo gatean merges de PR). Una imagen que
+arranca mal —por ejemplo un `.sql` ausente en el journal— hace crash loop en el contenedor
+y el público queda en 502, aunque CI estuviera en verde.
+
+**Palanca de rollback**: `APP_IMAGE=ghostbreakfast69/lumark-crm@sha256:<digest>` en el
+`.env` del servidor y `docker compose up -d app`. Por eso el compose del repo usa
+`image: ${APP_IMAGE:-…:latest}` y no una imagen fija: se puede congelar una versión sin
+tocar el archivo versionado.
+
+### Pasos de despliegue (réplica nueva)
 
 #### 1. PostgreSQL 16
-- Servicio EasyPanel con almacenamiento persistente
-- URL interna: `postgresql://postgres:1234@crm_bd:5432/CRM?sslmode=disable`
-- **⚠️ IMPORTANTE**: Usar conexión interna (`crm_bd`), NO host externo
+- Servicio del compose con volumen nombrado `postgres_data` y tuning explícito para 1 GiB
+  (`shared_buffers=96MB`, `work_mem=2MB`, `max_connections=20`).
+- `DATABASE_URL` la arma el compose: `postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lumark`.
+  La contraseña vive solo en el `.env` del servidor; nunca va a el repo.
+- La red interna es el nombre del servicio (`postgres`), no un host externo.
 
-#### 2. Servicio de App
-- Repo: `demiansoberanes7-stack/crm-lumarketing` (privado)
-- Branch: `main`
-- Build: Dockerfile multi-stage
-- Puerto: 3000
+#### 2. Servicio de app
+- Imagen desde Docker Hub (nada se compila en el VPS).
+- Puerto 3000 interno, sin publicación hacia Internet.
+- `depends_on: postgres (service_healthy)`: la app no arranca antes de que `pg_isready`
+  responda.
 
 #### 3. Variables de Entorno
+El `.env` del servidor es la única fuente de secretos. **El compose es una lista nominal**:
+una variable que no aparece en su bloque `environment:` no llega al proceso aunque exista
+en `.env` (así fue como `INTEL` y las banderas de MCP «no hacían nada»). Mínimo:
 ```
-NODE_ENV=production
-APP_BASE_URL=https://CRM-DOMAIN
-DATABASE_URL=INTERNAL-PG-URL
-BETTER_AUTH_SECRET=<random>
-ENCRYPTION_KEY=<random>
-META_WEBHOOK_VERIFY_TOKEN=<random>
-CHANNELS=whatsapp,instagram,messenger
-MEDIA_DIR=/data/media
+DOMAIN, APP_BASE_URL, POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ENCRYPTION_KEY,
+META_WEBHOOK_VERIFY_TOKEN, META_APP_SECRET, CHANNELS, MEDIA_DIR, ALLOW_SIGNUP,
+OPENROUTER_API_TOKEN, INTEL/AGENDA/ATRIBUCION/GOOGLE_BUSINESS (banderas), MCP_*
 ```
+Editar el `.env` con `>>` es un fallo conocido: si la última línea no termina en salto,
+las variables se pegan (`MCP_AUDIT_RETENTION_DAYS=180MCP_DCR_ENABLED=true`). Reescribir
+el archivo completo, o `printf '\n'` antes, y verificar con
+`grep -c '^CLAVE=' .env`.
 
 #### 4. Volúmenes Persistentes
-- Montar `/data/media` con permisos de escritura para usuario `lumark`
+- `media_data` → `/data/media` en la app (adjuntos y logos por negocio).
+- `caddy_data` / `caddy_config` → certificados y estado del proxy.
+- El directorio `/data` es del usuario `lumark` dentro de la imagen; si se monta un bind
+  mount desde el host hay que conservar ese propietario o la escritura de media falla.
 
 #### 5. Verificación
-- Health check: `/api/health`
-- Registrar usuario
-- Configurar WAHA en settings
-- Escanear QR
-- Verificar sesión WORKING
+- Health check con la versión y el commit publicados:
+  `curl -s https://DOMAIN/api/health` → `{"ok":true,"version":…,"commit":…}`. El campo
+  `commit` viene de `SOURCE_COMMIT`/`GIT_SHA` quemados en la imagen, así que es la única
+  prueba de qué código está corriendo.
+- **Desde el propio VPS no se puede sondear el dominio** (el navegador interno habla HTTP a
+  un listener HTTPS y devuelve `code=000`). La sonda local correcta es por la red docker:
+  `docker compose exec caddy wget -qO- http://app:3000/api/health`.
+- Cabeceras globales: `curl -I https://DOMAIN/login` debe mostrar
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Strict-Transport-Security`.
+- Comprobar reinicios: `docker inspect -f '{{.RestartCount}}' crm-lumarketing-app-1`.
+
+#### 6. Copia de seguridad
+- `~/scripts/backup-crm.sh` corre cada noche y deja en `~/backups` el volcado de la BD,
+  los adjuntos y la configuración, con una línea `OK bd=… tablas=… media=… libres=…` en
+  `backup.log`.
+- Antes de un despliegue que toca esquema, dump manual `pre-deploy-<UTC>.dump.gz` y
+  **copia fuera de la máquina** (`scp azureuser@…:backups/… ~/Desktop`): mientras el
+  backup y el disco sean el mismo, no es un backup.
 
 ### Configuración de Webhooks WAHA
 
 - **Importante**: Si la sesión WAHA ya existe antes del deploy, se necesita actualización manual
 - Auto-registro solo ocurre en nuevas sesiones desde el CRM
+- El token de la URL es `wahaWebhookToken(orgId)` (HMAC sobre el id del negocio), así que
+  identifica al tenant por sí solo; el nombre de sesión **no** se usa para enrutar
+  (`src/server/waha/webhook.ts:224`).
 
 ---
 
@@ -1286,34 +1390,35 @@ MEDIA_DIR=/data/media
 
 ### Dockerfile (Multi-stage)
 
+Cuatro etapas sobre `node:22-alpine`:
+
 ```dockerfile
-# Stage 1: Dependencies
-FROM node:20-alpine AS deps
+# deps     — pnpm install --frozen-lockfile (falla si el lock y package.json discrepan;
+#            sin esa bandera se publicaría una imagen con versiones no probadas)
+# test     — añade chromium y corre el e2e (imagen aparte, no se publica)
+# builder  — pnpm build + esbuild de scripts/migrate.mjs y scripts/seed/demo.ts a
+#            bundles autocontenidos (drizzle-orm y postgres van dentro del JS, no de node_modules)
+# runner   — .next/standalone + static + public + drizzle/*.sql + los dos bundles
+FROM node:22-alpine AS runner
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
-
-# Stage 2: Build
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN pnpm build
-
-# Stage 3: Production
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=3000
-RUN addgroup --system --gid 1001 lumark
-RUN adduser --system --uid 1001 lumark
-COPY --from=builder --chown=lumark:lumark /app/.next/standalone ./
-COPY --from=builder --chown=lumark:lumark /app/.next/static ./.next/static
-COPY --from=builder --chown=lumark:lumark /app/public ./public
+ENV NODE_ENV=production NODE_OPTIONS="--max-old-space-size=384"
+RUN apk add --no-cache fontconfig ttf-dejavu   # sin tipografías el SVG rasterizado pierde texto
+RUN mkdir -p /data/media && chown -R lumark:lumark /data
 USER lumark
 EXPOSE 3000
-CMD ["node", "server.js"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1
+# Migrar al BOOT del contenedor nuevo y arrancar el server standalone
+CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 ```
+
+Puntos que se rompen si se «simplifican»:
+- `--start-period=40s` cubre las migraciones del arranque; con un start-period corto
+  Docker mata el contenedor mientras todavía está aplicando SQL.
+- El `CMD` con `&&` es lo que convierte una migración inválida en crash loop público:
+  si `migrate.mjs` aborta, Next nunca llega a escuchar. `next build` **no** ejecuta
+  `migrate.mjs`, así que la build puede estar verde y el arranque roto.
+- `SOURCE_COMMIT`/`GIT_SHA` como `ARG`/`ENV` es lo que `/api/health` reporta.
 
 ### Health Check
 
@@ -1321,20 +1426,45 @@ CMD ["node", "server.js"]
 GET /api/health
 ```
 
-Retorna status 200 si el sistema está operativo.
+Responde `200` con `{ ok, version, commit }` si el sistema está operativo.
+
+### Caddy (proxy inverso)
+
+`Caddyfile` en la raíz del repo, montado de lectura en `/etc/caddy/Caddyfile`:
+
+```caddy
+{$DOMAIN} {
+    log                          # un acceso por petición: la evidencia de un incidente
+    reverse_proxy app:3000 {
+        flush_interval -1        # SSE: sin buffer, las notificaciones salen ya
+        header_up X-Real-IP {http.request.remote.host}
+    }
+    encode gzip
+}
+```
+
+- `flush_interval -1` es obligatorio para el SSE de notificaciones (§20).
+- `log` + `header_up X-Real-IP`: el primero deja trazabilidad de quién llamó (scraping,
+  abuso, reintentos de webhook); el segundo alimenta el rate limiting, que lee `x-real-ip`
+  antes que `X-Forwarded-For` (§28). Caddy no escribe esa cabecera por defecto.
+- Al cambiar este archivo en el servidor: reescribirlo **en el sitio** (`cat nuevo > Caddyfile`),
+  nunca `mv`. El bind mount sigue el *inode*; un `mv` deja el contenedor leyendo el archivo
+  viejo aunque el disco muestre el nuevo. Después, `caddy reload` dentro del contenedor en
+  lugar de recrearlo (recrear interrumpe las conexiones SSE).
+- Validar antes de aplicar: `docker run --rm -v $PWD/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile`.
 
 ### Contenedores en el VPS
 
 | Contenedor | Descripción |
 |---|---|
-| `crm_crm.1.*` | Aplicación CRM |
-| `crm_bd.1.*` | PostgreSQL 16 |
-| `crm_bd_pgweb.1.*` | pgweb (interfaz web para BD) |
-| `easypanel.1.*` | EasyPanel |
-| `easypanel-traefik.1.*` | Traefik (proxy inverso, puertos 80/443) |
-| `chatbot_waha` | WAHA (WhatsApp HTTP API) |
-| `chatbot_n8n` | n8n (automatizaciones) |
-| `chatbot_evolution-api` | Evolution API |
+| `crm-lumarketing-app-1` | Aplicación CRM (imagen de Docker Hub) |
+| `crm-lumarketing-postgres-1` | PostgreSQL 16 |
+| `crm-lumarketing-caddy-1` | Caddy, proxy inverso con TLS (puertos 80/443) |
+| `portainer` | Gestión de contenedores (fuera del compose del repo) |
+
+Los tres servicios del compose llevan tope de logs `json-file` (`10m` × 3 archivos) salvo
+`postgres`, que no lo tiene porque cambiarlo requiere reiniciar la BD. Sin tope, los logs
+llenan el disco y el síntoma no es «logs viejos»: es Postgres o Caddy sin donde escribir.
 
 ---
 
@@ -1369,6 +1499,12 @@ decryptSecret(encrypted: EncryptedValue): string
 1. **Token de URL**: Segmento secreto en la URL del webhook
 2. **Firma HMAC**: `X-Hub-Signature-256` header (opcional pero recomendado)
 
+La capa 2 se evalúa solo si `META_APP_SECRET` está configurado. Sin ese valor, el webhook
+**acepta** la entrega por el token de la URL y deja un aviso único en el log del proceso
+(`[webhook] META_APP_SECRET no está configurado…`). Es una elección deliberada: rechazar
+descartaría mensajes reales de clientes. Para instancias con clientes activos, configurar
+el secreto es la acción correcta, no cambiar el código.
+
 #### WAHA
 - Token HMAC-SHA256 por organización
 - Generado: `wahaWebhookToken(orgId)` = HMAC de `waha:{orgId}`
@@ -1376,11 +1512,40 @@ decryptSecret(encrypted: EncryptedValue): string
 #### Zernio
 - Firma HMAC-SHA256 del body
 - Headers: `x-zernio-signature` (primario), `x-late-signature` (legacy)
+- Con `webhook_secret` en la cuenta la firma es obligatoria; omitir la cabecera
+  rechaza el evento (`src/server/zernio/index.ts:49`)
+
+### Cabeceras de respuesta (`next.config.ts` → `headers()`)
+
+Se declaran en la configuración de Next, no en un middleware ni en el proxy, para
+que viajen con la imagen y sean reproducibles desde el repositorio:
+
+| Cabecera | Valor | Por qué |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | El navegador no reinterpretará un archivo subido como otra cosa |
+| `X-Frame-Options` | `SAMEORIGIN` | Clickjacking; la única vista embebida es el `<iframe>` propio de PDF sobre un `blob:` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | No se filtra la ruta completa a terceros |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | La app no usa estos permisos: el audio se sube como archivo y la ubicación llega de WhatsApp, no del navegador |
+| `Strict-Transport-Security` | `max-age=15552000` | 180 días, sin `preload` ni `includeSubDomains` para dejar salida |
+
+**Sin CSP global a propósito**: Tailwind inyecta estilos en línea y una CSP mal
+calibrada rompe la UI en producción. El único contenido que un tercero controla
+(el SVG del logo) lleva su propio CSP con `sandbox` en la respuesta de media.
 
 ### Rate Limiting
 
-- Login/Register: 10 intentos por 10 minutos por IP
-- Implementación: Better Auth内置
+- Login/Register: 10 intentos por 10 minutos por IP (`AUTH_RATE_LIMIT`).
+- Alta de negocio (`/api/auth/organization`): 10 por 10 minutos **por id de
+  usuario**, con bucket distribuido en PostgreSQL (`checkDistributedRateLimit`),
+  así sobrevive a varias réplicas sin Redis.
+- Webhooks: `WEBHOOK_RATE_LIMIT` (120/min).
+- La IP se toma de `x-real-ip` y, si falta, del **último** hop de
+  `X-Forwarded-For`: el primer hop lo escribe el cliente. Caddy rellena XFF con
+  la IP real del socket (el Caddyfile no declara `trusted_proxies`) y ahora además
+  escribe `X-Real-IP`; el puerto 3000 no está publicado, así que ninguno de los
+  dos se puede falsificar desde fuera.
+- Si la tabla de buckets falla, `checkDistributedRateLimit` **no** bloquea
+  (fail-open) para no descartar webhooks legítimos; queda en el log.
 
 ### Validación de URLs WAHA (`src/server/waha/url.ts`)
 
@@ -1390,8 +1555,22 @@ privateAddress(ip: string): boolean
 
 validateWahaUrl(url: string): void
 // Requiere HTTPS para hosts públicos
-// Bloquea IPs privadas除非 estén en WAHA_TRUSTED_HOSTS
+// Bloquea IPs privadas salvo que estén en WAHA_TRUSTED_HOSTS
 ```
+
+### Torre de control: quién puede abrir un negocio
+
+1. El registro público está cerrado (`ALLOW_SIGNUP=false`, gate FR-060 en
+   `/sign-up/email`).
+2. El alta legítima es la tarjeta «Negocios de la instancia» de
+   Ajustes → Equipo, reservada al dueño de la instancia (`isInstanceOwner()`), y
+   escribe la organización **sembrada** (embudo, canales, perfil de agente).
+3. El endpoint `POST /api/auth/organization/create` del plugin de Better Auth
+   queda cerrado a quien no sea dueño de la instancia con
+   `allowUserToCreateOrganization` (`src/lib/auth/index.ts:110`). Sin eso, un
+   miembro abría un tenant sin sembrar por su cuenta.
+4. `/api/auth/organization` (el de la app) solo crea si el usuario no pertenece ya
+   a ningún negocio, y ahora además está limitado por tasa.
 
 ### Tower of Hanoi de Seguridad
 
@@ -1497,9 +1676,12 @@ validateWahaUrl(url: string): void
 ### El CRM no carga
 
 1. Verificar health check: `curl https://crm-domain/api/health`
-2. Verificar logs en EasyPanel
-3. Verificar conexión a BD en EasyPanel console
+2. Verificar logs del contenedor: `docker compose logs --tail=200 app` (en el VPS, desde
+   `~/crm-lumarketing`)
+3. Verificar Postgres: `docker compose ps` y `docker compose logs --tail=50 postgres`
 4. Verificar que las migraciones se aplicaron (logs de arranque + `drizzle/meta/_journal.json`)
+5. Verificar reinicios: `docker inspect -f '{{.RestartCount}}' crm-lumarketing-app-1` —
+   un número alto con `health=starting` es una migración que aborta el `CMD` (§27)
 
 ### Webhooks no llegan
 
@@ -1507,6 +1689,85 @@ validateWahaUrl(url: string): void
 2. Verificar token en la URL
 3. Verificar firma HMAC si está configurada
 4. Verificar logs de diagnóstico en Settings → Diagnostics
+5. Verificar los logs del contenedor (`docker compose logs app`) y el access log
+   de Caddy: con el `log` del bloque `reverse_proxy` queda registrado el POST
+   entrante, así que se distingue «no llegó» de «llegó y lo rechacé»
+
+**Qué significa cada código de rechazo**
+
+Las rutas de Meta e Instagram/Messenger/TikTok responden el rechazo **al emisor**:
+
+| Código | Causa | Comprobación |
+|---|---|---|
+| `404` | El segmento `{token}` de la URL no es `META_WEBHOOK_VERIFY_TOKEN` | Regenerar la URL desde el CRM |
+| `401` | Firma ausente o inválida | Meta: `x-hub-signature-256` contra `META_APP_SECRET`. Zernio: `x-zernio-signature` / `x-late-signature` contra el `webhook_secret` **de esa cuenta** |
+| `403` (solo el GET de challenge) | El `hub.verify_token` del challenge no coincide | Copiar el token tal cual desde la configuración de la instancia |
+| `429` | Bucket de rate limiting lleno (`WEBHOOK_RATE_LIMIT`, 120/min) | Ver si la plataforma está reintentando en ráfaga |
+
+**WAHA es distinto**: la ruta acusa recibo con `200` **antes** de procesar (en `after()`)
+para que WAHA no reintente. Por eso los códigos de `handleWahaWebhook` — `404` cuando el
+token no es el HMAC (`wahaWebhookToken(orgId)`) de ningún negocio, `500` si el
+procesamiento falla — **no los ve WAHA**: solo pueden salir por log. Un token
+desactualizado descarta mensajes sin dejar rastro visible; ante dudas, comparar el token
+de la URL de WAHA con el que muestra Settings → WAHA antes de buscar otra causa.
+
+**La firma de Meta se está ignorando**: si `META_APP_SECRET` está vacío, la Capa 2
+queda desactivada y los eventos se aceptan solo por el token de la URL. Se avisa
+**una vez por proceso** en los logs del contenedor:
+`[webhook] META_APP_SECRET no está configurado: las firmas de Meta se aceptan sin verificar.`
+Ese aviso no es un fallo de ingesta —es una degradación deliberada para no descartar
+mensajes reales de clientes. Poner el secreto cierra la capa sin código.
+
+**WAHA con dos negocios**: el negocio se resuelve **por el token de la URL**
+(`src/server/waha/webhook.ts:224`), no por `session`, porque el nombre de sesión no es
+único entre tenants. Un log `[waha] La sesión «…» no está en las credenciales del
+negocio; el evento se enruta por token` indica una sesión desconocida, pero el evento
+**sí** se procesa. Si la respuesta es `404`, el token no pertenece a ninguna fila de
+`waha_credentials`.
+
+**Zernio devuelve `401`**: con `webhook_secret` guardado en la cuenta, un evento sin
+cabecera de firma se rechaza (antes se aceptaba: era el agujero A-03). Si Instagram,
+Messenger o TikTok dejaron de ingestar tras ese arreglo, comparar el secreto del CRM
+con el que Zernio usa para firmar. Una cuenta **sin** secreto sigue con la capa
+desactivada, como antes.
+
+### Un miembro recibe 403 al intentar crear un negocio
+
+No es un bug: `allowUserToCreateOrganization` (`src/lib/auth/index.ts:110`) solo deja
+crear organizaciones al **dueño de la instancia** (propietario de la organización más
+antigua). El plugin responde `403` con
+`YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION`. El alta legítima de un cliente es
+Ajustes → Equipo → «Negocios de la instancia» (`/api/settings/clients`), que crea cuenta
+y negocio y siembra embudo, canales y perfil de agente; la auto-alta de quien acaba de
+registrarse es `/api/auth/organization` (usado por `/register` y `/crear-negocio`).
+
+Detalle de por qué esto es un cierre real y no cosmético: el plugin tiene un bypass
+interno (`isSystemAction`: body con `userId` y sin sesión) para el server-to-server, pero
+en una petición HTTP `getSessionFromCtx()` sin sesión lanza `UNAUTHORIZED` **antes** de
+evaluarlo, así que ese bypass no es alcanzable desde el navegador.
+
+### `429` al dar de alta un negocio
+
+`POST /api/auth/organization` comparte la ventana de `AUTH_RATE_LIMIT` (10 intentos /
+10 min) con un bucket propio por usuario (`org-provision:<userId>`). Tras varios
+reintentos fallidos hay que esperar la ventana; el bucket vive en la tabla
+`rate_limit_bucket`, así que se puede vaciar con un `DELETE` si hace falta desbloquear
+a un cliente.
+
+### `pnpm seed:demo` se niega a escribir
+
+Con más de un negocio en la instancia el seed exige `--org=<id>` y aborta con «Hay N
+negocios; indica cuál con --org=<id>». Antes elegía la primera organización del
+`select`, que en multi-tenant no es un orden estable: sembraba datos de prueba en el
+tenant equivocado.
+
+### Una imagen pública devuelve `422`
+
+`422` en `/api/media/public/*` es el guard de contención de rutas
+(`src/server/media-path.ts`): algún segmento no cumple la regla de nombre de archivo
+(un segmento nunca empieza con punto, así que `..`, `....` o `%2e%2e%2f` se descartan
+antes de tocar disco). Un `404` con ruta válida significa que el archivo no existe. No
+es un fallo de permisos ni de `MEDIA_DIR`.
 
 ### IA no responde
 
@@ -1524,17 +1785,23 @@ validateWahaUrl(url: string): void
 
 ### Errores de Build
 
-1. Verificar logs de EasyPanel deploy
+1. Verificar los logs del job `docker.yml` en GitHub Actions (build, push, deploy)
 2. Verificar errores de TypeScript: `pnpm typecheck`
 3. Verificar errores de lint: `pnpm lint`
-4. Commit fix y push para rebuild automático
+4. Verificar el guard de migraciones: `pnpm db:guard`
+5. Commit fix y push para rebuild automático — recuerda que el push **es** el despliegue (§26)
 
 ### BD no conecta
 
-1. Verificar `DATABASE_URL` en variables de entorno
-2. Verificar que PostgreSQL está corriendo
-3. Verificar que el host es el interno (`crm_bd`), no externo
-4. Verificar credenciales (user: postgres, password: 1234 por defecto)
+1. Verificar `DATABASE_URL` en variables de entorno (la arma el compose desde
+   `POSTGRES_PASSWORD`, no se escribe a mano)
+2. Verificar que PostgreSQL está corriendo y sano: `docker compose ps postgres`
+3. Verificar que el host es el interno de la red docker (`postgres`), no un host externo
+   ni `localhost`: dentro del contenedor `app`, `localhost` es el propio `app`
+4. Si el arranque falla con `P1000`/`password authentication failed`, el `.env` del
+   servidor cambió pero el volumen `postgres_data` conserva la contraseña original; no se
+   «arregla» editando la BD, se alinea el `.env` con la instancia existente
+5. Probar la conexión desde la app: `docker compose exec app wget -qO- http://127.0.0.1:3000/api/health`
 
 ---
 
@@ -1550,7 +1817,7 @@ validateWahaUrl(url: string): void
 | **Channel** | Canal de comunicación (whatsapp, instagram, messenger, tiktok) |
 | **CRM** | Customer Relationship Management |
 | **Drizzle ORM** | ORM para TypeScript/PostgreSQL |
-| **EasyPanel** | Panel de gestión de contenedores Docker |
+| **Caddy** | Proxy inverso con TLS automático en producción |
 | **HMAC** | Hash-based Message Authentication Code |
 | **IVA** | Impuesto al Valor Agregado (México) |
 | **KPI** | Key Performance Indicator |
@@ -1600,25 +1867,34 @@ validateWahaUrl(url: string): void
 # Typecheck + lint + build + tests
 pnpm typecheck && pnpm lint && pnpm build && pnpm test
 
+# Guard de migraciones: journal ↔ archivos .sql (lo que rompe el arranque)
+pnpm db:guard
+
 # Generar migración
 pnpm db:generate
+
+# Seed de demostración — en multi-tenant el negocio es OBLIGATORIO
+pnpm seed:demo --org=<organizationId>
 
 # Tests E2E
 pnpm test:e2e
 
-# Verificar migraciones
-psql -c "SELECT COUNT(*) FROM drizzle.__drizzle_migrations;"
+# Verificar migraciones (en producción, dentro del contenedor de la BD)
+docker compose exec postgres psql -U postgres -d lumark \
+  -c "SELECT COUNT(*) FROM drizzle.__drizzle_migrations;"
 
-# Verificar tablas
-psql -c "\dt"
+# Verificar tablas / datos
+docker compose exec postgres psql -U postgres -d lumark -c "\dt"
+docker compose exec postgres psql -U postgres -d lumark -c "SELECT COUNT(*) FROM contact;"
 
-# Verificar datos
-psql -c "SELECT COUNT(*) FROM contact;"
-psql -c "SELECT COUNT(*) FROM conversation;"
-psql -c "SELECT COUNT(*) FROM message;"
+# Qué está corriendo de verdad (commit quemado en la imagen)
+docker compose exec caddy wget -qO- http://app:3000/api/health
 ```
 
 ---
 
 **Documento generado automáticamente por Claude Code**  
-**Última actualización**: 18 de septiembre de 2026
+**Última actualización**: 19 de octubre de 2026 — se alinearon §§5, 7, 22, 25-28 y 31 con la
+auditoría de ese día (contención de rutas en media, enrutado de WAHA por token, firma
+obligatoria de Zernio, alta de organizaciones restringida al dueño de instancia, cabeceras
+de respuesta en `next.config.ts`, acceso de Caddy en el log).

@@ -15,8 +15,14 @@ Intercepción: `META_GRAPH_BASE_URL` apunta a `http://localhost:3000/api/dev/wa-
   (test ventana 24h).
 - `POST /api/dev/wa-mock/status` — simula status: `{ waMessageId, status }` → payload
   `statuses` al webhook.
-- `POST /api/dev/wa-mock/template-status` — simula `message_template_status_update`:
-  `{ name, language, event: 'APPROVED'|'REJECTED', reason? }`.
+- `POST /api/dev/wa-mock/echo` — simula un echo de coexistence (el dueño respondió a
+  mano desde la app del teléfono): `{ phoneNumberId, to, type?, text?, waMessageId?,
+  timestamp?, mediaId?, mimeType?, caption?, filename?, location?, useMessagesKey? }` →
+  payload `smb_message_echoes` firmado al webhook real
+  (`src/app/api/dev/wa-mock/echo/route.ts`).
+- ~~`POST /api/dev/wa-mock/template-status`~~ — **ya no existe** (verificado 2026-10-19).
+  Se eliminó junto con la US6 de plantillas en `630d1c6`; ver la nota de divergencia en
+  `webhook.md` y `docs/deuda-tecnica.md` §6.
 - `ANY /api/dev/wa-mock/graph/*` — imita Graph API:
   - `POST .../{phoneNumberId}/messages` → `200 { messages: [{ id: "wamid.mock..." }] }`
     y registra en el **outbox** en memoria. Si el body es plantilla, registra

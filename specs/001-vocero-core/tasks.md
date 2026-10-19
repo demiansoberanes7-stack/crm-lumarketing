@@ -185,6 +185,22 @@ US1, US2 (MVP gate) → US3, US4, US5, US8 (núcleo P1) → US6 (P2) → US7 (P3
 
 ## Phase 9: User Story 6 — Plantillas (Priority: P2)
 
+> ⚠️ **Revisión de la auditoría 2026-10-19: esta fase ya NO existe en el árbol.** Se
+> implementó (`d6dc914`, `73d8890`) y luego se **eliminó deliberadamente** en `630d1c6`
+> (2026-10-01), que borró `src/server/whatsapp/templates.ts` (436 líneas),
+> `/api/templates` + `/api/templates/sync`, `/messages/template`, el mock
+> `template-status`, las UIs, `tests/unit/templates.test.ts` y `tests/e2e/us6-templates.md`,
+> y aplicó `drizzle/0021_drop_template.sql` → `DROP TABLE "template" CASCADE`. Su comentario
+> declara la intención: «sin plantillas el envío proactive no existe y el CRM queda reactivo
+> (solo responde dentro de la ventana de 24 h)».
+>
+> Por eso los `[X]` de T081-T086 quedan como registro histórico, no como estado actual.
+> Hoy no hay gestión de plantillas: `message_template_status_update` se ignora en el webhook
+> y `template_name`/`template_language`/`template_params` de `broadcast_campaign`
+> (`src/lib/db/schema.ts:2412-2414`) son columnas inertes que nadie escribe. Reactivar la
+> US6 está tasado en `docs/deuda-tecnica.md` §6; el contrato afectado es
+> `contracts/webhook.md`.
+
 **Goal**: crear plantilla con `{{1}}`, aprobación Meta (webhook + sync), enviar con ventana cerrada
 
 **Independent Test**: crear plantilla → pending; wa-mock template-status APPROVED → badge aprobado; conversación con ventana cerrada → enviar plantilla con variable → aparece en outbox con components

@@ -26,7 +26,7 @@
 12. [Integraciones Externas](#12-integraciones-externas)
 13. [API Completa](#13-api-completa)
 14. [Seguridad y Constitucion](#14-seguridad-y-constitucion)
-15. [Despliegue en EasyPanel](#15-despliegue-en-easypanel)
+15. [Despliegue en produccion (VM + Docker Compose)](#15-despliegue-en-produccion-vm--docker-compose)
 16. [Bugs, Errores y Soluciones](#16-bugs-errores-y-soluciones)
 17. [Testing y Verificacion](#17-testing-y-verificacion)
 18. [Escalabilidad y Rendimiento](#18-escalabilidad-y-rendimiento)
@@ -59,15 +59,16 @@ CRM LUMARK es un sistema de gestion de relaciones con clientes (CRM) open source
 
 ## Metricas del Sistema
 
+Contado sobre el repo el 19 de octubre de 2026 (`find`/`grep`/`vitest`, no estimado):
+
 | Metrica | Valor |
 |---------|-------|
-| Tablas de base de datos | 47+ |
-| Migraciones | 11 (0000-0010) |
-| Rutas API | 80+ |
-| Componentes UI | 60+ |
-| Unit tests | 455 |
-| Scripts E2E | 17 |
-| Lineas de codigo (estimado) | ~25,000+ |
+| Tablas en `schema.ts` (`pgTable`) | 102 (106 en produccion: 4 las crea una migracion) |
+| Entradas del journal de migraciones | 77 |
+| Rutas API (`src/app/**/route.ts`) | 202 |
+| Componentes UI (`src/components/**/*.tsx`) | 135 |
+| Unit tests | 1086 en 124 archivos (`pnpm test`, 15.5 s) |
+| Scripts E2E | 21 |
 | Canales soportados | 4 |
 | Conectores de agenda | 3 |
 
@@ -155,7 +156,8 @@ Se agregaron modulos detras de feature flags:
           v                    v                     v
 +----------------+  +------------------+  +------------------+
 |   PostgreSQL   |  |  OpenRouter LLM  |  |  Meta Graph API  |
-|   47+ tablas   |  |  (Claude, GPT)   |  |  WhatsApp/IG     |
+|  102 tablas    |  |  (gpt-oss via    |  |  WhatsApp/IG     |
+|                |  |   Groq/OpenAI)   |  |                  |
 +----------------+  +------------------+  +------------------+
           |                                       |
           v                                       v
@@ -241,14 +243,24 @@ No hay WebSockets ni colas externas. El trabajo en segundo plano (agente IA, Lab
 |------------|---------|-----------|
 | Better Auth | ^1.1.14 | Autenticacion + plugin organization |
 | Zod | ^3.24.1 | Validacion de schemas |
-| AES-256-GCM | custom | Cifrado de secretos en reposo |
+| AES-256-GCM | custom (node:crypto) | Cifrado de secretos en reposo |
+| `src/server/media-path.ts` | custom | Contencion de rutas de disco (traversal + symlinks) |
+| `next.config.ts` `headers()` | custom | Cabeceras de respuesta globales (nosniff, XFO, HSTS…) |
+| `checkDistributedRateLimit` | custom (Postgres) | Rate limiting compartido entre replicas sin Redis |
 
 ## IA y LLM
 
 | Tecnologia | Version | Proposito |
 |------------|---------|-----------|
 | Groq | API | Proveedor de IA (via adaptador OpenRouter-compatible) |
-| openai/gpt-oss-20b | via Groq | Modelo de lenguaje (gratis, 131K contexto) |
+| openai/gpt-oss-120b | default del compose | Modelo del agente (`OPENROUTER_MODEL`, lo pisa el `.env`) |
+| openai/gpt-oss-20b | default del compose | Modelo del juez del Laboratorio (`OPENROUTER_JUDGE_MODEL`) |
+
+Separacion real entre token y modelo (`resolveAiConfig()`, `src/lib/ai/index.ts:70-89`): el
+**modelo** se define solo en el entorno (`OPENROUTER_MODEL`); el **token** tiene prioridad
+inversa — el guardado desde Configuracion (BD, cifrado, agente y copiloto comparten uno solo)
+gana y `OPENROUTER_API_TOKEN` queda como respaldo de despliegue. En la instancia actual
+`agent_profile.ai_token*` esta vacio, asi que quien manda es la variable de entorno.
 
 ## UI y Componentes
 
@@ -307,52 +319,87 @@ No hay WebSockets ni colas externas. El trabajo en segundo plano (agente IA, Lab
 
 ## docker-compose.yml (Produccion)
 
+La imagen **no se compila en el VPS**: se hace `pull` de Docker Hub. El build ocurre en
+GitHub Actions (`docker.yml`) al hacer push a `main`.
+
 ```yaml
 services:
   app:
-    build: .
+    # APP_IMAGE permite fijar un digest en el .env del servidor sin editar el compose.
+    # Fijar por digest es lo que corta el CD automatico (y la palanca de rollback).
+    image: ${APP_IMAGE:-ghostbreakfast69/lumark-crm:latest}
     depends_on:
       postgres: { condition: service_healthy }
     environment:
+      - NODE_OPTIONS=--max-old-space-size=384
       - DATABASE_URL=postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/lumark
-      - APP_BASE_URL=https://${DOMAIN}
+      # Lista NOMINAL: una variable que no aparece aqui no llega al proceso aunque
+      # exista en .env (asi quedo INTEL apagada en una replica del repo).
+      - META_APP_SECRET=${META_APP_SECRET:-}
+      - INTEL=${INTEL:-}
+      - MCP_WRITE_ENABLED=${MCP_WRITE_ENABLED:-false}
       # ... demas variables
     volumes:
-      - /data/media:/data/media  # Archivos media persistentes
+      - media_data:/data/media   # Archivos media persistentes (volumen nombrado)
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+    deploy: { resources: { limits: { memory: 512M } } }
 
   postgres:
     image: postgres:16-alpine
+    # Tuning explicito para la VM de 1 GiB
+    command: ["postgres", "-c", "shared_buffers=96MB", "-c", "work_mem=2MB",
+              "-c", "max_connections=20", "..."]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     volumes:
-      - lumark_postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    deploy: { resources: { limits: { memory: 384M } } }
+    # Sin tope de logs a proposito: cambiarlo exige reiniciar la BD
 
   caddy:
     image: caddy:2-alpine
     ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - lumark_caddy_data:/data
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro   # solo lectura
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+volumes: [postgres_data, caddy_data, caddy_config, media_data]
 ```
+
+El puerto 3000 de la app **no se publica**: todo entra por 80/443 a traves de Caddy. Los
+tres servicios con tope de logs lo llevan porque `json-file` sin tope llena el disco de la
+VM y el sintoma no es "logs viejos", es Postgres o Caddy sin donde escribir.
 
 ## Dockerfile (Multi-stage - 4 etapas)
 
 ```dockerfile
 # Etapa 1: Dependencias
 FROM node:22-alpine AS deps
-RUN corepack enable pnpm
-COPY package.json pnpm-lock.yaml ./
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# --frozen-lockfile: si package.json y el lockfile discrepan, pnpm resuelve otras
+# versiones en silencio y la imagen publicada no es la que se probo en ningun lado.
 RUN pnpm install --frozen-lockfile
 
 # Etapa 2: Build
 FROM node:22-alpine AS builder
+ARG SOURCE_COMMIT=""
+ARG GIT_SHA=""
+ENV SOURCE_COMMIT=$SOURCE_COMMIT GIT_SHA=$GIT_SHA   # /api/health reporta el commit
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build
-# Bundles migrate.mjs y seed/demo.ts con esbuild
+# Bundles autocontenidos (drizzle-orm y postgres van dentro del JS, no de node_modules)
+RUN pnpm exec esbuild scripts/migrate.mjs --bundle --platform=node --format=esm \
+    --outfile=migrate.bundle.mjs ...
+RUN pnpm exec esbuild scripts/seed/demo.ts --bundle ... --outfile=seed-demo.bundle.mjs
 
 # Etapa 3: Test (Chromium para E2E)
 FROM node:22-alpine AS test
@@ -360,22 +407,37 @@ RUN apk add --no-cache chromium
 
 # Etapa 4: Runner (produccion)
 FROM node:22-alpine AS runner
-RUN addgroup --system lumark && adduser --system lumark
+ENV NODE_ENV=production NODE_OPTIONS="--max-old-space-size=384"
+RUN apk add --no-cache fontconfig ttf-dejavu  # sin tipografias, el SVG rasterizado pierde texto
+RUN addgroup -S lumark && adduser -S lumark -G lumark
+RUN mkdir -p /data/media && chown -R lumark:lumark /data
 WORKDIR /app
 COPY --from=builder --chown=lumark:lumark /app/.next/standalone ./
 COPY --from=builder --chown=lumark:lumark /app/.next/static ./.next/static
-COPY --from=builder --chown=lumark:lumark /app/scripts/migrate.mjs ./
+COPY --from=builder --chown=lumark:lumark /app/public ./public
+COPY --from=builder --chown=lumark:lumark /app/migrate.bundle.mjs ./migrate.mjs
+COPY --from=builder --chown=lumark:lumark /app/seed-demo.bundle.mjs ./seed-demo.mjs
+COPY --from=builder --chown=lumark:lumark /app/drizzle ./drizzle   # los .sql tienen que ir en la imagen
 USER lumark
-HEALTHCHECK --interval=15s --timeout=5s --start-period=40s \
-  CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1
 CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 ```
 
+`--start-period=40s` cubre las migraciones del arranque. El `CMD` con `&&` es el punto debil
+conocido: si `migrate.mjs` aborta (un `.sql` del journal que no esta en la imagen), Next nunca
+llega a escuchar y el contenedor entra en crash loop con 502 publico. `next build` **no** ejecuta
+`migrate.mjs`, asi que la build puede estar verde y el arranque roto — por eso `pnpm db:guard`
+(queues journal ↔ archivos) corre en CI **y** en CD antes de subir nada.
+
 ## docker-compose.dev.yml (Desarrollo)
 
-- Solo PostgreSQL (sin app)
-- Puerto 5433:5432 (evita colision con produccion)
-- Password: `lumark`
+- Proyecto propio (`name: lumark-dev`) para no colisionar con el compose de produccion
+- PostgreSQL 16 en puerto **5433**:5432, password `lumark` por defecto
+- Redis 7 (6379) y Temporal (`temporalio/auto-setup` 7233) + su UI (8080), para el worker de
+  tareas; Temporal queda **apagado por defecto** en la app: `TEMPORAL_ADDRESS` usa
+  `localhost:7233` si no se define, y una cadena vacia cambiaria el comportamiento
 
 ## docker-compose.local.yml (Full Stack Local)
 
@@ -388,14 +450,29 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
 
 ```
 {$DOMAIN} {
+    # Un acceso por peticion: sin esto un incidente (scraping, abuso, reenvios al
+    # webhook) pasa sin evidencia. La rotacion la pone el compose (10m x 3).
+    log
+
     reverse_proxy app:3000 {
         flush_interval -1  # Critico para SSE
+        # El rate limit de la app mira primero x-real-ip y Caddy no la escribe por
+        # defecto: sin esta linea la cabecera llega ausente.
+        header_up X-Real-IP {http.request.remote.host}
     }
     encode gzip
 }
 ```
 
-`flush_interval -1` es critico: sin esto, Caddy bufferiza las respuestas SSE y el realtime no funciona.
+- `flush_interval -1` es critico: sin esto, Caddy bufferiza las respuestas SSE y el realtime no funciona.
+- `header_up X-Real-IP` es lo que hace fiable el rate limiting por IP (§14, Capa 5).
+- Las cabeceras de seguridad **no** se ponen aqui: estan en `next.config.ts` para viajar con la
+  imagen y ser reproducibles desde el repo. El proxy solo enruta y registra.
+- **Trampa del bind mount**: el volumen monta un *inode*, no una ruta. Editar el `Caddyfile` del
+  servidor con `mv nuevo Caddyfile` deja el contenedor leyendo el archivo viejo. Reescribir en el
+  sitio (`cat nuevo > Caddyfile`) y aplicar con `caddy reload` dentro del contenedor — recrearlo
+  cortaria las conexiones SSE. Validar antes:
+  `docker run --rm -v $PWD/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile`
 
 ---
 
@@ -438,7 +515,14 @@ CMD ["sh", "-c", "node migrate.mjs && node server.js"]
                             +-------------------+
 ```
 
-## Tablas por Dominio (47+ tablas)
+## Tablas por Dominio (102 en el modelo)
+
+**Deriva de esquema conocida**: la BD de produccion tiene **106** tablas. Las 4 extra
+(`diagnostic_event`, `whatsapp_settings`, `integration_secret`, `whatsapp_address`) las crea
+`drizzle/0006_diagnostics_messaging.sql`, que **si** esta en el journal, asi que una replica
+nueva las recibe igual. El riesgo no es que falten: es que `drizzle-kit generate` no las conoce
+y si algun dia se modelan en `schema.ts` el generador emite un `CREATE TABLE` que choca.
+`whatsapp_address` ademas no la referencia ningun codigo.
 
 ### Core (Tablas fundamentales)
 
@@ -629,8 +713,8 @@ export function isChannelEnabled(channel: Channel): boolean {
 
 ## Como Activar un Canal
 
-1. **En EasyPanel**: Ir a CRM -> Env vars -> Agregar el canal a `CHANNELS`
-2. **Reiniciar** el contenedor
+1. **En la VM**: agregar el canal a `CHANNELS` en `~/crm-lumarketing/.env`
+2. `docker compose up -d app` (recrea y vuelve a leer `.env`; `restart` no lo hace)
 3. **Configurar credenciales**: Ir a Settings -> [Canal] y conectar
 
 ---
@@ -775,7 +859,7 @@ export async function chatJson<T>(
 }
 ```
 
-**IMPORTANTE (v1.4.0)**: La configuracion de IA ahora es **solo por variables de entorno**. Los campos `aiToken` y `aiModel` en `agent_profile` estan deprecated. La UI ya no muestra la seccion "Proveedor de IA" — todo se configura via env vars en EasyPanel.
+**IMPORTANTE (v1.4.0)**: La configuracion de IA ahora es **solo por variables de entorno**. Los campos `aiToken` y `aiModel` en `agent_profile` estan deprecated. La UI ya no muestra la seccion "Proveedor de IA" — todo se configura via env vars en el `.env` de la VM.
 
 ```bash
 # Configuracion de IA (solo env vars)
@@ -1049,21 +1133,28 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 - HMAC-SHA256 para verificacion de firmas
 - Un solo webhook para todas las plataformas
 - Dispatch por `account.platform`
-- **Fix v1.4.0**: Aceptar webhooks sin firma cuando no hay signing secret configurado en Zernio (el token de la URL ya valida la fuente)
+- **v1.4.0**: aceptar webhooks sin firma cuando no hay signing secret configurado en Zernio
+- **Auditoria 2026-10-19 (A-03)**: con `webhook_secret` guardado en la cuenta, la firma pasa a ser
+  **obligatoria** — un evento sin cabecera se rechaza con 401. Ver Bug 10 en §16 para el porque
 
 ## OpenRouter
 
 - Adaptador LLM unificado (compatible con Groq, OpenRouter, etc.)
-- Configuracion **solo por env vars** (v1.4.0+)
-- Modelo actual: `openai/gpt-oss-20b` (Groq, gratis, 131K contexto)
+- **Modelo**: solo por env vars (`OPENROUTER_MODEL`, `OPENROUTER_JUDGE_MODEL`). `aiModel` en la DB
+  ya no se lee.
+- **Token**: `agent_profile.ai_token_cipher` (cifrado, guardado desde Configuracion) tiene prioridad;
+  `OPENROUTER_API_TOKEN` es el respaldo de despliegue. Sin clave en la BD manda la env var — que es
+  el estado de la instancia actual (`ai_token`/`ai_token_cipher` vacios).
+- Modelo por defecto en el compose: `openai/gpt-oss-120b` (agente) y `openai/gpt-oss-20b` (juez)
 - Base URL: `https://api.groq.com/openai`
-- Los campos `aiToken`/`aiModel` en la DB estan deprecated
+- La UI de "Proveedor de IA" no existe; lo unico que se configura desde Configuracion es la clave
 
 ## Better Auth
 
 - Autenticacion basada en sesiones
-- Plugin organization para multi-tenancy
-- Cifrado de passwords con bcrypt
+- Plugin organization para multi-tenancy (alta de negocios restringida al dueno de instancia)
+- Passwords hasheados con **scrypt** (`node:crypto`, el default de Better Auth; no hay bcrypt en
+  las dependencias)
 
 ---
 
@@ -1206,18 +1297,21 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 
 ```
 +------------------------------------------+
-|  Capa 6: HTTPS (Caddy auto-HTTPS)        |
+|  Capa 6: HTTPS + log (Caddy auto-HTTPS)  |
 +------------------------------------------+
-|  Capa 5: Rate Limiting (sliding window)   |
+|  Capa 5: Rate Limit (bucket en Postgres) |
 +------------------------------------------+
-|  Capa 4: HMAC Webhook Verification        |
+|  Capa 4: HMAC Webhook Verification       |
 +------------------------------------------+
-|  Capa 3: Better Auth (sesiones + bcrypt)  |
+|  Capa 3: Better Auth (sesion + scrypt)   |
 +------------------------------------------+
-|  Capa 2: AES-256-GCM (secretos en reposo) |
+|  Capa 2: AES-256-GCM (secretos en reposo)|
 +------------------------------------------+
-|  Capa 1: Multi-tenancy (scoped queries)   |
+|  Capa 1: Multi-tenancy (scoped queries)  |
 +------------------------------------------+
+
+  Transversales (no son una capa de red): contencion de rutas de media,
+  cabeceras de respuesta en next.config.ts, gate de alta de organizaciones.
 ```
 
 ### Capa 1: Multi-tenancy
@@ -1228,6 +1322,15 @@ export function scoped<T>(query: T, organizationId: string): T {
   // Agrega WHERE organization_id = ?
 }
 ```
+
+Aislamiento no solo de lectura, tambien de alta: el plugin de Better Auth expone
+`POST /api/auth/organization/create` a cualquier sesion valida, y `allowUserToCreateOrganization`
+(`src/lib/auth/index.ts:110`) lo restringe al dueno de la instancia. Sin eso, un miembro de un
+negocio ya creado abria un tenant propio — y sin sembrar (embudo, canales y perfil de agente
+ausentes), porque esa ruta no pasa por `provisionOrganization()`.
+
+En las paginas publicas la marca se resuelve fail-closed: si el negocio no se puede determinar
+con certeza, no se muestra ninguna.
 
 ### Capa 2: Cifrado en Reposo
 ```typescript
@@ -1240,8 +1343,9 @@ export function encryptSecret(plain: string) {
 
 ### Capa 3: Autenticacion
 - Better Auth con plugin organization
-- Passwords hasheados con bcrypt
+- Passwords hasheados con scrypt (`node:crypto`); no hay bcrypt en el arbol de dependencias
 - Tokens de sesion con expiracion
+- Registro publico cerrado por defecto (`ALLOW_SIGNUP=false`, gate FR-060 en `/sign-up/email`)
 
 ### Capa 4: Verificacion HMAC
 ```typescript
@@ -1251,14 +1355,48 @@ const signature = req.headers["x-hub-signature-256"];
 if (signature !== `sha256=${expected}`) return 401;
 ```
 
+Estado real de cada fuente:
+
+| Fuente | Firma | Sin firma |
+|--------|-------|-----------|
+| Meta Cloud API (WhatsApp/IG/Messenger) | `X-Hub-Signature-256` contra `META_APP_SECRET` | Si `META_APP_SECRET` esta vacio la capa queda desactivada y se acepta por token de URL, con un aviso una sola vez por proceso. Fail-closed aqui descartaria mensajes reales de clientes |
+| Zernio (IG/Messenger/TikTok) | `x-zernio-signature` / `x-late-signature` HMAC del body crudo, con el `webhook_secret` **de esa cuenta** | Con secreto guardado, la firma es **obligatoria**: sin cabecera → 401. Sin secreto, capa desactivada |
+| WAHA | Token de la URL = HMAC(`waha:{orgId}`) por negocio | El token identifica al tenant y se resuelve **antes** de mirar `session`; un token que no pertenece a ningun negocio se descarta |
+
 ### Capa 5: Rate Limiting
-- Sliding window in-process
-- Bot API: 600 requests/minuto
-- Login: 10 intentos/15 minutos
+- Bucket distribuido en PostgreSQL (`rate_limit_bucket` + `checkDistributedRateLimit`):
+  sobrevive a varias replicas sin Redis. Si la tabla falla, **no** bloquea (fail-open) para
+  no descartar webhooks legitimos; queda en el log.
+- Login/registro: `AUTH_RATE_LIMIT` = 10 intentos / 10 minutos por IP.
+- Alta de negocio (`POST /api/auth/organization`): misma ventana, bucket `org-provision:<userId>`.
+- Webhooks: `WEBHOOK_RATE_LIMIT` = 120/min por token+IP → 429.
+- Bot API: 600 requests/minuto.
+- Origen de la IP: primero `x-real-ip` (lo escribe Caddy con `header_up X-Real-IP`) y, si falta,
+  el **ultimo** hop de `X-Forwarded-For`. El primer hop lo escribe el cliente, asi que no es de fiar.
 
 ### Capa 6: HTTPS
 - Caddy auto-HTTPS con Let's Encrypt
 - Sin configuracion manual de certificados
+- Log de accesos activado (`log` en el bloque del sitio): un acceso por peticion, con tope de
+  rotacion `10m` x 3 archivos en el compose
+
+### Controles anadidos por la auditoria de 2026-10-19
+
+No encajan en la torre de 6 capas porque no son de red ni de identidad:
+
+- **Contencion de rutas de media** (`src/server/media-path.ts`): valida segmento a segmento,
+  normaliza con `resolve`, exige pertenencia al `MEDIA_DIR/{orgId}` y compara `realpath`
+  (cierra enlaces simbolicos). Ruta invalida → `null` → 422 en las rutas publicas.
+- **Cabeceras de respuesta globales** (`next.config.ts` → `headers()`): `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `Strict-Transport-Security: max-age=15552000`.
+  Viajan en la imagen, no en el proxy, para ser reproducibles desde el repo. **Sin CSP global a
+  proposito**: Tailwind inyecta estilos en linea y una CSP mal calibrada rompe la UI en produccion.
+- **CSP de media**: el unico contenido que controla un tercero (SVG del logo) lleva
+  `default-src 'none'; style-src 'unsafe-inline'; sandbox` en su propia respuesta.
+- **Sin reenvio de `err.message`** al cliente en `/api/settings/clients` y `/api/settings/team`:
+  codigo de error generico (`client_creation_failed` / `member_creation_failed`) y el detalle real
+  solo al log del servidor. Antes un fallo de BD filtraba su mensaje interno.
 
 ## Constitucion (Reglas No Negociables)
 
@@ -1274,32 +1412,58 @@ if (signature !== `sha256=${expected}`) return 401;
 
 ---
 
-# 15. DESPLIEGUE EN EASYPANEL
+# 15. DESPLIEGUE EN PRODUCCION (VM + Docker Compose)
 
-## Paso 1: Crear Servicio PostgreSQL
+El despliegue real es una VM de Azure (`Standard_B2ats_v2`, 1 GiB de RAM) con `docker compose`
+en `~/crm-lumarketing/`: `app` (imagen desde Docker Hub), `postgres` y `caddy`. No hay panel
+intermedio — la epoca de EasyPanel/Traefik quedo atras; el proxy es Caddy y la orquestacion es
+el compose versionado en el repo.
 
-1. En EasyPanel -> Nuevo servicio -> PostgreSQL
-2. Configurar:
-   - Nombre: `crm_bd`
-   - Puerto: 5432
-   - Usuario: `postgres`
-   - Password: (generar segura)
-   - Base de datos: `lumark`
-3. Guardar las credenciales
+## Paso 0: La cadena automatica
 
-## Paso 2: Crear Servicio App
+`git push` a `main` → `docker.yml` construye la imagen, la sube como `ghostbreakfast69/lumark-crm:latest`
+y entra por SSH a la VM a hacer `compose pull && compose up -d`. Es decir: **el push es el deploy**.
+No hay paso humano, y un push directo no lo frena la proteccion de rama (los *required checks*
+solo gatean merges de PR). La redaccion de este paso es la razon de ser del guard de migraciones
+y de los 5 gates locales antes de empujar.
 
-1. En EasyPanel -> Nuevo servicio -> Dockerfile
-2. Conectar al repositorio Git
-3. Configurar:
-   - Puerto: 3000
-   - Dockerfile path: `./Dockerfile`
+## Paso 1: PostgreSQL
+
+Servicio `postgres` del compose: `postgres:16-alpine`, volumen nombrado `postgres_data`,
+`POSTGRES_DB=lumark`, `POSTGRES_PASSWORD` desde el `.env` de la VM, healthcheck `pg_isready` y
+tuning explicito para 1 GiB. La app lo arranca despues (`depends_on: service_healthy`) y se
+conecta por el nombre de servicio interno (`postgres`), nunca por un host externo.
+
+## Paso 2: Servicio de App
+
+`image: ${APP_IMAGE:-ghostbreakfast69/lumark-crm:latest}` — el VPS no compila. Para congelar una
+version (o revertir) se pone el digest en el `.env` del servidor:
+
+```bash
+APP_IMAGE=ghostbreakfast69/lumark-crm@sha256:<digest>
+docker compose up -d app
+```
+
+El digest anterior se lee con `docker image inspect <id> --format '{{json .RepoDigests}}'`
+(`RepoDigests` **no** existe en `docker container inspect`). Puerto 3000 sin publicar: solo 80/443.
+
+## Paso 2b: Despliegue manual equivalente (una replica nueva)
+
+1. Clonar el repo, copiar `.env.example` → `.env` y rellenar (§15 Paso 3).
+2. `docker compose up -d` — arranca postgres, espera sano, aplica migraciones en el `CMD` de la
+   app y levanta Caddy con el `Caddyfile` montado.
+3. El volumen `media_data` debe pertenecer al usuario `lumark` (uid del runner); si se monta un
+   bind mount desde el host hay que conservar el propietario o la escritura de adjuntos falla.
 
 ## Paso 3: Variables de Entorno
 
 ```bash
-# Base de datos
-DATABASE_URL=postgres://postgres:PASSWORD@crm_bd:5432/lumark
+# Base de datos (la arma el compose desde POSTGRES_PASSWORD; DATABASE_URL no se pone a mano)
+POSTGRES_PASSWORD=(generar: openssl rand -base64 24)
+
+# Proxy / TLS
+DOMAIN=crm.tudominio.com
+APP_BASE_URL=https://crm.tudominio.com
 
 # Autenticacion
 BETTER_AUTH_SECRET=(generar: openssl rand -base64 32)
@@ -1307,30 +1471,54 @@ BETTER_AUTH_SECRET=(generar: openssl rand -base64 32)
 # Cifrado
 ENCRYPTION_KEY=(generar: openssl rand -base64 32)
 
-# App
-APP_BASE_URL=https://tudominio.com
-
 # WhatsApp (Meta)
 META_WEBHOOK_VERIFY_TOKEN=(token de verificacion)
-META_APP_SECRET=(opcional, para firma HMAC)
+META_APP_SECRET=(firma HMAC; vacio = capa desactivada con aviso en el log)
 
 # Canales
 CHANNELS=whatsapp,instagram,messenger,tiktok
 
 # IA (solo env vars — v1.4.0+)
 OPENROUTER_BASE_URL=https://api.groq.com/openai
-OPENROUTER_API_TOKEN=gsk_...
+OPENROUTER_API_TOKEN=(api key)
 OPENROUTER_MODEL=openai/gpt-oss-20b
 
 # WAHA (opcional)
-WAHA_BASE_URL=http://waha:3000
-WAHA_API_KEY=tu-api-key
+WAHA_BASE_URL=https://waha.tudominio.com
+WAHA_API_KEY=(api key)
+WAHA_TRUSTED_HOSTS=localhost        # hosts privadas toleradas para un WAHA interno (sin HTTPS)
+
+# Banderas de modulo (ADR-001, apagadas por defecto)
+INTEL=true
+AGENDA=
+ATRIBUCION=
+GOOGLE_BUSINESS=
+
+# MCP (conectores externos)
+MCP_DCR_ENABLED=true
+MCP_DCR_ALLOWED_HOSTS=chatgpt.com
+MCP_WRITE_ENABLED=false
+MCP_DELETE_ENABLED=false
+MCP_SEND_ENABLED=false
+MCP_ADMIN_ENABLED=false
 
 # Operaciones
-ALLOW_SIGNUP=true
+ALLOW_SIGNUP=false        # registrar clientes nuevos: solo el dueno de instancia
 AGENT_COALESCE_MS=6000
 MEDIA_DIR=/data/media
+
+# Congelar version (opcional; vacio = sigue `latest`)
+APP_IMAGE=
 ```
+
+**Trampa del compose**: el bloque `environment:` es una **lista nominal**. Una variable que no
+aparece ahi no llega al proceso aunque exista en `.env` — asi fue como la bandera `INTEL` dejaba
+`/inteligencia` en 404 en una replica del repo. Cualquier variable nueva tiene que estar en el
+compose del repo **y** en el del servidor.
+
+**Trampa del `.env`**: no se anexa con `>>`. Si la ultima linea no termina en salto, las claves se
+pegan (`MCP_AUDIT_RETENTION_DAYS=180MCP_DCR_ENABLED=true`). Reescribir el archivo completo y
+verificar con `grep -c '^CLAVE=' .env`.
 
 **NOTA v1.4.0**: La configuracion de IA (token y modelo) ahora es SOLO por variables de entorno. Los campos `aiToken` y `aiModel` en la DB estan deprecated y la UI ya no los muestra.
 
@@ -1354,79 +1542,79 @@ Respuesta esperada:
 1. Ir a Settings -> WhatsApp
 2. Ingresar Phone Number ID, WABA ID, y Token
 3. Configurar webhook en Meta Developer Console:
-   - URL: `https://tudominio.com/api/webhooks/whatsapp/TOKEN`
+   - URL: `https://tudominio.com/api/webhooks/wa/{META_WEBHOOK_VERIFY_TOKEN}`
    - Fields: `messages`, `messaging_postbacks`
+   - La ruta real es `src/app/api/webhooks/wa/[webhookToken]` (no existe `/webhooks/whatsapp`)
 
 ## Paso 6: Activar Canales
 
-- En EasyPanel -> CRM -> Env vars -> `CHANNELS`
+- Editar `CHANNELS` en el `.env` de la VM y `docker compose up -d app` (recrea el contenedor;
+  `restart` no vuelve a leer `.env`)
 - Agregar `tiktok` si se desea: `CHANNELS=whatsapp,instagram,messenger,tiktok`
-- Reiniciar el contenedor
+- TikTok/Instagram/Messenger via Zernio exigen ademas el `api key` en Settings -> [Canal]
 
 ## Paso 7: Configurar Dominio Personalizado
 
-### 7.1 Configurar DNS en tu proveedor (Hostinger, etc.)
+### 7.1 Configurar DNS en tu proveedor
 
-Agregar registros DNS:
+Apuntar el subdominio a la IP publica de la VM (se lee con `dig +short crm.tudominio.com`; no se
+fija en la documentacion porque cambia con cada redeploy y porque el registro A no es un secreto
+pero si un dato operativo):
 
 | Tipo | Nombre | Apunta a | TTL |
 |------|--------|----------|-----|
-| **A** | `@` | `35.232.183.92` (IP del VPS) | 3600 |
-| **A** | `www` | `35.232.183.92` (IP del VPS) | 3600 |
+| **A** | `crm` | IP publica de la VM de Azure | 3600 |
 
-### 7.2 Agregar dominio en EasyPanel
+### 7.2 El dominio lo resuelve Caddy, no un panel
 
-EasyPanel necesita registrar el dominio para configurar proxy inverso + SSL automatico:
+No hay que registrar el dominio en ningun panel: Caddy ve `{$DOMAIN}` en el `Caddyfile`, pide el
+certificado a Let's Encrypt en el primer arranque y renueva solo. Los pasos reales:
 
 ```bash
-# Via API (o desde la UI de EasyPanel)
-curl -sk -X POST "https://35.232.183.92/api/trpc/domains.createDomain" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer TOKEN" \
-  -d '{
-    "json": {
-      "projectId": "crm",
-      "host": "tudominio.com",
-      "serviceName": "crm",
-      "path": "/",
-      "https": true,
-      "certificateResolver": "",
-      "id": "generated-id",
-      "middlewares": [],
-      "wildcard": false,
-      "destinationType": "service"
-    }
-  }'
+cd ~/crm-lumarketing
+# 1. DOMAIN y APP_BASE_URL en .env (lista nominal del compose: ambas deben estar declaradas)
+# 2. validar el Caddyfile antes de tocar el servicio vivo
+docker run --rm -v $PWD/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine \
+  caddy validate --config /etc/caddy/Caddyfile
+# 3. recrear caddy (o recargar si solo cambio el Caddyfile)
+docker compose up -d caddy          # si cambio DOMAIN en .env
+docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile   # si cambio el archivo
 ```
 
-EasyPanel creara automaticamente un certificado SSL via Let's Encrypt.
+Si se edita el `Caddyfile` en el servidor, reescribirlo **en el sitio** (`cat nuevo > Caddyfile`),
+nunca con `mv`: el bind mount sigue el *inode* y el contenedor se queda leyendo el archivo viejo.
 
 ### 7.3 Actualizar APP_BASE_URL
 
-Cambiar la env var en EasyPanel:
 ```
-APP_BASE_URL=https://tudominio.com
+APP_BASE_URL=https://crm.tudominio.com
+DOMAIN=crm.tudominio.com
 ```
 
-Esto asegura que los links internos (webhooks, auth, etc.) usen tu dominio.
+y `docker compose up -d app`. Esto asegura que los links internos (webhooks, auth, branding
+publico) usen tu dominio. Un `APP_BASE_URL` equivocado se ve en los enlaces de invitacion y en el
+callback OAuth del MCP (`MCP_AUTH_BASE_URL`/`MCP_RESOURCE_URL`).
 
 ### 7.4 Actualizar Webhooks
 
 Despues de configurar el dominio, actualizar las URLs de webhook en:
 
-- **Meta/Facebook** (WhatsApp Business): `https://tudominio.com/api/webhooks/wa/{token}`
-- **Meta/Facebook** (Instagram): `https://tudominio.com/api/webhooks/ig/{token}`
-- **Zernio**: `https://tudominio.com/api/webhooks/ig/{token}`
+- **Meta/Facebook** (WhatsApp Business): `https://crm.tudominio.com/api/webhooks/wa/{token}`
+- **Meta/Facebook** (Instagram): `https://crm.tudominio.com/api/webhooks/ig/{token}`
+- **Messenger**: `https://crm.tudominio.com/api/webhooks/messenger/{token}`
+- **Zernio**: `https://crm.tudominio.com/api/webhooks/ig/{token}` (IG/TikTok) y `.../messenger/{token}`
+- **WAHA**: `https://crm.tudominio.com/api/webhooks/waha/{token}` — el token es
+  `wahaWebhookToken(orgId)`, especifico del negocio, no el verify token de la instancia
 
 ### Flujo de conexion
 
 ```
-Usuario escribe tudominio.com
-    ↓ DNS (Hostinger/A Records)
-    ↓ 35.232.183.92
-    ↓ EasyPanel (Traefik + SSL automatico)
-    ↓ Contenedor CRM (puerto 3000)
-    ↓ App responde
+Usuario escribe crm.tudominio.com
+    ↓ DNS (registro A)
+    ↓ IP publica de la VM (puertos 80/443 abiertos en el NSG)
+    ↓ Contenedor Caddy (auto-HTTPS, log de accesos, X-Real-IP)
+    ↓ Contenedor app:3000 (puerto NO publicado)
+    ↓ Next.js responde + cabeceras de next.config.ts
 ```
 
 ---
@@ -1577,23 +1765,47 @@ Consider using `<Image />` from `next/image`
 
 ## Bug 10: Zernio Webhook 401 Unauthorized
 
-**Fecha**: 20 de Septiembre de 2026  
+**Fecha**: 20 de Septiembre de 2026 (fix) → **revertido el 19 de Octubre de 2026**  
 **Severidad**: Alta  
-**Simptomas**: Webhooks de Zernio (Instagram/Messenger/TikTok) retornaban 401
+**Sintomas**: Webhooks de Zernio (Instagram/Messenger/TikTok) retornaban 401
 
-**Causa**: `isValidZernioSignature()` rechazaba requests sin firma cuando la DB tenia un `webhookSecret` guardado. Pero Zernio no envia firma si el webhook no tiene signing secret configurado en su panel.
+**Causa original**: `isValidZernioSignature()` rechazaba requests sin firma cuando la DB tenia un
+`webhookSecret` guardado. Pero Zernio no envia firma si el webhook no tiene signing secret
+configurado en su panel.
 
-**Solucion**: Aceptar requests sin firma cuando no hay signing secret configurado — el token de la URL ya valida la fuente.
+**Solucion de 2026-09-20** (`34a578a`): aceptar requests sin firma.
 
 ```typescript
-// ANTES (bug):
-if (!signature) return false;
-
-// DESPUES (fix):
-if (!signature) return true; // URL token ya valido la fuente
+// Como quedo en septiembre (fail-open):
+if (!signature) return true; // "el token de la URL ya valido la fuente"
 ```
 
-**Commit**: `34a578a`
+**Por que se revirtio (19 de octubre de 2026, hallazgo A-03 de la auditoria)**: la linea del fix
+vivia **despues** de `if (!secret) return true`, asi que el caso de cuenta sin secreto ya estaba
+cubierto por la primera comprobacion; la segunda devolvia `true` tambien cuando el secreto **si**
+existia. Con secreto en la cuenta, un evento sin cabecera se aceptaba solo por conocer el segmento
+secreto de la URL — que es justo lo que la firma debe suplir: quien inyecta un DM falso hace que el
+agente conteste con un mensaje **real** desde la cuenta del cliente.
+
+**Estado actual**:
+
+```typescript
+// src/server/zernio/index.ts:43-49
+if (!secret) return true;      // sin secreto guardado la capa sigue desactivada
+if (!signature) return false;  // con secreto, la firma es obligatoria
+```
+
+Es decir: el caso que motivaba el bug (cuenta **sin** signing secret en Zernio) sigue sin
+requerir firma; lo que cambio es que una cuenta **con** secreto ya no puede ser suplantada
+omitiendo la cabecera.
+
+**Verificacion**: `tests/unit/webhook.test.ts` (`describe("firma de Zernio…")`) cubre los cuatro
+casos — sin secreto, con secreto y firma valida, con secreto y firma invalida, con secreto y sin
+cabecera.
+
+**Impacto en produccion**: nulo en el momento del cambio (0 cuentas con `webhook_secret` en la BD).
+Si algun dia un canal deja de ingestar con 401, comparar el secreto guardado en Ajustes con el que
+Zernio usa para firmar, en lugar de volver a aflojar la validacion.
 
 ## Bug 11: AI Model Not Found (Groq)
 
@@ -1611,13 +1823,51 @@ if (!signature) return true; // URL token ya valido la fuente
 
 **Commits**: `4e6d8f4`
 
+**Como esta hoy (verificado en codigo, 2026-10-19)**: de los 4 puntos persisten el 1 y parte del 3.
+El modelo **si** se define solo por entorno. El token **no**: `resolveAiConfig()`
+(`src/lib/ai/index.ts:70-89`) da prioridad al token guardado en la BD (cifrado, compartido entre
+agente y copiloto) y usa `OPENROUTER_API_TOKEN` como respaldo de despliegue, que es lo contrario
+del punto 2/4. La UI de "Proveedor de IA" sigue fuera. Donde mirar antes de tocar esto: el campo
+`ai_token_cipher` de `agent_profile` — si esta vacio, quien decide es la variable de entorno.
+
+## Bug 12: Suplantacion por URL en media publica (P0)
+
+**Fecha del hallazgo**: 19 de Octubre de 2026 (auditoria de modo varios negocios)  
+**Severidad**: Critica  
+**Simptomas**: `GET /api/media/public/{orgId}/../../..%2f..%2fproc%2fself%2fenviron` respondia sin
+sesion. La ruta validaba el segmento con `/^[\w.-]{1,128}$/`, una clase que **incluye el punto**, asi
+que `..` pasaba; luego `join()` + `existsSync()` leian cualquier archivo del contenedor.
+
+**Alcance real**: cualquiera, sin credenciales, leia el entorno del proceso — `ENCRYPTION_KEY`,
+`BETTER_AUTH_SECRET`, `DATABASE_URL` con la password de Postgres, `OPENROUTER_API_TOKEN` — y con la
+clave de cifrado, todos los secretos de terceros guardados en la BD.
+
+**Solucion**: helper unico `src/server/media-path.ts` → `resolveMediaFile(orgId, ...segmentos)`.
+Regla por segmento `^[A-Za-z0-9][\w.-]{0,127}$` (no puede empezar con punto, asi que `..` es
+imposible), `resolve()` para normalizar, comprobacion de prefijo `MEDIA_DIR/{orgId}` + `sep`, y
+`realpathSync` de archivo y raiz para cerrar enlaces simbolicos. Ruta invalida → `null` → **422**;
+ruta valida sin archivo → **404**. Lo consumen las dos rutas publicas de media, el PDF de
+cotizaciones (`src/server/documents/pdf.ts`) y `src/server/whatsapp/media.ts`.
+
+Ademas: `X-Content-Type-Options: nosniff` en todas las respuestas de media y
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox` en los SVG, porque
+el logo admite SVG y lo sube un miembro del negocio (un SVG con script se habria ejecutado con la
+sesion de quien abriera la URL).
+
+**Verificacion**: `tests/unit/media-path.test.ts` (12 casos: `../../secreto.txt`, `catalog/..`,
+`....`, `..%2fetc`, orgId invalido, segmento absoluto, salida por symlink, archivo ausente,
+cabeceras). En produccion, tras el deploy: `....` y `%2e%2e%2f…proc%2fself%2fenviron` responden 422
+y el logo real responde 200 con `nosniff`.
+
+**Commit**: `1436d95`
+
 ---
 
 # 17. TESTING Y VERIFICACION
 
 ## Unit Tests (Vitest)
 
-455 tests en 54 archivos cubriendo:
+1086 tests en 124 archivos (medido el 2026-10-19, `pnpm test` en 15.5 s) cubriendo:
 
 | Modulo | Tests |
 |--------|-------|
@@ -1635,12 +1885,13 @@ if (!signature) return true; // URL token ya valido la fuente
 | Send | `send-sandbox.test.ts` |
 | Stage history | `stage-history.test.ts`, `status-monotonic.test.ts` |
 | Tenant | `tenant.test.ts` |
-| Webhooks | `webhook.test.ts` |
+| Media path | `media-path.test.ts` (traversal, symlink escape, cabeceras de media) |
+| Webhooks | `webhook.test.ts` (firma de Zernio con y sin secreto, enrutado WAHA) |
 | Window | `window.test.ts` |
 
 ## Scripts E2E (Playwright)
 
-17 scripts que cubren flujos de comportamiento completos:
+21 scripts que cubren flujos de comportamiento completos:
 
 | Script | Flujo |
 |--------|-------|
@@ -1723,43 +1974,72 @@ Un solo contenedor = despliegue simple, latencia minima, debugging facil. Suitab
 ## Comandos Utiles
 
 ```bash
-# Verificar salud
-curl https://tudominio.com/api/health
+# --- En la VM (desde ~/crm-lumarketing) ---
+
+# Verificar salud y QUE commit esta corriendo (viene quemado en la imagen)
+curl https://crm.tudominio.com/api/health
+# Sondear desde dentro de la red docker: desde la propia VM el HTTPS del dominio no responde
+# (el cliente interno habla HTTP a un listener TLS y sale code=000)
+docker compose exec caddy wget -qO- http://app:3000/api/health
 
 # Ver logs del contenedor
-docker logs crm_app --tail 100 -f
+docker compose logs --tail 100 -f app
 
 # Ver logs de PostgreSQL
-docker logs crm_bd --tail 100 -f
+docker compose logs --tail 100 -f postgres
+
+# Estado y reinicios (un RestartCount alto = el CMD aborta, casi siempre por migraciones)
+docker compose ps
+docker inspect -f '{{.RestartCount}}' crm-lumarketing-app-1
+
+# Consultas (psql corre DENTRO del contenedor)
+docker compose exec postgres psql -U postgres -d lumark -c "\dt"
+docker compose exec postgres psql -U postgres -d lumark \
+  -c "SELECT COUNT(*) FROM drizzle.__drizzle_migrations;"
 
 # Resetear password de usuario
 node scripts/reset-password.mjs
 
-# Generar seed de demo
-pnpm seed:demo
+# Seed de demo — en multi-tenant el negocio es OBLIGATORIO (evita sembrar en el
+# CRM de un cliente)
+pnpm seed:demo --org=<organizationId>
 
 # Correr tests
 pnpm typecheck && pnpm lint && pnpm test
 
+# Guard de migraciones: journal ↔ .sql (falla si un entrada del journal no tiene archivo)
+pnpm db:guard
+
 # Generar migracion
 pnpm db:generate
 
-# Aplicar migraciones (se hace automaticamente al arrancar)
+# Aplicar migraciones (se hace automaticamente al arrancar el contenedor)
 node scripts/migrate.mjs
 ```
 
 ## Como Actualizar
 
-1. Hacer pull de los cambios
-2. Rebuild del contenedor: `docker compose build app`
-3. Restart: `docker compose up -d app`
-4. Las migraciones se aplican automaticamente al arrancar
+El camino normal es **no tocar la VM**: `git push origin main` → `docker.yml` construye, sube
+`latest` y hace `compose pull && up -d` por SSH. El manual equivalente:
+
+```bash
+cd ~/crm-lumarketing
+docker compose pull app          # el VPS no compila: descarga la imagen publicada
+docker compose up -d app         # recrea y aplica migraciones en el CMD
+docker compose ps && curl -s https://crm.tudominio.com/api/health
+```
+
+Antes de un deploy que toca esquema: dump manual `pre-deploy-<UTC>.dump.gz` y **copia fuera de la
+maquina**. Rollback: fijar `APP_IMAGE=…@sha256:<digest>` en `.env` y `docker compose up -d app`.
 
 ## Como Rotar Passwords
 
-1. **PostgreSQL**: `ALTER USER postgres PASSWORD 'nueva_password';`
-2. **Actualizar DATABASE_URL** en EasyPanel
-3. **Reiniciar** el contenedor
+1. **PostgreSQL**: `docker compose exec postgres psql -U postgres -c "ALTER USER postgres PASSWORD 'nueva';"`
+   (la BD ya tenia esa password; `POSTGRES_PASSWORD` del `.env` solo la impone en el primer arranque
+   del volumen, no la cambia despues)
+2. **Actualizar `POSTGRES_PASSWORD`** en el `.env` de la VM — el compose arma `DATABASE_URL` desde ella
+3. `docker compose up -d app` (recrear, no `restart`: `restart` no vuelve a leer `.env`)
+4. Verificar `/api/health` y que el log de la app no muestra `password authentication failed`
 
 ## Como Agregar un Canal
 
@@ -1779,15 +2059,31 @@ node scripts/migrate.mjs
 1. Modificar `src/lib/db/schema.ts`
 2. Ejecutar `pnpm db:generate`
 3. El nuevo archivo SQL aparecera en `drizzle/`
-4. Nombrar secuencialmente y registrar en `drizzle/meta/_journal.json`; la siguiente disponible es `0011_descripcion.sql`
-5. Las migraciones se aplican automaticamente al arrancar el contenedor
+4. Registrar la entrada en `drizzle/meta/_journal.json` con un `when` **estrictamente mayor** que
+   el ultimo (el orden de aplicacion es `when`, no el nombre del archivo). El indice siguiente se lee
+   del propio journal: `node -e "console.log(require('./drizzle/meta/_journal.json').entries.length)"`.
+   El journal tiene decenas de entradas: nunca hardcodear un numero en la documentacion.
+5. **Commitear el `.sql` junto con el journal.** Un `journal` que referencia un archivo ausente es
+   exactamente lo que tumbo la produccion el 2026-10-16: la imagen se construye igual, el `CMD`
+   aborta en `migrate.mjs` y el contenedor entra en crash loop con 502 publico.
+6. `pnpm db:guard` lo comprueba localmente y en CI/CD; una migracion huerfana (archivo sin journal)
+   tambien es error, no aviso.
+7. Antes de empujar, dry-run en una copia: restaurar un `pg_dump` en una BD de pruebas y aplicar el
+   `.sql` con `ON_ERROR_STOP=1`
+8. Las migraciones se aplican automaticamente al arrancar el contenedor
 
 ## Monitoreo
 
-- **Healthcheck**: `GET /api/health` cada 15s (configurado en Docker)
-- **Logs**: `docker logs` o EasyPanel -> Logs
-- **Diagnosticos**: `/api/settings/diagnostics`
+- **Healthcheck**: `GET /api/health` cada 15s, 5 reintentos y `start-period` de 40s (el margen cubre
+  las migraciones del arranque)
+- **Logs**: `docker compose logs app` / `postgres`; Caddy registra un acceso por peticion (rota a
+  `10m` x 3 archivos). El aviso periodico de configuracion insegura es un `console.warn` en el log de
+  `app`, por ejemplo `[webhook] META_APP_SECRET no esta configurado…`
+- **Diagnosticos**: `/api/settings/diagnostics` (tabla `diagnostic_event`)
 - **Eventos SSE**: `/api/events` para monitoreo en tiempo real
+- **Copias de seguridad**: cron nocturno `~/scripts/backup-crm.sh` → `~/backups` (BD + media +
+  configuracion) con linea `OK …` en `backup.log`. Mientras el backup viva en el mismo disco que la
+  BD, no es un backup: hace falta copia fuera de la maquina
 
 ---
 
@@ -1819,11 +2115,12 @@ node scripts/migrate.mjs
 | Documento | Ubicacion | Contenido |
 |-----------|-----------|-----------|
 | CLAUDE.md | Raiz del proyecto | Guia para Claude Code |
-| SISTEMA-COMPLETO.md | docs/ | Documentacion del sistema (1635 lineas) |
+| SISTEMA-COMPLETO.md | docs/ | Documentacion del sistema (~1900 lineas, reenumera §§ 1-32 + anexos) |
+| Deuda tecnica | docs/deuda-tecnica.md | Inventario de bugs, codigo muerto y esquema inerte, con commit base |
 | ADR-001 | docs/adr-001-canales-opcionales.md | Decision: canales opcionales |
 | ADR-002 | docs/adr-002-conectores-de-agenda.md | Decision: conectores de agenda |
 | Constitution | .specify/memory/constitution.md | Reglas no negociables |
-| EasyPanel Guide | docs/easypanel.md | Guia de despliegue |
+| EasyPanel Guide | docs/easypanel.md | **Historica**: el despliegue actual es VM + Docker Compose + Caddy (§15) |
 | Getting Started | docs/getting-started.md | Primeros pasos |
 | Atribucion CAPI | docs/atribucion-capi.md | Guia de atribucion |
 | Agenda Conectores | docs/agenda-conectores.md | Conectores de agenda |
@@ -1861,5 +2158,5 @@ node scripts/migrate.mjs
 
 **Fin de la Documentacion**
 
-*Documento generado el 20 de Septiembre de 2026*
-*Version 1.4.0 - CRM LUMARK*
+*Documento generado el 20 de Septiembre de 2026, alineado con el codigo el 19 de Octubre de 2026*
+*Version 1.3.0 - CRM LUMARK (la version que reporta `/api/health`; `package.json` manda)*

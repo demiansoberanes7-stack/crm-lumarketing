@@ -1,6 +1,6 @@
 # Zorro Tech CRM CRM
 
-[![CI](https://github.com/kevinrivm/Zorro Tech CRM-crm/actions/workflows/ci.yml/badge.svg)](https://github.com/kevinrivm/Zorro Tech CRM-crm/actions/workflows/ci.yml)
+[![CI](https://github.com/demiansoberanes7-stack/crm-lumarketing/actions/workflows/ci.yml/badge.svg)](https://github.com/demiansoberanes7-stack/crm-lumarketing/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **El CRM de WhatsApp open source con un agente de IA que se pone a prueba solo.**
@@ -175,13 +175,23 @@ genera los secretos y verifica el healthcheck.
 ### Ruta B — docker compose
 
 ```bash
-git clone https://github.com/kevinrivm/Zorro Tech CRM-crm.git Zorro Tech CRM && cd Zorro Tech CRM
+git clone https://github.com/demiansoberanes7-stack/crm-lumarketing.git zorro-crm && cd zorro-crm
 cp .env.example .env    # rellena: dominio + secretos (cada uno trae su comando openssl)
-docker compose up -d --build
+docker build -t lumark-crm-local .
+APP_IMAGE=lumark-crm-local docker compose up -d
 ```
+
+El compose del repo **no define `build:`**: su `image:` es `${APP_IMAGE:-…:latest}`,
+porque en producción la imagen la publica GitHub Actions y el servidor hace `pull`.
+Por eso se compila a mano y se le pasa la etiqueta por `APP_IMAGE` — `docker compose
+up -d --build` no compila nada aquí.
 
 Caddy emite el certificado HTTPS solo. Verifica con
 `https://crm.tudominio.com/api/health` → `{"ok":true}`.
+
+> Si una variable nueva no hace nada aunque esté en `.env`, suele ser porque el
+> bloque `environment:` del compose es una **lista nominal**: hay que declararla allí
+> también. (Así quedó apagada la bandera `INTEL` en una réplica del repo.)
 
 ### Primer arranque
 
@@ -212,6 +222,11 @@ Embedded Signup. Hay dos formas de obtenerlo:
    `messages`.
 5. Recomendado: agrega `META_APP_SECRET` (App Secret de tu app) a las
    variables de la instancia para la verificación de firma de cada evento.
+   Sin ese valor la capa **no** está activa: la instancia acepta el evento por
+   el token de la URL y deja un aviso una sola vez por proceso en los logs
+   (`[webhook] META_APP_SECRET no está configurado…`). Se eligió no fallar
+   cerrado para no descartar mensajes reales de clientes de una instancia que
+   aún no lo configure — no para hacerlo opcional por diseño.
 
 ### Modo agencia (Tech Provider) — para agencias
 
@@ -268,6 +283,13 @@ del cliente se conecta con el **override de callback por WABA**:
 > secreto — trátala como una contraseña (no la publiques ni la mandes por
 > canales inseguros). En modo directo puedes añadir la capa extra de firma con
 > `META_APP_SECRET`.
+>
+> El verify token es **común a toda la instancia** (Meta configura una sola URL
+> de callback por app), así que no separa negocios: si un mismo despliegue
+> atiende a varios clientes, la firma es la que aísla. Por eso, en Zernio, si la
+> cuenta tiene `webhook_secret` guardado la firma es **obligatoria** — un evento
+> sin cabecera `x-zernio-signature` se rechaza con 401 en lugar de colarse solo
+> por conocer la URL.
 >
 
 ## Canales opcionales: Instagram y Messenger
@@ -368,8 +390,11 @@ clientes reales.
 4. **Sin spam ni broadcast**: Zorro Tech CRM no incluye envíos masivos; úsalo para
    conversaciones reales de venta y soporte.
 5. **Datos del cliente en su servidor**: cada negocio aloja su instancia; el
-   token va cifrado en reposo y los webhooks se validan por URL secreta y
-   firma opcional.
+   token va cifrado en reposo, los webhooks se validan por URL secreta y por
+   firma cuando el proveedor la envía (obligatoria en Zernio si la cuenta tiene
+   secreto), y la ruta pública de media está contenida: ningún segmento puede
+   empezar con punto y la ruta resuelta no sale del directorio del negocio
+   ([`src/server/media-path.ts`](src/server/media-path.ts)).
 
 ## FAQ de errores comunes
 
@@ -421,19 +446,22 @@ míralos con `SELECT email FROM "user";`.
 
 ## Versiones
 
-La versión que está corriendo se ve **abajo en la barra lateral** (`v1.1.0 ·
-8e62d0b`) y en el healthcheck, para poder confirmar un despliegue con un
+La versión que está corriendo se ve **abajo en la barra lateral** (`v1.3.0 ·
+<commit>`) y en el healthcheck, para poder confirmar un despliegue con un
 `curl` sin abrir la app:
 
 ```bash
 curl -s https://crm.tudominio.com/api/health
-# {"ok":true,"version":"1.1.0","commit":"8e62d0b"}
+# {"ok":true,"version":"1.3.0","commit":"abc1234"}
 ```
 
 Los dos valores se congelan al **construir**, así que no pueden mentir en
 tiempo de ejecución. El commit lo inyecta Coolify solo; con docker compose se
 pasa con `--build-arg SOURCE_COMMIT=$(git rev-parse HEAD)`, y si falta se ve
-solo la versión.
+solo la versión. En el flujo publicado del repo (GitHub Actions construye la
+imagen y el VPS hace `pull`, sin compilar) el valor llega del propio workflow
+como `SOURCE_COMMIT`/`GIT_SHA`, y por eso el healthcheck es la única prueba de
+qué código está servido: `git log` no lo demuestra.
 
 SemVer sobre lo que le importa a quien opera una instancia:
 
