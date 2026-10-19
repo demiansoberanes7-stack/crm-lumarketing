@@ -421,6 +421,14 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                       else setError(data?.error?.message ?? "Falló la conexión IMAP/SMTP.");
                       setTesting(null);
                     }}>{testing === acc.id ? "Probando..." : "Probar"}</Button>
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={async () => {
+                      const res = await fetch(`/api/email/accounts/${acc.id}`, {
+                        method: "PATCH",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ enabled: !acc.enabled }),
+                      }).catch(() => null);
+                      if (res?.ok) void refetchAccounts(); else setError("No se pudo cambiar el estado de la cuenta");
+                    }}>{acc.enabled ? "Apagar" : "Encender"}</Button>
                     <Button variant="ghost" size="sm" className="h-6 text-[10px] text-destructive" onClick={async () => {
                       const res = await fetch(`/api/email/accounts/${acc.id}`, { method: "DELETE" }).catch(() => null);
                       if (res?.ok) void refetchAccounts(); else setError("No se pudo eliminar");

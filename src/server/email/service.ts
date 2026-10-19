@@ -76,6 +76,14 @@ export async function listEmailAccounts(organizationId: string) {
     .orderBy(schema.emailAccount.createdAt);
 }
 
+/**
+ * `getEmailAccountCredentials` devuelve null también con la cuenta apagada, y
+ * decir "no encontrada" mandaba al usuario a buscar una cuenta que sí estaba
+ * ahí, solo que con el interruptor en Off.
+ */
+export const CUENTA_MUDA =
+  "La cuenta no existe o está apagada (Ajustes → Email).";
+
 /** Obtener credentials de una cuenta para IMAP/SMTP */
 export async function getEmailAccountCredentials(organizationId: string, accountId: string) {
   const db = getDb();
@@ -125,7 +133,7 @@ export async function deleteEmailAccount(organizationId: string, accountId: stri
 /** Sincronizar inbox de una cuenta (fetch IMAP) */
 export async function syncInbox(organizationId: string, accountId: string): Promise<number> {
   const creds = await getEmailAccountCredentials(organizationId, accountId);
-  if (!creds) throw new Error("Cuenta no encontrada");
+  if (!creds) throw new Error(CUENTA_MUDA);
 
   const { ImapFlow } = await import("imapflow");
   const { simpleParser } = await import("mailparser");
@@ -232,7 +240,7 @@ export async function sendEmail(
   }
 ): Promise<string> {
   const creds = await getEmailAccountCredentials(organizationId, accountId);
-  if (!creds) throw new Error("Cuenta no encontrada");
+  if (!creds) throw new Error(CUENTA_MUDA);
 
   const nodemailer = await import("nodemailer");
 
