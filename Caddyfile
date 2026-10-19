@@ -1,9 +1,17 @@
 # HTTPS automático con el dominio de la variable DOMAIN.
 # Para pruebas locales usa DOMAIN=localhost (certificado interno).
 {$DOMAIN} {
+	# Cada petición queda registrada. Sin esto, un incidente (scraping, abuso,
+	# reenvíos al webhook) pasa sin evidencia. El driver json-file de compose ya
+	# rota a 10 MB x 3 archivos, así que el log no llena el disco.
+	log
+
 	reverse_proxy app:3000 {
 		# SSE: sin buffering ni timeouts cortos en el proxy
 		flush_interval -1
+		# El rate limit de la app mira primero x-real-ip y Caddy no lo escribe por
+		# defecto: sin esta línea la cabecera llega ausente.
+		header_up X-Real-IP {http.request.remote.host}
 	}
 	encode gzip
 }
