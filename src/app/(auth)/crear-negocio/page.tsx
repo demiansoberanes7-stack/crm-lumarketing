@@ -38,7 +38,9 @@ export default function CreateBusinessPage() {
       } | null;
       setError(
         res?.status === 401
-          ? "Tu sesión expiró. Inicia sesión para continuar."
+          // Esta pantalla también la abre cualquiera desde el enlace del login,
+          // y ahí no hubo sesión que expirar: el 401 dice "no autenticado".
+          ? "No hay sesión abierta. Inicia sesión para crear el negocio."
           : (data?.error?.message ?? "No se pudo crear el negocio")
       );
       return;
