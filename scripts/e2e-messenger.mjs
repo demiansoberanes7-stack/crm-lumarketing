@@ -140,7 +140,7 @@ async function main() {
   }
 
   console.log("== Setup: registro/login del propietario ==");
-  const email = "e2e@vocero.test";
+  const email = "e2e@zorro.test";
   const password = "password-e2e-123";
   let su = await api("/api/auth/sign-up/email", {
     method: "POST",
@@ -185,7 +185,7 @@ async function main() {
   });
   ok(
     "PUT con token válido → 200 con el nombre de la página",
-    conn.res.ok && conn.json?.pageName === "Página de prueba LUMARK",
+    conn.res.ok && conn.json?.pageName === "Página de prueba Zorro Tech",
     JSON.stringify(conn.json)
   );
 
@@ -498,7 +498,7 @@ async function main() {
     body: JSON.stringify({
       accountRef: TIKTOK_ACCOUNT,
       tiktokUserId: "tiktok-user-001",
-      username: "lumark_tiktok",
+      username: "zorro_tiktok",
       token: "sk_test-ok",
       webhookSecret: SECRET,
     }),
@@ -520,7 +520,7 @@ async function main() {
       author: { id: `tt-author-${RUN}`, username: `cliente_${RUN}` },
     },
     post: { id: null, platformPostId: `tt-video-${RUN}`, content: `Post ${MARCA}` },
-    account: { id: TIKTOK_ACCOUNT, accountId: TIKTOK_ACCOUNT, platform: "tiktok", username: "lumark_tiktok" },
+    account: { id: TIKTOK_ACCOUNT, accountId: TIKTOK_ACCOUNT, platform: "tiktok", username: "zorro_tiktok" },
     timestamp: new Date().toISOString(),
   };
   const commentHook = await webhook(commentEvent, { signature: sign(commentEvent) });

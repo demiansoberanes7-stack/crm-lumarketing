@@ -19,7 +19,7 @@ Instagram.
    e inicia sesión con la **misma cuenta vendedora** que quieres conectar.
 2. Crea una aplicación:
    - Tipo: **Aplicación propia** (no la de marketplace para terceros).
-   - Nombre libre (p. ej. "Vocero CRM").
+   - Nombre libre (p. ej. "Zorro Tech").
    - Plataforma: **Web application**.
 3. En la configuración de la app, registra un **redirect URI** (aunque usemos
    el patrón de pegar tokens, ML lo exige para crear la app):

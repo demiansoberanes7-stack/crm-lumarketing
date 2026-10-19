@@ -1,4 +1,4 @@
-# Despliegue de LUMARK en EasyPanel
+# Despliegue de Zorro Tech en EasyPanel
 
 ## 1. PostgreSQL
 

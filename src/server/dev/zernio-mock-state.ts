@@ -37,12 +37,12 @@ type ZernioMockState = {
   commentReplies: ZernioCommentReply[];
 };
 
-const g = globalThis as unknown as { __voceroZernioMock?: ZernioMockState };
+const g = globalThis as unknown as { __zorroZernioMock?: ZernioMockState };
 
 export function zernioMockState(): ZernioMockState {
-  if (!g.__voceroZernioMock) g.__voceroZernioMock = { seq: 0, sent: [], commentReplies: [] };
-  g.__voceroZernioMock.commentReplies ??= [];
-  return g.__voceroZernioMock;
+  if (!g.__zorroZernioMock) g.__zorroZernioMock = { seq: 0, sent: [], commentReplies: [] };
+  g.__zorroZernioMock.commentReplies ??= [];
+  return g.__zorroZernioMock;
 }
 
 /** Vacía lo enviado. El contador NO se reinicia: ver `nextZernioMessageId`. */

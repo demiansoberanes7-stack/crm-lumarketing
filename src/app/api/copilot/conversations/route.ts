@@ -10,11 +10,11 @@ export const GET = withAuth(async (session) => {
   const db = getDb();
   const rows = await db
     .select()
-    .from(schema.watsiConversation)
+    .from(schema.copilotConversation)
     .where(
-      scoped(schema.watsiConversation.organizationId, session.organizationId, eq(schema.watsiConversation.userId, session.userId))
+      scoped(schema.copilotConversation.organizationId, session.organizationId, eq(schema.copilotConversation.userId, session.userId))
     )
-    .orderBy(desc(schema.watsiConversation.updatedAt))
+    .orderBy(desc(schema.copilotConversation.updatedAt))
     .limit(50);
   return Response.json({
     conversations: rows.map((r) => ({
@@ -28,8 +28,8 @@ export const GET = withAuth(async (session) => {
 
 export const POST = withAuth(async (session) => {
   const db = getDb();
-  const id = newId("watsiConversation");
-  await db.insert(schema.watsiConversation).values({
+  const id = newId("copilotConversation");
+  await db.insert(schema.copilotConversation).values({
     id,
     organizationId: session.organizationId,
     userId: session.userId,

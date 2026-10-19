@@ -36,7 +36,7 @@ Para `Purchase` con monto capturado, `custom_data` lleva además
 `RatingProvided` · `ReviewProvided`
 
 Cualquier otro nombre es un `400` opaco de Meta. Se valida **antes** de salir y
-se falla con el motivo escrito. Vocero solo emite dos de ellos; la constante
+se falla con el motivo escrito. Zorro Tech solo emite dos de ellos; la constante
 existe para que un fork que agregue el suyo no descubra el catálogo a golpes.
 
 ## La respuesta, y la trampa

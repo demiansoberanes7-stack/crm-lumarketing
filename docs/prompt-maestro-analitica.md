@@ -1,7 +1,7 @@
 # Prompt Maestro — Auditoría e Implementación de Analítica Comercial
 
 > Copia/pega este prompt completo en una IA con acceso al repo. Está escrito para
-> el CRM LUMARK (Next.js App Router + Drizzle + Recharts). Estándar: primero
+> el Zorro Tech (Next.js App Router + Drizzle + Recharts). Estándar: primero
 > auditar, luego implementar por fases, siempre reutilizando lo que ya existe.
 
 ---

@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { BRAND_TAGLINE } from "@/lib/brand";
 import { DEFAULT_BRANDING, resolveAccentSet } from "@/lib/branding";
 import { getBrandingContextForRequest } from "@/server/branding";
 import "./zorro-auth.css";
@@ -28,7 +29,7 @@ export default async function AuthLayout({
   const acento = resolveAccentSet(branding.accent, "light");
 
   const [primera, ...resto] = branding.name.split(" ");
-  const sello = (branding.name.trim().charAt(0) || "C").toUpperCase();
+  const sello = (branding.name.trim().charAt(0) || "Z").toUpperCase();
   const estilo = {
     "--zx-accent": acento.accent,
     "--zx-hover": acento.hover,
@@ -50,7 +51,7 @@ export default async function AuthLayout({
               </>
             )}
           </span>
-          <p className="zx-tagline">CRM multicanal de venta</p>
+          <p className="zx-tagline">{BRAND_TAGLINE}</p>
           <span className="zx-accent" aria-hidden="true" />
         </div>
       </section>

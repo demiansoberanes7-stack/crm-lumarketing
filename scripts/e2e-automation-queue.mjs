@@ -34,7 +34,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function main() {
   const auth = await api("/api/auth/sign-in/email", "POST", {
-    email: "e2e@vocero.test",
+    email: "e2e@zorro.test",
     password: "password-e2e-123",
   });
   check("sesión de selftest disponible", auth.response.ok, JSON.stringify(auth.json));

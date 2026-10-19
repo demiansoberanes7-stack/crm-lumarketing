@@ -6,7 +6,7 @@ toca el modelo de datos (migración) **y** un contrato publicado
 
 ## Problema
 
-Vocero es WhatsApp puro en el modelo de datos, no solo en la UI:
+Zorro Tech es WhatsApp puro en el modelo de datos, no solo en la UI:
 `contact.wa_identity` es NOT NULL y único por organización, `conversation` no
 tiene canal, la ingesta solo entiende `whatsapp_business_account` y la salida
 va siempre a `POST /{phone_number_id}/messages`. Un negocio que vende por
@@ -16,7 +16,7 @@ la ficha y el agente solo ven la mitad de sus conversaciones.
 ## Escenarios
 
 1. **Recibir**: un cliente manda un DM al perfil de Instagram del negocio; el
-   mensaje aparece en la bandeja de Vocero en segundos, con su distintivo de
+   mensaje aparece en la bandeja de Zorro Tech en segundos, con su distintivo de
    canal, creando contacto y conversación si no existían.
 2. **Responder**: el operador responde desde la misma bandeja y el mensaje
    llega al DM.

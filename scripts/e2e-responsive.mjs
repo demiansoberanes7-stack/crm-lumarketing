@@ -76,7 +76,7 @@ console.log("== Setup ==");
 let r = await req.post(`${BASE}/api/auth/sign-up/email`, {
   headers: { origin: BASE },
   data: {
-    email: "e2e@vocero.test",
+    email: "e2e@zorro.test",
     password: "password-e2e-123",
     name: "Operador E2E",
   },
@@ -84,7 +84,7 @@ let r = await req.post(`${BASE}/api/auth/sign-up/email`, {
 if (!r.ok())
   r = await req.post(`${BASE}/api/auth/sign-in/email`, {
     headers: { origin: BASE },
-    data: { email: "e2e@vocero.test", password: "password-e2e-123" },
+    data: { email: "e2e@zorro.test", password: "password-e2e-123" },
   });
 ok("login", r.ok());
 await req.put(`${BASE}/api/settings/whatsapp`, {

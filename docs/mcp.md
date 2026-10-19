@@ -114,7 +114,7 @@ comprobar que:
 
 ## Conexión con ChatGPT (registro manual)
 
-ChatGPT descubre el servidor en `https://crm.lumarking.digital/mcp` y su OAuth
+ChatGPT descubre el servidor en `https://crm.lumarketing.digital/mcp` y su OAuth
 en `/.well-known/oauth-protected-resource`. Para el alta manual de OAuth usa
 estos valores:
 
@@ -124,9 +124,9 @@ estos valores:
 | Client ID | `https://chatgpt.com/oauth/client.json` |
 | Client Secret | *(vacío — cliente público)* |
 | Callback / Redirect URL | `https://chatgpt.com/connector_platform_oauth_redirect` |
-| Authorization URL | `https://crm.lumarking.digital/oauth/authorize` |
-| Token URL | `https://crm.lumarking.digital/oauth/token` |
-| Registration URL | `https://crm.lumarking.digital/oauth/register` (solo con DCR) |
+| Authorization URL | `https://crm.lumarketing.digital/oauth/authorize` |
+| Token URL | `https://crm.lumarketing.digital/oauth/token` |
+| Registration URL | `https://crm.lumarketing.digital/oauth/register` (solo con DCR) |
 | Scopes | `crm.profile.read crm.contacts.read crm.metrics.read` |
 | OIDC | No |
 

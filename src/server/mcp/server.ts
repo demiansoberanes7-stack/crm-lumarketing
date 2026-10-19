@@ -26,7 +26,7 @@ import { messagesSendShape } from "@/server/mcp/actions/messages";
 import { quotesCreateShape, quotesSendShape } from "@/server/mcp/actions/quotes";
 import { serializeContact } from "@/server/contacts";
 
-const SERVER_NAME = "lumark-crm";
+const SERVER_NAME = "zorro-tech-crm";
 const SERVER_VERSION = "1.3.0";
 
 function authError(scope: string) {
@@ -166,7 +166,7 @@ export function createMcpServer(): McpServer {
     {
       title: "Check CRM MCP connection",
       description:
-        "Confirm that the Lumark CRM MCP server is reachable. This tool never reads or changes CRM data.",
+        "Confirm that the Zorro Tech MCP server is reachable. This tool never reads or changes CRM data.",
       outputSchema: z.object({
         status: z.literal("ok"),
         readOnly: z.literal(true),
@@ -182,7 +182,7 @@ export function createMcpServer(): McpServer {
       content: [
         {
           type: "text",
-          text: "Lumark CRM MCP is reachable. No CRM data was accessed.",
+          text: "Zorro Tech MCP is reachable. No CRM data was accessed.",
         },
       ],
     })

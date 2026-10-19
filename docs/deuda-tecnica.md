@@ -1,4 +1,4 @@
-# Deuda técnica — LUMARK CRM
+# Deuda técnica — Zorro Tech
 
 > Inventario de código muerto, funcionalidad no operativa y bugs detectados durante la auditoría
 > sobre el commit base `5ce91e2`. Cada hallazgo está referenciado a `archivo:línea`.
@@ -161,7 +161,7 @@ la respuesta de media.
   / `(organization_id, account_ref)` convierte el error de configuración en un fallo al guardar.
 - **D-03 — La US6 de plantillas se eliminó y los specs no lo dicen.** `630d1c6` (2026-10-01) borró
   el servicio, las rutas `/api/templates*`, la UI, el mock y las pruebas, y aplicó
-  `drizzle/0021_drop_template.sql` (`DROP TABLE "template"`). `specs/001-vocero-core/tasks.md`
+  `drizzle/0021_drop_template.sql` (`DROP TABLE "template"`). `specs/001-zorro-tech-core/tasks.md`
   (T081-T086) seguía marcado `[X]` y `contracts/webhook.md` declaraba un field que ya no procesa
   nadie. Corregido el 2026-10-19 con nota en ambos archivos. Restos inertes:
   `template_name`/`template_language`/`template_params` de `broadcast_campaign`

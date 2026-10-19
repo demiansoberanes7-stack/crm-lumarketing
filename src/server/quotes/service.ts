@@ -2,7 +2,7 @@
  * Quotes Service — lógica de negocio del cotizador.
  *
  * Cotizaciones versionadas con partidas, descuentos, impuestos, vigencia.
- * PDF con marca LUMARK y envío por WhatsApp/Instagram/Messenger.
+ * PDF con marca Zorro Tech y envío por WhatsApp/Instagram/Messenger.
  */
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";

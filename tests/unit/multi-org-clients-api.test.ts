@@ -218,7 +218,7 @@ describe("GET /api/settings/clients", () => {
                 Promise.resolve([
                   {
                     id: "org_1",
-                    name: "Lumarketing",
+                    name: "Acme Corp",
                     slug: "principal",
                     createdAt: new Date("2026-01-01T00:00:00Z"),
                     members: 3,
@@ -233,7 +233,7 @@ describe("GET /api/settings/clients", () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({
       organizations: [
-        { id: "org_1", name: "Lumarketing", members: 3, slug: "principal" },
+        { id: "org_1", name: "Acme Corp", members: 3, slug: "principal" },
       ],
     });
   });

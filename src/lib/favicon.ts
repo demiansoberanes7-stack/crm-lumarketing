@@ -3,18 +3,17 @@ import {
   BRAND_MARK_BODY,
   BRAND_MARK_STROKE,
   BRAND_MARK_TAIL,
-  isLumarkName,
+  isZorroTechName,
 } from "./brand";
 import { resolveAccentSet, type Branding } from "./branding";
 
 /**
  * El icono de la pestaña, white-label.
  *
- * Toda instancia tiene uno **sin configurar nada**: si se llama Vocero, es el
- * logo de la marca (la "v" con remate cian sobre el mosaico azul, igual que en
- * vocerocrm.com); con otro nombre se dibuja la inicial sobre el acento. Una
- * agencia que despliega para su cliente puede subir el logo real y
- * reemplazarlo.
+ * Toda instancia tiene uno **sin configurar nada**: si se llama Zorro Tech se
+ * dibuja el logo de la marca (la "Z" con remate lima sobre el degradado del
+ * acento); con otro nombre se dibuja la inicial sobre el acento. Una agencia
+ * que despliega para su cliente puede subir el logo real y reemplazarlo.
  *
  * Que exista un respaldo generado no es un adorno: sin él, quien no suba nada
  * se queda con el icono genérico del navegador, y con cinco instancias abiertas
@@ -90,10 +89,10 @@ export function sniffFaviconMime(bytes: Uint8Array): FaviconMime | null {
   return null;
 }
 
-/** Inicial que se dibuja. Vacío o raro cae a la V de Vocero. */
+/** Inicial que se dibuja. Vacío o raro cae a la Z de Zorro Tech. */
 export function faviconInitial(name: string): string {
   const c = name.trim().charAt(0).toUpperCase();
-  return c || "V";
+  return c || "Z";
 }
 
 /**
@@ -103,7 +102,7 @@ export function faviconInitial(name: string): string {
  */
 export function generatedFaviconSvg(branding: Branding): string {
   const { accent, hover, fg } = resolveAccentSet(branding.accent);
-  if (isLumarkName(branding.name)) return voceroFaviconSvg(accent, hover);
+  if (isZorroTechName(branding.name)) return zorroTechFaviconSvg(accent, hover);
   const letra = faviconInitial(branding.name)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;");
@@ -117,11 +116,11 @@ export function generatedFaviconSvg(branding: Branding): string {
 }
 
 /**
- * El favicon de vocerocrm.com, con el degradado en el acento de la instancia:
- * una instancia llamada Vocero pero con otro color sigue viendo SU color.
+ * El favicon de Zorro Tech, con el degradado en el acento de la instancia:
+ * una instancia llamada Zorro Tech pero con otro color sigue viendo SU color.
  * El trazo sale de `lib/brand`, el mismo que dibuja la barra lateral.
  */
-function voceroFaviconSvg(from: string, to: string): string {
+function zorroTechFaviconSvg(from: string, to: string): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">`,
     `<defs><linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">`,

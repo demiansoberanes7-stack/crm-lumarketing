@@ -37,7 +37,7 @@ export async function sendInstagramText(input: {
   text: string;
   /** Fuera de la ventana de 24 h Instagram solo admite HUMAN_AGENT. */
   humanAgentTag?: boolean;
-  /** Id del mensaje en Vocero: llave natural de idempotencia en Zernio. */
+  /** Id del mensaje en Zorro Tech: llave natural de idempotencia en Zernio. */
   idempotencyKey?: string;
 }): Promise<InstagramSendResult> {
   return input.credentials.source === "zernio"

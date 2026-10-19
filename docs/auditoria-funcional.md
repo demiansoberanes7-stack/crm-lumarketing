@@ -1,8 +1,8 @@
-# Auditoría funcional — LUMARK CRM
+# Auditoría funcional — Zorro Tech
 
 > Auditoría de solo lectura sobre el commit base `5ce91e2` (rama `feat/ciclo-comercial`).
 > Stack real: Next.js 15 (App Router) + React 19 + TypeScript estricto, PostgreSQL + Drizzle ORM,
-> Better Auth (plugin organization), Vitest (unit) + guiones E2E. Fork de Vocero CRM adaptado a LUMARK.
+> Better Auth (plugin organization), Vitest (unit) + guiones E2E. Fork de Zorro Tech adaptado a Zorro Tech.
 > Todo lo afirmado aquí está referenciado a `archivo:línea` del código real.
 
 ## Cómo leer esta matriz

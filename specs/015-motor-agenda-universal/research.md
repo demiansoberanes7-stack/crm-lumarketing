@@ -37,7 +37,7 @@ coincidencia por **epoch exacto** con lo ofrecido a ESA conversación.
 
 **Rationale**: en el fork la protección vive en el bot (tabla `offered_slots`
 en la base del bot, `aishia-lead-bot/migrations/001_init.sql`, match por epoch
-en `app/tools.py`). Funciona porque hay UN cliente de confianza. Vocero promete
+en `app/tools.py`). Funciona porque hay UN cliente de confianza. Zorro Tech promete
 "conecta tu propio cerebro": con la garantía en el cliente, cualquier otro
 cerebro podría reservar un instante jamás ofrecido y el CRM lo aceptaría. En el
 core es inviolable por construcción y vale igual para el agente in-process, el
@@ -165,7 +165,7 @@ configurable (default `primary`). Scope: `…/auth/calendar.events`.
 - *Service account*: crear conferencias de Meet vía `conferenceData` con
   service account requiere delegación de dominio de Workspace; sin ella el
   proveedor rechaza la conferencia. Eso excluye a todo negocio con Gmail de
-  consumidor — inaceptable para el público de Vocero. Fuentes:
+  consumidor — inaceptable para el público de Zorro Tech. Fuentes:
   [issue #2387 de google-api-nodejs-client](https://github.com/googleapis/google-api-nodejs-client/issues/2387),
   [guía de dominio de Calendar API](https://developers.google.com/workspace/calendar/api/concepts/domain).
 - *Flujo OAuth con redirect dentro del producto*: mejor UX, pero exige
@@ -216,7 +216,7 @@ se mapea a `409 slot_taken` con alternativas frescas.
 E2E condujo la carrera contra la app viva. El contraste importa: el CRM del
 fork en producción NO tiene este candado (verificado: sus únicas constraints de
 `booking` son FKs; el patrón es leer-luego-insertar) — funciona por
-serialización de facto de un solo operador, no por garantía. Vocero, con
+serialización de facto de un solo operador, no por garantía. Zorro Tech, con
 cerebros externos concurrentes, necesita la garantía real. Solo instantes de la
 rejilla son reservables (la coincidencia por epoch exacto con la
 disponibilidad), así que la colisión práctica es "mismo instante", que el

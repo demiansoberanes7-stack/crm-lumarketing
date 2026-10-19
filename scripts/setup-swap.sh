@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# LUMARK CRM — Setup de Swap para VPS de bajo consumo
+# Zorro Tech CRM — Setup de Swap para VPS de bajo consumo
 # Ejecutar como root: sudo bash scripts/setup-swap.sh
 #
 # Crea 2 GB de swap y los hace permanentes.
@@ -12,7 +12,7 @@ set -e
 SWAP_SIZE="2G"
 SWAP_FILE="/swapfile"
 
-echo "=== LUMARK CRM — Configurando Swap de $SWAP_SIZE ==="
+echo "=== Zorro Tech CRM — Configurando Swap de $SWAP_SIZE ==="
 
 # Verificar que no exista ya swap activo
 if [ "$(swapon --show | wc -l)" -gt 1 ]; then

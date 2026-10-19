@@ -12,7 +12,7 @@ const other = await request.newContext({ baseURL: base, extraHTTPHeaders: { orig
 const email = `isolation-${Date.now()}@example.test`;
 let id;
 try {
-  assert((await owner.post("/api/auth/sign-in/email", { data: { email: "e2e@vocero.test", password: "password-e2e-123" } })).ok());
+  assert((await owner.post("/api/auth/sign-in/email", { data: { email: "e2e@zorro.test", password: "password-e2e-123" } })).ok());
   assert((await owner.post("/api/settings/team", { data: { name: "CalTodo isolation", email, password: "local-isolation-password" } })).ok());
   assert((await other.post("/api/auth/sign-in/email", { data: { email, password: "local-isolation-password" } })).ok());
   const settings = { workStartHour: 10, workEndHour: 18, timezone: "America/Mexico_City", defaultDuration: 45 };

@@ -47,8 +47,8 @@ export type Branding = {
 };
 
 /**
- * Paleta de los PDF. Por defecto naranja LUMARK: los documentos salían con
- * cabeceras gris carbón y el expediente con un dorado que no era de la marca.
+ * Paleta de los PDF. Por defecto naranja de la marca: los documentos salían
+ * con cabeceras gris carbón y el expediente con un dorado que no era el suyo.
  * Se configuran en Configuración → Marca (no en un panel aparte).
  */
 export type PdfColors = {
@@ -74,8 +74,8 @@ export function pdfInkOn(hex: string): Rgb {
 }
 
 export const DEFAULT_BRANDING: Branding = {
-  name: "LUMARK",
-  // Lima luminoso: la instancia recién instalada se ve con la marca LUMARK.
+  name: "ZORRO TECH",
+  // Lima luminoso: la instancia recién instalada se ve con la marca madre.
   // Se cambia en Configuración → Marca.
   accent: "#65a30d",
   currency: DEFAULT_CURRENCY,
@@ -84,12 +84,12 @@ export const DEFAULT_BRANDING: Branding = {
 };
 
 /**
- * Presets. El primero es la marca LUMARK; los demás son opciones de color
+ * Presets. El primero es la marca Zorro Tech; los demás son opciones de color
  * disponibles para quien quiera un CRM más discreto.
  */
 export const ACCENT_PRESETS: Record<string, { label: string; set: AccentSet }> = {
   "#65a30d": {
-    label: "Lima LUMARK",
+    label: "Lima Zorro Tech",
     set: { accent: "#65a30d", hover: "#55890b", soft: "#e3f6d3", tint: "#f6fbf1", text: "#497509", fg: "#ffffff" },
   },
   "#b8963e": {

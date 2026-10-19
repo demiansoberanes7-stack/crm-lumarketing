@@ -1,4 +1,4 @@
-# INSTALL-IA.md — Instalación de Vocero CRM guiada por IA
+# INSTALL-IA.md — Instalación de Zorro Tech guiada por IA
 
 > **Para el asistente de IA** (Claude Code u otro agente con acceso a
 > herramientas): este archivo ES tu guion de instalación. Síguelo de arriba a
@@ -91,11 +91,11 @@ integraciones (0044), corre una vez desde la app:
 ## Ruta B — docker compose (VPS con Docker)
 
 ```bash
-git clone https://github.com/demiansoberanes7-stack/crm-lumarketing.git vocero && cd vocero
+git clone https://github.com/demiansoberanes7-stack/crm-lumarketing.git zorro-tech && cd zorro-tech
 cp .env.example .env
 # rellena .env con el dominio del usuario y los secretos generados
-docker build -t lumark-crm-local .
-APP_IMAGE=lumark-crm-local docker compose up -d
+docker build -t zorro-tech-local .
+APP_IMAGE=zorro-tech-local docker compose up -d
 ```
 
 El `docker-compose.yml` del repo no tiene bloque `build:` (`image:` lee `${APP_IMAGE}`),
@@ -108,7 +108,7 @@ mano y pasarla por `APP_IMAGE`.
 
 ## Cierre (obligatorio decirlo al usuario)
 
-> ✅ Vocero quedó instalado en `https://<dominio>`.
+> ✅ Zorro Tech quedó instalado en `https://<dominio>`.
 >
 > 1. Entra y **regístrate**: el primer registro crea tu organización (después
 >    el registro público se cierra solo).

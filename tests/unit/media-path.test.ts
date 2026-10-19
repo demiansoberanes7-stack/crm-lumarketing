@@ -12,10 +12,10 @@ import { mediaHeaders, resolveMediaFile } from "@/server/media-path";
  */
 
 let root: string;
-const ORG = "org-lumark";
+const ORG = "org-zorro";
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "vocero-media-"));
+  root = mkdtempSync(join(tmpdir(), "zorro-media-"));
   process.env.MEDIA_DIR = root;
   mkdirSync(join(root, ORG, "catalog"), { recursive: true });
   writeFileSync(join(root, ORG, "catalog", "abc123.png"), "png-falso");
@@ -47,7 +47,7 @@ describe("resolveMediaFile", () => {
 
   it("rechaza un orgId que no sea un id opaco", () => {
     expect(resolveMediaFile("..", "secreto.txt")).toBeNull();
-    expect(resolveMediaFile("org/lumark", "abc.png")).toBeNull();
+    expect(resolveMediaFile("org/zorro", "abc.png")).toBeNull();
     expect(resolveMediaFile("", "abc.png")).toBeNull();
   });
 

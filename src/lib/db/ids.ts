@@ -28,7 +28,7 @@ const prefixes = {
   adAttribution: "att",
   conversionEvent: "cve",
   capiSettings: "capi",
-  // LUMARK — módulos nuevos
+  // Zorro Tech — módulos nuevos
   wahaCredentials: "waha",
   outboundWebhook: "wh",
   outboundDelivery: "whd",
@@ -68,9 +68,9 @@ const prefixes = {
   contactNote: "ctn",
   broadcastCampaign: "bcm",
   broadcastRecipient: "bcr",
-  // Watsi — copiloto interno
-  watsiConversation: "wac",
-  watsiMessage: "wam",
+  // Copiloto interno
+  copilotConversation: "wac",
+  copilotMessage: "wam",
   // Reseñas de Google Business Profile (bandera GOOGLE_BUSINESS)
   googleBusinessCredentials: "gbc",
   googleBusinessLocation: "gbl",

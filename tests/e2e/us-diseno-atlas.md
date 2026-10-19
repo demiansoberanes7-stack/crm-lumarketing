@@ -53,7 +53,7 @@ con un `curl`. Responde "¿ya se desplegó mi cambio?" sin entrar al servidor.
 
 13. **Abajo en la barra lateral**: `v1.2.0 · 8e62d0b`.
     ✅ El nombre del tooltip sale de la **marca**, no cableado: una instancia
-    rebautizada no debe decir "Vocero" justo ahí.
+    rebautizada no debe decir un nombre fijo justo ahí.
     ✅ Contraste ≥ 4.5:1 en claro y en oscuro — discreta, no ilegible.
 14. **También en `/api/health`**, para confirmar un despliegue desde un script o
     desde la plataforma de hosting, sin abrir la app ni iniciar sesión.

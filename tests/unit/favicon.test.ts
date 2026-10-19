@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAND_MARK_BODY, BRAND_MARK_TAIL, isLumarkName } from "@/lib/brand";
+import { BRAND_MARK_BODY, BRAND_MARK_TAIL, isZorroTechName } from "@/lib/brand";
 import { DEFAULT_BRANDING, normalizeBranding } from "@/lib/branding";
 import {
   faviconCacheKey,
@@ -72,8 +72,8 @@ describe("icono generado", () => {
   });
 
   it("un nombre vacío no deja la pestaña sin letra", () => {
-    expect(faviconInitial("")).toBe("V");
-    expect(faviconInitial("   ")).toBe("V");
+    expect(faviconInitial("")).toBe("Z");
+    expect(faviconInitial("   ")).toBe("Z");
   });
 
   it("es un SVG con el acento de la marca", () => {
@@ -91,8 +91,8 @@ describe("icono generado", () => {
   });
 });
 
-describe("icono generado: la marca Vocero", () => {
-  it("con el nombre Vocero dibuja el logo (la v con remate cian), no una letra", () => {
+describe("icono generado: la marca Zorro Tech", () => {
+  it("con el nombre Zorro Tech dibuja la Z, no una letra", () => {
     const svg = generatedFaviconSvg(DEFAULT_BRANDING);
     expect(svg.startsWith("<svg")).toBe(true);
     expect(svg).toContain(BRAND_MARK_BODY);
@@ -106,14 +106,14 @@ describe("icono generado: la marca Vocero", () => {
     expect(svg).toContain(BRAND_MARK_BODY);
   });
 
-  it("solo se llama Vocero quien se llama Vocero: sin importar mayúsculas ni espacios", () => {
-    expect(isLumarkName("LUMARK")).toBe(true);
-    expect(isLumarkName("  lumark ")).toBe(true);
-    expect(isLumarkName("Vocero CRM")).toBe(false);
-    expect(isLumarkName("Acme")).toBe(false);
+  it("solo se llama Zorro Tech quien se llama así: sin importar mayúsculas ni espacios", () => {
+    expect(isZorroTechName("ZORRO TECH")).toBe(true);
+    expect(isZorroTechName("  zorro   tech ")).toBe(true);
+    expect(isZorroTechName("Zorro")).toBe(true);
+    expect(isZorroTechName("Acme")).toBe(false);
   });
 
-  it("una instancia rebautizada NO ve la v de Vocero en su pestaña", () => {
+  it("una instancia rebautizada NO ve la Z de Zorro Tech en su pestaña", () => {
     const svg = generatedFaviconSvg({ ...DEFAULT_BRANDING, name: "Acme" });
     expect(svg).not.toContain(BRAND_MARK_BODY);
     expect(svg).toContain(">A<");

@@ -11,9 +11,9 @@ export const GET = withAuth(async (session, req: Request, { params }: { params: 
 
   const [conv] = await db
     .select()
-    .from(schema.watsiConversation)
+    .from(schema.copilotConversation)
     .where(
-      scoped(schema.watsiConversation.organizationId, session.organizationId, eq(schema.watsiConversation.id, id))
+      scoped(schema.copilotConversation.organizationId, session.organizationId, eq(schema.copilotConversation.id, id))
     )
     .limit(1);
   if (!conv || conv.userId !== session.userId) {
@@ -22,13 +22,13 @@ export const GET = withAuth(async (session, req: Request, { params }: { params: 
 
   const messages = await db
     .select()
-    .from(schema.watsiMessage)
+    .from(schema.copilotMessage)
     .where(scoped(
-      schema.watsiMessage.organizationId,
+      schema.copilotMessage.organizationId,
       session.organizationId,
-      eq(schema.watsiMessage.conversationId, id)
+      eq(schema.copilotMessage.conversationId, id)
     ))
-    .orderBy(asc(schema.watsiMessage.createdAt))
+    .orderBy(asc(schema.copilotMessage.createdAt))
     .limit(200);
 
   return Response.json({
@@ -44,16 +44,16 @@ export const DELETE = withAuth(async (session, req: Request, { params }: { param
   // Sin el filtro por userId, cualquier miembro de la organización podía
   // borrar el copiloto personal de otro.
   const deleted = await db
-    .delete(schema.watsiConversation)
+    .delete(schema.copilotConversation)
     .where(
       scoped(
-        schema.watsiConversation.organizationId,
+        schema.copilotConversation.organizationId,
         session.organizationId,
-        eq(schema.watsiConversation.id, id),
-        eq(schema.watsiConversation.userId, session.userId)
+        eq(schema.copilotConversation.id, id),
+        eq(schema.copilotConversation.userId, session.userId)
       )
     )
-    .returning({ id: schema.watsiConversation.id });
+    .returning({ id: schema.copilotConversation.id });
   if (deleted.length === 0) return apiError(404, "not_found", "Conversación no encontrada");
   return Response.json({ ok: true });
 });

@@ -10,14 +10,14 @@ import { getDb } from "@/lib/db";
 type Bucket = number[]; // timestamps (ms) de los intentos
 
 const globalForRl = globalThis as unknown as {
-  __voceroRateLimit?: Map<string, Bucket>;
+  __zorroRateLimit?: Map<string, Bucket>;
 };
 
 function store(): Map<string, Bucket> {
-  if (!globalForRl.__voceroRateLimit) {
-    globalForRl.__voceroRateLimit = new Map();
+  if (!globalForRl.__zorroRateLimit) {
+    globalForRl.__zorroRateLimit = new Map();
   }
-  return globalForRl.__voceroRateLimit;
+  return globalForRl.__zorroRateLimit;
 }
 
 export type RateLimitResult = { allowed: boolean; remaining: number };

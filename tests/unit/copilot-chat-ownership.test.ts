@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { POST } from "@/app/api/watsi/chat/route";
+import { POST } from "@/app/api/copilot/chat/route";
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(),
@@ -31,10 +31,10 @@ beforeEach(() => {
 
 describe("propiedad de conversaciones del Copiloto", () => {
   it("rechaza una conversación ajena antes de insertar o consultar el modelo", async () => {
-    const response = await POST(new Request("http://localhost/api/watsi/chat", {
+    const response = await POST(new Request("http://localhost/api/copilot/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message: "¿Cómo van las ventas?", conversationId: "watsi_other" }),
+      body: JSON.stringify({ message: "¿Cómo van las ventas?", conversationId: "conv_other" }),
     }));
 
     expect(response.status).toBe(404);
@@ -44,6 +44,6 @@ describe("propiedad de conversaciones del Copiloto", () => {
     const query = new PgDialect().sqlToQuery(where);
     expect(query.sql).toContain('"watsi_conversation"."organization_id" = $1');
     expect(query.sql).toContain('"watsi_conversation"."user_id" = $3');
-    expect(query.params).toEqual(["org-b", "watsi_other", "user-b"]);
+    expect(query.params).toEqual(["org-b", "conv_other", "user-b"]);
   });
 });

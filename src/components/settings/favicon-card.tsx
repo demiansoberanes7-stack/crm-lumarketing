@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ImageUp, Trash2 } from "lucide-react";
 import type { Branding } from "@/lib/branding";
@@ -102,12 +103,20 @@ export function FaviconCard({
           />
           <div className="min-w-0 flex-1">
             <p className="text-sm">
-              {actual ? "Logo propio" : "Generado con tu marca"}
+              {actual ? "Icono propio" : "Generado con tu marca"}
             </p>
             <p className="mt-0.5 text-xs text-text-3">
               {actual
                 ? "Reemplaza al generado. Puedes quitarlo para volver a él."
-                : "La inicial sobre tu color de acento. Sube un logo para reemplazarlo."}
+                : "La inicial sobre tu color de acento. Sube un icono para reemplazarlo."}
+            </p>
+            <p className="mt-1 text-xs text-text-3">
+              Este es solo el icono de la pestaña. El logo del panel y de los
+              PDF se cambia en{" "}
+              <Link href="/settings/business" className="underline underline-offset-2">
+                Configuración → Negocio
+              </Link>
+              .
             </p>
           </div>
         </div>
@@ -133,7 +142,7 @@ export function FaviconCard({
             onClick={() => input.current?.click()}
           >
             <ImageUp className="h-4 w-4" />
-            {subiendo ? "Subiendo…" : actual ? "Cambiar logo" : "Subir logo"}
+            {subiendo ? "Subiendo…" : actual ? "Cambiar icono" : "Subir icono"}
           </Button>
           {actual && (
             <Button variant="ghost" disabled={subiendo} onClick={() => void quitar()}>

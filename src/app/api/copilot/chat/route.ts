@@ -26,21 +26,21 @@ export const POST = withAuth(async (session, req: Request) => {
   let convId = conversationId;
   if (convId) {
     const [existing] = await db
-      .select({ id: schema.watsiConversation.id })
-      .from(schema.watsiConversation)
+      .select({ id: schema.copilotConversation.id })
+      .from(schema.copilotConversation)
       .where(
         scoped(
-          schema.watsiConversation.organizationId,
+          schema.copilotConversation.organizationId,
           session.organizationId,
-          eq(schema.watsiConversation.id, convId),
-          eq(schema.watsiConversation.userId, session.userId)
+          eq(schema.copilotConversation.id, convId),
+          eq(schema.copilotConversation.userId, session.userId)
         )
       )
       .limit(1);
     if (!existing) return apiError(404, "not_found", "Conversación no encontrada");
   } else {
-    convId = newId("watsiConversation");
-    await db.insert(schema.watsiConversation).values({
+    convId = newId("copilotConversation");
+    await db.insert(schema.copilotConversation).values({
       id: convId,
       organizationId: session.organizationId,
       userId: session.userId,
@@ -49,8 +49,8 @@ export const POST = withAuth(async (session, req: Request) => {
   }
 
   // Guardar mensaje del usuario
-  await db.insert(schema.watsiMessage).values({
-    id: newId("watsiMessage"),
+  await db.insert(schema.copilotMessage).values({
+    id: newId("copilotMessage"),
     organizationId: session.organizationId,
     conversationId: convId,
     role: "user",
@@ -62,13 +62,13 @@ export const POST = withAuth(async (session, req: Request) => {
   // memoria al orden natural; el mensaje actual no se agrega una segunda vez.
   const history = await db
     .select()
-    .from(schema.watsiMessage)
+    .from(schema.copilotMessage)
     .where(scoped(
-      schema.watsiMessage.organizationId,
+      schema.copilotMessage.organizationId,
       session.organizationId,
-      eq(schema.watsiMessage.conversationId, convId)
+      eq(schema.copilotMessage.conversationId, convId)
     ))
-    .orderBy(desc(schema.watsiMessage.createdAt))
+    .orderBy(desc(schema.copilotMessage.createdAt))
     .limit(40);
   history.reverse();
 
@@ -120,8 +120,8 @@ export const POST = withAuth(async (session, req: Request) => {
       : "No pude procesar tu pregunta en este momento. Intenta de nuevo.";
 
   // Guardar respuesta
-  await db.insert(schema.watsiMessage).values({
-    id: newId("watsiMessage"),
+  await db.insert(schema.copilotMessage).values({
+    id: newId("copilotMessage"),
     organizationId: session.organizationId,
     conversationId: convId,
     role: "assistant",
@@ -131,13 +131,13 @@ export const POST = withAuth(async (session, req: Request) => {
 
   // Actualizar timestamp de la conversación
   await db
-    .update(schema.watsiConversation)
+    .update(schema.copilotConversation)
     .set({ updatedAt: new Date() })
     .where(scoped(
-      schema.watsiConversation.organizationId,
+      schema.copilotConversation.organizationId,
       session.organizationId,
-      eq(schema.watsiConversation.id, convId),
-      eq(schema.watsiConversation.userId, session.userId)
+      eq(schema.copilotConversation.id, convId),
+      eq(schema.copilotConversation.userId, session.userId)
     ));
 
   return Response.json({ conversationId: convId, response: reply, sources: context.sources });

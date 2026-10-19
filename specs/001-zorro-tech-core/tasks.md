@@ -1,6 +1,6 @@
-# Tasks: Vocero CRM — Núcleo v1
+# Tasks: Zorro Tech — Núcleo v1
 
-**Input**: Design documents from `/specs/001-vocero-core/`
+**Input**: Design documents from `/specs/001-zorro-tech-core/`
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md
 

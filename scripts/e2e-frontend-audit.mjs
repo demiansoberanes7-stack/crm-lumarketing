@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 
 const base = process.env.APP_BASE_URL ?? "http://localhost:3199";
 const local = ["localhost", "127.0.0.1"].includes(new URL(base).hostname);
-const email = process.env.E2E_EMAIL ?? (local ? "e2e@vocero.test" : "");
+const email = process.env.E2E_EMAIL ?? (local ? "e2e@zorro.test" : "");
 const password = process.env.E2E_PASSWORD ?? (local ? "password-e2e-123" : "");
 assert(email && password, "Provide an audit account for production");
 const browser = await chromium.launch({ headless: true });

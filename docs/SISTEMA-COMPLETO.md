@@ -1,10 +1,10 @@
-# CRM LUMARK — Documentación Completa del Sistema
+# Zorro Tech — Documentación Completa del Sistema
 
 **Versión**: 1.4.0  
 **Fecha de actualización**: 18 de septiembre de 2026  
-**Propietario**: LUMARK / Demian Soberanes  
+**Propietario**: Zorro Tech / Demian Soberanes  
 **Repositorio**: `demiansoberanes7-stack/crm-lumarketing` (GitHub privado)  
-**Base**: Vocero CRM (MIT) — `kevinrivm/vocero-crm`
+**Base**: fork de un CRM open source (MIT); el aviso de copyright original vive en `LICENSE`
 
 ---
 
@@ -47,7 +47,7 @@
 
 ## 1. Resumen Ejecutivo
 
-**CRM LUMARK** es un CRM de mensajería self-hosted diseñado para negocios que utilizan WhatsApp como canal principal de comunicación con clientes. El sistema está construido sobre Vocero CRM (proyecto open source MIT) y adaptado para las necesidades específicas de LUMARK.
+**Zorro Tech** es un gestor de comunicación y proyectos self-hosted para negocios que usan WhatsApp como canal principal con sus clientes. Nace como fork de un CRM open source (MIT) y evoluciona con identidad propia: bandeja multicanal, pipeline, proyectos, cotizaciones y un agente de IA con Laboratorio de auto-evaluación.
 
 ### Capacidades Principales
 
@@ -127,7 +127,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        CRM LUMARK                                │
+│                        Zorro Tech                                │
 │                                                                  │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
 │  │ WhatsApp │  │Instagram │  │Messenger │  │  TikTok  │        │
@@ -756,7 +756,7 @@ type QuoteStatus = "draft" | "unsaved" | "saved" | "sent" | "viewed"
 Utiliza `reportPdf()` de `@/server/documents/pdf`:
 - **Librería**: pdf-lib (sin dependencias de navegador)
 - **Fuente**: Helvetica
-- **Branding**: LUMARK gold (#B8973A)
+- **Branding**: naranja de la marca por defecto (#E87722), configurable en Configuración → Marca
 - **Formato**: Paginado con encabezado y pie
 
 ---
@@ -1139,34 +1139,35 @@ media_asset: {
 
 ### Identidad Visual (`src/lib/brand.ts`)
 
-- **Logo**: Forma geométrica "L" con acento ámbar luminoso
-- **Path del body**: `M4 4v16h2.5V11.5H16V9H6.5V4H4z`
-- **Path del tail (acento)**: `M12 5h4v2h-4V5z`
+- **Logo**: "Z" geométrica con remate lima
+- **Path del body**: `M5 6h14L5 18`
+- **Path del tail (acento)**: `M5 18h14`
 - **Stroke width**: 3.4
-- **Colores de acento**: `#D4A843` (light bg), `#E8C060` (dark bg)
+- **Colores de acento**: `#65a30d` (light bg), `#a3e635` (dark bg)
 
 ### Paleta de Colores (`src/lib/branding.ts`)
 
-- **Nombre por defecto**: "LUMARK"
-- **Acento por defecto**: `#B8963E` (dorado LUMARK)
+- **Nombre por defecto**: "ZORRO TECH"
+- **Acento por defecto**: `#65a30d` (lima Zorro Tech)
 - **Moneda**: MXN
 
-#### 5 Presets de Acento
+#### 6 Presets de Acento
 
-1. **Dorado LUMARK** (default): `#B8963E`
-2. **Azul acero**: `#4A6FA5`
-3. **Grafito**: `#5C5C5C`
-4. **Verde apagado**: `#5A7A5A`
-5. **Ciruela**: `#7A4A6A`
+1. **Lima Zorro Tech** (default): `#65a30d`
+2. **Dorado**: `#B8963E`
+3. **Azul acero**: `#3f5972`
+4. **Grafito**: `#4b5563`
+5. **Verde apagado**: `#3f6b66`
+6. **Ciruela**: `#5f5470`
 
 ### Variables CSS
 
 ```css
---accent: #B8963E        /* Color principal */
---accent-hover: #A68634  /* Hover state */
---accent-soft: #F5ECD6   /* Fondo suave */
---accent-tint: #FBF7EC   /* Tinte más claro */
---accent-text: #7A6428   /* Texto sobre fondo claro */
+--accent: #65a30d        /* Color principal */
+--accent-hover: #55890b  /* Hover state */
+--accent-soft: #e3f6d3   /* Fondo suave */
+--accent-tint: #f6fbf1   /* Tinte más claro */
+--accent-text: #497509   /* Texto sobre fondo claro */
 --accent-fg: #FFFFFF     /* Texto sobre acento */
 ```
 

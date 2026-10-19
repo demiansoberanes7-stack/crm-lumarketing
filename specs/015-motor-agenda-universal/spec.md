@@ -6,18 +6,18 @@
 
 **Status**: Draft — enmienda constitucional [ratificada y aplicada](./enmienda-constitucional.md) (constitución 1.4.0) y [tareas generadas](./tasks.md) (2026-08-26); lista para `/speckit-implement`
 
-**Input**: Decisión del dueño 2026-08-26: "agregar a Vocero raíz el motor de
+**Input**: Decisión del dueño 2026-08-26: "agregar a Zorro Tech raíz el motor de
 agendamiento con slots así como lo tengo en mi CRM, pero en modo bandera, tal
 cual como lo hicimos con la multicanalidad de IG. Universal y compatible con
 diversas apps de calendario —por ejemplo Zoom, Google Meet, Google Calendar—
 sin pretender el 100%: si alguien tiene una no compatible, puede crear un fork
 e implementarla. Esa capacidad de desarrollar los complementos faltantes es una
-de las ventajas competitivas de Vocero."
+de las ventajas competitivas de Zorro Tech."
 
 ## Contexto de negocio
 
 Un negocio que atiende por WhatsApp convierte cuando **cierra una cita**. Hoy
-Vocero lleva la conversación, califica y mueve el lead de etapa, pero la cita se
+Zorro Tech lleva la conversación, califica y mueve el lead de etapa, pero la cita se
 coordina a mano y fuera del sistema. Esta feature agrega el motor: el CRM sabe
 cuándo está libre el negocio, ofrece esos huecos, acepta una reserva **solo**
 sobre un hueco realmente ofrecido y libre, deja la cita registrada junto al
@@ -58,7 +58,7 @@ escrito (el README se actualiza como parte del alcance):
   ofrecido y el CRM lo aceptaría. Bajarla al core la vuelve **inviolable por
   construcción** y válida para todos los conductores por igual (research D2).
   El fork de agencia opera hoy con la garantía en el bot y funciona, pero solo
-  porque hay un único cliente de confianza; Vocero promete "conecta TU propio
+  porque hay un único cliente de confianza; Zorro Tech promete "conecta TU propio
   cerebro", y una promesa así no puede depender de que todos los cerebros se
   porten bien.
 

@@ -1,18 +1,18 @@
-# Vocero CRM — Guía para Claude
+# Zorro Tech — Guía para Claude
 
-Vocero es un CRM de WhatsApp open source (MIT), self-hosted, con agente de IA y
+Zorro Tech es un CRM de WhatsApp open source (MIT), self-hosted, con agente de IA y
 Laboratorio de auto-evaluación. Una instancia = un negocio. Este archivo guía a
 Claude Code (u otro asistente) para operar y **modificar** este repositorio —
-el caso típico: una agencia adaptando Vocero para un cliente.
+el caso típico: una agencia adaptando Zorro Tech para un cliente.
 
 ## Stack
 
 **Next.js 15 (App Router) + React 19** en monolito · TypeScript estricto
 (`strict` + `noUncheckedIndexedAccess`) · Tailwind CSS (sistema de diseño de la
-marca Vocero, el mismo de vocerocrm.com: tokens en `src/app/globals.css`, tema
-claro/oscuro, acento white-label por defecto `#0d5bff`, fuentes Archivo +
-Instrument Serif + IBM Plex Mono self-hosted vía `next/font`; el logo vive en
-`src/lib/brand.ts` y se dibuja con `src/components/brand-mark.tsx`) ·
+marca Zorro Tech: tokens en `src/app/globals.css`, tema claro/oscuro, acento
+white-label por defecto `#65a30d`, fuentes Geist + Instrument Serif + Geist Mono
+self-hosted vía `next/font`; el logo vive en `src/lib/brand.ts` y se dibuja con
+`src/components/brand-mark.tsx`) ·
 **PostgreSQL + Drizzle ORM** (migraciones versionadas en
 `drizzle/`, aplicadas al ARRANCAR el contenedor) · **Better Auth** + plugin
 organization · **Zod** en todo input externo · nanoid con prefijos (`ct_`,
@@ -105,7 +105,7 @@ Los nombres `OPENROUTER_*` se conservan por compatibilidad; el endpoint
 predeterminado del proyecto es Groq.
 
 Para el self-test local existe además el modo de pruebas interno (mocks) —
-ver `specs/001-vocero-core/quickstart.md`. Nunca actives mocks en producción.
+ver `specs/001-zorro-tech-core/quickstart.md`. Nunca actives mocks en producción.
 
 ## Manejo de credenciales (obligatorio)
 

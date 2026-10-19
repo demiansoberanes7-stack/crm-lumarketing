@@ -94,11 +94,11 @@ describe("registro de tipos de proyecto", () => {
       ]);
       expect(isProjectTypeKey("diseno_grafico")).toBe(true);
       const ok = parseStepData(fakeType.steps[0]!, {
-        marca: "LUMARK",
+        marca: "Zorro Tech",
         formatos: ["logo"],
       });
       expect(ok.ok).toBe(true);
-      const bad = parseStepData(fakeType.steps[0]!, { marca: "LUMARK", formatos: [] });
+      const bad = parseStepData(fakeType.steps[0]!, { marca: "Zorro Tech", formatos: [] });
       expect(bad.ok).toBe(false);
     } finally {
       PROJECT_TYPES.pop();

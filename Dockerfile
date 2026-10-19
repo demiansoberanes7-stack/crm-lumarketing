@@ -1,5 +1,5 @@
 # ============================================================
-# LUMARK CRM — imagen multi-etapa (Next.js standalone + Node 22)
+# ZORRO TECH — imagen multi-etapa (Next.js standalone + Node 22)
 # Los secretos NO se necesitan en build: llegan en runtime.
 # ============================================================
 
@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS test
 RUN apk add --no-cache chromium
 COPY . .
-CMD ["node", "scripts/e2e-lumark.mjs"]
+CMD ["node", "scripts/e2e-zorro-tech.mjs"]
 
 FROM node:22-alpine AS builder
 WORKDIR /app

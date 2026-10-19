@@ -51,15 +51,15 @@ async function api(path, method = "GET", body, authenticated = true) {
   return { status: response.status, data: await response.json() };
 }
 try {
-  let auth = await api("/api/auth/sign-in/email", "POST", { email: "e2e@vocero.test", password: "password-e2e-123" });
-  if (auth.status !== 200) auth = await api("/api/auth/sign-up/email", "POST", { email: "e2e@vocero.test", password: "password-e2e-123", name: "Operador E2E" });
+  let auth = await api("/api/auth/sign-in/email", "POST", { email: "e2e@zorro.test", password: "password-e2e-123" });
+  if (auth.status !== 200) auth = await api("/api/auth/sign-up/email", "POST", { email: "e2e@zorro.test", password: "password-e2e-123", name: "Operador E2E" });
   check("login", auth.status === 200);
   const [membership] = await sql`SELECT organization_id FROM member WHERE user_id = ${auth.data.user.id} LIMIT 1`;
   const orgId = membership.organization_id;
   await sql`INSERT INTO organization (id, name, slug, created_at) VALUES (${otherOrg}, 'Organización externa de prueba', ${otherOrg}, now())`;
   await sql`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES
-    (${teamUser}, 'Responsable de prueba', ${teamUser + '@lumark.test'}, false, now(), now()),
-    (${foreignUser}, 'Usuario externo', ${foreignUser + '@lumark.test'}, false, now(), now())`;
+    (${teamUser}, 'Responsable de prueba', ${teamUser + '@zorro.test'}, false, now(), now()),
+    (${foreignUser}, 'Usuario externo', ${foreignUser + '@zorro.test'}, false, now(), now())`;
   await sql`INSERT INTO member (id, organization_id, user_id, role, created_at) VALUES
     (${teamMember}, ${orgId}, ${teamUser}, 'member', now()),
     (${foreignUser}, ${otherOrg}, ${foreignUser}, 'member', now())`;
@@ -203,7 +203,7 @@ try {
     "sembrar datos de empresa",
     (await api("/api/settings/business", "PUT", {
       companyName: empresa,
-      email: "hola@lumark.qa",
+      email: "hola@zorro.qa",
       phone: "55 1234 5678",
       address: "Av. Siempre Viva 742",
     })).status === 200
@@ -214,7 +214,7 @@ try {
   check("PDF con el nombre de la empresa", pdfIncluye(pdfEmpresa, empresa));
   check(
     "PDF con footer de contacto",
-    pdfIncluye(pdfEmpresa, "hola@lumark.qa") && pdfIncluye(pdfEmpresa, "55 1234 5678")
+    pdfIncluye(pdfEmpresa, "hola@zorro.qa") && pdfIncluye(pdfEmpresa, "55 1234 5678")
   );
 
   const descarga = await fetch(`${base}/api/projects/${wf}/pdf?download=1`, { headers: { cookie } });

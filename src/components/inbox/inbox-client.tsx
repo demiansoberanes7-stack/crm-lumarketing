@@ -53,14 +53,14 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
 
   useEffect(() => {
     if (!isWideEnoughForPanel()) return;
-    setPanelOpen(localStorage.getItem("vocero.panelOpen") !== "false");
+    setPanelOpen(localStorage.getItem("zorro.panelOpen") !== "false");
   }, []);
   const togglePanel = useCallback((open: boolean) => {
     setPanelOpen(open);
     // La preferencia es de escritorio: abrir el cajón en el teléfono no debe
     // reescribir cómo queda la Bandeja en la computadora.
     if (isWideEnoughForPanel()) {
-      localStorage.setItem("vocero.panelOpen", String(open));
+      localStorage.setItem("zorro.panelOpen", String(open));
     }
   }, []);
   const selectedIdRef = useRef<string | null>(null);

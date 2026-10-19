@@ -38,7 +38,7 @@
     --bubble-out-border: var(--accent-soft);
     --bubble-out-text: var(--text);
 
-    /* Acento (default: lima/verde LUMARK; el white-label lo sobreescribe) */
+    /* Acento (default: lima/verde Zorro Tech; el white-label lo sobreescribe) */
     --accent: #65a30d;
     --accent-hover: #55890b;
     --accent-soft: #e3f6d3;

@@ -1,4 +1,4 @@
-# Arquitectura actualizada — LUMARK CRM
+# Arquitectura actualizada — Zorro Tech
 
 > Descripción de la arquitectura **real** verificada en el repositorio (commit base `5ce91e2`).
 > No describe una arquitectura hipotética: cada capa corresponde a código existente.

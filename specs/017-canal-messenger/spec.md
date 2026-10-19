@@ -19,7 +19,7 @@ las conversaciones.
 ## Escenarios
 
 1. **Recibir**: un cliente escribe a la página por Messenger; el mensaje
-   aparece en la bandeja de Vocero con su distintivo de canal, creando contacto
+   aparece en la bandeja de Zorro Tech con su distintivo de canal, creando contacto
    y conversación si no existían, con el nombre del perfil (no el PSID crudo).
 2. **Responder**: el operador (o el agente) responde desde la misma bandeja y
    el mensaje llega al chat de Messenger del cliente.

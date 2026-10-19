@@ -24,7 +24,7 @@ describe("svgToPng", () => {
   it("rasteriza el texto del SVG cuando hay tipografías disponibles", () => {
     const svg = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60">' +
-        '<text x="10" y="40" font-size="32" fill="#111">LUMARK</text>' +
+        '<text x="10" y="40" font-size="32" fill="#111">Zorro Tech</text>' +
         "</svg>"
     );
     const png = svgToPng(svg);

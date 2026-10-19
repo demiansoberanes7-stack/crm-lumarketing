@@ -55,7 +55,7 @@ del commit de la transacción, best-effort.
 **Evidencia (del propio fork, documentada en su bitácora)**: con ese diseño,
 *arrastrar* un lead a la etapa "Calificado" en el tablero **no emitía nada**.
 Nunca estorbó allá porque en ese negocio quien califica siempre es el bot; en
-Vocero, donde el dueño mueve tarjetas a mano y el cerebro puede ser cualquiera,
+Zorro Tech, donde el dueño mueve tarjetas a mano y el cerebro puede ser cualquiera,
 sería un hueco silencioso: lo peor que le puede pasar a una métrica.
 
 **Por qué es el lugar correcto**: `moveLeadToStage` ya es "la ÚNICA puerta que
@@ -78,7 +78,7 @@ las etapas de esa organización. Sin elección, no se emite `QualifiedLead`.
 **Contra qué**: (a) cablear el nombre "Calificado"; (b) inferirlo por posición;
 (c) un `kind` nuevo en `pipeline_stage`.
 
-**Por qué**: las etapas sembradas de Vocero son Nuevo / En conversación /
+**Por qué**: las etapas sembradas de Zorro Tech son Nuevo / En conversación /
 Interesado / Cliente / Perdido — **no hay ninguna llamada "Calificado"**, y cada
 negocio renombra las suyas. Inferir por posición adivina. Un `kind` nuevo obliga
 a migrar el enum y a decidir por el usuario. Un `stage_id` elegido es explícito,

@@ -143,7 +143,7 @@ export function BalanceClient() {
           <label>Desde<Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
           <label>Hasta<Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
           <Button disabled={!from || !to || from > to} onClick={() => setPeriod(new URLSearchParams({ from, to }).toString())}>Aplicar periodo</Button>
-          <PdfActions url={`/api/finances/balance?format=pdf&${period}`} filename="Balance-LUMARK.pdf" />
+          <PdfActions url={`/api/finances/balance?format=pdf&${period}`} filename="Balance-ZORRO-TECH.pdf" />
         </div>
         {error && <p role="alert" className="text-destructive">{error}</p>}
         {showReceivable && <NewReceivable onClose={() => setShowReceivable(false)} onSaved={() => { setShowReceivable(false); void refetch(); }} />}

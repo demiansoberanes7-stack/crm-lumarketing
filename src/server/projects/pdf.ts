@@ -60,7 +60,7 @@ export async function projectPdf(
     listItems(organizationId, projectId),
   ]);
 
-  // Colores configurados en Configuración → Marca (default naranja LUMARK);
+  // Colores configurados en Configuración → Marca (default naranja Zorro Tech);
   // el expediente salía con un dorado que no era de la marca.
   const HEADER_BG = hexRgb(branding.pdfColors.header);
   const ACCENT = hexRgb(branding.pdfColors.accent);
@@ -107,7 +107,7 @@ export async function projectPdf(
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   doc.setTitle(`Proyecto ${project.code}`);
-  doc.setAuthor(bs.companyName || "LUMARK");
+  doc.setAuthor(bs.companyName || "Zorro Tech");
 
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
@@ -142,7 +142,7 @@ export async function projectPdf(
   };
 
   // ─── HEADER ───
-  const companyName = bs.companyName || "LUMARK";
+  const companyName = bs.companyName || "Zorro Tech";
   // El nombre no debe invadir la columna derecha (EXPEDIENTE / código / fecha).
   const rightColX = PAGE_W - MARGIN - 160;
   const fit = (size: number): string => {

@@ -122,7 +122,7 @@ export function BrandingClient() {
               maxLength={30}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="LUMARK"
+              placeholder="ZORRO TECH"
               className="max-w-xs"
             />
           </div>

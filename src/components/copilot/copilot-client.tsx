@@ -27,7 +27,7 @@ const SUGGESTIONS = [
   "¿Cuántas cotizaciones están pendientes?",
 ];
 
-export function WatsiClient() {
+export function CopilotClient() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -37,7 +37,7 @@ export function WatsiClient() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = useCallback(async () => {
-    const res = await fetch("/api/watsi/conversations").catch(() => null);
+    const res = await fetch("/api/copilot/conversations").catch(() => null);
     if (!res?.ok) return;
     const data = (await res.json()) as { conversations: Conversation[] };
     setConversations(data.conversations);
@@ -54,7 +54,7 @@ export function WatsiClient() {
   async function loadMessages(id: string) {
     setActiveId(id);
     setMobileList(false);
-    const res = await fetch(`/api/watsi/conversations/${id}`).catch(() => null);
+    const res = await fetch(`/api/copilot/conversations/${id}`).catch(() => null);
     if (!res?.ok) return;
     const data = (await res.json()) as { messages: Message[] };
     setMessages(data.messages);
@@ -68,7 +68,7 @@ export function WatsiClient() {
 
   async function deleteConversation(id: string) {
     if (!confirm("¿Eliminar esta conversación?")) return;
-    await fetch(`/api/watsi/conversations/${id}`, { method: "DELETE" }).catch(() => null);
+    await fetch(`/api/copilot/conversations/${id}`, { method: "DELETE" }).catch(() => null);
     void loadConversations();
     if (activeId === id) {
       setActiveId(null);
@@ -86,7 +86,7 @@ export function WatsiClient() {
     setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, role: "user", content: msg }]);
 
     try {
-      const res = await fetch("/api/watsi/chat", {
+      const res = await fetch("/api/copilot/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: msg, conversationId: activeId ?? undefined }),

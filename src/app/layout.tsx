@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import localFont from "next/font/local";
+import { BRAND_TAGLINE } from "@/lib/brand";
 import { accentCssVariables, DEFAULT_BRANDING } from "@/lib/branding";
 import { faviconHref } from "@/lib/favicon";
 import { normalizeThemePreference, THEME_COOKIE } from "@/lib/theme";
@@ -46,7 +47,8 @@ export async function generateMetadata(): Promise<Metadata> {
       default: `${branding.name} — CRM de WhatsApp`,
       template: `%s — ${branding.name}`,
     },
-    description: "CRM de WhatsApp con agente de IA y Laboratorio de auto-evaluación",
+    description: `${branding.name} — ${BRAND_TAGLINE}`,
+
     // El `?v=` cambia con la marca: los navegadores guardan el favicon con una
     // insistencia notable y, sin eso, el logo nuevo tarda días en aparecer.
     icons: { icon: faviconHref(branding, ctx?.organizationId) },

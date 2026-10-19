@@ -1,7 +1,7 @@
 /**
  * Restablecer la contraseña de un usuario SIN correo.
  *
- * Vocero no tiene flujo de "olvidé mi contraseña" —sería una dependencia
+ * Zorro Tech no tiene flujo de "olvidé mi contraseña" —sería una dependencia
  * externa, y la constitución las prohíbe en v1— y el registro público se cierra
  * en cuanto existe la primera organización. Cuando la contraseña se pierde, la
  * única salida es reescribir el hash en la base.
@@ -12,10 +12,13 @@
  * es exactamente la barrera que uno quiere para una operación así.
  *
  * Uso (bash):
- *   NEW_PASSWORD='tu-contraseña-nueva' node scripts/reset-password.mjs correo@ejemplo.com
+ *   NEW_PASSWORD='tu-contraseña-nueva' node scripts/reset-password.mjs correo@ejemplo.com [base]
  *
  * Uso (PowerShell):
- *   $env:NEW_PASSWORD='tu-contraseña-nueva'; node scripts/reset-password.mjs correo@ejemplo.com
+ *   $env:NEW_PASSWORD='tu-contraseña-nueva'; node scripts/reset-password.mjs correo@ejemplo.com [base]
+ *
+ * `[base]` es opcional: solo se usa para imprimir el comando psql. Si se omite,
+ * el comando sale con un marcador para que lo completes antes de pegarlo.
  */
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 
@@ -28,6 +31,7 @@ const email = process.argv[2];
 // máquina mientras el proceso corre. En un servidor suele haber más de una
 // sesión abierta.
 const password = process.env.NEW_PASSWORD;
+const dbName = process.argv[3] ?? "";
 
 if (!email || !password) {
   console.error(
@@ -76,9 +80,9 @@ console.log(`
 Hash verificado. Pega este comando en la terminal del contenedor de Postgres
 (en Coolify: el recurso de la base → pestaña Terminal):
 
-psql -U postgres -d lumark -c "${sql.replace(/"/g, '\\"')}"
+psql -U postgres -d ${dbName || "<base_de_datos>"} -c "${sql.replace(/"/g, '\\"')}"
 
 Debe responder: UPDATE 1
 Si responde UPDATE 0, el correo no coincide. Míralos con:
-psql -U postgres -d lumark -c 'SELECT email FROM "user";'
+psql -U postgres -d ${dbName || "<base_de_datos>"} -c 'SELECT email FROM "user";'
 `);

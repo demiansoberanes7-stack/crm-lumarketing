@@ -20,18 +20,18 @@ legítimamente" y "No eludas controles de acceso". REA habilita el análisis de 
 (HubSpot, Pipedrive, Odoo, Zoho, Salesforce) mediante captura de su web/runtime. Esa vía es:
 1. **Técnicamente pesada** (requiere navegador, capturas, sesiones autenticadas de terceros).
 2. **Jurídicamente sensible** (analizar en runtime apps propietarias de terceros).
-3. **Poco necesaria**: LUMARK ya tiene mapeados internamente los modelos funcionales requeridos
+3. **Poco necesaria**: Zorro Tech ya tiene mapeados internamente los modelos funcionales requeridos
    (`campaign`, `offer`, `experiment`, `service_cost`, `attribution_event`, `activity_event`), y el
-   encargo pide construir una **implementación propia** adaptada a LUMARK, no copiar terceros.
+   encargo pide construir una **implementación propia** adaptada a Zorro Tech, no copiar terceros.
 
 Por ello, la investigación funcional se basa en **documentación pública** de referencia y en el
 **conocimiento funcional** de CRM, y **se registra como inferencia** (no como observación de REA).
 Cuando REA esté disponible por MCP tras el reinicio, podrá usarse para investigaciones puntuales que
-aporten evidencia, sin sustituir la lectura del código de LUMARK.
+aporten evidencia, sin sustituir la lectura del código de Zorro Tech.
 
 ## Mapa de evidencias por proceso (P1–P7)
 
-| Proceso investigado | Referente funcional común | Cómo se traduce en LUMARK | Base en el repo (evidencia) |
+| Proceso investigado | Referente funcional común | Cómo se traduce en Zorro Tech | Base en el repo (evidencia) |
 |---|---|---|---|
 | Aceptación de cotización → proyecto | "Quote won → Project/Deal" | `changeQuoteStatus("accepted")` dispara creación/reutilización de proyecto + OS | `quotes/service.ts:475-545` |
 | Proyecto ↔ orden de servicio ↔ tareas | "Project / Work order / Tasks" | `project` + `project_task`; nueva `service_order` ligera | `schema.ts:1012-1157` |

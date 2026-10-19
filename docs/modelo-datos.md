@@ -1,4 +1,4 @@
-# Modelo de datos — LUMARK CRM
+# Modelo de datos — Zorro Tech
 
 > Mapa del esquema **real** (PostgreSQL + Drizzle) al commit base `5ce91e2`.
 > Fuente: `src/lib/db/schema.ts` (2 749 líneas) y las 68 migraciones en `drizzle/`.

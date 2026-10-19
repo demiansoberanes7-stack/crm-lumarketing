@@ -1,12 +1,12 @@
-# DOCUMENTACION COMPLETA DEL SISTEMA CRM LUMARK
+# DOCUMENTACION COMPLETA DEL SISTEMA Zorro Tech
 
 ---
 
 **Version:** 1.4.0  
 **Fecha:** 20 de Septiembre de 2026  
 **Licencia:** MIT  
-**Repositorio:** CRM LUMARK (monolito Next.js)  
-**Autor:** LUMARK / Ghostbreakfast  
+**Repositorio:** Zorro Tech (monolito Next.js)  
+**Autor:** Zorro Tech / Ghostbreakfast  
 
 ---
 
@@ -37,9 +37,9 @@
 
 # 1. RESUMEN EJECUTIVO
 
-## Que es CRM LUMARK
+## Que es Zorro Tech
 
-CRM LUMARK es un sistema de gestion de relaciones con clientes (CRM) open source construido sobre WhatsApp, con un agente de inteligencia artificial integrado y un Laboratorio de auto-evaluacion. Esta disenado para negocios pequenos y medianos en Latinoamerica, con soporte nativo para mensajeria en multiples canales.
+Zorro Tech es un sistema de gestion de relaciones con clientes (CRM) open source construido sobre WhatsApp, con un agente de inteligencia artificial integrado y un Laboratorio de auto-evaluacion. Esta disenado para negocios pequenos y medianos en Latinoamerica, con soporte nativo para mensajeria en multiples canales.
 
 ## Capacidades Principales
 
@@ -1903,7 +1903,7 @@ y el logo real responde 200 con `nosniff`.
 | Script | Flujo |
 |--------|-------|
 | `e2e-selftest.mjs` | Test comprehensive: BSUID, bot API, agenda, atribucion |
-| `e2e-lumark.mjs` | Flujos LUMARK: login, catalogo, cotizaciones, proyectos |
+| `e2e-zorro-tech.mjs` | Flujos Zorro Tech: login, catalogo, cotizaciones, proyectos |
 | `e2e-bitacora-etapas.mjs` | Eventos de etapa del pipeline |
 | `e2e-send-failure.mjs` | Visualizacion de envios fallidos |
 | `e2e-search-filters.mjs` | Busqueda y filtros del inbox |
@@ -2139,7 +2139,7 @@ maquina**. Rollback: fijar `APP_IMAGE=…@sha256:<digest>` en `.env` y `docker c
 
 | Spec | Directorio | Contenido |
 |------|------------|-----------|
-| 001 | specs/001-vocero-core/ | Core del CRM |
+| 001 | specs/001-zorro-tech-core/ | Core del CRM |
 | 002 | specs/002-diseno-atlas-white-label/ | Diseno white-label |
 | 003 | specs/003-paridad-inbox-whatsapp/ | Paridad de inbox |
 | 014 | specs/014-canal-instagram/ | Canal Instagram |
@@ -2166,4 +2166,4 @@ maquina**. Rollback: fijar `APP_IMAGE=…@sha256:<digest>` en `.env` y `docker c
 **Fin de la Documentacion**
 
 *Documento generado el 20 de Septiembre de 2026, alineado con el codigo el 19 de Octubre de 2026*
-*Version 1.3.0 - CRM LUMARK (la version que reporta `/api/health`; `package.json` manda)*
+*Version 1.3.0 - Zorro Tech (la version que reporta `/api/health`; `package.json` manda)*

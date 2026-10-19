@@ -29,7 +29,7 @@ export const GET = withOwner(async (session) => {
       pipelineKeywords: p.pipelineKeywords,
       fichaFields: normalizeAgentFichaFields(p.fichaFields),
       rules: normalizeAgentRules(p.rules),
-      // LUMARK — configuraciones extra
+      // Zorro Tech — configuraciones extra
       maxResponseWaitSeconds: p.maxResponseWaitSeconds,
       responseLanguage: p.responseLanguage,
       fallbackLanguage: p.fallbackLanguage,
@@ -63,7 +63,7 @@ const putSchema = z.object({
     moveStageOnIntent: z.boolean(),
     strictKnowledgeBase: z.boolean(),
   }).optional(),
-  // LUMARK — configuraciones extra del bot
+  // Zorro Tech — configuraciones extra del bot
   maxResponseWaitSeconds: z.number().int().min(0).max(60).optional(),
   responseLanguage: z.enum(["auto", "es", "en", "pt", "fr"]).optional(),
   fallbackLanguage: z.enum(["es", "en", "pt", "fr"]).optional(),

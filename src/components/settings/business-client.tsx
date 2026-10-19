@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import type { BusinessSettings } from "@/lib/business-settings";
 
 export function BusinessSettingsClient() {
+  const router = useRouter();
   const [settings, setSettings] = useState<BusinessSettings>({
     companyName: "",
     rfc: "",
@@ -61,6 +63,10 @@ export function BusinessSettingsClient() {
     const data = (await res.json()) as { logoUrl: string };
     setSettings((prev) => ({ ...prev, logoUrl: data.logoUrl }));
     setSaved(true);
+    // La barra lateral y la cabecera leen el logo del layout de servidor: sin
+    // refrescar el árbol, la subida se guardaba pero seguía viéndose el viejo
+    // hasta cambiar de página.
+    router.refresh();
   }
 
   function removeLogo() {
@@ -86,6 +92,7 @@ export function BusinessSettingsClient() {
       return;
     }
     setSaved(true);
+    router.refresh();
   }
 
   if (!loaded) return <p className="text-sm text-muted-foreground">Cargando…</p>;
@@ -104,8 +111,10 @@ export function BusinessSettingsClient() {
         <div className="space-y-2">
           <Label>Logo de la empresa</Label>
           <p className="text-xs text-muted-foreground">
-            Si subes un logo (PNG, JPG o SVG), se mostrará en las cotizaciones y en los
-            expedientes de proyecto. Si lo dejas vacío, se usa el nombre de la empresa como texto.
+            Si subes un logo (PNG, JPG o SVG), se mostrará en el panel, las
+            cotizaciones y los expedientes de proyecto. Si lo dejas vacío, se usa
+            el nombre de la empresa como texto. Al quitar el logo, guarda los
+            datos para aplicarlo.
           </p>
           <div className="flex items-center gap-4">
             {settings.logoUrl ? (

@@ -1,4 +1,4 @@
-# Data Model — Vocero CRM v1 (001-vocero-core)
+# Data Model — Zorro Tech v1 (001-vocero-core)
 
 Convenciones globales:
 

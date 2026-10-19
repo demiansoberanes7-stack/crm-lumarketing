@@ -1,7 +1,7 @@
 {
-  "name": "lumark-crm",
-  "version": "1.3.0",
-  "description": "CRM de WhatsApp LUMARK con agente de IA, cotizador, cobranza y proyectos",
+  "name": "zorro-tech-crm",
+  "version": "1.4.0",
+  "description": "Gestor de comunicación y proyectos: CRM multicanal con agente de IA",
   "license": "MIT",
   "type": "module",
   "private": true,

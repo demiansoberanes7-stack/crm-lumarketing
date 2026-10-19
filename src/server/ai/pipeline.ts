@@ -322,7 +322,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     action = { ...action, ficha: undefined };
   }
 
-  // LUMARK — espera humana antes de responder (solo conversaciones reales).
+  // Zorro Tech — espera humana antes de responder (solo conversaciones reales).
   // El Laboratorio (is_test) no espera: su objetivo es evaluar el modelo, no
   // simular tiempos de escritura.
   if (!conversation.isTest && profile.maxResponseWaitSeconds > 0 && action.action !== "none") {

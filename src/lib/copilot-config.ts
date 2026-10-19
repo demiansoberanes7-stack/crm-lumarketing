@@ -20,7 +20,7 @@ export const COPILOT_DATA_SOURCES = [
 export type CopilotDataSource = (typeof COPILOT_DATA_SOURCES)[number]["key"];
 export type CopilotAccessMode = "selected" | "all";
 
-/** Configuración inicial compatible con el contexto que ya tenía Watsi. */
+/** Configuración inicial compatible con el contexto que ya tenía el copiloto. */
 export const DEFAULT_COPILOT_SETTINGS = {
   accessMode: "selected" as const,
   dataSources: ["metrics", "pipeline", "contacts", "agenda"] as CopilotDataSource[],

@@ -620,7 +620,7 @@ export const agentProfile = pgTable(
     aiTokenIv: text("ai_token_iv"),
     aiTokenTag: text("ai_token_tag"),
     aiModel: varchar("ai_model", { length: 255 }),
-    // LUMARK — configuraciones extra del bot
+    // Zorro Tech — configuraciones extra del bot
     maxResponseWaitSeconds: integer("max_response_wait_seconds").notNull().default(12),
     responseLanguage: varchar("response_language", { length: 20 }).notNull().default("auto"),
     fallbackLanguage: varchar("fallback_language", { length: 20 }).notNull().default("es"),
@@ -2470,8 +2470,15 @@ export const broadcastRecipient = pgTable(
   ]
 );
 
-/** Watsi — conversaciones del copiloto interno de métricas. */
-export const watsiConversation = pgTable(
+/**
+ * Copiloto — conversaciones del copiloto interno de métricas.
+ *
+ * El nombre FÍSICO conserva el histórico `watsi_*`: renombrar tablas en
+ * producción obligaría a una migración sobre datos vivos y a reescribir el
+ * historial ya aplicado. El código y la API hablan de Copiloto; solo el
+ * almacenamiento mantiene el nombre viejo.
+ */
+export const copilotConversation = pgTable(
   "watsi_conversation",
   {
     id: varchar("id", { length: 255 }).primaryKey(),
@@ -2490,8 +2497,8 @@ export const watsiConversation = pgTable(
   ]
 );
 
-/** Watsi — mensajes del copiloto. */
-export const watsiMessage = pgTable(
+/** Copiloto — mensajes del copiloto. Nombre físico histórico (ver arriba). */
+export const copilotMessage = pgTable(
   "watsi_message",
   {
     id: varchar("id", { length: 255 }).primaryKey(),
@@ -2500,7 +2507,7 @@ export const watsiMessage = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     conversationId: varchar("conversation_id", { length: 255 })
       .notNull()
-      .references(() => watsiConversation.id, { onDelete: "cascade" }),
+      .references(() => copilotConversation.id, { onDelete: "cascade" }),
     role: varchar("role", { length: 20 }).notNull(),
     content: text("content").notNull(),
     sources: jsonb("sources"),

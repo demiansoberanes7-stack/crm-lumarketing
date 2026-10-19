@@ -48,11 +48,11 @@ describe("white-label: acento", () => {
     expect(lum).toBeLessThan(0xd0);
   });
 
-  it("hex inválido cae al default (el lima LUMARK)", () => {
+  it("hex inválido cae al default (el lima de Zorro Tech)", () => {
     expect(resolveAccentSet("rojo")).toEqual(ACCENT_PRESETS["#65a30d"]!.set);
   });
 
-  it("el lima LUMARK es el default y conserva su preset", () => {
+  it("el lima de Zorro Tech es el default y conserva su preset", () => {
     expect(DEFAULT_BRANDING.accent).toBe("#65a30d");
     expect(resolveAccentSet(DEFAULT_BRANDING.accent)).toEqual({
       accent: "#65a30d",
@@ -114,9 +114,9 @@ describe("white-label: acento en tema oscuro", () => {
 });
 
 describe("white-label: normalización", () => {
-  it("nombre vacío o nulo → default 'LUMARK'; se recorta a 30", () => {
-    expect(normalizeBranding(null).name).toBe("LUMARK");
-    expect(normalizeBranding({ name: "   " }).name).toBe("LUMARK");
+  it("nombre vacío o nulo → default 'ZORRO TECH'; se recorta a 30", () => {
+    expect(normalizeBranding(null).name).toBe("ZORRO TECH");
+    expect(normalizeBranding({ name: "   " }).name).toBe("ZORRO TECH");
     expect(normalizeBranding({ name: "x".repeat(50) }).name).toHaveLength(30);
   });
 
@@ -127,7 +127,7 @@ describe("white-label: normalización", () => {
 });
 
 describe("white-label: colores de PDF", () => {
-  it("el default es el naranja LUMARK (los PDF salían gris carbón)", () => {
+  it("el default es el naranja de la marca (los PDF salían gris carbón)", () => {
     expect(DEFAULT_PDF_COLORS.header).toBe("#E87722");
     expect(normalizeBranding(null).pdfColors).toEqual(DEFAULT_PDF_COLORS);
     expect(DEFAULT_BRANDING.pdfColors).toEqual(DEFAULT_PDF_COLORS);

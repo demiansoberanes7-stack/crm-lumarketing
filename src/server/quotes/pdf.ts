@@ -43,7 +43,7 @@ export async function quotePdf(organizationId: string, id: string) {
     getBranding(organizationId),
   ]);
 
-  // Colores configurados en Configuración → Marca (default naranja LUMARK).
+  // Colores configurados en Configuración → Marca (default naranja Zorro Tech).
   const HEADER_BG = hexRgb(branding.pdfColors.header);
   const ACCENT = hexRgb(branding.pdfColors.accent);
   const ink = pdfInkOn(branding.pdfColors.header);
@@ -54,7 +54,7 @@ export async function quotePdf(organizationId: string, id: string) {
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
   doc.setTitle(`Cotización ${quote.quoteNumber}`);
-  doc.setAuthor(bs.companyName || "LUMARK");
+  doc.setAuthor(bs.companyName || "Zorro Tech");
 
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
@@ -69,7 +69,7 @@ export async function quotePdf(organizationId: string, id: string) {
     return false;
   };
 
-  const companyName = bs.companyName || "LUMARK";
+  const companyName = bs.companyName || "Zorro Tech";
 
   // El nombre no debe invadir la columna derecha (N°/fecha/vigencia): se mide
   // contra el hueco real y, si no cabe, se encoge en vez de pisar o salirse.

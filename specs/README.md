@@ -1,6 +1,6 @@
 # specs/
 
-Especificaciones de Vocero CRM. **Esta carpeta no es el mapa completo del
+Especificaciones de Zorro Tech. **Esta carpeta no es el mapa completo del
 producto** — y saberlo antes de leerla ahorra una confusión.
 
 ## Qué hay aquí

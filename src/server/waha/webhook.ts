@@ -2,7 +2,7 @@
  * WAHA Webhook handler — procesa eventos entrantes de WAHA.
  *
  * WAHA envía eventos de mensajes, estados de entrega y estado de sesión.
- * Este handler los procesa y los enruta al sistema de ingesta de Vocero.
+ * Este handler los procesa y los enruta al sistema de ingesta de Zorro Tech.
  *
  * Eventos soportados:
  * - message.any: mensajes entrantes + echoes
@@ -27,7 +27,7 @@ export type WahaWebhookEvent = {
 
 /** Verificar firma HMAC del webhook (opcional) */
 /**
- * Convertir mensaje de WAHA al formato interno de Vocero.
+ * Convertir mensaje de WAHA al formato interno de Zorro Tech.
  * WAHA usa formato similar a WhatsApp Web: { key: { remoteJid, fromMe, id }, message, messageTimestamp }
  */
 function normalizeWahaMessage(payload: Record<string, unknown>) {

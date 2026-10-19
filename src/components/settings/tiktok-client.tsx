@@ -32,9 +32,9 @@ type WebhookInfo = {
 const HELP = {
   title: "Conecta la cuenta de TikTok en Zernio y pega aquí su accountId y tu API key",
   items: [
-    "La cuenta de TikTok se vincula en el panel de Zernio, no desde LUMARK. Copia de ahí el accountId de la cuenta conectada.",
+    "La cuenta de TikTok se vincula en el panel de Zernio, no desde Zorro Tech. Copia de ahí el accountId de la cuenta conectada.",
     "La API key se crea en Zernio → Settings → API Keys y se muestra una sola vez (empieza con sk_).",
-    "El mismo webhook de Zernio entrega Instagram, Messenger y TikTok si esas cuentas están conectadas; LUMARK filtra por plataforma. La URL de webhook es compartida con Instagram.",
+    "El mismo webhook de Zernio entrega Instagram, Messenger y TikTok si esas cuentas están conectadas; Zorro Tech filtra por plataforma. La URL de webhook es compartida con Instagram.",
     "El secreto del webhook es opcional pero recomendado: con él se verifica la firma de cada entrega.",
     "TikTok DMs solo permiten responder a mensajes recibidos: hasta 10 respuestas dentro de 48 horas, sin etiqueta HUMAN_AGENT. Soporta texto e imágenes (máx 3 MB).",
     "Las cuentas TikTok for Business también pueden recibir comentarios públicos: activa el canal Comentarios y suscribe comment.received.",

@@ -55,7 +55,7 @@ try {
   // El registro solo crea organización en una instancia VACÍA; en una BD ya
   // poblada el propietario es otra cuenta, así que las credenciales se pueden
   // mandar por env y si no, se intenta con la cuenta E2E del repo.
-  const EMAIL = process.env.E2E_OWNER_EMAIL ?? "e2e@vocero.test";
+  const EMAIL = process.env.E2E_OWNER_EMAIL ?? "e2e@zorro.test";
   const PASSWORD = process.env.E2E_OWNER_PASSWORD ?? "password-e2e-123";
   const credentials = { email: EMAIL, password: PASSWORD, name: "Webhooks E2E" };
 

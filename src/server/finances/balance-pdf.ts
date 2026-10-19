@@ -53,7 +53,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
   doc.setTitle(`Balance ${from} a ${to}`);
-  doc.setAuthor(bs.companyName || "LUMARK");
+  doc.setAuthor(bs.companyName || "Zorro Tech");
 
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
@@ -65,7 +65,7 @@ export async function balancePdf(organizationId: string, period: { from: Date; t
     }
   };
 
-  const companyName = bs.companyName || "LUMARK";
+  const companyName = bs.companyName || "Zorro Tech";
 
   // ─── HEADER: Logo (left) + Date (right) ───
   const logoData = tryLoadLogo(bs.logoUrl, organizationId);

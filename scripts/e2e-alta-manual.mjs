@@ -50,7 +50,7 @@ async function api(path, opts = {}) {
 const sql = postgres(process.env.DATABASE_URL, { max: 1 });
 
 console.log("== Setup ==");
-const email = "e2e@lumark.test";
+const email = "e2e@zorro.test";
 const password = "password-e2e-123";
 let su = await api("/api/auth/sign-up/email", {
   method: "POST",

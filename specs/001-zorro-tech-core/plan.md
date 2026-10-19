@@ -1,12 +1,12 @@
-# Implementation Plan: Vocero CRM — Núcleo v1
+# Implementation Plan: Zorro Tech — Núcleo v1
 
 **Branch**: `001-vocero-core` | **Date**: 2026-07-09 | **Spec**: [spec.md](spec.md)
 
-**Input**: Feature specification from `/specs/001-vocero-core/spec.md`
+**Input**: Feature specification from `/specs/001-zorro-tech-core/spec.md`
 
 ## Summary
 
-Vocero CRM es un monolito Next.js self-hosted que implementa: bandeja de WhatsApp en
+Zorro Tech es un monolito Next.js self-hosted que implementa: bandeja de WhatsApp en
 tiempo real (SSE), contactos + pipeline kanban, agente de IA con knowledge base y
 acciones tipadas, Laboratorio de auto-evaluación (6 personas guionadas + juez LLM),
 wizard de conexión del número (modo directo o modo agencia/Tech Provider), plantillas
@@ -71,7 +71,7 @@ hay entradas en Complexity Tracking.
 ### Documentation (this feature)
 
 ```text
-specs/001-vocero-core/
+specs/001-zorro-tech-core/
 ├── plan.md              # Este archivo
 ├── research.md          # Fase 0 — decisiones DV-VC-n
 ├── data-model.md        # Fase 1 — ~15 tablas

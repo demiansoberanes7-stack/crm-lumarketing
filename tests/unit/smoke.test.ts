@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { isLumarkName } from "@/lib/brand";
+import { isZorroTechName } from "@/lib/brand";
 import { newId } from "@/lib/db/ids";
 
 describe("brand identity", () => {
-  it("isLumarkName reconoce LUMARK", () => {
-    expect(isLumarkName("LUMARK")).toBe(true);
-    expect(isLumarkName("  lumark  ")).toBe(true);
-    expect(isLumarkName("Lumark")).toBe(true);
+  it("reconoce Zorro Tech con mayúsculas y espacios de más", () => {
+    expect(isZorroTechName("ZORRO TECH")).toBe(true);
+    expect(isZorroTechName("  zorro   tech  ")).toBe(true);
+    expect(isZorroTechName("Zorro Tech")).toBe(true);
+    expect(isZorroTechName("Zorro")).toBe(true);
   });
 
-  it("isLumarkName rechaza otros nombres", () => {
-    expect(isLumarkName("Vocero")).toBe(false);
-    expect(isLumarkName("Acme")).toBe(false);
-    expect(isLumarkName("")).toBe(false);
+  it("rechaza otros nombres", () => {
+    expect(isZorroTechName("Acme")).toBe(false);
+    expect(isZorroTechName("Zorro Tecnología")).toBe(false);
+    expect(isZorroTechName("")).toBe(false);
   });
 });
 

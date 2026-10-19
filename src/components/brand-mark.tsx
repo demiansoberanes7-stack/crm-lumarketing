@@ -5,23 +5,23 @@ import {
   BRAND_MARK_BODY,
   BRAND_MARK_STROKE,
   BRAND_MARK_TAIL,
-  isLumarkName,
+  isZorroTechName,
 } from "@/lib/brand";
 import { faviconInitial } from "@/lib/favicon";
 import { cn } from "@/lib/utils";
 import { PhotoLogo } from "@/components/photo-logo";
 
 /**
- * El trazo de la marca LUMARK: la "L" geométrica con remate lima.
+ * El trazo de la marca Zorro Tech: la "Z" geométrica con remate lima.
  * El cuerpo hereda `currentColor`; píntalo con `text-brand` (o blanco sobre el
  * mosaico) y el remate sigue siendo lima.
  */
 export function BrandMark({
   className,
-  cyan = BRAND_ACCENT,
+  accent = BRAND_ACCENT,
 }: {
   className?: string;
-  cyan?: string;
+  accent?: string;
 }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
@@ -34,7 +34,7 @@ export function BrandMark({
       />
       <path
         d={BRAND_MARK_TAIL}
-        stroke={cyan}
+        stroke={accent}
         strokeWidth={BRAND_MARK_STROKE}
         strokeLinecap="round"
         fill="none"
@@ -45,7 +45,7 @@ export function BrandMark({
 
 /**
  * Mosaico cuadrado con degradado del acento: es el favicon en grande. Con la
- * marca LUMARK lleva la "L"; con un nombre white-label, la inicial.
+ * marca Zorro Tech lleva la "Z"; con un nombre white-label, la inicial.
  */
 export function BrandTile({
   branding,
@@ -62,8 +62,8 @@ export function BrandTile({
       )}
       aria-hidden
     >
-      {isLumarkName(branding.name) ? (
-        <BrandMark className="h-[64%] w-[64%]" cyan={BRAND_ACCENT_ON_TILE} />
+      {isZorroTechName(branding.name) ? (
+        <BrandMark className="h-[64%] w-[64%]" accent={BRAND_ACCENT_ON_TILE} />
       ) : (
         <span className="font-bold leading-none">{faviconInitial(branding.name)}</span>
       )}
@@ -93,8 +93,9 @@ const PHOTO_SIZE = {
 } as const;
 
 /**
- * La marca completa: trazo + wordmark "LUMARK" en mayúsculas.
- * Una instancia rebautizada ve en su lugar el mosaico con la inicial y su nombre (white-label).
+ * La marca completa: trazo + nombre en el estilo de la marca madre.
+ * Una instancia rebautizada ve en su lugar el mosaico con la inicial y su
+ * nombre (white-label).
  *
  * Si el negocio SUBIÓ un logo (Configuración → Negocio), esa foto es la que se
  * dibuja en la barra lateral y en la cabecera móvil; el trazo vectorial queda
@@ -111,12 +112,12 @@ export function BrandLogo({
   className?: string;
   logoUrl?: string | null;
 }) {
-  const lumark = isLumarkName(branding.name);
+  const marcaMadre = isZorroTechName(branding.name);
   return (
-    <span className={cn("flex min-w-0 items-center", lumark ? "gap-2" : "gap-2.5", className)}>
+    <span className={cn("flex min-w-0 items-center", marcaMadre ? "gap-2" : "gap-2.5", className)}>
       {logoUrl ? (
         <PhotoLogo src={logoUrl} alt={branding.name} className={cn("w-auto", PHOTO_SIZE[size])} />
-      ) : lumark ? (
+      ) : marcaMadre ? (
         <BrandMark className={cn("shrink-0 text-brand", MARK_SIZE[size])} />
       ) : (
         <BrandTile branding={branding} className={TILE_SIZE[size]} />
@@ -126,13 +127,13 @@ export function BrandLogo({
           // Siempre contraste con el fondo del tema: blanco sobre negro,
           // negro sobre blanco (el color heredado del botón era gris).
           "text-foreground",
-          lumark
+          marcaMadre
             ? "font-[800] leading-none tracking-[-0.045em]"
             : "truncate font-[750] leading-none tracking-tight",
-          lumark ? WORDMARK_SIZE[size] : size === "lg" ? "text-[26px]" : "text-[17px]"
+          marcaMadre ? WORDMARK_SIZE[size] : size === "lg" ? "text-[26px]" : "text-[17px]"
         )}
       >
-        {lumark ? "LUMARK" : branding.name}
+        {branding.name}
       </span>
     </span>
   );

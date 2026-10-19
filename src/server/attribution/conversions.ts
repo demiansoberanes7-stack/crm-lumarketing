@@ -25,7 +25,7 @@ import { getAttributionForConversation } from "@/server/attribution/store";
  *    aparece en Meta?", que sin ellas se contesta adivinando.
  */
 
-/** Los dos eventos que Vocero emite (nombres del catálogo de Meta, tal cual). */
+/** Los dos eventos que Zorro Tech emite (nombres del catálogo de Meta, tal cual). */
 export const QUALIFIED_EVENT = "QualifiedLead";
 export const PURCHASE_EVENT = "Purchase";
 

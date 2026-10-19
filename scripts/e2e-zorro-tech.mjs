@@ -1,4 +1,4 @@
-/** Flujos locales de LUMARK: ejecutar contra la base de pruebas, después del self-test. */
+/** Flujos locales de Zorro Tech: ejecutar contra la base de pruebas, después del self-test. */
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
 import { chromium } from "playwright";
@@ -103,7 +103,7 @@ try {
   let logged = false;
   for (let intento = 1; intento <= 3 && !logged; intento++) {
     await nav("/login");
-    await type('input[type="email"]', "e2e@vocero.test");
+    await type('input[type="email"]', "e2e@zorro.test");
     await type('input[type="password"]', "password-e2e-123");
     await page.locator('button[type="submit"]').click();
     try {
@@ -239,7 +239,7 @@ try {
   ok("cuenta inexistente devuelve error controlado", !missing.ok() && !!(await missing.json()).error);
   assert.deepEqual(errors, [], "errores JavaScript en navegador");
   ok("sin excepciones JavaScript en las pantallas verificadas");
-  console.log(`LUMARK: ${checks} comprobaciones OK`);
+  console.log(`Zorro Tech: ${checks} comprobaciones OK`);
 } finally {
   await browser.close();
 }

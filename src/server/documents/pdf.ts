@@ -107,12 +107,12 @@ export async function reportPdf(title: string, lines: string[]): Promise<Uint8Ar
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  doc.setTitle(title); doc.setAuthor("LUMARK");
+  doc.setTitle(title); doc.setAuthor("Zorro Tech");
   let page = doc.addPage([595.28, 841.89]);
   let y = 730;
   const clean = (s: string) => s.replace(/[\r\n\t]/g, " ").replace(/[–—]/g, "-").replace(/[^ -\u00ff]/g, "?");
   const header = () => {
-    page.drawText("LUMARK", { x: 42, y: 795, size: 23, font: bold, color: rgb(.72, .59, .24) });
+    page.drawText("Zorro Tech", { x: 42, y: 795, size: 23, font: bold, color: rgb(.72, .59, .24) });
     page.drawText(clean(title).slice(0, 85), { x: 42, y: 765, size: 12, font: bold });
     page.drawLine({ start: { x: 42, y: 750 }, end: { x: 553, y: 750 }, color: rgb(.72, .59, .24), thickness: 1 });
   };
@@ -132,7 +132,7 @@ export async function reportPdf(title: string, lines: string[]): Promise<Uint8Ar
     }
   }
   const pages = doc.getPages();
-  pages.forEach((p, i) => p.drawText(`LUMARK | MXN | ${i + 1} / ${pages.length}`, { x: 42, y: 35, font: regular, size: 9, color: rgb(.4, .4, .4) }));
+  pages.forEach((p, i) => p.drawText(`Zorro Tech | MXN | ${i + 1} / ${pages.length}`, { x: 42, y: 35, font: regular, size: 9, color: rgb(.4, .4, .4) }));
   return doc.save();
 }
 
