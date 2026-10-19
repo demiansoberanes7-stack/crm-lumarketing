@@ -163,6 +163,14 @@ describe("layout de acceso: la escenografía también es white-label", () => {
     expect(markup).toMatch(/Dental <span class="zx-tech">Zen<\/span>/);
   });
 
+  it("el sello de la puerta es la inicial de la marca, no una mascota fijada", async () => {
+    const markup = await authHtml([honeycat]);
+    expect(markup).toContain('<span class="zx-mark" aria-hidden="true">H</span>');
+    // El zorro era el activo de OTRO negocio y estaba público en /zorro-fox.png:
+    // si vuelve a esta pantalla, la puerta deja de ser white-label para todos.
+    expect(markup).not.toMatch(/zorro|fox|\.png/i);
+  });
+
   it("el acento se calcula para fondo claro aunque el negocio guarde uno oscuro", async () => {
     // #111 es tan oscuro que el set de tema claro lo oscurece aún más; lo que
     // importa es que la tarjeta clara no reciba el aclarado del tema oscuro.

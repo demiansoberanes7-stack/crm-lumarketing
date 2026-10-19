@@ -5,12 +5,12 @@
  * renombradas a `zx-` para no chocar con las utilidades de Tailwind ni con otras
  * pantallas del CRM. Solo la usa el layout (auth).
  *
- * Los puntos de adaptación (1100 / 780 / 420 y altura corta) y el zorro sentado
+ * Los puntos de adaptación (1100 / 780 / 420 y altura corta) y el sello apoyado
  * sobre el borde superior de la tarjeta se conservan; lo que ya NO está fijo es
  * el color: `--zx-accent`, `--zx-hover`, `--zx-soft`, `--zx-text` y `--zx-fg` los
  * pone el layout desde la marca de la instancia. Cada uso lleva el naranja
- * original como respaldo, porque si la marca no se puede leer (BD caída) la
- * pantalla tiene que seguir abriendo igual.
+ * original como respaldo (la lima en `.zx-mark`, que es nueva), porque si la
+ * marca no se puede leer (BD caída) la pantalla tiene que seguir abriendo igual.
  */
 
 .zx-page {
@@ -197,16 +197,28 @@
   line-height: 1.5;
 }
 
-/* ── El zorro, sentado sobre el borde superior de la tarjeta ── */
-.zx-fox {
+/* ── El sello de la marca, apoyado sobre el borde superior de la tarjeta ──
+ * Una sola medida manda todo: `--zx-sello` fija el lado, y altura, `top` y letra
+ * salen de ahí con calc (que sí hereda de los bloques responsivos). */
+.zx-mark {
+  --zx-sello: clamp(112px, 9vw, 136px);
   position: absolute;
   z-index: 2;
-  top: -191px;
-  right: -7%;
-  display: block;
-  width: clamp(205px, 19vw, 285px);
-  height: auto;
-  filter: drop-shadow(0 5px 5px rgba(71, 40, 20, 0.08));
+  top: calc(-0.55 * var(--zx-sello));
+  right: clamp(16px, 4%, 48px);
+  display: grid;
+  place-items: center;
+  width: var(--zx-sello);
+  height: var(--zx-sello);
+  border-radius: 26%;
+  background: linear-gradient(150deg, var(--zx-soft, #f6fbf1), #ffffff 70%);
+  border: 2px solid var(--zx-accent, #65a30d);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
+  color: var(--zx-text, #497509);
+  font-size: calc(0.46 * var(--zx-sello));
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
   pointer-events: none;
   user-select: none;
 }
@@ -225,10 +237,8 @@
   .zx-card {
     padding: 27px 30px 30px;
   }
-  .zx-fox {
-    right: -3%;
-    width: 220px;
-    top: -154px;
+  .zx-mark {
+    --zx-sello: 122px;
   }
 }
 
@@ -274,10 +284,9 @@
     justify-self: center;
     margin: 100px 0 0;
   }
-  .zx-fox {
-    width: 185px;
-    top: -129px;
-    right: -4px;
+  .zx-mark {
+    --zx-sello: 104px;
+    right: 18px;
   }
   .zx-card {
     padding: 26px 28px 29px;
@@ -327,10 +336,9 @@
   .zx-form-panel {
     margin-top: 88px;
   }
-  .zx-fox {
-    width: 157px;
-    top: -105px;
-    right: -3px;
+  .zx-mark {
+    --zx-sello: 92px;
+    right: 14px;
   }
   .zx-card {
     padding: 23px 19px 24px;
@@ -366,9 +374,8 @@
   .zx-form-panel {
     margin-top: 50px;
   }
-  .zx-fox {
-    top: -143px;
-    width: 220px;
+  .zx-mark {
+    --zx-sello: 114px;
   }
   .zx-card {
     padding-top: 22px;
