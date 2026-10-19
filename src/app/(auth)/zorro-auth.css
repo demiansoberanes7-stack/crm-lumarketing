@@ -1,12 +1,16 @@
 /*
- * Zorro Tech — pantalla de inicio de sesión.
+ * Pantalla de inicio de sesión de la instancia.
  *
- * Puerto casi literal de la plantilla oficial (zorro-tech-login-responsive),
- * con las clases renombradas a `zx-` para no chocar con las utilidades de
- * Tailwind ni con otras pantallas del CRM. Solo la usa el layout (auth).
+ * Heredada de la plantilla oficial (zorro-tech-login-responsive), con las clases
+ * renombradas a `zx-` para no chocar con las utilidades de Tailwind ni con otras
+ * pantallas del CRM. Solo la usa el layout (auth).
  *
- * Fidelidad: colores exactos, puntos de adaptación (1100 / 780 / 420 y
- * altura corta) y el zorro sentado sobre el borde superior de la tarjeta.
+ * Los puntos de adaptación (1100 / 780 / 420 y altura corta) y el zorro sentado
+ * sobre el borde superior de la tarjeta se conservan; lo que ya NO está fijo es
+ * el color: `--zx-accent`, `--zx-hover`, `--zx-soft`, `--zx-text` y `--zx-fg` los
+ * pone el layout desde la marca de la instancia. Cada uso lleva el naranja
+ * original como respaldo, porque si la marca no se puede leer (BD caída) la
+ * pantalla tiene que seguir abriendo igual.
  */
 
 .zx-page {
@@ -26,8 +30,8 @@
   background-image:
     linear-gradient(rgba(219, 220, 225, 0.48) 1px, transparent 1px),
     linear-gradient(90deg, rgba(219, 220, 225, 0.48) 1px, transparent 1px),
-    radial-gradient(ellipse at 83% 28%, rgba(255, 218, 194, 0.36), transparent 45%),
-    radial-gradient(ellipse at 4% 91%, rgba(255, 225, 207, 0.28), transparent 38%);
+    radial-gradient(ellipse at 83% 28%, var(--zx-soft, rgba(255, 218, 194, 0.36)), transparent 45%),
+    radial-gradient(ellipse at 4% 91%, var(--zx-soft, rgba(255, 225, 207, 0.28)), transparent 38%);
   background-size:
     81px 81px,
     81px 81px,
@@ -55,10 +59,12 @@
   font-weight: 850;
   line-height: 1.08;
   letter-spacing: -0.065em;
-  white-space: nowrap;
+  /* Un nombre de negocio cabe en una línea… o en dos. Con `nowrap`, una marca
+     larga desbordaba el panel y parte del nombre se salía de la pantalla. */
+  overflow-wrap: anywhere;
 }
 .zx-name .zx-tech {
-  color: #f56600;
+  color: var(--zx-accent, #f56600);
 }
 .zx-tagline {
   margin: 22px 0 0;
@@ -73,7 +79,7 @@
   height: 5px;
   margin-top: 22px;
   border-radius: 999px;
-  background: #f56600;
+  background: var(--zx-accent, #f56600);
 }
 
 /* ── Panel del formulario ── */
@@ -135,8 +141,8 @@
   font-size: 16px;
 }
 .zx-field input:focus {
-  border-color: #f56600;
-  box-shadow: 0 0 0 4px rgba(245, 102, 0, 0.12);
+  border-color: var(--zx-accent, #f56600);
+  box-shadow: 0 0 0 4px var(--zx-soft, rgba(245, 102, 0, 0.12));
 }
 .zx-submit {
   display: flex;
@@ -147,15 +153,15 @@
   margin-top: -4px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(90deg, #f76b00, #f05c00);
-  color: #fff;
+  background: linear-gradient(90deg, var(--zx-accent, #f76b00), var(--zx-hover, #f05c00));
+  color: var(--zx-fg, #fff);
   font-size: 20px;
   font-weight: 760;
   cursor: pointer;
   transition: background 0.18s, transform 0.18s, opacity 0.18s;
 }
 .zx-submit:hover {
-  background: #db5700;
+  background: var(--zx-hover, #db5700);
 }
 .zx-submit:active {
   transform: translateY(1px);
@@ -166,7 +172,7 @@
 }
 .zx-submit:focus-visible,
 .zx-page a:focus-visible {
-  outline: 3px solid rgba(245, 102, 0, 0.35);
+  outline: 3px solid var(--zx-soft, rgba(245, 102, 0, 0.35));
   outline-offset: 3px;
 }
 .zx-signup {
@@ -177,7 +183,7 @@
   line-height: 1.6;
 }
 .zx-signup a {
-  color: #f56600;
+  color: var(--zx-text, #f56600);
   text-decoration: none;
 }
 .zx-signup a:hover {

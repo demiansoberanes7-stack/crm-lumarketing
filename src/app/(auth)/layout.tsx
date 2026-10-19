@@ -1,24 +1,53 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Image from "next/image";
+import { DEFAULT_BRANDING, resolveAccentSet } from "@/lib/branding";
+import { getBrandingContextForRequest } from "@/server/branding";
 import "./zorro-auth.css";
 
 /**
- * Pantalla de acceso de Zorro Tech.
+ * Pantalla de acceso de la instancia.
  *
- * Rediseño visual (dos paneles: marca a la izquierda, formulario a la derecha,
- * zorro sentado sobre el borde superior de la tarjeta). La autenticación real
- * vive en cada página (login/register) y NO cambia aquí: este layout solo
- * aporta la escenografía y el contorno responsivo.
+ * Dos paneles: marca a la izquierda, formulario a la derecha, con el zorro
+ * sentado sobre el borde superior de la tarjeta. La autenticación real vive en
+ * cada página (login/register) y NO cambia aquí: este layout solo aporta la
+ * escenografía y el contorno responsivo.
+ *
+ * La escenografía es white-label: el nombre y el acento salen de la marca de la
+ * petición. Sin sesión (aquí es donde se está) manda la regla pública —una sola
+ * organización en la instancia, marca neutra si hay varias—, así que un cliente
+ * nunca ve el logo de otro en la puerta. El color se calcula para fondo CLARO
+ * aunque el usuario traiga el tema oscuro: esta pantalla siempre es clara y el
+ * acento de tema oscuro está aclarado a propósito para verse sobre negro.
  */
-export default function AuthLayout({
+export default async function AuthLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
+  const branding =
+    (await getBrandingContextForRequest().catch(() => null))?.branding ??
+    DEFAULT_BRANDING;
+  const acento = resolveAccentSet(branding.accent, "light");
+
+  const [primera, ...resto] = branding.name.split(" ");
+  const estilo = {
+    "--zx-accent": acento.accent,
+    "--zx-hover": acento.hover,
+    "--zx-soft": acento.soft,
+    "--zx-text": acento.text,
+    "--zx-fg": acento.fg,
+  } as CSSProperties;
+
   return (
-    <main className="zx-page">
-      <section className="zx-brand" aria-label="Zorro Tech">
+    <main className="zx-page" style={estilo}>
+      <section className="zx-brand" aria-label={branding.name}>
         <div className="zx-brand-inner">
-          <span className="zx-name" aria-label="Zorro Tech">
-            ZORRO <span className="zx-tech">TECH</span>
+          <span className="zx-name">
+            {primera}
+            {resto.length > 0 && (
+              <>
+                {" "}
+                <span className="zx-tech">{resto.join(" ")}</span>
+              </>
+            )}
           </span>
           <p className="zx-tagline">CRM multicanal de venta</p>
           <span className="zx-accent" aria-hidden="true" />

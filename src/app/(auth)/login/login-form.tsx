@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { signIn } from "@/lib/auth/client";
 
 /**
- * Inicio de sesión de Zorro Tech.
+ * Inicio de sesión de la instancia.
  *
  * Solo cambia la CAPA VISUAL (tarjeta y campos de la plantilla oficial). La
  * autenticación es la misma de siempre: `signIn.email` de Better Auth, con su
