@@ -2,8 +2,8 @@
 
 ---
 
-**Version:** 1.5.0  
-**Fecha:** 19 de Octubre de 2026  
+**Version:** 1.6.0  
+**Fecha:** 20 de Octubre de 2026  
 **Licencia:** MIT  
 **Repositorio:** Zorro Tech (monolito Next.js)  
 **Autor:** Zorro Tech / Ghostbreakfast  
@@ -47,8 +47,8 @@ Zorro Tech es un sistema de gestion de relaciones con clientes (CRM) open source
 - **Agente IA**: Asistente inteligente que responde conversaciones automaticamente con handoff a humanos
 - **Laboratorio**: Sistema de auto-evaluacion con 6 personas de prueba y scoring 0-100
 - **Pipeline Kanban**: Gestion de leads con etapas, arrastre, y historial de eventos
-- **Cotizaciones**: Creacion, envio por WhatsApp, PDF con IVA, aceptacion/rechazo
-- **Proyectos**: Gestion de proyectos con 7 etapas default, tareas, y reportes
+- **Cotizaciones**: Creacion, envio por WhatsApp/Messenger (PDF), Instagram (resumen) o respondiendo un hilo de correo, PDF con IVA, aceptacion/rechazo
+- **Proyectos**: Procesos personalizables por negocio (pasos y campos propios), tareas y reportes; cada proyecto conserva la definicion con la que nacio
 - **Agenda**: Programacion de citas con conectores Zoom y Google Calendar
 - **Finanzas**: Cuentas por cobrar, pagos, gastos, balance mensual
 - **Email**: Integracion IMAP/SMTP para envio y recepcion
@@ -581,7 +581,7 @@ y cotiza. Guia: [copiloto-agente.md](copiloto-agente.md).
 
 | Tabla | Descripcion | Columnas clave |
 |-------|-------------|----------------|
-| `quote` | Cotizaciones | organizationId, contactId, number (COT-XXXX), version, status, subtotal, tax, total |
+| `quote` | Cotizaciones | organizationId, contactId, number (COT-XXXX), version, status, subtotal, tax, total, sendChannel |
 | `quote_item` | Items de cotizacion | quoteId, description, quantity, unitPrice |
 | `catalog_product` | Catalogo de productos | organizationId, name, price (cents), currency |
 
@@ -589,7 +589,9 @@ y cotiza. Guia: [copiloto-agente.md](copiloto-agente.md).
 
 | Tabla | Descripcion | Columnas clave |
 |-------|-------------|----------------|
-| `project` | Proyectos | organizationId, code (PRJ-XXXX), name, currentStageId, archivedAt |
+| `project` | Proyectos | organizationId, code (PRJ-XXXX), name, projectType, projectTypeLabel (congelada), archivedAt |
+| `project_template` | Procesos del negocio | organizationId, key, label, steps (jsonb), tasks (jsonb), isSystem (solo negocio principal), isDefault, deletedAt |
+| `project_step` | Pasos del proyecto | projectId, stepKey, position, status, data (jsonb), definition (jsonb congelada), completedAt |
 | `project_stage` | Etapas de proyecto | organizationId, name, position |
 | `project_task` | Tareas | projectId, title, status (no_empezado/pendiente/terminado) |
 
@@ -982,7 +984,8 @@ Mensaje entrante
 - Items con cantidad y precio unitario
 - Descuento (fijo o porcentaje)
 - IVA configurable (default 16%)
-- Envio por WhatsApp (PDF) o Instagram/Messenger (texto)
+- Envio por WhatsApp/Messenger (PDF con nombre legible `Cotizacion <producto> - <cliente>.pdf`), Instagram (resumen en texto) o respondiendo un hilo del buzon de correo (PDF adjunto, asunto con `Re:`, `In-Reply-To` del propio hilo)
+- El destino de correo se elige por cuenta + mensaje del hilo; el servidor nunca acepta una direccion tecleada
 - Estados: draft -> sent -> viewed -> accepted/rejected
 
 ```typescript
@@ -995,7 +998,10 @@ total = subtotal - discount + tax
 
 ## Proyectos
 
-- 7 etapas default: Activacion, Diagnostico, Calendario de Entregable, Creacion, Terminacion, Reporte de Resultados, Renovacion
+- Procesos (`project_template`) personalizables por negocio: pasos con campos propios y tareas iniciales (seguimientos)
+- Los 3 procesos base son de solo lectura en el negocio principal (`is_system`) y copias editables en los demas; el owner puede crear, renombrar, reordenar y borrar los propios
+- Al crear el proyecto se congela la etiqueta y la definicion de cada paso (`project.projectTypeLabel`, `project_step.definition`): renombrar o borrar un proceso no reescribe proyectos existentes
+- No se puede borrar el ultimo proceso activo (409) ni los del sistema (403)
 - Codigo secuencial: PRJ-XXXX
 - Transiciones con optimistic locking (expectedStageId)
 - Tareas con estados: no_empezado, pendiente, terminado
@@ -1231,6 +1237,10 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | `/api/projects/[id]/tasks` | GET/POST/PUT/DELETE | CRUD de tareas |
 | `/api/projects/[id]/transition` | POST | Transicionar etapa |
 | `/api/projects/[id]/report` | GET | Reporte del proyecto |
+| `/api/projects/[id]/steps` | GET | Pasos congelados del proyecto |
+| `/api/projects/[id]/steps/[stepKey]` | PUT | Guardar/validar un paso |
+| `/api/project-templates` | GET/POST | Listar procesos del negocio / crear uno (POST solo owner) |
+| `/api/project-templates/[id]` | GET/PUT/DELETE | Ver, renombrar o editar un proceso / borrarlo (solo owner; rechaza los del sistema) |
 
 ## Cotizaciones
 
@@ -1238,7 +1248,7 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 |------|--------|-------------|
 | `/api/quotes` | GET/POST | Listar/crear cotizaciones |
 | `/api/quotes/[id]` | GET/PUT | Obtener/actualizar |
-| `/api/quotes/[id]/send` | POST | Enviar cotizacion |
+| `/api/quotes/[id]/send` | POST | Enviar cotizacion. Chat: `{channel, conversationId?}`. Correo: `{channel:"email", emailAccountId, emailMessageId}` (el destinatario lo resuelve el servidor) |
 | `/api/quotes/[id]/status` | PUT | Cambiar estado |
 | `/api/quotes/[id]/pdf` | GET | Generar PDF |
 

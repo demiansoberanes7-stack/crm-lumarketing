@@ -252,3 +252,41 @@ Dejada, con nombre y apellido (es decisión del dueño, no un olvido):
   `qualification_criteria`, `google_ads_metric` en bucle cerrado, columnas de
   `email_account` sin escritor): borrar tablas es migración irreversible sobre la BD de
   producción; se deja documentado.
+
+### 6.6 Entrega v1.6.0 (20-10-2026) — qué se hizo y qué queda abierto
+
+Cerrado en código, con pruebas unitarias (`pnpm test`: 135 archivos / 1209 pruebas,
+`typecheck`, `lint`, `db:guard` y `next build` en verde):
+
+- **Procesos personalizables por negocio** (`project_template`, migración 0079). Los 3
+  base son `is_system` sólo en el negocio más antiguo; en los demás son copias editables.
+  Cada proyecto congela etiqueta y definición de pasos, así que renombrar o borrar un
+  proceso no reescribe proyectos viejos.
+- **Cotizaciones también por correo**: el cotizador lista los hilos del buzón y responde
+  dentro del hilo elegido con el PDF adjunto. El destinatario, asunto `Re:` e
+  `In-Reply-To` los resuelve el servidor desde sus propias filas (tenant-scoped); la API
+  no acepta una dirección tecleada.
+- **Bandeja con IA en negocios recién creados**: `action:"none"` ya no es un silencio
+  infinito —si nadie ha respondido, el turno saluda con la bienvenida del negocio— y cada
+  turno mudo se loggea con el motivo (`handoff`, `ia_apagada`, modelo calló).
+- **PDF de cotización en Messenger**: los documentos salen por multipart con el nombre
+  legible; con `attachmentUrl` el cliente veía la clave que genera el proveedor.
+- **Inteligencia**: el historial en vivo es de la consulta buscada; la serie del nicho
+  del catálogo que se parece aparece ANIDADA y etiquetada con su % de parecido.
+
+Abierto a propósito:
+
+- **`quotes.send` del MCP y del agente de la Bandeja siguen siendo de chat.** El correo no
+  es un `Channel` ni tiene filas en `conversation`, y los hilos entrantes quedan con
+  `contact_id = null` (contacto no tiene columna de email). Que el agente cotice por correo
+  exige unirlas antes; se deja como feature, no como parche.
+- **El envío sale dentro de la transacción** (igual que WhatsApp antes): si el `update`
+  posterior fallara, el cliente ya recibió el archivo y la cotización sigue en `draft`.
+- **El selector de correo usa `/api/email/accounts`, que es `withOwner`**: un miembro que
+  no es owner no ve hilos de correo en el cotizador (sí ve chats).
+- **WAHA sigue respondiendo 200 aunque el `after()` falle** (D-01): el 200 ya va enviado,
+  así que el reintento exige procesar en línea; no se tocó sin poder probar contra el
+  proveedor.
+- **Lo multipart de Zernio no está verificado contra el proveedor**: el arreglo está
+  cubierto por prueba unitaria del cuerpo de la petición, no por un envío real. Hay que
+  mandarle un PDF a un chat de Messenger en producción para confirmarlo.

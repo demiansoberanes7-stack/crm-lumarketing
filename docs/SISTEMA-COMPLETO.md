@@ -1,10 +1,13 @@
 # Zorro Tech — Documentación Completa del Sistema
 
-**Versión**: 1.5.0  
-**Fecha de actualización**: 19 de octubre de 2026  
+**Versión**: 1.6.0  
+**Fecha de actualización**: 20 de octubre de 2026  
 **Propietario**: Zorro Tech / Demian Soberanes  
-**Repositorio**: `demiansoberanes7-stack/crm-lumarketing` (GitHub privado)  
+**Repositorio**: `demiansoberanes7-stack/crm-lumarketing` (GitHub **PÚBLICO** — verificado con `gh repo view`)  
 **Base**: fork de un CRM open source (MIT); el aviso de copyright original vive en `LICENSE`
+
+> Al ser público, cualquier archivo que se sube es legible por cualquiera: nunca
+> `.env`, credenciales, copias de base de datos ni artefactos con datos reales.
 
 ---
 
@@ -745,10 +748,15 @@ type QuoteStatus = "draft" | "unsaved" | "saved" | "sent" | "viewed"
 - Row-level locking
 
 #### `sendQuote()`
-- Bloquea cotización (incremento de versión)
-- **WhatsApp**: Genera PDF y envía como media
-- **Instagram/Messenger**: Envía resumen en texto
-- Registra evento `sent`
+Firma: `sendQuote(organizationId, quoteId, target)`; `target` es
+`{channel: "whatsapp"|"instagram"|"messenger", conversationId?}` o
+`{channel: "email", emailAccountId, emailMessageId}`.
+- Bloquea la cotización (`FOR UPDATE`); sólo envía `draft`, congela versión y fija `lockedAt`
+- **Chat**: usa el chat elegido en el desplegable (validado por canal y `isTest=false`) o, si no se manda ninguno, el chat del contacto. Los canales con `outboundMedia` (WhatsApp, Messenger) reciben el PDF nombrado `Cotizacion <producto> - <cliente>.pdf`; Instagram degrada a resumen en texto
+- **Correo**: responde DENTRO del hilo elegido. Cuenta y mensaje ancla se resuelven con las filas propias (tenant-scoped); el destinatario lo dicta el hilo, nunca un campo del navegador; el asunto hereda `Re:` y el PDF viaja adjunto con el mismo nombre legible
+- Guarda `sendChannel` (`email` incluido), inserta evento `sent` y publica webhook `quote.sent`
+- El envío real ocurre dentro de la transacción (como ya pasaba con WhatsApp): si el `update` posterior fallara, el cliente recibió el archivo y la cotización queda en `draft`
+- La acción MCP `quotes.send` sigue siendo de chat; el correo se manda desde el cotizador
 
 #### `changeQuoteStatus()`
 - Aceptar/rechazar
@@ -857,6 +865,20 @@ function money(amount: number): string
 5. Terminacion de Entregable
 6. Reporte de Resultados
 7. Renovacion
+
+### Procesos personalizables por negocio (`project_template`)
+
+Los pasos de un proyecto ya no vienen de un catálogo fijo del código: cada
+negocio tiene sus propios **procesos** (`/project-templates`, editables por el
+owner) y cada proyecto **congela** al nacer la etiqueta y la definición de sus
+pasos (`project.projectTypeLabel`, `project_step.definition`).
+
+- `src/lib/project-templates.ts` — límites (`PROJECT_TEMPLATE_LIMITS`), `slugifyProjectKey`, `uniqueProjectKey`, zod `projectTemplateInputSchema` (≥1 paso, clave reservada `general`, pasos/campos sin duplicados, listas con opciones), `DEFAULT_PROJECT_TEMPLATE_SEEDS`, `resolveStepDefinition`, `frozenStepDefinition`
+- `src/server/projects/templates.ts` — `ensureProjectTemplates` siembra los 3 procesos base con `isSystem` **sólo en el negocio principal** (el más antiguo); en los demás entran como copias editables. `createProjectTemplate` valida cupo por organización y deriva la clave contra todas (incluidas las borradas lógicas). `updateProjectTemplate`/`deleteProjectTemplate` rechazan los del sistema (403) y el último proceso activo (409), promoviendo un nuevo default en la misma transacción
+- `src/server/projects/steps.ts` — `ensureProjectSteps` sembró pasos desde la plantilla elegida (o el catálogo estático si no hay) y `saveProjectStep` re-congela `definition`; `listProjectSteps` resuelve cada renglón con su definición congelada, así que renombrar o borrar un proceso después no reescribe proyectos viejos
+- Los "seguimientos" del proceso son sus tareas iniciales (`templateStepTasks`)
+- Cualquier miembro puede crear proyectos; sólo el owner administra procesos
+- Migración `drizzle/0079_project_templates.sql`
 
 ### Funcionalidades (`src/server/projects/service.ts`)
 
