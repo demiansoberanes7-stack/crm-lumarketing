@@ -255,6 +255,10 @@ Dejada, con nombre y apellido (es decisión del dueño, no un olvido):
 
 ### 6.6 Entrega v1.6.0 (20-10-2026) — qué se hizo y qué queda abierto
 
+**Desplegado en producción** el 20-10-2026 a las 18:29 UTC, con `main` en `62957c2` (7 commits
+sobre `269c3c7`): CI y Build & Push en verde, `[migrate] migraciones aplicadas` en el log del
+contenedor y `project_template` ya creada con 0 filas — los procesos se siembran al usarlos.
+
 Cerrado en código, con pruebas unitarias (`pnpm test`: 135 archivos / 1209 pruebas,
 `typecheck`, `lint`, `db:guard` y `next build` en verde):
 
@@ -273,6 +277,9 @@ Cerrado en código, con pruebas unitarias (`pnpm test`: 135 archivos / 1209 prue
   legible; con `attachmentUrl` el cliente veía la clave que genera el proveedor.
 - **Inteligencia**: el historial en vivo es de la consulta buscada; la serie del nicho
   del catálogo que se parece aparece ANIDADA y etiquetada con su % de parecido.
+- **Contactos sin filtro de etapa**: el selector del embudo sale de la pantalla. Sigue
+  listando la cartera (`?won=1`, igual que antes) y la etapa sigue pintada en cada ficha;
+  el parámetro `?stage=` del API queda para cualquier otro cliente.
 
 Abierto a propósito:
 

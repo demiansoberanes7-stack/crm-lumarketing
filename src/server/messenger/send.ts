@@ -33,8 +33,8 @@ export function buildMessengerSendBody(input: {
   const body: Record<string, unknown> = {
     recipient: { id: input.recipient },
     message: { text: input.text },
-    // RESPONSE dentro de la ventana estándar de 24 h. Fuera, Messenger no
-    // la única vía es la etiqueta HUMAN_AGENT (7 días).
+    // RESPONSE dentro de la ventana estándar de 24 h. Fuera de ella, la única
+    // vía es MESSAGE_TAG con la etiqueta HUMAN_AGENT (ventana de 7 días).
     messaging_type: input.humanAgentTag ? "MESSAGE_TAG" : "RESPONSE",
   };
   if (input.humanAgentTag) body.tag = "HUMAN_AGENT";
