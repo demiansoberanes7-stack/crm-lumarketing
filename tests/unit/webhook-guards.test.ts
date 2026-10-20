@@ -19,15 +19,18 @@ vi.mock("next/server", () => ({
   },
 }));
 
-vi.mock("@/lib/db", () => ({
-  getDb: () => ({
-    execute: async () => {
-      if (h.throwOnExecute) throw new Error("bd caída");
-      return { rows: h.rows };
-    },
-  }),
-  schema: {},
-}));
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db")>();
+  return {
+    ...actual,
+    getDb: () => ({
+      execute: async () => {
+        if (h.throwOnExecute) throw new Error("bd caída");
+        return { rows: h.rows };
+      },
+    }),
+  };
+});
 
 vi.mock("@/server/inbox/ingest", () => ({
   processMessagesValue: async (value: unknown) => {

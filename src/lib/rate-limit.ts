@@ -5,7 +5,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { getDb, schema } from "@/lib/db";
 
 type Bucket = number[]; // timestamps (ms) de los intentos
 
@@ -55,25 +55,32 @@ export async function checkDistributedRateLimit(
 ): Promise<RateLimitResult> {
   const windowStartedAt = new Date(Math.floor(now.getTime() / opts.windowMs) * opts.windowMs);
   const expiresAt = new Date(windowStartedAt.getTime() + opts.windowMs);
+  // `sql` crudo no aplica el códec de la columna: postgres.js recibe un Date y
+  // falla en bytes.js. `sql.param` lo convierte al ISO que espera timestamp.
+  const windowParam = sql.param(windowStartedAt, schema.rateLimitBucket.windowStartedAt);
+  const expiresParam = sql.param(expiresAt, schema.rateLimitBucket.expiresAt);
   try {
     const result = await getDb().execute(sql`
       INSERT INTO "rate_limit_bucket" ("key", "window_started_at", "count", "expires_at")
-      VALUES (${key}, ${windowStartedAt}, 1, ${expiresAt})
+      VALUES (${key}, ${windowParam}, 1, ${expiresParam})
       ON CONFLICT ("key") DO UPDATE SET
         "window_started_at" = CASE
-          WHEN "rate_limit_bucket"."window_started_at" = ${windowStartedAt}
+          WHEN "rate_limit_bucket"."window_started_at" = ${windowParam}
             THEN "rate_limit_bucket"."window_started_at"
-          ELSE ${windowStartedAt}
+          ELSE ${windowParam}
         END,
         "count" = CASE
-          WHEN "rate_limit_bucket"."window_started_at" = ${windowStartedAt}
+          WHEN "rate_limit_bucket"."window_started_at" = ${windowParam}
             THEN "rate_limit_bucket"."count" + 1
           ELSE 1
         END,
-        "expires_at" = ${expiresAt}
+        "expires_at" = ${expiresParam}
       RETURNING "count"
     `);
-    const count = Number((result as { rows?: Array<{ count?: number }> }).rows?.[0]?.count ?? opts.max + 1);
+    const rows = Array.isArray(result)
+      ? result
+      : ((result as { rows?: Array<{ count?: number }> }).rows ?? []);
+    const count = Number(rows[0]?.count ?? opts.max + 1);
     return { allowed: count <= opts.max, remaining: Math.max(0, opts.max - count) };
   } catch (error) {
     // Una caída de la tabla no debe descartar webhooks legítimos; queda visible
