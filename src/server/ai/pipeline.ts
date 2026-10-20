@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Channel } from "@/lib/channels";
 import { newId } from "@/lib/db/ids";
@@ -49,6 +49,22 @@ function coalesceMap(): Map<string, CoalesceEntry> {
     globalForAgent.__agentCoalesce = new Map();
   }
   return globalForAgent.__agentCoalesce;
+}
+
+/**
+ * TODO silencio se reporta. Un turno que no responde sin dejar rastro es
+ * indistinguible de una IA rota: el dueño escribe "no contesta", y auditoría
+ * tiene que adivinar entre cinco puertas. El motivo va en el log, no en la
+ * interfaz, porque la interfaz no puede saber lo que el turno decidió.
+ */
+function silentTurn(
+  conversationId: string,
+  organizationId: string,
+  reason: string
+): void {
+  console.info(
+    `[agente] turno sin respuesta (${reason}) en ${conversationId} (org ${organizationId})`
+  );
 }
 
 /** Punto de entrada con debounce (mensajes entrantes reales). */
@@ -134,7 +150,16 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   }
 
   // Condiciones de silencio: handoff activo o IA apagada en la conversación.
-  if (conversation.handoffAt || !conversation.aiEnabled) return;
+  if (conversation.handoffAt || !conversation.aiEnabled) {
+    silentTurn(
+      conversationId,
+      organizationId,
+      conversation.handoffAt
+        ? `handoff:${conversation.handoffReason ?? "activo"}`
+        : "ia_apagada_en_conversacion"
+    );
+    return;
+  }
 
   const profileRows = await db
     .select()
@@ -142,7 +167,10 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .where(eq(schema.agentProfile.organizationId, organizationId))
     .limit(1);
   const profile = profileRows[0];
-  if (!profile) return;
+  if (!profile) {
+    silentTurn(conversationId, organizationId, "sin_perfil_de_agente");
+    return;
+  }
   const agentRules = normalizeAgentRules(profile.rules);
   // El toggle global aplica a conversaciones reales; el Laboratorio evalúa el
   // comportamiento configurado aunque el agente aún no esté encendido.
@@ -161,7 +189,10 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .limit(20);
   history.reverse();
   const lastInbound = [...history].reverse().find((m) => m.direction === "in");
-  if (!lastInbound) return;
+  if (!lastInbound) {
+    silentTurn(conversationId, organizationId, "sin_mensaje_entrante");
+    return;
+  }
 
   /**
    * «Activo en conversaciones nuevas» (Ajustes → Agente → Respuesta).
@@ -185,9 +216,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       )
       .limit(1);
     if (atendida.length === 0) {
-      console.info(
-        `[agente] conversación nueva y el agente configurado para no abrirlas: se deja para un humano (org ${organizationId})`
-      );
+      silentTurn(conversationId, organizationId, "conversacion_nueva_para_humano");
       return;
     }
   }
@@ -196,11 +225,13 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   // hace handoff (eso dejaba la conversación muda para siempre); el agente se
   // activa solo cuando el cliente vuelve a escribir.
   if (!conversation.isTest && (replyWindowMs === null || !isWindowOpenFor(conversation.lastInboundAt, replyWindowMs))) {
+    silentTurn(conversationId, organizationId, "ventana_cerrada");
     return;
   }
 
   // Patrón de respaldo ANTES del LLM (FR-022).
   if (agentRules.handoffOnRequest && lastInbound.text && matchesHandoffIntent(lastInbound.text)) {
+    silentTurn(conversationId, organizationId, "handoff_patron_previo");
     await applyHandoff(conversationId, organizationId, "cliente");
     return;
   }
@@ -267,7 +298,14 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: buildAgentSystemPrompt({ profile, kb, catalog, stages, agenda }),
+      content: buildAgentSystemPrompt({
+        profile,
+        kb,
+        catalog,
+        stages,
+        agenda,
+        channel: conversation.channel as Channel,
+      }),
     },
     ...history
       .filter((m) => m.text)
@@ -322,7 +360,15 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   }
   if (!action) {
     if (!result.ok) {
-      if (result.error === "not_configured") return;
+      if (result.error === "not_configured") {
+        // Falta clave o modelo: el turno muere sin llamada al proveedor. Es lo
+        // único que deja muda a UNA organización con el resto funcionando, y
+        // sin este log nadie lo ve.
+        console.warn(
+          `[agente] IA sin configurar para esta organización (${result.detail}): el turno no responde (org ${organizationId})`
+        );
+        return;
+      }
       console.error(`[agente] fallo del proveedor (raw): ${result.detail}`);
       /**
        * Escalar (FR-022) solo cuando un humano DEBE intervenir:
@@ -435,8 +481,34 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   }
 
   switch (action.action) {
-    case "none":
+    case "none": {
+      /**
+       * El modelo calla ante mensajes sueltos ("Prueba 1", "hola" repetido) y el
+       * cliente se queda sin ninguna señal: quien prueba su propio negocio lee
+       * "la IA no contesta" — y con razón, porque no hay ni un rastro del
+       * silencio. Si NADIE ha respondido jamás en esta conversación, el saludo
+       * del negocio cubre el turno; si ya fue atendida, se respeta el `none`.
+       */
+      silentTurn(conversationId, organizationId, "modelo_eligio_no_responder");
+      if (conversation.isTest) return;
+      const [atendida] = await db
+        .select({ id: schema.message.id })
+        .from(schema.message)
+        .where(
+          and(
+            eq(schema.message.conversationId, conversationId),
+            eq(schema.message.direction, "out"),
+            ne(schema.message.status, "failed")
+          )
+        )
+        .limit(1);
+      if (atendida) return;
+      await deliverReply(
+        conversation,
+        profile.greeting?.trim() || "¡Hola! Gracias por escribir. ¿En qué te puedo ayudar?"
+      );
       return;
+    }
     case "reply":
       await deliverReply(conversation, action.text);
       return;
@@ -598,7 +670,10 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         if (!quote) throw new Error("La cotización no quedó disponible después de crearla");
 
         if (quote.status === "draft") {
-          await sendQuote(organizationId, quoteId, quoteChannel, conversation.id);
+          await sendQuote(organizationId, quoteId, {
+            channel: quoteChannel,
+            conversationId: conversation.id,
+          });
         }
 
         const total = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(quote.total / 100);

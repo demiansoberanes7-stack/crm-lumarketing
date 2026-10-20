@@ -65,7 +65,9 @@ const inboundAt = new Date();
 function queueTurn(
   profilePatch: Record<string, unknown>,
   newestFirst: unknown[],
-  atendidaPorHumano = false
+  atendidaPorHumano = false,
+  /** La búsqueda de "¿ya respondió alguien?" que hace el turno cuando el modelo calla. */
+  yaAtendida: unknown[] = []
 ) {
   const gate = profilePatch.activeInNewConversations === false;
   selectQueue.push(
@@ -87,7 +89,8 @@ function queueTurn(
     ...(gate ? [atendidaPorHumano ? [{ id: "msg_humano" }] : []] : []),
     [], // base de conocimiento
     [], // catálogo
-    []  // etapas del pipeline
+    [], // etapas del pipeline
+    yaAtendida
   );
 }
 
@@ -135,6 +138,49 @@ describe("activo en conversaciones nuevas", () => {
     expect(mocks.sendText).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId: "cv_1" })
     );
+  });
+});
+
+describe("el modelo decide no responder (action: none)", () => {
+  /**
+   * «Prueba 1», «hola» suelto, un emoji: el LLM devuelve `none` y el cliente no
+   * recibe NADA. En un negocio recién creado eso se lee como "la IA no
+   * contesta", y en producción no quedaba ni un rastro del silencio.
+   */
+  beforeEach(() => {
+    mocks.chatJson.mockResolvedValue({ ok: true, data: { action: "none" } });
+  });
+
+  it("saluda con la bienvenida del negocio si nadie ha respondido nunca", async () => {
+    queueTurn({ greeting: "¡Hola! Somos Honeycat 🐱" }, [mensajeCliente]);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "cv_1",
+        text: "¡Hola! Somos Honeycat 🐱",
+        aiGenerated: true,
+      })
+    );
+  });
+
+  it("usa un saludo genérico si el negocio no escribió bienvenida", async () => {
+    queueTurn({ greeting: null }, [mensajeCliente]);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining("Gracias por escribir") })
+    );
+  });
+
+  it("respeta el silencio cuando la conversación ya fue atendida", async () => {
+    queueTurn({ greeting: "¡Hola!" }, [mensajeCliente], false, [{ id: "msg_humano" }]);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).not.toHaveBeenCalled();
   });
 });
 

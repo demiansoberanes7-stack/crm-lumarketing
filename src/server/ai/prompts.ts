@@ -1,4 +1,5 @@
 import type { schema } from "@/lib/db";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { normalizeAgentFichaFields, normalizeAgentRules } from "@/lib/agent-config";
 
 type AgentProfile = typeof schema.agentProfile.$inferSelect;
@@ -68,6 +69,11 @@ export function buildAgentSystemPrompt(input: {
    * token en hablar de horarios: la agenda no existe aquí.
    */
   agenda?: boolean;
+  /**
+   * Canal real de la conversación. Decirlo mal ("asistente de WhatsApp" en un
+   * chat de Messenger) empuja al modelo a prometer cosas del canal equivocado.
+   */
+  channel?: Channel;
 }): string {
   const { profile } = input;
   const stageNames = input.stages.map((s) => s.name).join(" | ");
@@ -89,7 +95,7 @@ export function buildAgentSystemPrompt(input: {
     : [];
   const actionLines = [
     "En cada turno respondes ÚNICAMENTE un objeto JSON con UNA acción:",
-    '- {"action":"none"} — no responder nada.',
+    '- {"action":"none"} — no responder nada: SOLO cuando el mensaje no pide nada y el negocio ya respondió algo en esta conversación. Si el cliente sigue sin respuesta, responde siempre (saluda y ofrece ayuda).',
     '- {"action":"reply","text":"..."} — responder al cliente.',
     rules.captureLeadData
       ? `- {"action":"update_lead","note":"...","ficha":{"${fichaFields[0]?.key ?? "interes"}":"..."},"reply":"..."} — guardar una nota y los datos concretos revelados (ficha y reply opcionales).`
@@ -162,7 +168,7 @@ export function buildAgentSystemPrompt(input: {
   ].filter(Boolean);
 
   return [
-    `Eres "${profile.name}", el asistente de WhatsApp de este negocio. ${languageLine}`,
+    `Eres "${profile.name}", el asistente de ${CHANNEL_LABEL[input.channel ?? "whatsapp"]} de este negocio. ${languageLine}`,
     ...businessLines,
     profile.tone ? `Tono: ${profile.tone}` : null,
     profile.instructions ? `Instrucciones del negocio:\n${profile.instructions}` : null,
