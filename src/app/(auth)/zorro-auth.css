@@ -211,6 +211,7 @@
   width: var(--zx-sello);
   height: var(--zx-sello);
   border-radius: 26%;
+  overflow: hidden;
   background: linear-gradient(150deg, var(--zx-soft, #f6fbf1), #ffffff 70%);
   border: 2px solid var(--zx-accent, #65a30d);
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
@@ -221,6 +222,10 @@
   letter-spacing: -0.02em;
   pointer-events: none;
   user-select: none;
+}
+/* La cara del zorro ocupa todo el sello (la imagen ya es cuadrada). */
+.zx-fox {
+  object-fit: cover;
 }
 
 /* ── Tablet ── */

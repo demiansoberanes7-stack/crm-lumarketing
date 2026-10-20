@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -89,7 +89,7 @@ export async function createIntelJob(input: {
         input.organizationId,
         eq(schema.intelJob.status, "running"),
         eq(schema.intelJob.kind, input.kind),
-        sql`${schema.intelJob.createdAt} < ${staleBefore}`
+        lt(schema.intelJob.createdAt, staleBefore)
       )
     );
 

@@ -1,5 +1,6 @@
+import Image from "next/image";
 import type { CSSProperties, ReactNode } from "react";
-import { BRAND_TAGLINE } from "@/lib/brand";
+import { BRAND_TAGLINE, isZorroTechName } from "@/lib/brand";
 import { DEFAULT_BRANDING, resolveAccentSet } from "@/lib/branding";
 import { getBrandingContextForRequest } from "@/server/branding";
 import "./zorro-auth.css";
@@ -26,7 +27,10 @@ export default async function AuthLayout({
   const branding =
     (await getBrandingContextForRequest().catch(() => null))?.branding ??
     DEFAULT_BRANDING;
-  const acento = resolveAccentSet(branding.accent, "light");
+  const marcaMadre = isZorroTechName(branding.name);
+  // La puerta de Zorro Tech es naranja; un negocio white-label conserva su
+  // propio acento para no romper su identidad.
+  const acento = resolveAccentSet(marcaMadre ? "#f56600" : branding.accent, "light");
 
   const [primera, ...resto] = branding.name.split(" ");
   const sello = (branding.name.trim().charAt(0) || "Z").toUpperCase();
@@ -62,7 +66,18 @@ export default async function AuthLayout({
             la marca; un `aria-hidden` basta porque el nombre ya está en el panel
             de al lado y en el `aria-label` de este. */}
         <span className="zx-mark" aria-hidden="true">
-          {sello}
+          {marcaMadre ? (
+            <Image
+              src="/brand/zorro-tech.png"
+              alt=""
+              fill
+              sizes="136px"
+              priority
+              className="zx-fox"
+            />
+          ) : (
+            sello
+          )}
         </span>
         {children}
       </section>

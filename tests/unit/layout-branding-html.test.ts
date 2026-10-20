@@ -149,9 +149,12 @@ describe("layout de acceso: la escenografía también es white-label", () => {
     const markup = await authHtml([honeycat, { id: "org_1", metadata: null }]);
     expect(markup).not.toContain("Honeycat");
     expect(markup).toContain(DEFAULT_BRANDING.name);
+    // La puerta de la marca madre es naranja y lleva su cara de zorro; el acento
+    // neutro del catálogo solo se usa cuando el negocio no es Zorro Tech.
     expect(markup).toContain(
-      `--zx-accent:${resolveAccentSet(DEFAULT_BRANDING.accent, "light").accent}`
+      `--zx-accent:${resolveAccentSet("#f56600", "light").accent}`
     );
+    expect(markup).toContain("/brand/zorro-tech.png");
   });
 
   it("nombre de dos palabras: la segunda pinta en el color de la marca", async () => {

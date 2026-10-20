@@ -24,6 +24,7 @@ export function AppShell({
   branding,
   logoUrl,
   userName,
+  avatar,
   role,
   theme,
   commit,
@@ -33,6 +34,8 @@ export function AppShell({
   /** Logo subido en Configuración → Negocio (foto, no el trazo vectorial). */
   logoUrl?: string | null;
   userName: string;
+  /** Icono de avatar elegido (cat/fox/lion/dog) o null para iniciales. */
+  avatar?: string | null;
   role: string;
   theme: ThemePreference;
   /** Commit resuelto en el servidor (build-arg o variable de la plataforma). */
@@ -101,6 +104,7 @@ export function AppShell({
         logoUrl={logoUrl}
         commit={commit}
         userName={userName}
+        avatar={avatar}
         role={role}
         open={navOpen}
         onClose={() => setNavOpen(false)}

@@ -5,12 +5,20 @@ import { scoped } from "@/lib/db/tenant";
 import { getIntelCredentials } from "@/server/intel/credentials";
 import { countEstablishments } from "@/server/intel/sources/denue";
 import { fetchSuggestions } from "@/server/intel/sources/suggest";
-import { addDays, utcDay } from "@/server/intel/service";
+import { getTrendsFromProviders } from "@/server/intel/trends-orchestrator";
+import {
+  addDays,
+  getGtReport,
+  googleGeoToInegi,
+  utcDay,
+  type GtReport,
+} from "@/server/intel/service";
 import {
   classify,
   describe,
   growthZ,
   normalizeText,
+  toIndex,
   type Classification,
   type Descriptive,
 } from "@/server/intel/stats";
@@ -148,6 +156,31 @@ export type RelatedKeyword = {
   } | null;
 };
 
+/** Relacionado de Google Trends (tema o consulta, principal o subiendo). */
+export type MarketRelated = {
+  label: string;
+  value: number;
+  pct: number | null;
+  isBreakout: boolean;
+  list: "top" | "rising";
+};
+
+/**
+ * Datos de Google Trends para la consulta buscada. Se leen del catálogo si la
+ * keyword ya está monitoreada; si no, se consultan EN VIVO al proveedor. Sin
+ * respuesta no se rellena con ceros: `market` queda null y se explica por qué.
+ */
+export type KeywordMarket = {
+  series: Array<{ day: string; value: number }>;
+  regions: Array<{ state: string; index: number }>;
+  topics: MarketRelated[];
+  queries: MarketRelated[];
+  provider: "serpapi" | "apify" | "web" | "catalog";
+  sourceLabel: string;
+  window: string;
+  partial: boolean;
+};
+
 export type KeywordOverview = {
   query: string;
   intent: SearchIntent;
@@ -165,9 +198,111 @@ export type KeywordOverview = {
     series: Descriptive | null;
     seriesPoints: Array<{ day: string; value: number }>;
   } | null;
+  market: KeywordMarket | null;
+  /** Motivo legible cuando Google Trends no aportó datos. */
+  marketNote: string | null;
   sources: string[];
   generatedAt: string;
 };
+
+const SEARCH_MARKET_TTL_MS = 10 * 60 * 1000;
+const SEARCH_MARKET_TIMEOUT_MS = 12_000;
+
+// Caché en memoria por proceso: buscar dos veces la misma keyword en la misma
+// sesión no vuelve a gastar una consulta del proveedor.
+const searchMarketCache = new Map<
+  string,
+  { at: number; market: KeywordMarket | null; note: string | null }
+>();
+
+function marketFromReport(report: GtReport): KeywordMarket {
+  return {
+    series: report.series,
+    regions: report.regions.map((r) => ({ state: r.state, index: r.index })),
+    topics: report.topics,
+    queries: report.queries,
+    provider: "catalog",
+    sourceLabel:
+      report.seriesSource === "google_trends"
+        ? "Google Trends · serie del nicho monitoreado"
+        : report.method.fuente,
+    window: report.method.ventana,
+    partial: false,
+  };
+}
+
+async function fetchSearchMarket(
+  organizationId: string,
+  query: string
+): Promise<{ market: KeywordMarket | null; note: string | null }> {
+  const cacheKey = `${organizationId}:${normalizeText(query)}`;
+  const cached = searchMarketCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < SEARCH_MARKET_TTL_MS) {
+    return { market: cached.market, note: cached.note };
+  }
+
+  const orch = await Promise.race([
+    getTrendsFromProviders(organizationId, [query], "MX", "today 1-m").catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), SEARCH_MARKET_TIMEOUT_MS)),
+  ]);
+
+  let market: KeywordMarket | null = null;
+  let note: string | null = null;
+
+  if (!orch) {
+    note = "Google Trends no respondió a tiempo. El resto del análisis sí se completó.";
+  } else if (!orch.data) {
+    note = orch.error ?? "Google Trends no devolvió datos para esta búsqueda.";
+  } else {
+    const byDay = new Map<string, number>();
+    for (const point of orch.data.timeSeries?.points ?? []) {
+      const date = new Date(point.time);
+      if (Number.isNaN(date.getTime())) continue;
+      byDay.set(utcDay(date), point.value);
+    }
+    const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const index = toIndex(days.map(([, value]) => value));
+    const series = days.map(([day], i) => ({ day, value: index[i] ?? 0 }));
+
+    const byState = new Map<string, number>();
+    for (const region of orch.data.regions) {
+      const state = googleGeoToInegi(region.geoCode);
+      if (!state) continue;
+      byState.set(state, Math.max(byState.get(state) ?? 0, region.value));
+    }
+
+    const hasData =
+      series.length > 0 ||
+      byState.size > 0 ||
+      orch.data.topics.length > 0 ||
+      orch.data.queries.length > 0;
+
+    if (hasData) {
+      market = {
+        series,
+        regions: [...byState.entries()].map(([state, value]) => ({ state, index: value })),
+        topics: orch.data.topics.slice(0, 50),
+        queries: orch.data.queries.slice(0, 50),
+        provider: orch.provider === "none" ? "web" : orch.provider,
+        sourceLabel: orch.sourceLabel,
+        window: "últimos 30 días",
+        partial: Boolean(orch.data.partial),
+      };
+      if (series.length === 0) {
+        note = "Google Trends devolvió relacionados, pero no una serie de interés para esta búsqueda.";
+      }
+    } else {
+      note = "Google Trends no devolvió serie, regiones ni relacionados para esta búsqueda.";
+    }
+  }
+
+  if (searchMarketCache.size >= 100) {
+    const oldest = searchMarketCache.keys().next().value;
+    if (oldest !== undefined) searchMarketCache.delete(oldest);
+  }
+  searchMarketCache.set(cacheKey, { at: Date.now(), market, note });
+  return { market, note };
+}
 
 /**
  * Analiza cualquier palabra clave (no requiere estar en el catálogo).
@@ -190,12 +325,13 @@ export async function analyzeKeyword(
 
   const creds = await getIntelCredentials(organizationId);
 
-  const [ytSuggestions, webSuggestions, denue] = await Promise.all([
+  const [ytSuggestions, webSuggestions, denue, storedReport] = await Promise.all([
     fetchSuggestions(q, true),
     fetchSuggestions(q, false),
     creds?.denueToken
       ? countEstablishments(creds.denueToken, term?.keywords.length ? term.keywords : [q]).catch(() => null)
       : Promise.resolve(null),
+    term ? getGtReport(organizationId, term.id).catch(() => null) : Promise.resolve(null),
   ]);
 
   const seen = new Set([normalizeText(q)]);
@@ -296,6 +432,23 @@ export async function analyzeKeyword(
     };
   }
 
+  let market: KeywordMarket | null = null;
+  let marketNote: string | null = null;
+  const hasStoredMarket = Boolean(
+    storedReport &&
+      (storedReport.series.length > 0 ||
+        storedReport.regions.length > 0 ||
+        storedReport.topics.length > 0 ||
+        storedReport.queries.length > 0)
+  );
+  if (storedReport && hasStoredMarket) {
+    market = marketFromReport(storedReport);
+  } else {
+    const live = await fetchSearchMarket(organizationId, q);
+    market = live.market;
+    marketNote = live.note;
+  }
+
   const difficulty = difficultyProxy({
     establishments: denue?.count ?? null,
     censored: denue?.censored ?? false,
@@ -307,6 +460,7 @@ export async function analyzeKeyword(
   }
   if (denue) sources.push("DENUE · INEGI (oferta local)");
   if (tracked) sources.push("Google Trends (serie del nicho monitoreado)");
+  if (market && market.provider !== "catalog") sources.push(market.sourceLabel);
   if (sources.length === 0) sources.push("Sin fuentes externas disponibles");
 
   return {
@@ -319,6 +473,8 @@ export async function analyzeKeyword(
     related,
     questions,
     tracked,
+    market,
+    marketNote,
     sources,
     generatedAt: new Date().toISOString(),
   };

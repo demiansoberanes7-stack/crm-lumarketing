@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getAuth, runInternalSignup } from "@/lib/auth";
@@ -83,4 +83,59 @@ export const POST = withAuth(async (session, req: Request) => {
     .onConflictDoNothing();
 
   return Response.json({ ok: true }, { status: 201 });
+});
+
+const deleteSchema = z.object({ memberId: z.string().min(1) });
+
+/**
+ * Baja de un miembro del negocio. Nunca borra al propietario ni la propia
+ * cuenta. Si la persona no pertenece a otro negocio, se elimina su cuenta
+ * completa (sesiones y credenciales incluidas) para que conserve el correo
+ * disponible; si pertenece a otro, solo se retira la membresía.
+ */
+export const DELETE = withAuth(async (session, req: Request) => {
+  if (session.role !== "owner") {
+    return apiError(403, "forbidden", "Solo el propietario puede eliminar miembros");
+  }
+  const body = await parseBody(req, deleteSchema);
+  if (!body.ok) return body.response;
+
+  const db = getDb();
+  const target = await db
+    .select({ id: schema.member.id, userId: schema.member.userId, role: schema.member.role })
+    .from(schema.member)
+    .where(
+      and(
+        scoped(schema.member.organizationId, session.organizationId),
+        eq(schema.member.id, body.data.memberId)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0]);
+
+  if (!target) return apiError(404, "not_found", "Miembro no encontrado");
+  if (target.userId === session.userId) {
+    return apiError(400, "self_delete", "No puedes eliminar tu propia cuenta");
+  }
+  if (target.role === "owner") {
+    return apiError(400, "owner_protected", "No se puede eliminar al propietario del negocio");
+  }
+
+  const [memberships] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.member)
+    .where(eq(schema.member.userId, target.userId));
+
+  try {
+    if ((memberships?.count ?? 0) > 1) {
+      await db.delete(schema.member).where(eq(schema.member.id, target.id));
+    } else {
+      await db.delete(schema.user).where(eq(schema.user.id, target.userId));
+    }
+  } catch (err) {
+    console.error("[settings/team] Baja de miembro falló:", err);
+    return apiError(409, "member_delete_failed", "No se pudo eliminar el miembro. Vuelve a intentarlo.");
+  }
+
+  return Response.json({ ok: true });
 });

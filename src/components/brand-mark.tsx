@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Branding } from "@/lib/branding";
 import {
   BRAND_ACCENT,
@@ -118,7 +119,13 @@ export function BrandLogo({
       {logoUrl ? (
         <PhotoLogo src={logoUrl} alt={branding.name} className={cn("w-auto", PHOTO_SIZE[size])} />
       ) : marcaMadre ? (
-        <BrandMark className={cn("shrink-0 text-brand", MARK_SIZE[size])} />
+        <Image
+          src="/brand/zorro-tech.png"
+          alt=""
+          width={64}
+          height={64}
+          className={cn("shrink-0 rounded-[24%] object-cover", MARK_SIZE[size])}
+        />
       ) : (
         <BrandTile branding={branding} className={TILE_SIZE[size]} />
       )}

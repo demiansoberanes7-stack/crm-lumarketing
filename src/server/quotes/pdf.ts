@@ -22,7 +22,8 @@ export const QUOTE_COLS = {
   descW: 250,
   qtyRight: MARGIN + 300,
   unitRight: MARGIN + 400,
-  totalRight: PAGE_W - MARGIN,
+  // 8pt de aire dentro de la banda de color: el importe no queda pegado al borde.
+  totalRight: PAGE_W - MARGIN - 8,
 } as const;
 
 /** Hex de la marca (0-255) → tinta pdf-lib (0-1). */
@@ -263,7 +264,9 @@ export async function quotePdf(organizationId: string, id: string) {
 
   // ─── TOTALS (right-aligned, dark box for total) ───
   const totalsLabelX = MARGIN + 340;
-  const totalsRight = PAGE_W - MARGIN;
+  // La banda del total sigue llegando al margen; solo el texto se separa 10pt.
+  const totalsBandRight = PAGE_W - MARGIN;
+  const totalsRight = totalsBandRight - 10;
 
   checkPage(110);
 
@@ -292,7 +295,7 @@ export async function quotePdf(organizationId: string, id: string) {
   page.drawRectangle({
     x: boxX,
     y: y - totalBoxH + 14,
-    width: totalsRight - boxX,
+    width: totalsBandRight - boxX,
     height: totalBoxH,
     color: HEADER_BG,
   });

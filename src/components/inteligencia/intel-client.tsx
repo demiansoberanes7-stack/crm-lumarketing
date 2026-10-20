@@ -91,6 +91,7 @@ export function IntelClient() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [explore, setExplore] = useState(false);
   const suggestSeq = useRef(0);
   const suggestAbort = useRef<AbortController | null>(null);
   const suggestCache = useRef<Map<string, string[]>>(new Map());
@@ -112,7 +113,11 @@ export function IntelClient() {
     setLoadingTrends(false);
   }, []);
 
-  useEffect(() => { void loadTrends(); }, [loadTrends]);
+  useEffect(() => {
+    // Nada se carga solo: el explorador de nichos solo consulta cuando la
+    // persona lo abre. La vista principal es la búsqueda que ella escribe.
+    if (explore) void loadTrends();
+  }, [explore, loadTrends]);
 
   useEffect(() => {
     if (!activeTermId && trends?.trends.length) {
@@ -356,30 +361,16 @@ export function IntelClient() {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-            <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-text-2">
-            Fuentes externas: Google Trends vía SerpApi/Apify y su feed público (qué se busca hoy,
-            interés relativo 0–100, subregiones, temas/consultas), YouTube (contenido que funciona)
-            e INEGI · DENUE y ENDUTIH (competencia local y audiencia). Cada dato muestra su fuente.
-            Sin datos de tus canales ni del CRM.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {trends?.lastIngestAt && (
-            <span className="flex items-center gap-1 text-xs text-text-3">
-              <Clock className="h-3 w-3" />
-              Datos al {new Date(trends.lastIngestAt).toLocaleString("es-MX")}
-            </span>
-          )}
-          <Button variant="outline" onClick={() => void handleIngest()} disabled={ingesting}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
-            {ingesting ? (ingestProgress || "Actualizando…") : "Actualizar datos"}
-          </Button>
-        </div>
+      <header>
+        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-2">
+          Busca un interés y el análisis se arma con datos reales de esa consulta: dificultad
+          local (DENUE), interés y regiones de Google Trends, temas y consultas relacionadas,
+          autocompletado y preguntas. Nada viene precargado ni se rellena con datos inventados:
+          si una fuente no responde, el campo queda en «—» con su motivo.
+        </p>
       </header>
 
       {error && (
@@ -440,14 +431,70 @@ export function IntelClient() {
         )}
       </form>
 
+      {searching && (
+        <p className="rounded-xl border bg-card p-4 text-sm text-text-2 shadow-sm">
+          Consultando Google Trends, DENUE y autocompletado para «{query.trim()}»…
+          La primera búsqueda puede tardar unos segundos.
+        </p>
+      )}
+
       {overview && (
         <section aria-label="Análisis de palabra clave">
           <KeywordView data={overview} onMonitored={() => void loadTrends()} />
         </section>
       )}
 
-      {/* Qué se busca ahora mismo en el país (Google Trends sin keyword propia). */}
-      <TrendingPanel reloadKey={reloadKey} onMonitored={() => void loadTrends()} />
+      {!overview && !searching && (
+        <section
+          aria-label="Empieza con una búsqueda"
+          className="rounded-xl border bg-card p-6 text-center shadow-sm"
+        >
+          <Search className="mx-auto h-8 w-8 text-text-3" />
+          <p className="mt-3 text-sm font-semibold">Escribe el interés que quieres analizar</p>
+          <p className="mx-auto mt-1 max-w-xl text-sm text-text-2">
+            No mostramos nichos predeterminados. Al pulsar «Analizar» se consultan las fuentes
+            externas para esa keyword y se llenan la dificultad, la oferta local, la gráfica de
+            interés, las subregiones, los temas y consultas relacionadas y las preguntas.
+          </p>
+          <p className="mt-2 text-xs text-text-3">
+            Ejemplos para empezar: «cámaras de seguridad», «pc gamer», «starlink».
+          </p>
+        </section>
+      )}
+
+      {/* Explorador opcional: no se consulta ni se dibuja hasta abrirlo. */}
+      <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Explorador de nichos monitoreados">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-semibold">Explorar más</h2>
+            <p className="mt-1 max-w-xl text-xs text-text-3">
+              Tendencias actuales del país, nichos que ya monitoreas, comparativas, YouTube,
+              audiencia y competencia local. Estas consultas solo se ejecutan si abres esta
+              sección.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setExplore((v) => !v)}>
+            {explore ? "Ocultar explorador" : "Abrir explorador"}
+          </Button>
+        </div>
+
+        {explore && (
+          <div className="mt-4 space-y-5">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {trends?.lastIngestAt && (
+                <span className="flex items-center gap-1 text-xs text-text-3">
+                  <Clock className="h-3 w-3" />
+                  Datos al {new Date(trends.lastIngestAt).toLocaleString("es-MX")}
+                </span>
+              )}
+              <Button variant="outline" onClick={() => void handleIngest()} disabled={ingesting}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
+                {ingesting ? (ingestProgress || "Actualizando…") : "Actualizar datos"}
+              </Button>
+            </div>
+
+            {/* Qué se busca ahora mismo en el país (Google Trends sin keyword propia). */}
+            <TrendingPanel reloadKey={reloadKey} onMonitored={() => void loadTrends()} />
 
       {/* Ranking accionable: qué nichos conviene atacar */}
       {trends && trends.trends.length > 0 && (
@@ -590,6 +637,9 @@ export function IntelClient() {
 
       {/* Competencia local DENUE (fuente externa INEGI) */}
       <GeoPanel terms={geoTerms} />
+          </div>
+        )}
+      </section>
       </div>
     </div>
   );

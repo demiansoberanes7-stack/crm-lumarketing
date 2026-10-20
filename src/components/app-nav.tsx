@@ -41,10 +41,24 @@ function NavTooltip({ label }: { label: string }) {
   );
 }
 
+const AVATARS = [
+  { id: "cat", emoji: "🐱", label: "Gato" },
+  { id: "fox", emoji: "🦊", label: "Zorro" },
+  { id: "lion", emoji: "🦁", label: "León" },
+  { id: "dog", emoji: "🐶", label: "Perro" },
+] as const;
+
+type AvatarId = (typeof AVATARS)[number]["id"];
+
+function avatarOption(value: string | null | undefined) {
+  return AVATARS.find((option) => option.id === value) ?? null;
+}
+
 export function AppNav({
   branding,
   logoUrl,
   userName,
+  avatar: initialAvatar,
   role,
   commit,
   open = false,
@@ -54,6 +68,8 @@ export function AppNav({
   /** Logo subido en Configuración → Negocio; manda sobre el trazo vectorial. */
   logoUrl?: string | null;
   userName: string;
+  /** Icono elegido por el usuario; null = iniciales. */
+  avatar?: string | null;
   role: string;
   /**
    * Commit resuelto en el servidor. Gana al de build porque puede venir de la
@@ -68,6 +84,30 @@ export function AppNav({
   const router = useRouter();
   const unread = useUnreadCount();
   const [showVersion, setShowVersion] = useState(false);
+  const [avatar, setAvatar] = useState<string | null>(initialAvatar ?? null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [savingAvatar, setSavingAvatar] = useState<AvatarId | "reset" | null>(null);
+  const selectedAvatar = avatarOption(avatar);
+
+  async function chooseAvatar(value: AvatarId | null) {
+    setSavingAvatar(value ?? "reset");
+    const res = await fetch("/api/settings/avatar", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ avatar: value }),
+    }).catch(() => null);
+    setSavingAvatar(null);
+    if (!res?.ok) return;
+    setAvatar(value);
+    setPickerOpen(false);
+  }
+
+  async function logout() {
+    if (!confirm("¿Cerrar sesión?")) return;
+    await signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   const sha = commit || BUILD_COMMIT;
 
@@ -139,21 +179,22 @@ export function AppNav({
 
       <div className="flex-1" />
 
-      {/* Usuario: en escritorio solo avatar (clic = cerrar sesión); en drawer, completo. */}
+      {/* Usuario: avatar elegible + cuenta; en drawer, nombre completo. */}
       <div className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:justify-center lg:px-0">
         <button
           type="button"
-          aria-label={`Cerrar sesión de ${userName}`}
-          title={`${userName} · cerrar sesión`}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand-text"
-          onClick={async () => {
-            if (!confirm("¿Cerrar sesión?")) return;
-            await signOut();
-            router.push("/login");
-            router.refresh();
-          }}
+          aria-label={`Cuenta y avatar de ${userName}`}
+          aria-haspopup="menu"
+          aria-expanded={pickerOpen}
+          title={`${userName} · cuenta y avatar`}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-lg font-bold text-brand-text"
+          onClick={() => setPickerOpen((v) => !v)}
         >
-          {initials(userName)}
+          {selectedAvatar ? (
+            <span className="leading-none" aria-hidden>{selectedAvatar.emoji}</span>
+          ) : (
+            <span className="text-xs">{initials(userName)}</span>
+          )}
         </button>
         <span className="min-w-0 flex-1 lg:hidden">
           <span className="block truncate text-[13px] font-semibold">{userName}</span>
@@ -161,9 +202,71 @@ export function AppNav({
             {role === "owner" ? "Propietario" : "Equipo"} · En línea
           </span>
         </span>
+
+        {pickerOpen && (
+          <>
+            <button
+              type="button"
+              aria-label="Cerrar selector de avatar"
+              tabIndex={-1}
+              className="fixed inset-0 z-40 cursor-default"
+              onClick={() => setPickerOpen(false)}
+            />
+            <div
+              role="menu"
+              aria-label="Elegir avatar"
+              className="absolute bottom-full left-0 z-50 mb-2 w-60 rounded-xl border bg-popover p-3 shadow-pop"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-text-3">Tu avatar</p>
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                {AVATARS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={avatar === option.id}
+                    aria-label={option.label}
+                    title={option.label}
+                    disabled={savingAvatar !== null}
+                    onClick={() => void chooseAvatar(option.id)}
+                    className={cn(
+                      "flex h-11 items-center justify-center rounded-lg border text-xl transition-colors",
+                      avatar === option.id
+                        ? "border-brand-text bg-brand-tint"
+                        : "border-border hover:bg-accent"
+                    )}
+                  >
+                    {savingAvatar === option.id ? "…" : option.emoji}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={savingAvatar !== null}
+                onClick={() => void chooseAvatar(null)}
+                className="mt-2 w-full rounded-lg border border-border px-2 py-1.5 text-xs font-semibold text-text-2 hover:bg-accent disabled:opacity-60"
+              >
+                {savingAvatar === "reset" ? "Guardando…" : "Usar iniciales"}
+              </button>
+              <div className="my-2 h-px bg-border" />
+              <p className="truncate text-xs font-semibold">{userName}</p>
+              <p className="truncate text-[11px] text-text-3">
+                {role === "owner" ? "Propietario" : "Equipo"}
+              </p>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="mt-2 w-full rounded-lg border border-border px-2 py-1.5 text-xs font-semibold hover:bg-accent"
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          </>
+        )}
+
         {/* Tooltip del usuario en escritorio. */}
         <span className="hidden lg:contents">
-          <NavTooltip label={`${userName} · cerrar sesión`} />
+          <NavTooltip label={`${userName} · cuenta y avatar`} />
         </span>
       </div>
 

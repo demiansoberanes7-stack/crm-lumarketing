@@ -36,6 +36,7 @@ export default async function AppLayout({
       branding={branding}
       logoUrl={business.logoUrl || null}
       userName={authSession?.user.name ?? "Usuario"}
+      avatar={authSession?.user.image ?? null}
       role={session.role}
       theme={theme}
       commit={resolveBuildCommit()}

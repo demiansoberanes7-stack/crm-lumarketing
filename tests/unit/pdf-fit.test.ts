@@ -67,7 +67,9 @@ describe("geometría de la tabla de cotización", () => {
     expect(QUOTE_COLS.descX + QUOTE_COLS.descW).toBeLessThan(QUOTE_COLS.qtyRight - 8);
     expect(QUOTE_COLS.qtyRight).toBeLessThan(QUOTE_COLS.unitRight - 8);
     expect(QUOTE_COLS.unitRight).toBeLessThan(QUOTE_COLS.totalRight - 8);
-    expect(QUOTE_COLS.totalRight).toBe(PAGE_W - MARGIN);
+    // La banda llega al margen, pero el importe se separa 8pt para no quedar
+    // pegado al borde del color.
+    expect(QUOTE_COLS.totalRight).toBe(PAGE_W - MARGIN - 8);
   });
 
   it("un importe gigante cabe en cada columna sin cruzar su borde", () => {

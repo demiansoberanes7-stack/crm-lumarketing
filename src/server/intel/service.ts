@@ -183,6 +183,22 @@ export async function compareTerms(
   return { terms: items, generatedAt: new Date().toISOString() };
 }
 
+/** Códigos de subregión de Google Trends → clave INEGI de 2 dígitos. */
+export const GOOGLE_TO_INEGI: Record<string, string> = {
+  "MX-AGU": "01", "MX-BCN": "02", "MX-BCS": "03", "MX-CAM": "04",
+  "MX-COH": "05", "MX-COL": "06", "MX-CHP": "07", "MX-CHH": "08",
+  "MX-CMX": "09", "MX-DUR": "10", "MX-GUA": "11", "MX-GRO": "12",
+  "MX-HID": "13", "MX-JAL": "14", "MX-MEX": "15", "MX-MIC": "16",
+  "MX-MOR": "17", "MX-NAY": "18", "MX-NLE": "19", "MX-OAX": "20",
+  "MX-PUE": "21", "MX-QUE": "22", "MX-ROO": "23", "MX-SLP": "24",
+  "MX-SIN": "25", "MX-SON": "26", "MX-TAB": "27", "MX-TAM": "28",
+  "MX-TLA": "29", "MX-VER": "30", "MX-YUC": "31", "MX-ZAC": "32",
+};
+
+export function googleGeoToInegi(geoCode: string): string | null {
+  return GOOGLE_TO_INEGI[geoCode] ?? (/^\d{2}$/.test(geoCode) ? geoCode : null);
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    Google Trends (ADR-001). El interruptor real es el checkbox por organización
    `intel_credentials.gtEnabled`, no una variable de entorno. La serie es 100 %
@@ -290,19 +306,8 @@ export async function runGtIngest(
 
   // Regiones: mapeamos geoCode de Google → clave INEGI (2 dígitos).
   // Google usa códigos como "MX-CMX", "MX-TAB", "09", "15", etc.
-  const GOOGLE_TO_INEGI: Record<string, string> = {
-    "MX-AGU": "01", "MX-BCN": "02", "MX-BCS": "03", "MX-CAM": "04",
-    "MX-COH": "05", "MX-COL": "06", "MX-CHP": "07", "MX-CHH": "08",
-    "MX-CMX": "09", "MX-DUR": "10", "MX-GUA": "11", "MX-GRO": "12",
-    "MX-HID": "13", "MX-JAL": "14", "MX-MEX": "15", "MX-MIC": "16",
-    "MX-MOR": "17", "MX-NAY": "18", "MX-NLE": "19", "MX-OAX": "20",
-    "MX-PUE": "21", "MX-QUE": "22", "MX-ROO": "23", "MX-SLP": "24",
-    "MX-SIN": "25", "MX-SON": "26", "MX-TAB": "27", "MX-TAM": "28",
-    "MX-TLA": "29", "MX-VER": "30", "MX-YUC": "31", "MX-ZAC": "32",
-  };
   for (const r of allRegions) {
-    // Si es "MX-XXX", mapear; si ya es de 2 dígitos, usar directo
-    const state = GOOGLE_TO_INEGI[r.geoCode] ?? (/^\d{2}$/.test(r.geoCode) ? r.geoCode : null);
+    const state = googleGeoToInegi(r.geoCode);
     if (!state) continue;
     await db
       .insert(schema.intelGtRegion)

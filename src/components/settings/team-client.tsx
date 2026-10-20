@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Trash2 } from "lucide-react";
 import { ContactAvatar } from "@/components/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,8 @@ export function TeamClient() {
   const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/settings/team").catch(() => null);
@@ -69,6 +71,26 @@ export function TeamClient() {
     setEmail("");
     setTempPassword("");
     void refetch();
+  }
+
+  async function remove(member: Member) {
+    setDeleting(member.id);
+    setError(null);
+    const res = await fetch("/api/settings/team", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ memberId: member.id }),
+    }).catch(() => null);
+    setDeleting(null);
+    setConfirming(null);
+    if (!res?.ok) {
+      const data = (await res?.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setError(data?.error?.message ?? "No se pudo eliminar el miembro");
+      return;
+    }
+    await refetch();
   }
 
   return (
@@ -156,6 +178,39 @@ export function TeamClient() {
             <Badge variant={m.role === "owner" ? "default" : "secondary"}>
               {m.role === "owner" ? "Propietario" : "Miembro"}
             </Badge>
+            {m.role !== "owner" && (
+              confirming === m.id ? (
+                <span className="flex items-center gap-1.5">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={deleting === m.id}
+                    onClick={() => void remove(m)}
+                  >
+                    {deleting === m.id ? "Eliminando…" : "Confirmar baja"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleting === m.id}
+                    onClick={() => setConfirming(null)}
+                  >
+                    Cancelar
+                  </Button>
+                </span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-danger-text"
+                  onClick={() => setConfirming(m.id)}
+                  aria-label={`Eliminar a ${m.name}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Eliminar
+                </Button>
+              )
+            )}
           </div>
         ))}
       </div>

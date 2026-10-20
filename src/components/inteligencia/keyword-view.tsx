@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Gauge, HelpCircle, Plus, Search } from "lucide-react";
+import { Check, Gauge, HelpCircle, Plus, Search, Sparkles } from "lucide-react";
 import { DottedAreaChart } from "@/components/ui/chart";
+import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
 
 /**
  * Overview de palabra clave estilo SEMrush: fuentes 100 % externas.
@@ -12,6 +13,7 @@ import { DottedAreaChart } from "@/components/ui/chart";
  */
 
 type Intent = "transaccional" | "comercial" | "informativo" | "navegacional";
+type MarketRelated = { label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" };
 
 export type KeywordOverviewView = {
   query: string;
@@ -36,6 +38,17 @@ export type KeywordOverviewView = {
     z: number | null;
     seriesPoints: Array<{ day: string; value: number }>;
   } | null;
+  market: {
+    series: Array<{ day: string; value: number }>;
+    regions: Array<{ state: string; index: number }>;
+    topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" }>;
+    queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" }>;
+    provider: "serpapi" | "apify" | "web" | "catalog";
+    sourceLabel: string;
+    window: string;
+    partial: boolean;
+  } | null;
+  marketNote: string | null;
   sources: string[];
   generatedAt: string;
 };
@@ -118,6 +131,63 @@ function MonitorButton({
   );
 }
 
+function MarketRelatedCard({
+  icon: Icon,
+  title,
+  items,
+  added,
+  pending,
+  onMonitor,
+}: {
+  icon: typeof Sparkles;
+  title: string;
+  items: MarketRelated[];
+  added: Set<string>;
+  pending: string | null;
+  onMonitor: (keyword: string) => void;
+}) {
+  const top = items
+    .filter((i) => i.list === "top")
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+  const rising = items
+    .filter((i) => i.list === "rising")
+    .sort((a, b) => (b.pct ?? Number.MAX_SAFE_INTEGER) - (a.pct ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 4);
+  const rows = [...top, ...rising];
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-xl border bg-card shadow-sm">
+      <div className="flex items-center gap-1.5 border-b px-4 py-2.5">
+        <Icon className="h-3.5 w-3.5 text-brand-text" />
+        <h3 className="text-xs font-semibold">{title}</h3>
+        <span className="text-[11px] text-text-3">(Google Trends)</span>
+      </div>
+      <ul className="divide-y">
+        {rows.map((item) => (
+          <li key={`${item.list}|${item.label}`} className="flex items-center gap-2 px-4 py-1.5 text-sm">
+            <span className="min-w-0 flex-1 truncate" title={item.label}>{item.label}</span>
+            {item.isBreakout ? (
+              <span className="shrink-0 rounded bg-success-tint px-1.5 py-0.5 text-[10px] font-medium text-success-text">Aumento puntual</span>
+            ) : item.list === "rising" ? (
+              <span className="shrink-0 font-medium tabular-nums text-success-text">{item.pct === null ? "—" : `+${item.pct}%`}</span>
+            ) : (
+              <span className="w-7 shrink-0 text-right font-medium tabular-nums text-text-2">{item.value}</span>
+            )}
+            <MonitorButton
+              compact
+              keyword={item.label}
+              already={added.has(item.label.toLowerCase())}
+              pending={pending === item.label}
+              onMonitor={onMonitor}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function KeywordView({
   data,
   onMonitored,
@@ -126,7 +196,9 @@ export function KeywordView({
   onMonitored: () => void;
 }) {
   const d = data;
-  const trend = d.tracked?.seriesPoints ?? [];
+  const trend = d.market?.series.length ? d.market.series : d.tracked?.seriesPoints ?? [];
+  const lastInterest = trend.at(-1)?.value ?? null;
+  const gtSource = d.market?.sourceLabel ?? (d.tracked ? "Google Trends" : null);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<string | null>(null);
 
@@ -173,10 +245,12 @@ export function KeywordView({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard label="Dificultad (proxy DENUE)" hint={d.difficulty.formula}>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-semibold tabular-nums" style={{ color: bandColor(d.difficulty.band) }}>
-              {d.difficulty.score}
+            <span className="text-2xl font-semibold tabular-nums" style={{ color: d.difficulty.factors.length ? bandColor(d.difficulty.band) : "var(--text-3)" }}>
+              {d.difficulty.factors.length ? d.difficulty.score : "—"}
             </span>
-            <span className="text-xs font-medium capitalize text-text-2">{d.difficulty.band}</span>
+            {d.difficulty.factors.length > 0 && (
+              <span className="text-xs font-medium capitalize text-text-2">{d.difficulty.band}</span>
+            )}
           </div>
           <ul className="mt-1.5 space-y-0.5">
             {d.difficulty.factors.map((f) => (
@@ -199,13 +273,20 @@ export function KeywordView({
                 : numberCompact.format(d.competition.establishments)}
           </p>
         </StatCard>
-        <StatCard label="Interés GT" hint={d.tracked ? "índice Google Trends del nicho" : "sin serie GT para esta keyword"}>
-          {d.tracked ? (
+        <StatCard
+          label="Interés GT"
+          hint={
+            gtSource
+              ? `último valor · ${gtSource}`
+              : d.marketNote ?? "sin serie GT para esta keyword"
+          }
+        >
+          {lastInterest !== null ? (
             <>
               <p className="text-2xl font-semibold tabular-nums">
-                {numberCompact.format(d.tracked.seriesPoints.at(-1)?.value ?? 0)}
+                {numberCompact.format(lastInterest)}
               </p>
-              {d.tracked.z !== null && (
+              {d.tracked?.z !== null && d.tracked?.z !== undefined && (
                 <p className="text-[11px] text-text-3">z-score 7d vs 21d: {p1.format(d.tracked.z)}</p>
               )}
             </>
@@ -215,10 +296,18 @@ export function KeywordView({
         </StatCard>
       </div>
 
-      {/* Historial GT */}
+      {d.marketNote && (
+        <p className="rounded-md border bg-subtle p-3 text-[11px] leading-snug text-text-2">
+          <span className="font-semibold">Google Trends: </span>{d.marketNote}
+        </p>
+      )}
+
+      {/* Historial GT de la consulta buscada (en vivo o del nicho monitoreado) */}
       {trend.length >= 2 && (
         <div className="rounded-xl border bg-card p-4 shadow-xs">
-          <h3 className="text-xs font-semibold text-text-2">Interés GT · {d.tracked?.name} (30 días, MX)</h3>
+          <h3 className="text-xs font-semibold text-text-2">
+            Interés GT · {d.query} ({d.market?.window ?? "30 días"}, MX)
+          </h3>
           <div className="mt-2" aria-hidden="true">
             <DottedAreaChart
               data={trend}
@@ -228,9 +317,40 @@ export function KeywordView({
             />
           </div>
           <p className="mt-1 text-[11px] text-text-3">
-            Unidad: índice de interés de búsqueda de Google Trends (0–100, MX). Fuente externa.
-            El historial empieza en la primera captura; no hay datos retroactivos.
+            Unidad: índice de interés de búsqueda de Google Trends (0–100, MX). Fuente externa:
+            {" "}{gtSource ?? "Google Trends"}.
           </p>
+        </div>
+      )}
+
+      {/* Interés por subregión de la consulta buscada */}
+      {d.market && d.market.regions.length > 0 && (
+        <GtRegionPanel
+          regions={d.market.regions.map((r) => ({ ...r, source: "google_trends" as const }))}
+          regionsSource="google_trends"
+          termName={d.query}
+        />
+      )}
+
+      {/* Temas y consultas relacionados según Google Trends */}
+      {d.market && (d.market.topics.length > 0 || d.market.queries.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <MarketRelatedCard
+            icon={Sparkles}
+            title="Temas en Google Trends"
+            items={d.market.topics}
+            added={added}
+            pending={pending}
+            onMonitor={(kw) => void handleMonitor(kw)}
+          />
+          <MarketRelatedCard
+            icon={Search}
+            title="Consultas en Google Trends"
+            items={d.market.queries}
+            added={added}
+            pending={pending}
+            onMonitor={(kw) => void handleMonitor(kw)}
+          />
         </div>
       )}
 
@@ -303,7 +423,10 @@ export function KeywordView({
         <span className="font-semibold">Método: </span>
         la dificultad es un PROXY propio basado solo en DENUE (no la KD pagada de otra suite):
         {d.difficulty.formula}. Relacionadas y preguntas provienen del autocompletado público
-        de Google (es-MX). Interés: Google Trends (MX). Fuentes: {d.sources.join(" · ")}.
+        de Google (es-MX). Interés, subregiones y temas/consultas: Google Trends (MX), leídos
+        del nicho si ya está monitoreado o consultados en vivo para esta búsqueda. Si una
+        fuente no responde, el campo queda en «—» y se indica el motivo; no se rellena con
+        datos inventados. Fuentes: {d.sources.join(" · ")}.
       </p>
     </section>
   );
