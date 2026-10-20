@@ -5,6 +5,7 @@ import { GET as getQuotes } from "@/app/api/quotes/route";
 import { POST as postProject } from "@/app/api/projects/route";
 import { schema } from "@/lib/db";
 import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
+import { DEFAULT_PROJECT_TEMPLATE_SEEDS } from "@/lib/project-templates";
 
 /**
  * Desplegable de "Nuevo proyecto": las cotizaciones sin proyecto vinculado
@@ -87,6 +88,35 @@ function stages() {
   return Array.from({ length: DEFAULT_PROJECT_STAGES.length }, (_, i) => ({ id: `pst_${i}` }));
 }
 
+/** Procesos del negocio ya sembrados, para que `ensureProjectTemplates` no inserte. */
+function templateRows() {
+  return DEFAULT_PROJECT_TEMPLATE_SEEDS.map((seed, i) => ({
+    id: `pt_${i}`,
+    key: seed.key,
+    label: seed.label,
+    description: seed.description,
+    icon: seed.icon,
+    position: i,
+    isSystem: false,
+    isDefault: i === 0,
+    steps: seed.steps,
+    tasks: seed.tasks,
+  }));
+}
+
+/**
+ * `createProject` resuelve el proceso ANTES de validar cotización o etapas:
+ * un SELECT de "¿ya tiene procesos?" y otro de los procesos activos.
+ */
+function queue(...rest: unknown[][]) {
+  return [[{ id: "pt_0" }], templateRows(), ...rest];
+}
+
+function insertFor(table: unknown) {
+  const found = h.state.inserts.find((i) => i.table === table);
+  return found?.values;
+}
+
 function post(body: unknown): Request {
   return new Request("http://localhost/api/projects", {
     method: "POST",
@@ -135,12 +165,12 @@ describe("GET /api/quotes?forProject=1 (desplegable de Nuevo proyecto)", () => {
 
 describe("POST /api/projects con quoteId", () => {
   it("crea el proyecto, hereda el contacto y lo vincula en project_quote", async () => {
-    h.state.selectQueue = [
+    h.state.selectQueue = queue(
       [{ contactId: "ct_1", archivedAt: null }], // validación de cotización
       stages(),                                   // etapas
       [],                                         // nextProjectCode
-    ];
-    h.state.insertQueue = [[], [{ id: "pq_1" }], []]; // proyecto, vínculo (returning), pasos
+    );
+    h.state.insertQueue = [[], [{ id: "pq_1" }], [], []]; // proyecto, vínculo (returning), pasos, tareas
 
     const response = await postProject(post({
       name: "COT-0042 — María López",
@@ -153,32 +183,60 @@ describe("POST /api/projects con quoteId", () => {
     expect(body.ok).toBe(true);
     expect(typeof body.projectId).toBe("string");
 
-    expect(h.state.inserts).toHaveLength(3);
-    const [projectInsert, linkInsert, stepsInsert] = h.state.inserts;
-    expect(projectInsert!.table).toBe(schema.project);
-    expect(projectInsert!.values).toMatchObject({ contactId: "ct_1", name: "COT-0042 — María López" });
-    expect(linkInsert!.table).toBe(schema.projectQuote);
-    expect(linkInsert!.values).toMatchObject({
+    expect(insertFor(schema.project)).toMatchObject({
+      contactId: "ct_1",
+      name: "COT-0042 — María López",
+      projectType: "marketing",
+    });
+    expect(insertFor(schema.projectQuote)).toMatchObject({
       organizationId: "org_1",
       quoteId: "qt_1",
-      projectId: projectInsert!.values!.id,
+      projectId: insertFor(schema.project)!.id,
     });
-    expect(stepsInsert!.table).toBe(schema.projectStep);
+    expect(insertFor(schema.projectStep)).toBeTruthy();
+    expect(insertFor(schema.projectTask)).toBeTruthy();
+  });
+
+  it("congela la etiqueta del proceso en el proyecto", async () => {
+    h.state.selectQueue = queue(stages(), []);
+    h.state.insertQueue = [[], [], []];
+
+    const response = await postProject(post({ name: "Mantenimiento", projectType: "maintenance" }));
+
+    expect(response.status).toBe(201);
+    expect(insertFor(schema.project)).toMatchObject({
+      projectType: "maintenance",
+      projectTypeLabel: templateRows().find((row) => row.key === "maintenance")!.label,
+    });
+  });
+
+  it("rechaza un proceso inexistente antes de crear nada", async () => {
+    h.state.selectQueue = queue(stages());
+    h.state.insertQueue = [[], []];
+
+    const response = await postProject(post({ name: "X", projectType: "no_existe" }));
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).error.message).toContain("proceso de proyecto");
+    expect(h.state.inserts).toHaveLength(0);
   });
 
   it("modo manual (sin quoteId) sigue creando proyectos sin vínculo", async () => {
-    h.state.selectQueue = [stages(), []];
-    h.state.insertQueue = [[], []];
+    h.state.selectQueue = queue(stages(), []);
+    h.state.insertQueue = [[], [], []];
 
     const response = await postProject(post({ name: "Campaña de lanzamiento 2026", projectType: "marketing" }));
 
     expect(response.status).toBe(201);
-    expect(h.state.inserts).toHaveLength(2); // proyecto + pasos, sin project_quote
-    expect(h.state.inserts.map((i) => i.table)).not.toContain(schema.projectQuote);
+    expect(h.state.inserts.map((i) => i.table)).toEqual([
+      schema.project,
+      schema.projectStep,
+      schema.projectTask,
+    ]); // sin project_quote
   });
 
   it("rechaza una cotización de otra organización (422) sin crear nada", async () => {
-    h.state.selectQueue = [[]]; // la cotización no existe en esta org
+    h.state.selectQueue = queue([]); // la cotización no existe en esta org
 
     const response = await postProject(post({ name: "X", quoteId: "qt_ajena" }));
 
@@ -193,7 +251,7 @@ describe("POST /api/projects con quoteId", () => {
   });
 
   it("rechaza una cotización archivada (422)", async () => {
-    h.state.selectQueue = [[{ contactId: "ct_1", archivedAt: new Date("2026-01-01") }]];
+    h.state.selectQueue = queue([{ contactId: "ct_1", archivedAt: new Date("2026-01-01") }]);
 
     const response = await postProject(post({ name: "X", quoteId: "qt_arch" }));
 
@@ -203,13 +261,13 @@ describe("POST /api/projects con quoteId", () => {
   });
 
   it("responde 409 si la cotización ya tiene otro proyecto (índice único)", async () => {
-    h.state.selectQueue = [
+    h.state.selectQueue = queue(
       [{ contactId: "ct_1", archivedAt: null }],
       stages(),
       [],
-    ];
+    );
     // El insert del vínculo choca con el índice único → onConflictDoNothing → []
-    h.state.insertQueue = [[], [], []];
+    h.state.insertQueue = [[], [], [], []];
 
     const response = await postProject(post({ name: "X", quoteId: "qt_1" }));
 

@@ -19,11 +19,14 @@ import {
   parseStepData,
   statusToEstado,
   stepsForType,
+  type ProjectFieldDef,
   type ProjectStatus,
   type ProjectStepDef,
 } from "@/lib/project-types";
+import { frozenStepDefinition, resolveStepDefinition } from "@/lib/project-templates";
 import { ProjectError } from "./errors";
 import { getProject, getProjectStages } from "./service";
+import { getProjectTemplateByKey, templateStepDefs } from "./templates";
 import { validateProjectMember } from "./members";
 
 export type StepStatus = "pendiente" | "en_proceso" | "completado";
@@ -33,6 +36,7 @@ export interface ProjectStepView {
   label: string;
   description: string | null;
   kind: ProjectStepDef["kind"];
+  fields: ProjectFieldDef[];
   position: number;
   status: StepStatus;
   data: Record<string, unknown>;
@@ -47,15 +51,20 @@ export interface StepSaveResult {
   totalSteps: number;
 }
 
-/** Siembra los pasos que falten para el tipo del proyecto (idempotente). */
+/** Siembra los pasos que falten para el proceso del proyecto (idempotente). */
 export async function ensureProjectSteps(
   organizationId: string,
   projectId: string,
   typeKey: string
 ): Promise<void> {
-  if (!isProjectTypeKey(typeKey)) return;
+  const template = await getProjectTemplateByKey(organizationId, typeKey);
+  const defs = template
+    ? templateStepDefs(template)
+    : isProjectTypeKey(typeKey)
+      ? stepsForType(typeKey)
+      : [];
+  if (!defs.length) return;
   const db = getDb();
-  const defs = stepsForType(typeKey);
   const existing = await db
     .select({ key: schema.projectStep.stepKey })
     .from(schema.projectStep)
@@ -82,6 +91,7 @@ export async function ensureProjectSteps(
         position,
         status: "pendiente",
         data: {},
+        definition: frozenStepDefinition(def),
       }))
     )
     .onConflictDoNothing();
@@ -108,13 +118,19 @@ export async function listProjectSteps(
     )
     .orderBy(asc(schema.projectStep.position));
 
-  const defs = stepsForType(project.projectType);
-  const byKey = new Map(rows.map((r) => [r.stepKey, r]));
+  const staticDefs = isProjectTypeKey(project.projectType)
+    ? stepsForType(project.projectType)
+    : [];
+  const staticByKey = new Map(staticDefs.map((def) => [def.key, def]));
   const isoDate = (d: Date | null): string | null =>
     d ? d.toISOString().slice(0, 10) : null;
-  const steps: ProjectStepView[] = defs.map((def, position) => {
-    const row = byKey.get(def.key);
-    const status = (row?.status as StepStatus | undefined) ?? "pendiente";
+  const steps: ProjectStepView[] = rows.map((row, position) => {
+    const def = resolveStepDefinition(
+      row.stepKey,
+      row.definition,
+      staticByKey.get(row.stepKey)
+    );
+    const status = (row.status as StepStatus | undefined) ?? "pendiente";
     // El paso general vive en las columnas del proyecto, no en `data`.
     const data: Record<string, unknown> =
       def.kind === "project"
@@ -126,21 +142,24 @@ export async function listProjectSteps(
             endDate: isoDate(project.endDate),
             notas: project.notas,
           }
-        : ((row?.data as Record<string, unknown> | undefined) ?? {});
+        : ((row.data as Record<string, unknown> | undefined) ?? {});
     return {
       key: def.key,
       label: def.label,
       description: def.description ?? null,
       kind: def.kind,
+      fields: def.fields,
       position,
       status,
       data,
-      completedAt: row?.completedAt?.toISOString() ?? null,
+      completedAt: row.completedAt?.toISOString() ?? null,
     };
   });
 
+  const completed = rows.filter((row) => row.status === "completado").length;
+  const avance = rows.length ? Math.round((completed / rows.length) * 100) : 0;
   const status = (project.status as ProjectStatus) ?? "borrador";
-  return { steps, avance: project.avance, status };
+  return { steps, avance, status };
 }
 
 /** Aplica el paso general sobre las columnas del proyecto. */
@@ -208,21 +227,38 @@ export async function saveProjectStep(
   if (!project) throw new ProjectError(404, "Proyecto no encontrado");
   if (project.archivedAt) throw new ProjectError(409, "El proyecto está archivado");
 
-  const def = findStep(project.projectType, stepKey);
-  if (!def) throw new ProjectError(422, "Paso no válido para el tipo de proyecto");
+  await ensureProjectSteps(organizationId, projectId, project.projectType);
+  const db = getDb();
+  const [stepRow] = await db
+    .select()
+    .from(schema.projectStep)
+    .where(
+      and(
+        scoped(schema.projectStep.organizationId, organizationId),
+        eq(schema.projectStep.projectId, projectId),
+        eq(schema.projectStep.stepKey, stepKey)
+      )
+    )
+    .limit(1);
+  const staticDef = isProjectTypeKey(project.projectType)
+    ? findStep(project.projectType, stepKey)
+    : undefined;
+  if (!stepRow && !staticDef) {
+    throw new ProjectError(422, "Paso no válido para el proceso del proyecto");
+  }
+  const def = resolveStepDefinition(stepKey, stepRow?.definition, staticDef);
 
   const parsed = parseStepData(def, rawData);
   if (!parsed.ok) throw new ProjectError(422, parsed.message);
 
-  await ensureProjectSteps(organizationId, projectId, project.projectType);
-  const defs = stepsForType(project.projectType);
-  const position = Math.max(0, defs.findIndex((d) => d.key === stepKey));
+  const position =
+    stepRow?.position ??
+    Math.max(0, staticDef ? stepsForType(project.projectType).findIndex((d) => d.key === stepKey) : 0);
 
   if (def.kind === "project") {
     await applyGeneralData(organizationId, projectId, parsed.data);
   }
 
-  const db = getDb();
   const now = new Date();
   const rowStatus: StepStatus = complete ? "completado" : "en_proceso";
   await db
@@ -235,6 +271,7 @@ export async function saveProjectStep(
       position,
       status: rowStatus,
       data: parsed.data,
+      definition: frozenStepDefinition(def),
       completedAt: complete ? now : null,
       updatedAt: now,
     })
@@ -244,6 +281,7 @@ export async function saveProjectStep(
         position,
         status: rowStatus,
         data: parsed.data,
+        definition: frozenStepDefinition(def),
         completedAt: complete ? now : null,
         updatedAt: now,
       },
@@ -258,9 +296,9 @@ export async function saveProjectStep(
         eq(schema.projectStep.projectId, projectId)
       )
     );
-  const done = new Set(rows.filter((r) => r.status === "completado").map((r) => r.key));
-  const completedSteps = defs.filter((d) => done.has(d.key)).length;
-  const avance = defs.length ? Math.round((completedSteps / defs.length) * 100) : 0;
+  const completedSteps = rows.filter((r) => r.status === "completado").length;
+  const totalSteps = rows.length;
+  const avance = totalSteps ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
   // Trabajo nuevo: borrador o reabrir un completado vuelven a "en proceso".
   const status: ProjectStatus =
@@ -273,7 +311,7 @@ export async function saveProjectStep(
     projectId,
     project.stageId,
     completedSteps,
-    defs.length
+    totalSteps
   );
 
   await db
@@ -307,13 +345,14 @@ export async function saveProjectStep(
     label: def.label,
     description: def.description ?? null,
     kind: def.kind,
+    fields: def.fields,
     position,
     status: rowStatus,
     data: parsed.data,
     completedAt: complete ? now.toISOString() : null,
   };
 
-  return { step: view, avance, status, completedSteps, totalSteps: defs.length };
+  return { step: view, avance, status, completedSteps, totalSteps };
 }
 
 /**
@@ -373,7 +412,6 @@ export async function setProjectStatus(
   }
 
   await ensureProjectSteps(organizationId, projectId, project.projectType);
-  const defs = stepsForType(project.projectType);
   const db = getDb();
   const rows = await db
     .select({ key: schema.projectStep.stepKey, status: schema.projectStep.status })
@@ -384,12 +422,12 @@ export async function setProjectStatus(
         eq(schema.projectStep.projectId, projectId)
       )
     );
-  const done = new Set(rows.filter((r) => r.status === "completado").map((r) => r.key));
-  const completedSteps = defs.filter((d) => done.has(d.key)).length;
-  const computed = defs.length ? Math.round((completedSteps / defs.length) * 100) : 0;
+  const completedSteps = rows.filter((row) => row.status === "completado").length;
+  const totalSteps = rows.length;
+  const computed = totalSteps ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
-  if (status === "completado" && completedSteps < defs.length) {
-    const pending = defs.length - completedSteps;
+  if (status === "completado" && completedSteps < totalSteps) {
+    const pending = totalSteps - completedSteps;
     throw new ProjectError(
       422,
       `Faltan ${pending} paso${pending === 1 ? "" : "s"} por completar antes de finalizar`

@@ -648,6 +648,18 @@ export function isProjectTypeKey(key: string): key is ProjectTypeKey {
   return PROJECT_TYPES.some((t) => t.key === key);
 }
 
+/**
+ * Etiqueta visible del proceso de un proyecto: manda la congelada al nacer,
+ * porque el proceso del negocio puede renombrarse o borrarse después.
+ */
+export function projectTypeLabel(
+  project: { projectType: string; projectTypeLabel?: string | null }
+): string {
+  const frozen = project.projectTypeLabel?.trim();
+  if (frozen) return frozen;
+  return getProjectType(project.projectType)?.label ?? project.projectType;
+}
+
 /** Stepper completo de un tipo: paso general + pasos propios del tipo. */
 export function stepsForType(typeKey: string): ProjectStepDef[] {
   const type = getProjectType(typeKey);

@@ -13,9 +13,9 @@ import {
   GENERAL_STEP,
   PROJECT_STATUS_BADGE,
   PROJECT_STATUS_LABELS,
-  findStep,
-  getProjectType,
+  projectTypeLabel,
   stepZodSchema,
+  type ProjectFieldDef,
   type ProjectStatus,
   type ProjectStepDef,
 } from "@/lib/project-types";
@@ -27,6 +27,7 @@ interface StepView {
   label: string;
   description: string | null;
   kind: ProjectStepDef["kind"];
+  fields: ProjectFieldDef[];
   position: number;
   status: StepStatus;
   data: Record<string, unknown>;
@@ -38,6 +39,7 @@ interface ProjectInfo {
   code: string;
   name: string;
   projectType: string;
+  projectTypeLabel?: string | null;
   status: ProjectStatus;
   avance: number;
   archivedAt: string | null;
@@ -127,12 +129,18 @@ export function ProjectWizard({
   }, [requestClose]);
 
   const step = steps[current];
+  // Los pasos propios del proceso se renderizan desde la definición congelada
+  // del proyecto (project_step.definition), no desde el catálogo estático.
   const def: ProjectStepDef | undefined = step
     ? step.kind === "project"
       ? GENERAL_STEP
-      : project
-        ? findStep(project.projectType, step.key)
-        : undefined
+      : {
+          key: step.key,
+          label: step.label,
+          description: step.description ?? undefined,
+          kind: step.kind,
+          fields: step.fields,
+        }
     : undefined;
 
   const goTo = (index: number) => {
@@ -262,7 +270,7 @@ export function ProjectWizard({
     );
   }
 
-  const typeLabel = getProjectType(project.projectType)?.label ?? project.projectType;
+  const typeLabel = projectTypeLabel(project);
   const isSummary = current >= steps.length;
   const completedCount = steps.filter((s) => s.status === "completado").length;
   const lastStep = steps.length - 1;

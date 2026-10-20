@@ -33,6 +33,7 @@ const prefixes = {
   outboundWebhook: "wh",
   outboundDelivery: "whd",
   project: "prj",
+  projectTemplate: "ptpl",
   projectStageEvent: "prje",
   projectTask: "prjt",
   projectItem: "prji",

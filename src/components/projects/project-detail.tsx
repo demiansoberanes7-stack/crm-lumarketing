@@ -15,14 +15,14 @@ import { PdfActions } from "@/components/pdf-actions";
 import {
   PROJECT_STATUS_BADGE,
   PROJECT_STATUS_LABELS,
-  getProjectType,
+  projectTypeLabel,
   type ProjectStatus,
 } from "@/lib/project-types";
 import Link from "next/link";
 
 interface Project {
   id: string; contactId: string | null; notas: string | null; code: string; name: string;
-  projectType: string; status: ProjectStatus; avance: number; prioridad: string | null; riesgo: string | null;
+  projectType: string; projectTypeLabel?: string | null; status: ProjectStatus; avance: number; prioridad: string | null; riesgo: string | null;
   service: string | null; assignedUserId: string | null; stageId: string | null; currentStageIndex: number;
   startDate: string | null; endDate: string | null; archivedAt: string | null;
   stages: { id: string; name: string; position: number }[];
@@ -110,7 +110,7 @@ export function ProjectDetail({
 
   if (!project) return <div className="space-y-3 p-6"><Button variant="outline" onClick={onBack}>Volver a proyectos</Button>{error ? <><p role="alert" className="text-destructive">{error}</p><Button onClick={() => void refetch()}>Reintentar</Button></> : <p role="status">Cargando proyecto…</p>}</div>;
 
-  const typeLabel = getProjectType(project.projectType)?.label ?? project.projectType;
+  const typeLabel = projectTypeLabel(project);
   const completedSteps = steps.filter((s) => s.status === "completado").length;
   const firstPending = steps.findIndex((s) => s.status !== "completado");
   const finalized = project.status === "completado" || project.status === "cancelado";

@@ -104,6 +104,13 @@ async function seedOrganization(tx: Tx, organizationId: string): Promise<void> {
     id: newId("agentProfile"),
     organizationId,
   });
+  // Procesos de proyecto base: solo lectura en el negocio principal, copias
+  // editables en los demás. Se siembran ya para que el selector no aparezca vacío.
+  // Import dinámico: el grafo de proyectos llega hasta `@/lib/api`, que importa
+  // la sesión, que importa este módulo — esa circularidad cambia a qué
+  // `requireSession` enlazan las rutas.
+  const { ensureProjectTemplates } = await import("@/server/projects/templates");
+  await ensureProjectTemplates(organizationId, tx);
 }
 
 async function insertOrganizationWithOwner(

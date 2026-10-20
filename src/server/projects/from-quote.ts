@@ -17,9 +17,11 @@ import { schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
-import { isProjectTypeKey, stepsForType, taskTemplatesForType } from "@/lib/project-types";
+import { frozenStepDefinition } from "@/lib/project-templates";
+import { isProjectTypeKey } from "@/lib/project-types";
 import { ensureServiceOrderTx } from "@/server/service-orders/service";
 import { nextProjectCode } from "./service";
+import { ensureProjectTemplates, templateStepDefs } from "./templates";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
@@ -44,16 +46,17 @@ export interface ConversionResult {
 /** Estados de proyecto que siguen vivos (se puede vincular trabajo nuevo). */
 const OPEN_PROJECT_STATUSES = ["borrador", "planeacion", "en_proceso", "en_revision"];
 
-/**
- * Infiere el tipo de proyecto a partir de las partidas cotizadas. Heurística
- * documentada y sobrescribible: si el llamador da un `projectType` explícito,
- * ese manda. No inventa datos: ante la duda cae en `marketing`.
- */
-export function inferProjectTypeFromQuoteItems(
-  items: { name: string }[],
-  override?: string
-): string {
-  if (override && isProjectTypeKey(override)) return override;
+export interface InferenceTemplate {
+  key: string;
+  label: string;
+  description: string | null;
+  isDefault: boolean;
+}
+
+/** Heurística histórica por palabras del nombre de las partidas. */
+function detectKnownWorkType(
+  items: { name: string }[]
+): "maintenance" | "web_service" | "marketing" | null {
   const text = items.map((i) => i.name.toLowerCase()).join(" ");
   if (/\b(pc|laptop|computadora|equipo|mantenimiento|reparaci|formateo|hardware|software)\b/.test(text)) {
     return "maintenance";
@@ -64,7 +67,49 @@ export function inferProjectTypeFromQuoteItems(
   if (/\b(marketing|campa|publicidad|redes|instagram|facebook|contenido|anuncio|seo|ads)\b/.test(text)) {
     return "marketing";
   }
-  return "marketing";
+  return null;
+}
+
+function normalizeForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Infiere el proceso de proyecto a partir de las partidas cotizadas. Sin
+ * `templates` conserva la heurística histórica (marketing por defecto). Con
+ * `templates`, solo devuelve claves activas: primero la heurística conocida,
+ * luego el nombre/descripción de los procesos personalizados y, ante la duda,
+ * el proceso predeterminado.
+ */
+export function inferProjectTypeFromQuoteItems(
+  items: { name: string; description?: string | null }[],
+  override?: string,
+  templates?: InferenceTemplate[]
+): string {
+  if (!templates?.length) {
+    if (override && isProjectTypeKey(override)) return override;
+    return detectKnownWorkType(items) ?? "marketing";
+  }
+  const byKey = new Map(templates.map((template) => [template.key, template]));
+  if (override && byKey.has(override)) return override;
+
+  const known = detectKnownWorkType(items);
+  if (known && byKey.has(known)) return known;
+
+  const text = normalizeForMatch(
+    items.map((item) => `${item.name} ${item.description ?? ""}`).join(" ")
+  );
+  for (const template of templates) {
+    const tokens = normalizeForMatch(`${template.label} ${template.description ?? ""}`)
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 4);
+    if (tokens.some((token) => text.includes(token))) return template.key;
+  }
+  const fallback = templates.find((template) => template.isDefault) ?? templates[0]!;
+  return fallback.key;
 }
 
 export interface ProjectCandidate {
@@ -191,7 +236,27 @@ export async function acceptQuoteIntoProjectTx(
     )
     .orderBy(schema.quoteItem.position);
 
-  const projectType = inferProjectTypeFromQuoteItems(items, params.projectTypeOverride);
+  // Procesos activos del negocio: la inferencia solo puede devolver claves
+  // que existan (los tres base se siembran si es la primera vez).
+  const templateRows = await ensureProjectTemplates(organizationId, db);
+
+  const projectType = inferProjectTypeFromQuoteItems(
+    items,
+    params.projectTypeOverride,
+    templateRows.map((row: {
+      key: string;
+      label: string;
+      description: string | null;
+      isDefault: boolean;
+    }) => ({
+      key: row.key,
+      label: row.label,
+      description: row.description,
+      isDefault: row.isDefault,
+    }))
+  );
+  const template = templateRows.find((row: { key: string }) => row.key === projectType) ?? templateRows[0];
+  if (!template) throw new Error("No hay procesos de proyecto configurados");
 
   // 3) ¿Existe un proyecto compatible al que pertenece esta cotización?
   const candidates: ProjectCandidate[] = quote.contactId
@@ -238,14 +303,16 @@ export async function acceptQuoteIntoProjectTx(
       name: `Proyecto ${quote.quoteNumber}`,
       contactId: quote.contactId,
       projectType,
+      projectTypeLabel: template.label,
       status: "borrador",
       estado: "activo",
       avance: 0,
       stageId,
     });
 
-    // Sembrar el stepper del expediente (idempotente).
-    const stepDefs = stepsForType(projectType);
+    // Sembrar el stepper del expediente (idempotente), congelando la
+    // definición de cada paso tal como está hoy el proceso.
+    const stepDefs = templateStepDefs(template);
     await db
       .insert(schema.projectStep)
       .values(
@@ -257,6 +324,7 @@ export async function acceptQuoteIntoProjectTx(
           position,
           status: "pendiente",
           data: {},
+          definition: frozenStepDefinition(def),
         }))
       )
       .onConflictDoNothing();
@@ -313,11 +381,10 @@ export async function acceptQuoteIntoProjectTx(
     createdBy: params.actorUserId ?? null,
   });
 
-  // 7) Tareas iniciales según el tipo — solo al crear el proyecto, para no
+  // 7) Tareas iniciales del proceso — solo al crear el proyecto, para no
   //    duplicarlas con cotizaciones complementarias.
   if (projectCreated) {
-    const templates = taskTemplatesForType(projectType);
-    for (const tpl of templates) {
+    for (const tpl of template.tasks) {
       const taskId = newId("projectTask");
       await db.insert(schema.projectTask).values({
         id: taskId,

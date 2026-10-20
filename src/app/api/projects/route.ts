@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
-import { PROJECT_TYPE_KEYS } from "@/lib/project-types";
 import { listProjects, createProject } from "@/server/projects/service";
 import { projectErrorResponse } from "@/server/projects/errors";
 
@@ -23,7 +22,7 @@ const postSchema = z.object({
   name: z.string().trim().min(1).max(255),
   contactId: z.string().nullable().optional(),
   service: z.string().max(100).nullable().optional(),
-  projectType: z.enum(PROJECT_TYPE_KEYS).optional(),
+  projectType: z.string().trim().min(1).max(50).optional(),
   // Cotización que originó el proyecto: queda vinculada en project_quote
   // (una cotización solo puede tener un proyecto).
   quoteId: z.string().trim().min(1).max(255).optional(),

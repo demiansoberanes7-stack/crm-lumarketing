@@ -21,10 +21,8 @@ import {
 } from "@/server/documents/pdf";
 import {
   PROJECT_STATUS_LABELS,
-  findStep,
   formatFieldValue,
   getProjectType,
-  stepsForType,
   type ProjectStatus,
 } from "@/lib/project-types";
 import { getProject, listTasks } from "./service";
@@ -98,9 +96,10 @@ export async function projectPdf(
     : [];
   const taskAssigneeById = new Map(taskAssignees.map((user) => [user.id, user]));
 
-  const type = getProjectType(project.projectType);
+  const typeLabel =
+    project.projectTypeLabel ?? getProjectType(project.projectType)?.label ?? project.projectType;
   const status = (project.status as ProjectStatus) ?? "borrador";
-  const defs = stepsForType(project.projectType);
+  const defs = stepResult.steps;
   const completed = stepResult.steps.filter((s) => s.status === "completado").length;
 
   const doc = await PDFDocument.create();
@@ -222,7 +221,7 @@ export async function projectPdf(
     y -= 20;
   }
   y -= 4;
-  page.drawText(`Tipo: ${type?.label ?? project.projectType}`, {
+  page.drawText(`Tipo: ${typeLabel}`, {
     x: MARGIN,
     y,
     size: 10,
@@ -401,9 +400,8 @@ export async function projectPdf(
     });
     y -= 26;
 
-    const def = findStep(project.projectType, step.key);
-    if (def && step.status !== "pendiente") {
-      for (const field of def.fields) {
+    if (step.fields.length && step.status !== "pendiente") {
+      for (const field of step.fields) {
         const text = formatFieldValue(field, step.data[field.key]);
         if (!text) continue;
         checkPage(30);
@@ -415,7 +413,7 @@ export async function projectPdf(
         }
         y -= 3;
       }
-    } else if (def) {
+    } else if (step.fields.length) {
       page.drawText("Sin información capturada", {
         x: MARGIN + 8,
         y,

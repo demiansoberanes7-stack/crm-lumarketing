@@ -1,5 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 import type { AgentFichaField, AgentRules } from "@/lib/agent-config";
+import type {
+  ProjectStepDefinition,
+  ProjectTemplateStep,
+  ProjectTemplateTask,
+} from "@/lib/project-templates";
 import {
   bigint,
   boolean,
@@ -1083,6 +1088,41 @@ export const outboundDelivery = pgTable(
  * Proyectos — seguimiento de proyectos de clientes
  * ============================================================ */
 
+/**
+ * Proceso de proyecto configurable por negocio. Los pasos y las tareas
+ * iniciales viajan como JSONB; `is_system` protege los tres procesos base
+ * del negocio principal. El borrado es lógico (`deletedAt`) para no romper
+ * proyectos que ya congelaron su definición.
+ */
+export const projectTemplate = pgTable(
+  "project_template",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    key: varchar("key", { length: 50 }).notNull(),
+    label: varchar("label", { length: 255 }).notNull(),
+    description: text("description"),
+    icon: varchar("icon", { length: 50 }).notNull().default("layers"),
+    position: integer("position").notNull().default(0),
+    isSystem: boolean("is_system").notNull().default(false),
+    isDefault: boolean("is_default").notNull().default(false),
+    steps: jsonb("steps").$type<ProjectTemplateStep[]>().notNull().default(sql`'[]'::jsonb`),
+    tasks: jsonb("tasks").$type<ProjectTemplateTask[]>().notNull().default(sql`'[]'::jsonb`),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("project_template_org_key_uq").on(t.organizationId, t.key),
+    index("project_template_org_position_idx").on(t.organizationId, t.position),
+    uniqueIndex("project_template_org_default_uq")
+      .on(t.organizationId)
+      .where(sql`${t.isDefault} = true AND ${t.deletedAt} IS NULL`),
+  ]
+);
+
 export const projectStage = pgTable("project_stage", {
   id: varchar("id", { length: 255 }).primaryKey(),
   organizationId: varchar("organization_id", { length: 255 }).notNull().references(() => organization.id, { onDelete: "cascade" }),
@@ -1107,10 +1147,12 @@ export const project = pgTable(
     estado: varchar("estado", { length: 20 })
       .notNull()
       .default("activo"),
-    /** Clave del tipo en `src/lib/project-types.ts` (marketing|maintenance|web_service|…). */
+    /** Clave del tipo de proyecto (proceso) en `project_template`. */
     projectType: varchar("project_type", { length: 50 })
       .notNull()
       .default("marketing"),
+    /** Nombre congelado del proceso al crear el proyecto. */
+    projectTypeLabel: varchar("project_type_label", { length: 255 }),
     /** Workflow del expediente (borrador|planeacion|en_proceso|en_revision|completado|cancelado). */
     status: varchar("status", { length: 20 })
       .notNull()
@@ -1160,6 +1202,8 @@ export const projectStep = pgTable(
       .notNull()
       .default("pendiente"),
     data: jsonb("data").notNull().default({}),
+    /** Definición congelada del paso al crear el proyecto (label, campos, tipo). */
+    definition: jsonb("definition").$type<ProjectStepDefinition>(),
     completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

@@ -47,13 +47,29 @@ function selectChain() {
   return box;
 }
 
+/**
+ * Cadena de `insert`: awaitable y con los encadenados que usan los sembrados
+ * (`onConflictDoNothing`, `returning`) para que el falso no se rompa cuando el
+ * negocio nace con más configuración.
+ */
+function insertResult(values: unknown) {
+  const rows = Array.isArray(values) ? values : [values];
+  const result = Promise.resolve(rows) as Promise<unknown> & {
+    onConflictDoNothing: () => Promise<unknown>;
+    returning: () => Promise<unknown[]>;
+  };
+  result.onConflictDoNothing = () => result;
+  result.returning = () => Promise.resolve(rows as unknown[]);
+  return result;
+}
+
 function fakeDb() {
   const db: Record<string, unknown> = {
     select: () => selectChain(),
     insert: (table: unknown) => ({
       values: (values: unknown) => {
         inserts.push({ table, values });
-        return Promise.resolve([]);
+        return insertResult(values);
       },
     }),
     execute: (statement: unknown) => {
@@ -135,6 +151,7 @@ describe("provisionOrganization", () => {
       schema.acquisitionChannel,
       schema.lossReasonCatalog,
       schema.agentProfile,
+      schema.projectTemplate,
     ]) {
       const rows = rowsInsertedInto(table);
       expect(rows.length).toBeGreaterThan(0);

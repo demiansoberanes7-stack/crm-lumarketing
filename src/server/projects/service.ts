@@ -10,9 +10,10 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { DEFAULT_PROJECT_STAGES } from "@/lib/project-contract";
-import { isProjectTypeKey, stepsForType } from "@/lib/project-types";
+import { frozenStepDefinition } from "@/lib/project-templates";
 import { ProjectError } from "./errors";
 import { validateProjectMember } from "./members";
+import { resolveProjectTemplate, templateStepDefs } from "./templates";
 import { syncTaskById } from "@/server/agenda/tasks-sync";
 
 export type ProjectEstado = "activo" | "reunion" | "cerrado";
@@ -58,10 +59,8 @@ export async function createProject(
   }
 ): Promise<string> {
   await validateProjectMember(organizationId, input.assignedUserId);
-  const projectType = input.projectType ?? "marketing";
-  if (!isProjectTypeKey(projectType)) {
-    throw new ProjectError(422, "Tipo de proyecto no válido");
-  }
+  const template = await resolveProjectTemplate(organizationId, input.projectType);
+  const projectType = template.key;
   if (input.contactId) {
     const [contact] = await getDb().select({ id: schema.contact.id }).from(schema.contact)
       .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId))).limit(1);
@@ -81,7 +80,7 @@ export async function createProject(
     quoteContactId = quoteRow.contactId;
   }
   const stages = await getProjectStages(organizationId);
-  const stepDefs = stepsForType(projectType);
+  const stepDefs = templateStepDefs(template);
   const created = await getDb().transaction(async (db) => {
   const id = newId("project");
   const code = await nextProjectCode(db, organizationId);
@@ -94,6 +93,7 @@ export async function createProject(
     contactId: input.contactId ?? quoteContactId ?? null,
     service: input.service ?? null,
     projectType,
+    projectTypeLabel: template.label,
     status: "borrador",
     startDate: input.startDate ?? null,
     endDate: input.endDate ?? null,
@@ -134,7 +134,20 @@ export async function createProject(
     position,
     status: "pendiente",
     data: {},
+    definition: frozenStepDefinition(def),
   }))).onConflictDoNothing();
+
+  // Seguimientos iniciales del proceso (checklist del proyecto).
+  if (template.tasks.length) {
+    await db.insert(schema.projectTask).values(template.tasks.map((task) => ({
+      id: newId("projectTask"),
+      organizationId,
+      projectId: id,
+      title: task.title,
+      description: task.description ?? null,
+      estado: "no_empezado",
+    })));
+  }
 
   return { id };
   });

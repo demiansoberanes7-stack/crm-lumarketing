@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Archive, ArchiveRestore, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Plus, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { ProjectDetail } from "./project-detail";
 import {
   PROJECT_STATUS_BADGE,
   PROJECT_STATUS_LABELS,
-  getProjectType,
+  projectTypeLabel,
   type ProjectStatus,
 } from "@/lib/project-types";
 
@@ -23,6 +23,8 @@ interface Project {
   contactId: string | null;
   service: string | null;
   projectType: string;
+  /** Etiqueta congelada del proceso con el que nació el proyecto. */
+  projectTypeLabel?: string | null;
   status: ProjectStatus;
   avance: number;
   prioridad: string | null;
@@ -35,6 +37,7 @@ export function ProjectsClient() {
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [wizardProject, setWizardProject] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(0);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -94,10 +97,16 @@ export function ProjectsClient() {
     <div className="flex h-full flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
         <h2 className="text-[17px] font-bold tracking-tight">Proyectos</h2>
-        <Button size="sm" onClick={() => setShowNewProject(true)}>
-          <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-          Nuevo Proyecto
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowTemplates(true)}>
+            <Settings2 className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Procesos
+          </Button>
+          <Button size="sm" onClick={() => setShowNewProject(true)}>
+            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Nuevo Proyecto
+          </Button>
+        </div>
       </header>
 
       {/* Tabs */}
@@ -154,7 +163,7 @@ export function ProjectsClient() {
                         {p.code}
                       </span>
                       <CardTitle className="text-sm">{p.name}</CardTitle>
-                      <Badge variant="outline">{getProjectType(p.projectType)?.label ?? p.projectType}</Badge>
+                      <Badge variant="outline">{projectTypeLabel(p)}</Badge>
                       <Badge variant={PROJECT_STATUS_BADGE[p.status] ?? "secondary"}>
                         {PROJECT_STATUS_LABELS[p.status] ?? p.status}
                       </Badge>
@@ -235,6 +244,10 @@ export function ProjectsClient() {
             void refetch();
           }}
         />
+      )}
+
+      {showTemplates && (
+        <ProjectTypePicker manageOnly onClose={() => setShowTemplates(false)} onCreated={() => setShowTemplates(false)} />
       )}
 
       {wizardProject && (
