@@ -98,6 +98,8 @@ const prefixes = {
   mcpToken: "mcpt",
   mcpClient: "mcpcl",
   mcpAudit: "mcpa",
+  account: "acc",
+  instanceAdminAudit: "iaud",
   // Ciclo comercial: vínculo cotización ↔ proyecto y orden de servicio
   projectQuote: "pq",
   serviceOrder: "os",

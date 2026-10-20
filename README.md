@@ -426,10 +426,12 @@ base64 (44 caracteres): `openssl rand -base64 32`.
 **La app arranca pero /api/health falla** — La base de datos no está lista o
 `DATABASE_URL` apunta mal; revisa los logs (`docker compose logs app`).
 
-**Olvidé mi contraseña y no puedo entrar** — Zorro Tech no manda correos (sería una
-dependencia externa) y el registro público se cierra con la primera
-organización, así que no hay flujo de "olvidé mi contraseña". La salida es
-reescribir el hash en la base:
+**Olvidé mi contraseña y no puedo entrar** — Si quien opera la instancia puede
+entrar, restablece la clave desde **Ajustes → Equipo → Negocios de la
+instancia**: pulsa el negocio, elige la cuenta y cambia la contraseña. Esa
+acción revoca las sesiones y tokens MCP de la cuenta y queda auditada.
+
+Si nadie puede entrar, reescribe el hash en la base:
 
 ```bash
 NEW_PASSWORD='tu-contraseña-nueva' node scripts/reset-password.mjs tu@correo.com

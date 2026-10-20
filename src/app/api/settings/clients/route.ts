@@ -1,8 +1,13 @@
-import { asc, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
+import type { SessionContext } from "@/lib/auth/session";
 import { getAuth, runInternalSignup } from "@/lib/auth";
-import { getDb, schema } from "@/lib/db";
+import {
+  deleteInstanceOrganization,
+  InstanceAdminError,
+  listInstanceOrganizations,
+  resetMemberPassword,
+} from "@/server/auth/instance-admin";
 import { isInstanceOwner, provisionOrganization } from "@/server/auth/on-signup";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +20,9 @@ export const dynamic = "force-dynamic";
  * paso, sin abrir el registro público. El aislamiento es el de siempre —toda
  * tabla de dominio filtra por `organization_id`— y cada negocio nace con su
  * propia configuración (pipeline, canales, motivos de pérdida, agente).
+ *
+ * Las acciones destructivas (borrar negocio, cambiar contraseña de otra cuenta)
+ * son exclusivas del operador de la instancia y se revalidan contra la BD.
  */
 
 // No se comparte una instancia de Response: su body se consume al primer uso.
@@ -22,37 +30,23 @@ const notInstanceOwner = () =>
   apiError(
     403,
     "not_instance_owner",
-    "Solo quien opera esta instancia puede dar de alta negocios nuevos"
+    "Solo quien opera esta instancia puede administrar los negocios"
   );
+
+async function isInstanceOperator(session: SessionContext): Promise<boolean> {
+  return session.role === "owner" && (await isInstanceOwner(session.userId));
+}
 
 /** El listado cruza tenants, así que es exclusivamente del operador. */
 export const GET = withAuth(async (session) => {
-  if (session.role !== "owner") return notInstanceOwner();
-  if (!(await isInstanceOwner(session.userId))) return notInstanceOwner();
+  if (!(await isInstanceOperator(session))) return notInstanceOwner();
 
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: schema.organization.id,
-      name: schema.organization.name,
-      slug: schema.organization.slug,
-      createdAt: schema.organization.createdAt,
-      members: count(schema.member.id),
+  return Response.json(
+    await listInstanceOrganizations({
+      userId: session.userId,
+      organizationId: session.organizationId,
     })
-    .from(schema.organization)
-    .leftJoin(schema.member, eq(schema.member.organizationId, schema.organization.id))
-    .groupBy(schema.organization.id)
-    .orderBy(asc(schema.organization.createdAt), asc(schema.organization.id));
-
-  return Response.json({
-    organizations: rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      slug: r.slug,
-      members: r.members,
-      createdAt: r.createdAt.toISOString(),
-    })),
-  });
+  );
 });
 
 const createSchema = z
@@ -110,4 +104,70 @@ export const POST = withAuth(async (session, req: Request) => {
     { organizationId: outcome.organizationId, email: body.data.email },
     { status: 201 }
   );
+});
+
+const resetPasswordSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(255),
+    userId: z.string().trim().min(1).max(255),
+    password: z.string().min(8).max(128),
+  })
+  .strict();
+
+/**
+ * Cambia la contraseña de una cuenta de otro negocio. La cuenta debe seguir
+ * siendo miembro del negocio indicado —lo revalida el servicio dentro de la
+ * transacción— y se revocan todas sus sesiones y tokens MCP.
+ */
+export const PATCH = withAuth(async (session, req: Request) => {
+  if (!(await isInstanceOperator(session))) return notInstanceOwner();
+
+  const body = await parseBody(req, resetPasswordSchema);
+  if (!body.ok) return body.response;
+
+  try {
+    const result = await resetMemberPassword(
+      { userId: session.userId, organizationId: session.organizationId },
+      body.data
+    );
+    return Response.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof InstanceAdminError) {
+      return apiError(err.status, err.code, err.message);
+    }
+    throw err;
+  }
+});
+
+const deleteSchema = z
+  .object({
+    organizationId: z.string().trim().min(1).max(255),
+    /** Nombre exacto del negocio; se valida otra vez en el servidor. */
+    confirmName: z.string().min(1).max(255),
+  })
+  .strict();
+
+/**
+ * Borra un negocio y todo su dominio. El negocio principal, el de la sesión
+ * activa y el último de la instancia están protegidos. La confirmación por
+ * nombre no sustituye a la autorización: es la barrera contra un clic de más.
+ */
+export const DELETE = withAuth(async (session, req: Request) => {
+  if (!(await isInstanceOperator(session))) return notInstanceOwner();
+
+  const body = await parseBody(req, deleteSchema);
+  if (!body.ok) return body.response;
+
+  try {
+    const result = await deleteInstanceOrganization(
+      { userId: session.userId, organizationId: session.organizationId },
+      body.data
+    );
+    return Response.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof InstanceAdminError) {
+      return apiError(err.status, err.code, err.message);
+    }
+    throw err;
+  }
 });

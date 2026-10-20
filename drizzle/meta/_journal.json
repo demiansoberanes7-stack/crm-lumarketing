@@ -540,6 +540,13 @@
       "when": 1792000000018,
       "tag": "0077_intel_trending",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792000000019,
+      "tag": "0078_instance_admin_audit",
+      "breakpoints": true
     }
   ]
 }

@@ -155,6 +155,28 @@ export const mcpActionAudit = pgTable(
   (t) => [index("mcp_action_audit_org_created_idx").on(t.organizationId, t.createdAt)]
 );
 
+/**
+ * Trazabilidad de acciones del operador sobre OTROS negocios de la instancia
+ * (alta, cambio de contraseña, borrado). Sin claves foráneas a propósito: la
+ * fila debe sobrevivir al borrado del negocio o de la cuenta que la originó.
+ */
+export const instanceAdminAudit = pgTable(
+  "instance_admin_audit",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
+    actorEmail: varchar("actor_email", { length: 255 }).notNull(),
+    action: varchar("action", { length: 64 }).notNull(),
+    targetOrganizationId: varchar("target_organization_id", { length: 255 }),
+    targetOrganizationName: varchar("target_organization_name", { length: 255 }),
+    targetUserId: varchar("target_user_id", { length: 255 }),
+    targetUserEmail: varchar("target_user_email", { length: 255 }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("instance_admin_audit_created_idx").on(t.createdAt)]
+);
+
 export const organization = pgTable("organization", {
   id: varchar("id", { length: 255 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),

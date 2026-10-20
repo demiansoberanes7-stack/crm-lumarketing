@@ -1,7 +1,7 @@
 # Zorro Tech — Documentación Completa del Sistema
 
-**Versión**: 1.4.0  
-**Fecha de actualización**: 18 de septiembre de 2026  
+**Versión**: 1.5.0  
+**Fecha de actualización**: 19 de octubre de 2026  
 **Propietario**: Zorro Tech / Demian Soberanes  
 **Repositorio**: `demiansoberanes7-stack/crm-lumarketing` (GitHub privado)  
 **Base**: fork de un CRM open source (MIT); el aviso de copyright original vive en `LICENSE`

@@ -2,8 +2,8 @@
 
 ---
 
-**Version:** 1.4.0  
-**Fecha:** 20 de Septiembre de 2026  
+**Version:** 1.5.0  
+**Fecha:** 19 de Octubre de 2026  
 **Licencia:** MIT  
 **Repositorio:** Zorro Tech (monolito Next.js)  
 **Autor:** Zorro Tech / Ghostbreakfast  
@@ -1274,7 +1274,30 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | `/api/settings/webhook` | GET | URLs de webhooks |
 | `/api/settings/branding/*` | GET/PUT | Branding white-label |
 | `/api/settings/team` | GET/PUT | Equipo |
+| `/api/settings/clients` | GET/POST/PATCH/DELETE | Negocios de la instancia: listar, dar de alta, cambiar contraseña y borrar (solo operador) |
 | `/api/settings/diagnostics` | GET | Diagnosticos |
+
+### Negocios de la instancia (operador)
+
+La tarjeta «Negocios de la instancia» de Ajustes → Equipo solo se monta para el
+operador (owner de la organizacion mas antigua) y ofrece:
+
+- **Listar** todos los negocios con sus cuentas y conteos (contactos,
+  conversaciones, cotizaciones, proyectos). El listado cruza tenants, por eso
+  nunca se expone a un cliente.
+- **Cambiar la contrasena** de cualquier cuenta del negocio. El hash se genera
+  con `hashPassword` de Better Auth y se verifica contra si mismo antes de
+  escribir; en la misma transaccion se revocan sesiones y tokens MCP de esa
+  cuenta y se registra la accion en `instance_admin_audit`.
+- **Eliminar el negocio** escribiendo su nombre exacto. Las claves foraneas a
+  `organization` estan en cascada, asi que se borra todo su dominio; las cuentas
+  cuya unica membresia era ese negocio tambien se eliminan, y la media del
+  volumen (`MEDIA_DIR/{orgId}`) se retira despues del commit. Protegidos: el
+  negocio principal, el de la sesion activa y el ultimo de la instancia.
+
+`instance_admin_audit` no tiene claves foraneas a proposito: la fila sobrevive
+al borrado del negocio o de la cuenta afectada. No se cancelan cuentas de
+servicios externos (WhatsApp, Instagram, TikTok, etc.).
 
 ## Webhooks
 

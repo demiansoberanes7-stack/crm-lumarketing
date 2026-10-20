@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   provision: vi.fn(),
   isInstanceOwner: vi.fn(),
   recordDiagnostic: vi.fn(),
+  listOrganizations: vi.fn(),
+  resetPassword: vi.fn(),
+  deleteOrganization: vi.fn(),
 }));
 
 vi.mock("@/lib/db", async (importOriginal) => ({
@@ -45,6 +48,13 @@ vi.mock("@/server/auth/on-signup", async (importOriginal) => ({
   isInstanceOwner: mocks.isInstanceOwner,
 }));
 
+vi.mock("@/server/auth/instance-admin", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/auth/instance-admin")>(),
+  listInstanceOrganizations: mocks.listOrganizations,
+  resetMemberPassword: mocks.resetPassword,
+  deleteInstanceOrganization: mocks.deleteOrganization,
+}));
+
 vi.mock("@/server/diagnostics/logger", () => ({
   recordDiagnostic: mocks.recordDiagnostic,
 }));
@@ -52,14 +62,20 @@ vi.mock("@/server/diagnostics/logger", () => ({
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
 import { UnauthorizedError } from "@/lib/auth/session";
+import { InstanceAdminError } from "@/server/auth/instance-admin";
 import { POST as bootstrapOrganization } from "@/app/api/auth/organization/route";
-import { GET as listClients, POST as createClient } from "@/app/api/settings/clients/route";
+import {
+  GET as listClients,
+  POST as createClient,
+  PATCH as resetPassword,
+  DELETE as deleteClient,
+} from "@/app/api/settings/clients/route";
 
 const OWNER_SESSION = { userId: "u_ana", organizationId: "org_1", role: "owner" };
 
-function jsonRequest(path: string, body: unknown) {
+function jsonRequest(path: string, body: unknown, method = "POST") {
   return new Request(`http://local${path}`, {
-    method: "POST",
+    method,
     body: JSON.stringify(body),
   });
 }
@@ -83,6 +99,34 @@ beforeEach(() => {
   mocks.requireSession.mockResolvedValue(OWNER_SESSION);
   mocks.isInstanceOwner.mockResolvedValue(true);
   mocks.provision.mockResolvedValue({ ok: true, organizationId: "org_nueva", created: true });
+  mocks.listOrganizations.mockResolvedValue({
+    viewerUserId: "u_ana",
+    viewerOrganizationId: "org_1",
+    organizations: [
+      {
+        id: "org_1",
+        name: "Acme Corp",
+        slug: "principal",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        members: 3,
+        isPrincipal: true,
+        canDelete: false,
+        people: [],
+        stats: { contacts: 0, conversations: 0, quotes: 0, projects: 0 },
+      },
+    ],
+  });
+  mocks.resetPassword.mockResolvedValue({
+    email: "luna@x.mx",
+    sessionsRevoked: 1,
+    tokensRevoked: 0,
+  });
+  mocks.deleteOrganization.mockResolvedValue({
+    organizationName: "Dulce Luna",
+    usersDeleted: 1,
+    stats: { contacts: 0, conversations: 0, quotes: 0, projects: 0, members: 1 },
+    mediaRemoved: true,
+  });
 });
 
 describe("POST /api/auth/organization", () => {
@@ -206,35 +250,161 @@ describe("GET /api/settings/clients", () => {
     mocks.isInstanceOwner.mockResolvedValue(false);
     const res = await listClients();
     expect(res.status).toBe(403);
+    expect(mocks.listOrganizations).not.toHaveBeenCalled();
   });
 
-  it("devuelve los negocios con su número de cuentas", async () => {
-    mocks.getDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          leftJoin: () => ({
-            groupBy: () => ({
-              orderBy: () =>
-                Promise.resolve([
-                  {
-                    id: "org_1",
-                    name: "Acme Corp",
-                    slug: "principal",
-                    createdAt: new Date("2026-01-01T00:00:00Z"),
-                    members: 3,
-                  },
-                ]),
-            }),
-          }),
-        }),
-      }),
-    });
+  it("un miembro común tampoco ve el porfolio", async () => {
+    mocks.requireSession.mockResolvedValue({ ...OWNER_SESSION, role: "member" });
+    const res = await listClients();
+    expect(res.status).toBe(403);
+    expect(mocks.listOrganizations).not.toHaveBeenCalled();
+  });
+
+  it("devuelve el porfolio con la identidad del operador", async () => {
     const res = await listClients();
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({
-      organizations: [
-        { id: "org_1", name: "Acme Corp", members: 3, slug: "principal" },
-      ],
+      viewerUserId: "u_ana",
+      viewerOrganizationId: "org_1",
+      organizations: [{ id: "org_1", name: "Acme Corp", members: 3 }],
+    });
+    expect(mocks.listOrganizations).toHaveBeenCalledWith({
+      userId: "u_ana",
+      organizationId: "org_1",
+    });
+  });
+});
+
+describe("PATCH /api/settings/clients", () => {
+  const BODY = {
+    organizationId: "org_luna",
+    userId: "u_luna",
+    password: "nuevaClave123",
+  };
+
+  it("sin sesión → 401", async () => {
+    mocks.requireSession.mockRejectedValue(new UnauthorizedError());
+    const res = await resetPassword(jsonRequest("/api/settings/clients", BODY, "PATCH"));
+    expect(res.status).toBe(401);
+    expect(mocks.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("un miembro común no puede cambiar contraseñas ajenas", async () => {
+    mocks.requireSession.mockResolvedValue({ ...OWNER_SESSION, role: "member" });
+    const res = await resetPassword(jsonRequest("/api/settings/clients", BODY, "PATCH"));
+    expect(res.status).toBe(403);
+    expect(mocks.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("un owner que no opera la instancia tampoco", async () => {
+    mocks.isInstanceOwner.mockResolvedValue(false);
+    const res = await resetPassword(jsonRequest("/api/settings/clients", BODY, "PATCH"));
+    expect(res.status).toBe(403);
+    expect(mocks.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("contraseña corta → 422 sin tocar el servicio", async () => {
+    const res = await resetPassword(
+      jsonRequest("/api/settings/clients", { ...BODY, password: "corta" }, "PATCH")
+    );
+    expect(res.status).toBe(422);
+    expect(mocks.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("un campo de más en el body se rechaza", async () => {
+    const res = await resetPassword(
+      jsonRequest("/api/settings/clients", { ...BODY, role: "owner" }, "PATCH")
+    );
+    expect(res.status).toBe(422);
+    expect(mocks.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("el operador cambia la contraseña y recibe las sesiones revocadas", async () => {
+    const res = await resetPassword(jsonRequest("/api/settings/clients", BODY, "PATCH"));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      email: "luna@x.mx",
+      sessionsRevoked: 1,
+      tokensRevoked: 0,
+    });
+    expect(mocks.resetPassword).toHaveBeenCalledWith(
+      { userId: "u_ana", organizationId: "org_1" },
+      BODY
+    );
+  });
+
+  it("una cuenta que no pertenece al negocio → 404 con su código", async () => {
+    mocks.resetPassword.mockRejectedValue(
+      new InstanceAdminError(404, "member_not_found", "La cuenta no pertenece a ese negocio")
+    );
+    const res = await resetPassword(jsonRequest("/api/settings/clients", BODY, "PATCH"));
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toMatchObject({
+      error: { code: "member_not_found" },
+    });
+  });
+});
+
+describe("DELETE /api/settings/clients", () => {
+  const BODY = { organizationId: "org_luna", confirmName: "Dulce Luna" };
+
+  it("sin sesión → 401", async () => {
+    mocks.requireSession.mockRejectedValue(new UnauthorizedError());
+    const res = await deleteClient(jsonRequest("/api/settings/clients", BODY, "DELETE"));
+    expect(res.status).toBe(401);
+    expect(mocks.deleteOrganization).not.toHaveBeenCalled();
+  });
+
+  it("un miembro común no puede borrar negocios", async () => {
+    mocks.requireSession.mockResolvedValue({ ...OWNER_SESSION, role: "member" });
+    const res = await deleteClient(jsonRequest("/api/settings/clients", BODY, "DELETE"));
+    expect(res.status).toBe(403);
+    expect(mocks.deleteOrganization).not.toHaveBeenCalled();
+  });
+
+  it("un owner que no opera la instancia tampoco", async () => {
+    mocks.isInstanceOwner.mockResolvedValue(false);
+    const res = await deleteClient(jsonRequest("/api/settings/clients", BODY, "DELETE"));
+    expect(res.status).toBe(403);
+    expect(mocks.deleteOrganization).not.toHaveBeenCalled();
+  });
+
+  it("sin nombre de confirmación → 422 sin tocar el servicio", async () => {
+    const res = await deleteClient(
+      jsonRequest("/api/settings/clients", { organizationId: "org_luna" }, "DELETE")
+    );
+    expect(res.status).toBe(422);
+    expect(mocks.deleteOrganization).not.toHaveBeenCalled();
+  });
+
+  it("el operador borra el negocio y recibe el resumen", async () => {
+    const res = await deleteClient(jsonRequest("/api/settings/clients", BODY, "DELETE"));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      organizationName: "Dulce Luna",
+      usersDeleted: 1,
+      mediaRemoved: true,
+    });
+    expect(mocks.deleteOrganization).toHaveBeenCalledWith(
+      { userId: "u_ana", organizationId: "org_1" },
+      BODY
+    );
+  });
+
+  it("un negocio protegido → 400 con el motivo del servicio", async () => {
+    mocks.deleteOrganization.mockRejectedValue(
+      new InstanceAdminError(
+        400,
+        "principal_organization",
+        "El negocio principal de la instancia no se puede borrar"
+      )
+    );
+    const res = await deleteClient(jsonRequest("/api/settings/clients", BODY, "DELETE"));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: { code: "principal_organization" },
     });
   });
 });

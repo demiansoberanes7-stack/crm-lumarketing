@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 
 /**
@@ -60,6 +61,22 @@ export function resolveMediaFile(orgId: string, ...segments: string[]): string |
 /** Segmento único apto para escribir (id de asset, nombre de logo generado). */
 export function isSafeMediaSegment(segment: string): boolean {
   return SEGMENT.test(segment);
+}
+
+/**
+ * Borra el árbol de archivos de un negocio ya eliminado en BD.
+ *
+ * Se llama SIEMPRE después del commit: si el borrado de la fila falla, la media
+ * debe seguir ahí. No sigue enlaces simbólicos (rm retira el enlace, no su
+ * destino) y exige que el id sea un segmento de organización válido.
+ */
+export async function removeOrganizationMedia(orgId: string): Promise<boolean> {
+  if (!ORG_ID.test(orgId)) return false;
+  const root = resolve(mediaRootDir());
+  const dir = resolve(root, orgId);
+  if (!dir.startsWith(root + sep)) return false;
+  await rm(dir, { recursive: true, force: true });
+  return true;
 }
 
 /**
