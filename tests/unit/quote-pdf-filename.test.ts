@@ -4,9 +4,10 @@ import { quotePdfFileName } from "@/server/quotes/filename";
 /**
  * Nombre del archivo PDF enviado por WhatsApp.
  *
- * El bug original: Zernio devolvía un nombre generado (timestamp + UUID)
- * que se usaba como attachmentName en vez del nombre original del archivo.
- * El fix: usar file.fileName ?? uploaded.filename.
+ * El bug original: Zernio devolvía un nombre generado (timestamp + UUID) que
+ * WhatsApp mostraba en el chat. Enviar `attachmentName` en JSON no lo
+ * corregía; el documento debe salir por multipart, donde Zernio usa el nombre
+ * del archivo subido.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -57,28 +58,24 @@ async function sendWithFile(fileName?: string) {
   );
 }
 
-describe("sendWhatsappZernio - attachmentName", () => {
-  it("usa file.fileName (nombre original) en vez del nombre generado por Zernio", async () => {
+describe("sendWhatsappZernio - nombre del documento", () => {
+  it("envía el PDF por multipart con el nombre real del cliente", async () => {
     await sendWithFile("Cotizacion Landing Page - Juan Perez.pdf");
     const call = mocks.zernioFetch.mock.calls[0]!;
-    const body = call[1]!.body as Record<string, unknown>;
-    expect(body.attachmentName).toBe("Cotizacion Landing Page - Juan Perez.pdf");
+    expect(call[1]!.body).toBeUndefined();
+    const form = call[1]!.formData as FormData;
+    expect(form.get("accountId")).toBe("acc_123");
+    expect(form.get("message")).toBe("Cotización");
+    const attachment = form.get("attachment") as File;
+    expect(attachment.name).toBe("Cotizacion Landing Page - Juan Perez.pdf");
+    expect(attachment.type).toBe("application/pdf");
+    expect(mocks.zernioUploadMediaDirect).not.toHaveBeenCalled();
   });
 
-  it("usa uploaded.filename como fallback si file.fileName no viene", async () => {
+  it("usa un nombre de respaldo si file.fileName no viene", async () => {
     await sendWithFile(undefined);
-    const call = mocks.zernioFetch.mock.calls[0]!;
-    const body = call[1]!.body as Record<string, unknown>;
-    expect(body.attachmentName).toBe(
-      "1792119932129_dtjo1cnt_bafdf799-d41d-47ac-adaa-c83bb2587811.pdf"
-    );
-  });
-
-  it("pasa el fileName a zernioUploadMediaDirect", async () => {
-    await sendWithFile("Cotizacion Test.pdf");
-    expect(mocks.zernioUploadMediaDirect).toHaveBeenCalledWith(
-      expect.objectContaining({ fileName: "Cotizacion Test.pdf" })
-    );
+    const form = mocks.zernioFetch.mock.calls[0]![1]!.formData as FormData;
+    expect((form.get("attachment") as File).name).toBe("documento.pdf");
   });
 });
 

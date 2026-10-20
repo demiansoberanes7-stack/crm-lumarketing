@@ -192,6 +192,12 @@ export async function zernioFetch(
     method?: "GET" | "POST";
     token: string;
     body?: unknown;
+    /**
+     * Envío multipart (adjuntos binarios). Zernio usa el nombre del archivo
+     * subido; con `attachmentName` en JSON WhatsApp mostraba un nombre
+     * generado. No se fija Content-Type: lo calcula fetch con el boundary.
+     */
+    formData?: FormData;
     headers?: Record<string, string>;
   }
 ): Promise<unknown> {
@@ -201,10 +207,10 @@ export async function zernioFetch(
       method: opts.method ?? "GET",
       headers: {
         Authorization: `Bearer ${opts.token}`,
-        ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(opts.body !== undefined && !opts.formData ? { "Content-Type": "application/json" } : {}),
         ...(opts.headers ?? {}),
       },
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: opts.formData ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
       signal: AbortSignal.timeout(20000),
     });
   } catch (cause) {

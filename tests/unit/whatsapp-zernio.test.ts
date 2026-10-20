@@ -57,6 +57,34 @@ describe("WhatsApp Zernio", () => {
     });
     expect((send.headers as Record<string, string>)["Idempotency-Key"]).toBe("msg_media_1");
   });
+  it("envía documentos por multipart para que WhatsApp conserve el nombre del archivo", async () => {
+    vi.stubEnv("WHATSAPP_ZERNIO_ENABLED", "true");
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ success: true, data: { messageId: "wamid.pdf" } }));
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await sendWhatsappZernio(
+      creds,
+      "thread/1",
+      { message: "Tu cotización", attachmentType: "file" },
+      "msg_pdf_1",
+      { data: Buffer.from("%PDF-1.4"), mimeType: "application/pdf", fileName: "Cotizacion Ramo - Ana Lopez.pdf" }
+    );
+
+    expect(result).toBe("wamid.pdf");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0]?.[0])).toContain("/inbox/conversations/thread%2F1/messages");
+    const send = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(send.body).toBeInstanceOf(FormData);
+    const form = send.body as FormData;
+    expect(form.get("accountId")).toBe("account");
+    expect(form.get("message")).toBe("Tu cotización");
+    expect(form.get("attachment")).toMatchObject({
+      name: "Cotizacion Ramo - Ana Lopez.pdf",
+      type: "application/pdf",
+    });
+    expect((send.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+    expect((send.headers as Record<string, string>)["Idempotency-Key"]).toBe("msg_pdf_1");
+  });
   it("preserva el código de error de Zernio cuando la subida o envío devuelve 400", async () => {
     vi.stubEnv("WHATSAPP_ZERNIO_ENABLED", "true");
     const fetch = vi.fn().mockResolvedValue(Response.json({ error: "Invalid attachment URL", type: "invalid_request_error", code: "invalid_field_value", param: "attachmentUrl" }, { status: 400 }));
