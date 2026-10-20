@@ -408,8 +408,9 @@ export function TrendingPanel({ reloadKey, onMonitored }: Props) {
             {!loading && slice.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-4 text-center text-text-3">
-                  Sin tendencias en la ventana pedida. Pulsa «Actualizar» para leer el feed de
-                  Google Trends.
+                  {query.trim()
+                    ? `Ninguna tendencia ingerida en esta ventana contiene «${query.trim()}». «Actualizar» lee el feed completo, y el buscador de arriba analiza esa palabra clave en vivo.`
+                    : "Sin tendencias en la ventana pedida. Pulsa «Actualizar» para leer el feed de Google Trends."}
                 </td>
               </tr>
             )}

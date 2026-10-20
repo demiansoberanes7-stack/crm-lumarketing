@@ -7,9 +7,9 @@ import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
 
 /**
  * Overview de palabra clave estilo SEMrush: fuentes 100 % externas.
- * KPIs (dificultad DENUE + interés GT), historial GT, relacionadas
- * (autocompletado público de Google) y preguntas. Sin SERP de YouTube
- * ni vistas de canales.
+ * KPIs (dificultad DENUE + interés GT EN VIVO de la consulta), relacionadas
+ * (autocompletado público de Google), preguntas y —anidado y etiquetado— el
+ * historial del nicho del catálogo que se parece a la búsqueda.
  */
 
 type Intent = "transaccional" | "comercial" | "informativo" | "navegacional";
@@ -28,22 +28,27 @@ export type KeywordOverviewView = {
   related: Array<{
     keyword: string;
     intent: Intent;
+    niche: { name: string; score: number } | null;
     tracked: { lastValue: number } | null;
   }>;
   questions: string[];
+  /** Nicho del catálogo parecido a la consulta: se muestra ANIDADO y etiquetado. */
   tracked: {
     termId: string;
     name: string;
     classification: "A" | "B" | "C" | "D";
     z: number | null;
     seriesPoints: Array<{ day: string; value: number }>;
+    matchScore: number;
+    matchedVia: string;
   } | null;
+  /** Google Trends en vivo de la consulta buscada. */
   market: {
     series: Array<{ day: string; value: number }>;
     regions: Array<{ state: string; index: number }>;
     topics: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" }>;
     queries: Array<{ label: string; value: number; pct: number | null; isBreakout: boolean; list: "top" | "rising" }>;
-    provider: "serpapi" | "apify" | "web" | "catalog";
+    provider: "serpapi" | "apify" | "web";
     sourceLabel: string;
     window: string;
     partial: boolean;
@@ -58,6 +63,13 @@ const numberCompact = new Intl.NumberFormat("es-MX", {
   maximumFractionDigits: 1,
 });
 const p1 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 1 });
+
+const CLS_LABEL: Record<"A" | "B" | "C" | "D", string> = {
+  A: "A · crece",
+  B: "B · estable",
+  C: "C · contrae",
+  D: "D · sin datos",
+};
 
 const INTENT_BADGE: Record<Intent, { label: string; cls: string }> = {
   transaccional: { label: "Transaccional", cls: "border-success-soft bg-success-tint text-success-text" },
@@ -196,9 +208,10 @@ export function KeywordView({
   onMonitored: () => void;
 }) {
   const d = data;
-  const trend = d.market?.series.length ? d.market.series : d.tracked?.seriesPoints ?? [];
+  /** Solo la serie EN VIVO de la consulta; la del nicho va en su propio bloque. */
+  const trend = d.market?.series ?? [];
   const lastInterest = trend.at(-1)?.value ?? null;
-  const gtSource = d.market?.sourceLabel ?? (d.tracked ? "Google Trends" : null);
+  const gtSource = d.market?.sourceLabel ?? null;
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<string | null>(null);
 
@@ -229,8 +242,11 @@ export function KeywordView({
         </h2>
         <IntentBadge intent={d.intent} />
         {d.tracked && (
-          <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-text-2">
-            monitoreado: {d.tracked.name}
+          <span
+            className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-text-2"
+            title={`Tu búsqueda se parece a «${d.tracked.matchedVia}», un nicho que ya monitoreas. Arriba van los datos EN VIVO de tu búsqueda.`}
+          >
+            nicho relacionado: {d.tracked.name} · {Math.round(d.tracked.matchScore * 100)}%
           </span>
         )}
         <MonitorButton
@@ -277,19 +293,14 @@ export function KeywordView({
           label="Interés GT"
           hint={
             gtSource
-              ? `último valor · ${gtSource}`
-              : d.marketNote ?? "sin serie GT para esta keyword"
+              ? `último valor en vivo · ${gtSource}`
+              : d.marketNote ?? "sin serie GT en vivo para esta búsqueda"
           }
         >
           {lastInterest !== null ? (
-            <>
-              <p className="text-2xl font-semibold tabular-nums">
-                {numberCompact.format(lastInterest)}
-              </p>
-              {d.tracked?.z !== null && d.tracked?.z !== undefined && (
-                <p className="text-[11px] text-text-3">z-score 7d vs 21d: {p1.format(d.tracked.z)}</p>
-              )}
-            </>
+            <p className="text-2xl font-semibold tabular-nums">
+              {numberCompact.format(lastInterest)}
+            </p>
           ) : (
             <p className="text-2xl font-semibold text-text-3">—</p>
           )}
@@ -302,11 +313,11 @@ export function KeywordView({
         </p>
       )}
 
-      {/* Historial GT de la consulta buscada (en vivo o del nicho monitoreado) */}
+      {/* Interés GT EN VIVO de la consulta buscada */}
       {trend.length >= 2 && (
         <div className="rounded-xl border bg-card p-4 shadow-xs">
           <h3 className="text-xs font-semibold text-text-2">
-            Interés GT · {d.query} ({d.market?.window ?? "30 días"}, MX)
+            Interés GT en vivo · {d.query} ({d.market?.window ?? "30 días"}, MX)
           </h3>
           <div className="mt-2" aria-hidden="true">
             <DottedAreaChart
@@ -319,6 +330,66 @@ export function KeywordView({
           <p className="mt-1 text-[11px] text-text-3">
             Unidad: índice de interés de búsqueda de Google Trends (0–100, MX). Fuente externa:
             {" "}{gtSource ?? "Google Trends"}.
+          </p>
+        </div>
+      )}
+
+      {/*
+        Bloque ANIDADO: serie cacheada del nicho monitoreado que se parece a la
+        consulta. Va separado y etiquetado para que nadie confunda la tendencia
+        buscada con el historial de otro tema.
+      */}
+      {d.tracked && (
+        <div className="rounded-xl border-l-4 border-l-brand bg-card p-4 shadow-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xs font-semibold text-text-2">Nicho de tu catálogo relacionado</h3>
+            <span className="rounded-full border border-brand-soft bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-text">
+              {d.tracked.name}
+            </span>
+            <span
+              className="text-[11px] text-text-3"
+              title={`Coincidió con «${d.tracked.matchedVia}» del catálogo`}
+            >
+              {Math.round(d.tracked.matchScore * 100)}% parecida a «{d.query}» · serie del nicho, no de tu búsqueda
+            </span>
+          </div>
+          <dl className="mt-2 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-text-3">Clase</dt>
+              <dd className="font-medium">{CLS_LABEL[d.tracked.classification]}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-text-3">z-score 7d vs 21d</dt>
+              <dd className="font-medium tabular-nums">
+                {d.tracked.z === null || d.tracked.z === undefined ? "—" : p1.format(d.tracked.z)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-text-3">Índice actual</dt>
+              <dd className="font-medium tabular-nums">
+                {d.tracked.seriesPoints.length === 0
+                  ? "—"
+                  : numberCompact.format(d.tracked.seriesPoints.at(-1)?.value ?? 0)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-text-3">Coincidió vía</dt>
+              <dd className="truncate font-medium" title={d.tracked.matchedVia}>{d.tracked.matchedVia}</dd>
+            </div>
+          </dl>
+          {d.tracked.seriesPoints.length >= 2 && (
+            <div className="mt-3" aria-hidden="true">
+              <DottedAreaChart
+                data={d.tracked.seriesPoints}
+                xKey="day"
+                series={[{ key: "value", color: "var(--chart-3)" }]}
+                yFormatter={(v) => numberCompact.format(v)}
+              />
+            </div>
+          )}
+          <p className="mt-1 text-[11px] text-text-3">
+            Fuente: ingesta programada de Google Trends para el término «{d.tracked.name}».
+            Si buscaste otra cosa, esta serie NO corresponde a tu consulta.
           </p>
         </div>
       )}
@@ -381,6 +452,11 @@ export function KeywordView({
                     <td className="px-4 py-1.5"><IntentBadge intent={r.intent} /></td>
                     <td className="px-4 py-1.5 text-right tabular-nums text-text-2">
                       {r.tracked ? numberCompact.format(r.tracked.lastValue) : "—"}
+                      {r.niche && (
+                        <span className="block text-[10px] font-normal text-text-3" title={`El índice viene del nicho monitoreado «${r.niche.name}»`}>
+                          {r.niche.name}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-1.5 text-right">
                       <MonitorButton
@@ -423,8 +499,9 @@ export function KeywordView({
         <span className="font-semibold">Método: </span>
         la dificultad es un PROXY propio basado solo en DENUE (no la KD pagada de otra suite):
         {d.difficulty.formula}. Relacionadas y preguntas provienen del autocompletado público
-        de Google (es-MX). Interés, subregiones y temas/consultas: Google Trends (MX), leídos
-        del nicho si ya está monitoreado o consultados en vivo para esta búsqueda. Si una
+        de Google (es-MX). Interés, subregiones y temas/consultas: Google Trends (MX) consultados
+        EN VIVO para esta búsqueda; la serie de un nicho de tu catálogo sólo aparece en el bloque
+        «Nicho de tu catálogo relacionado», nunca mezclada con los datos de tu consulta. Si una
         fuente no responde, el campo queda en «—» y se indica el motivo; no se rellena con
         datos inventados. Fuentes: {d.sources.join(" · ")}.
       </p>

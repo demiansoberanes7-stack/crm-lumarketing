@@ -8,10 +8,8 @@ import { fetchSuggestions } from "@/server/intel/sources/suggest";
 import { getTrendsFromProviders } from "@/server/intel/trends-orchestrator";
 import {
   addDays,
-  getGtReport,
   googleGeoToInegi,
   utcDay,
-  type GtReport,
 } from "@/server/intel/service";
 import {
   classify,
@@ -22,7 +20,7 @@ import {
   type Classification,
   type Descriptive,
 } from "@/server/intel/stats";
-import { resolveTerm } from "@/server/intel/terms";
+import { matchTerm, resolveTerm } from "@/server/intel/terms";
 
 /**
  * Analizador de palabras clave estilo SEMrush, con fuentes 100% EXTERNAS:
@@ -31,7 +29,8 @@ import { resolveTerm } from "@/server/intel/terms";
  * - Dificultad (proxy 0–100): fórmula abierta basada en oferta local DENUE
  *   (establecimientos coincidentes). Sin DENUE → sin score de dificultad.
  * - Palabras relacionadas y preguntas: autocompletado público de Google.
- * - Interés medido: SOLO serie Google Trends del nicho monitoreado (si coincide).
+ * - Interés medido: serie Google Trends EN VIVO de la consulta. El nicho
+ *   monitoreado que se le parezca aparece aparte, anidado y etiquetado.
  *
  * Sin SERP de YouTube, sin vistas de canales, sin datos internos del CRM.
  * Regla: nunca inventar. Sin fuente → campos en null con su motivo.
@@ -150,6 +149,8 @@ export function difficultyProxy(input: DifficultyInput): Difficulty {
 export type RelatedKeyword = {
   keyword: string;
   intent: SearchIntent;
+  /** Nicho del catálogo que cubre la relacionada (similitud ≥ umbral); null si es nueva. */
+  niche: { name: string; score: number } | null;
   /** Último índice GT si el término está en el catálogo monitoreado. */
   tracked: {
     lastValue: number;
@@ -166,16 +167,18 @@ export type MarketRelated = {
 };
 
 /**
- * Datos de Google Trends para la consulta buscada. Se leen del catálogo si la
- * keyword ya está monitoreada; si no, se consultan EN VIVO al proveedor. Sin
- * respuesta no se rellena con ceros: `market` queda null y se explica por qué.
+ * Datos de Google Trends para la consulta buscada, SIEMPRE en vivo. El catálogo
+ * solo aporta el bloque anidado `tracked`; sustituir la serie del nicho por la
+ * de la búsqueda mostraba datos de otro tema (queja real: "redes sociales"
+ * enseñaba la serie de "Redes y conectividad"). Sin respuesta no se rellena con
+ * ceros: `market` queda null y `marketNote` explica por qué.
  */
 export type KeywordMarket = {
   series: Array<{ day: string; value: number }>;
   regions: Array<{ state: string; index: number }>;
   topics: MarketRelated[];
   queries: MarketRelated[];
-  provider: "serpapi" | "apify" | "web" | "catalog";
+  provider: "serpapi" | "apify" | "web";
   sourceLabel: string;
   window: string;
   partial: boolean;
@@ -189,7 +192,10 @@ export type KeywordOverview = {
   competition: { establishments: number; censored: boolean } | null;
   related: RelatedKeyword[];
   questions: string[];
-  /** Historial GT si la consulta coincide con un nicho monitoreado. */
+  /**
+   * Bloque ANIDADO con el nicho monitoreado al que se parece la consulta.
+   * Nunca pinta el gráfico principal: se etiqueta aparte, con su similitud.
+   */
   tracked: {
     termId: string;
     name: string;
@@ -197,7 +203,12 @@ export type KeywordOverview = {
     z: number | null;
     series: Descriptive | null;
     seriesPoints: Array<{ day: string; value: number }>;
+    /** 0-1: qué tan parecida es la consulta al nicho. */
+    matchScore: number;
+    /** Nombre o keyword del catálogo con la que coincidió. */
+    matchedVia: string;
   } | null;
+  /** Google Trends EN VIVO de la consulta buscada. */
   market: KeywordMarket | null;
   /** Motivo legible cuando Google Trends no aportó datos. */
   marketNote: string | null;
@@ -214,22 +225,6 @@ const searchMarketCache = new Map<
   string,
   { at: number; market: KeywordMarket | null; note: string | null }
 >();
-
-function marketFromReport(report: GtReport): KeywordMarket {
-  return {
-    series: report.series,
-    regions: report.regions.map((r) => ({ state: r.state, index: r.index })),
-    topics: report.topics,
-    queries: report.queries,
-    provider: "catalog",
-    sourceLabel:
-      report.seriesSource === "google_trends"
-        ? "Google Trends · serie del nicho monitoreado"
-        : report.method.fuente,
-    window: report.method.ventana,
-    partial: false,
-  };
-}
 
 async function fetchSearchMarket(
   organizationId: string,
@@ -315,7 +310,9 @@ export async function analyzeKeyword(
   const db = getDb();
   const q = query.trim().slice(0, 200);
 
-  const term = await resolveTerm(organizationId, q);
+  const resolved = await resolveTerm(organizationId, q);
+  const term = resolved?.term ?? null;
+  const match = resolved?.match ?? null;
   await db.insert(schema.intelSearchLog).values({
     id: newId("intelSearch"),
     organizationId,
@@ -325,13 +322,14 @@ export async function analyzeKeyword(
 
   const creds = await getIntelCredentials(organizationId);
 
-  const [ytSuggestions, webSuggestions, denue, storedReport] = await Promise.all([
+  // La dificultad y el interés se miden SOBRE LA CONSULTA. El nicho del catálogo
+  // solo alimenta el bloque anidado, nunca los KPIs principales.
+  const [ytSuggestions, webSuggestions, denue] = await Promise.all([
     fetchSuggestions(q, true),
     fetchSuggestions(q, false),
     creds?.denueToken
-      ? countEstablishments(creds.denueToken, term?.keywords.length ? term.keywords : [q]).catch(() => null)
+      ? countEstablishments(creds.denueToken, [q]).catch(() => null)
       : Promise.resolve(null),
-    term ? getGtReport(organizationId, term.id).catch(() => null) : Promise.resolve(null),
   ]);
 
   const seen = new Set([normalizeText(q)]);
@@ -351,16 +349,16 @@ export async function analyzeKeyword(
     .from(schema.intelTerm)
     .where(scoped(schema.intelTerm.organizationId, organizationId, eq(schema.intelTerm.active, true)));
 
-  const matchesFor = (kw: string) => {
-    const n = normalizeText(kw);
-    return catalogTerms.find((t) => {
-      const nameHit = normalizeText(t.name).includes(n) || n.includes(normalizeText(t.name));
-      const kwHit = Array.isArray(t.keywords) && t.keywords.some(
-        (k) => typeof k === "string" && (normalizeText(k).includes(n) || n.includes(normalizeText(k)))
-      );
-      return nameHit || kwHit;
-    });
-  };
+  const catalogForMatch = catalogTerms.map((t) => ({
+    id: t.id,
+    name: t.name,
+    keywords: Array.isArray(t.keywords)
+      ? t.keywords.filter((k): k is string => typeof k === "string")
+      : [],
+  }));
+
+  /** Relacionada → nicho monitoreado, con la MISMA regla estricta que la consulta. */
+  const matchesFor = (kw: string) => matchTerm(catalogForMatch, kw);
 
   const matchedIds = new Set<string>();
   for (const kw of relatedNonQuestions) {
@@ -394,13 +392,15 @@ export async function analyzeKeyword(
     return {
       keyword: kw,
       intent: classifyIntent(kw),
+      /** Nicho que cubre esta relacionada, para poder etiquitarla en la UI. */
+      niche: t ? { name: t.name, score: t.score } : null,
       tracked: gt !== undefined ? { lastValue: gt } : null,
     };
   });
 
-  // Historial GT de la consulta si coincide con un nicho.
+  // Historial del nicho monitoreado, SIEMPRE como bloque anidado y etiquetado.
   let tracked: KeywordOverview["tracked"] = null;
-  if (term) {
+  if (term && match) {
     const end = utcDay();
     const start = addDays(end, -29);
     const seriesRows = await db
@@ -429,25 +429,16 @@ export async function analyzeKeyword(
       z,
       series: values.length > 0 ? describe(values) : null,
       seriesPoints: points,
+      matchScore: Math.round(match.score * 100) / 100,
+      matchedVia: match.via,
     };
   }
 
-  let market: KeywordMarket | null = null;
-  let marketNote: string | null = null;
-  const hasStoredMarket = Boolean(
-    storedReport &&
-      (storedReport.series.length > 0 ||
-        storedReport.regions.length > 0 ||
-        storedReport.topics.length > 0 ||
-        storedReport.queries.length > 0)
-  );
-  if (storedReport && hasStoredMarket) {
-    market = marketFromReport(storedReport);
-  } else {
-    const live = await fetchSearchMarket(organizationId, q);
-    market = live.market;
-    marketNote = live.note;
-  }
+  // Google Trends en vivo de la consulta buscada: nunca se sustituye por la
+  // serie cacheada del nicho.
+  const live = await fetchSearchMarket(organizationId, q);
+  const market = live.market;
+  const marketNote = live.note;
 
   const difficulty = difficultyProxy({
     establishments: denue?.count ?? null,
@@ -460,7 +451,7 @@ export async function analyzeKeyword(
   }
   if (denue) sources.push("DENUE · INEGI (oferta local)");
   if (tracked) sources.push("Google Trends (serie del nicho monitoreado)");
-  if (market && market.provider !== "catalog") sources.push(market.sourceLabel);
+  if (market) sources.push(market.sourceLabel);
   if (sources.length === 0) sources.push("Sin fuentes externas disponibles");
 
   return {
