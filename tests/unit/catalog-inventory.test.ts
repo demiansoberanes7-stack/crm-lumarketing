@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { changeQuoteStatus, createQuote } from "@/server/quotes/service";
 import { renderCatalog } from "@/server/ai/prompts";
+import { renderInventoryResults } from "@/server/ai/inventory";
 import { renderProductCard, renderProductShare, stockLabel } from "@/server/ai/product-card";
 import { schema } from "@/lib/db";
 
@@ -144,6 +145,40 @@ describe("catálogo en el prompt del agente (renderCatalog)", () => {
     expect(text).toContain("Inventario: consultar");
     expect(text).toContain("Sitio: https://tienda.ejemplo.com/ramo");
     expect(text).not.toContain("cat_3");
+  });
+
+  it("acota catálogos grandes y remite a search_inventory en vez de volcarlos", () => {
+    const many = Array.from({ length: 4 }, (_, i) => ({
+      ...PRODUCT,
+      id: `cat_${i + 1}`,
+      name: `Producto ${i + 1}`,
+      available: true,
+    }));
+    const text = renderCatalog(many as never, 2);
+    expect(text).toContain("Producto 1");
+    expect(text).toContain("Producto 2");
+    expect(text).not.toContain("Producto 4");
+    expect(text).toContain("solo aparecen 2");
+    expect(text).toContain("search_inventory");
+    expect(text).not.toContain("Ficha técnica");
+  });
+});
+
+describe("resultados de inventario para el modelo (renderInventoryResults)", () => {
+  it("resume precio, existencias y disponibilidad sin descripciones largas", () => {
+    const text = renderInventoryResults([
+      { id: "cat_1", name: "Ramo primavera", price: 35000, currency: "MXN", stock: 5, available: true, shortDescription: "Rosas y tulipanes" },
+      { id: "cat_2", name: "Servicio", price: 10000, currency: "MXN", stock: null, available: true, shortDescription: null },
+      { id: "cat_3", name: "Jarrón", price: 8000, currency: "MXN", stock: 0, available: false, shortDescription: null },
+    ]);
+    expect(text).toContain("ID: cat_1 | Ramo primavera | $350.00 MXN | Inventario: 5 piezas");
+    expect(text).toContain("Rosas y tulipanes");
+    expect(text).toContain("ID: cat_2 | Servicio | $100.00 MXN | Inventario: sin control de stock");
+    expect(text).toContain("ID: cat_3 | Jarrón | $80.00 MXN | Inventario: agotado | NO DISPONIBLE (no cotizar)");
+  });
+
+  it("sin coincidencias lo dice explícitamente para que el modelo no invente", () => {
+    expect(renderInventoryResults([])).toBe("(sin coincidencias en el inventario)");
   });
 });
 

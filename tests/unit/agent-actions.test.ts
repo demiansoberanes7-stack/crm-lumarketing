@@ -22,4 +22,29 @@ describe("acciones de cotización del agente", () => {
     });
     expect(degradeAction({ action: "create_quote", item_id: "cat_product" })).toEqual({ action: "none" });
   });
+
+  it("acepta varias líneas de cotización y rechaza listas vacías o demasiado largas", () => {
+    expect(AgentAction.safeParse({
+      action: "create_quote",
+      items: [
+        { item_id: "cat_a", quantity: 1 },
+        { item_id: "cat_b", quantity: 3 },
+      ],
+    }).success).toBe(true);
+    expect(AgentAction.safeParse({ action: "create_quote", items: [] }).success).toBe(false);
+    expect(AgentAction.safeParse({
+      action: "create_quote",
+      items: Array.from({ length: 11 }, (_, i) => ({ item_id: `cat_${i}`, quantity: 1 })),
+    }).success).toBe(false);
+  });
+
+  it("valida la búsqueda de inventario y la degrada a respuesta si no se puede ejecutar", () => {
+    expect(AgentAction.safeParse({ action: "search_inventory", query: "ramo rojo" }).success).toBe(true);
+    expect(AgentAction.safeParse({ action: "search_inventory", query: "" }).success).toBe(false);
+    expect(degradeAction({ action: "search_inventory", query: "ramo", reply: "Reviso." })).toEqual({
+      action: "reply",
+      text: "Reviso.",
+    });
+    expect(degradeAction({ action: "search_inventory", query: "ramo" })).toEqual({ action: "none" });
+  });
 });

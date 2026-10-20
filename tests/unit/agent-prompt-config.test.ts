@@ -71,6 +71,7 @@ describe("reglas y campos de ficha del prompt del agente", () => {
 
     expect(text).not.toContain('"action":"send_quote"');
     expect(text).not.toContain('"action":"create_quote"');
+    expect(text).not.toContain('"action":"search_inventory"');
     expect(text).not.toContain('"action":"move_stage"');
     expect(text).not.toContain("CAMPOS DISPONIBLES EN LA FICHA");
     expect(text).not.toContain("pide hablar con una persona");
@@ -81,9 +82,33 @@ describe("reglas y campos de ficha del prompt del agente", () => {
     const text = prompt();
     expect(text).toContain('"action":"send_quote"');
     expect(text).toContain('"action":"create_quote"');
+    expect(text).toContain('"action":"search_inventory"');
+    expect(text).toContain('"items":[{"item_id"');
     expect(text).toContain("Si el cliente solicita explícitamente una cotización");
     expect(text).toContain('"action":"move_stage"');
     expect(text).toContain("Si el cliente pide hablar con una persona");
     expect(text).toContain("no inventes");
+  });
+
+  it("no remite a search_inventory si la regla de catálogo está apagada", () => {
+    const text = buildAgentSystemPrompt({
+      profile: profile({ rules: { ...DEFAULT_AGENT_RULES, sendProductQuotes: false } }),
+      kb: [],
+      catalog: Array.from({ length: 61 }, (_, i) => ({
+        id: `cat_${i}`,
+        name: `Producto ${i}`,
+        price: 10000,
+        currency: "MXN",
+        stock: 1,
+        available: true,
+        shortDescription: null,
+        longDescription: null,
+        websiteUrl: null,
+      } as never)),
+      stages: [{ name: "Interesado" }],
+    });
+
+    expect(text).toContain("solo aparecen 60");
+    expect(text).not.toContain("search_inventory");
   });
 });

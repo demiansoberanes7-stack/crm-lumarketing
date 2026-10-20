@@ -589,7 +589,10 @@ Tipos de acción disponibles (discriminated union Zod):
 - `offer_slots`: Ofrecer slots de cita
 - `book_slot`: Reservar cita
 - `send_quote`: Enviar la ficha oficial de un producto del catálogo
-- `create_quote`: Crear y enviar una cotización formal (idempotente por mensaje; gate `sendProductQuotes`)
+- `search_inventory`: Buscar en el inventario por nombre o descripción; el servidor devuelve ID, precio y existencias reales antes de cotizar
+- `create_quote`: Crear y enviar una cotización formal, de uno (`item_id`) o varios productos (`items[]`, máx. 10); idempotente por mensaje, valida disponibilidad, moneda y existencias (gate `sendProductQuotes`)
+
+El catálogo del prompt se acota a `CATALOG_PROMPT_LIMIT` (60) productos y, si hay más, remite a `search_inventory`. El pipeline permite hasta dos búsquedas de inventario por turno antes de ejecutar la acción final.
 
 ### Handoff (`src/server/ai/handoff.ts`)
 

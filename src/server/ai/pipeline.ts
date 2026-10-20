@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Channel } from "@/lib/channels";
 import { newId } from "@/lib/db/ids";
@@ -19,6 +19,7 @@ import {
 } from "@/server/ai/actions";
 import { matchesHandoffIntent, matchesPipelineKeyword } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
+import { renderInventoryResults, searchInventory } from "@/server/ai/inventory";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { bookSlot, offerSlots } from "@/server/agenda/agent";
 import { getOffers, mapaDeHuecosParaModelo } from "@/server/agenda/offers";
@@ -212,7 +213,8 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const catalog = await db
     .select()
     .from(schema.catalogProduct)
-    .where(eq(schema.catalogProduct.organizationId, organizationId));
+    .where(eq(schema.catalogProduct.organizationId, organizationId))
+    .orderBy(asc(schema.catalogProduct.name));
   const stages = await db
     .select({ id: schema.pipelineStage.id, name: schema.pipelineStage.name })
     .from(schema.pipelineStage)
@@ -282,33 +284,67 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       : []),
   ];
 
-  const result = await chatJson(agentActionSchema(agenda), messages, {
+  /**
+   * Consulta de inventario en dos fases: el modelo pide una búsqueda, el
+   * servidor la ejecuta contra el catálogo y el modelo recibe los resultados
+   * para decidir con IDs reales. Sin este paso, un catálogo grande o acotado
+   * empuja al modelo a inventar IDs. Máximo dos búsquedas por turno.
+   */
+  const MAX_INVENTORY_SEARCHES = 2;
+  let result = await chatJson(agentActionSchema(agenda), messages, {
     organizationId,
   });
-  if (!result.ok) {
-    if (result.error === "not_configured") return;
-    console.error(`[agente] fallo del proveedor (raw): ${result.detail}`);
-    /**
-     * Escalar (FR-022) solo cuando un humano DEBE intervenir:
-     * - `invalid_output`: el modelo devolvió basura repetidamente en ESTA
-     *   conversación (se reintentó y no hubo forma).
-     * - Error de autenticación/config del proveedor (401/403): alguien tiene
-     *   que arreglar la configuración.
-     *
-     * Un 5xx transitorio, timeout o rate limit NO apaga el agente: antes
-     * fijaba `handoffAt` en TODAS las conversaciones activas de la org de
-     * golpe y nada lo limpiaba solo. Un hipo del proveedor nunca tumba el
-     * turno: falla este turno, se loguea, y el siguiente mensaje reintenta.
-     */
-    const esErrorDeConfig =
-      /\b(401|403|unauthorized|forbidden|invalid.?api.?key)\b/i.test(result.detail);
-    if (result.error === "invalid_output" || esErrorDeConfig) {
-      await applyHandoff(conversationId, organizationId, "error");
+  let action: AgentActionType | null = null;
+  for (
+    let searches = 0;
+    result.ok && result.data.action === "search_inventory";
+  ) {
+    if (!agentRules.sendProductQuotes || searches >= MAX_INVENTORY_SEARCHES) {
+      action = degradeAction(result.data);
+      break;
     }
-    throw new Error(result.detail || "El proveedor de IA no pudo completar el turno");
+    searches += 1;
+    const query = result.data.query;
+    const hits = await searchInventory(organizationId, query);
+    messages.push({
+      role: "system",
+      content: [
+        `RESULTADOS DE INVENTARIO para "${query}":`,
+        renderInventoryResults(hits),
+        hits.length > 0
+          ? "Usa el ID exacto del producto que corresponda. Si ninguno coincide, dilo o pide más detalles; no inventes productos, precios ni existencias."
+          : "No hay coincidencias. No inventes productos: pide más detalles u ofrece solo lo que sí aparece en el catálogo.",
+      ].join("\n"),
+    });
+    result = await chatJson(agentActionSchema(agenda), messages, {
+      organizationId,
+    });
   }
-
-  let action: AgentActionType = result.data;
+  if (!action) {
+    if (!result.ok) {
+      if (result.error === "not_configured") return;
+      console.error(`[agente] fallo del proveedor (raw): ${result.detail}`);
+      /**
+       * Escalar (FR-022) solo cuando un humano DEBE intervenir:
+       * - `invalid_output`: el modelo devolvió basura repetidamente en ESTA
+       *   conversación (se reintentó y no hubo forma).
+       * - Error de autenticación/config del proveedor (401/403): alguien tiene
+       *   que arreglar la configuración.
+       *
+       * Un 5xx transitorio, timeout o rate limit NO apaga el agente: antes
+       * fijaba `handoffAt` en TODAS las conversaciones activas de la org de
+       * golpe y nada lo limpiaba solo. Un hipo del proveedor nunca tumba el
+       * turno: falla este turno, se loguea, y el siguiente mensaje reintenta.
+       */
+      const esErrorDeConfig =
+        /\b(401|403|unauthorized|forbidden|invalid.?api.?key)\b/i.test(result.detail);
+      if (result.error === "invalid_output" || esErrorDeConfig) {
+        await applyHandoff(conversationId, organizationId, "error");
+      }
+      throw new Error(result.detail || "El proveedor de IA no pudo completar el turno");
+    }
+    action = result.data;
+  }
 
   // El servidor hace cumplir las preferencias aunque el modelo devuelva una
   // acción desactivada por configuración.
@@ -447,21 +483,55 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       return;
     }
     case "create_quote": {
-      const [product] = await getDb()
-        .select()
-        .from(schema.catalogProduct)
-        .where(scoped(
-          schema.catalogProduct.organizationId,
-          organizationId,
-          eq(schema.catalogProduct.id, action.item_id),
-          eq(schema.catalogProduct.available, true)
-        ))
-        .limit(1);
-      if (!product) {
-        await deliverReply(conversation, action.reply ?? "No pude generar la cotización porque el producto no está disponible en el catálogo.");
+      const requested = action.items?.length
+        ? action.items
+        : action.item_id
+          ? [{ item_id: action.item_id, quantity: action.quantity }]
+          : [];
+      if (requested.length === 0) {
+        await deliverReply(
+          conversation,
+          action.reply ?? "Necesito saber qué producto quieres cotizar. ¿Me dices cuál?"
+        );
         return;
       }
-      if (product.currency !== "MXN") {
+
+      // Varias líneas del mismo producto se suman: el stock se valida contra la
+      // cantidad total, no contra cada línea por separado.
+      const quantities = new Map<string, number>();
+      for (const line of requested) {
+        quantities.set(line.item_id, (quantities.get(line.item_id) ?? 0) + (line.quantity ?? 1));
+      }
+      const ids = [...quantities.keys()];
+      const products = await getDb()
+        .select()
+        .from(schema.catalogProduct)
+        .where(
+          scoped(
+            schema.catalogProduct.organizationId,
+            organizationId,
+            inArray(schema.catalogProduct.id, ids)
+          )
+        );
+      const byId = new Map(products.map((product) => [product.id, product]));
+
+      if (ids.some((id) => !byId.get(id))) {
+        await deliverReply(
+          conversation,
+          "No encontré en el catálogo el producto que quieres cotizar. ¿Me confirmas el nombre exacto?"
+        );
+        return;
+      }
+      const unavailable = ids.filter((id) => !byId.get(id)!.available);
+      if (unavailable.length > 0) {
+        const names = unavailable.map((id) => `"${byId.get(id)!.name}"`).join(", ");
+        await deliverReply(
+          conversation,
+          `No puedo cotizar ${names} porque ${unavailable.length === 1 ? "ya no está disponible" : "ya no están disponibles"}. ¿Quieres que busque una alternativa?`
+        );
+        return;
+      }
+      if (ids.some((id) => byId.get(id)!.currency !== "MXN")) {
         await deliverReply(conversation, "No puedo generar una cotización formal para ese producto porque su moneda no es MXN. Un asesor puede ayudarte con el tipo de cambio.");
         return;
       }
@@ -477,29 +547,52 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         return;
       }
 
-      const { createQuote, getQuote, sendQuote } = await import("@/server/quotes/service");
-      const quantity = action.quantity ?? 1;
       // Inventario antes de crear: el servicio también valida, pero aquí el
       // cliente recibe una respuesta conversacional en vez de un error.
-      if (product.stock !== null && quantity > product.stock) {
+      const shortages = ids
+        .map((id) => {
+          const product = byId.get(id)!;
+          return { product, quantity: quantities.get(id)!, stock: product.stock };
+        })
+        .filter((entry): entry is { product: (typeof products)[number]; quantity: number; stock: number } =>
+          entry.stock !== null && entry.quantity > entry.stock
+        );
+      if (shortages.length === 1) {
+        const { product, stock } = shortages[0]!;
         await deliverReply(
           conversation,
-          product.stock <= 0
+          stock <= 0
             ? `El producto "${product.name}" está agotado por el momento. ¿Quieres que te avise cuando vuelva o prefieres ver alternativas?`
-            : `Del producto "${product.name}" solo quedan ${product.stock} pieza${product.stock === 1 ? "" : "s"}. ¿Genero la cotización con esa cantidad?`
+            : `Del producto "${product.name}" solo quedan ${stock} pieza${stock === 1 ? "" : "s"}. ¿Genero la cotización con esa cantidad?`
         );
         return;
       }
+      if (shortages.length > 1) {
+        const detail = shortages
+          .map(({ product, quantity, stock }) =>
+            stock <= 0
+              ? `"${product.name}" está agotado`
+              : `de "${product.name}" solo quedan ${stock} pieza${stock === 1 ? "" : "s"} (pediste ${quantity})`
+          )
+          .join("; ");
+        await deliverReply(conversation, `No puedo cotizar todo lo pedido: ${detail}. ¿Ajusto la cotización a lo disponible?`);
+        return;
+      }
+
+      const { createQuote, getQuote, sendQuote } = await import("@/server/quotes/service");
       try {
         const quoteId = await createQuote(organizationId, {
           contactId: conversation.contactId,
-          items: [{
-            productId: product.id,
-            name: product.name,
-            description: product.shortDescription ?? undefined,
-            quantity,
-            unitPrice: product.price,
-          }],
+          items: ids.map((id) => {
+            const product = byId.get(id)!;
+            return {
+              productId: product.id,
+              name: product.name,
+              description: product.shortDescription ?? undefined,
+              quantity: quantities.get(id)!,
+              unitPrice: product.price,
+            };
+          }),
         }, undefined, { agentSourceMessageId: lastInbound.id });
         const quote = await getQuote(organizationId, quoteId);
         if (!quote) throw new Error("La cotización no quedó disponible después de crearla");

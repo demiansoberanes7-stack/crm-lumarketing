@@ -30,9 +30,24 @@ const baseActions = [
     reply: z.string().optional(),
   }),
   z.object({
+    action: z.literal("search_inventory"),
+    query: z.string().min(1).max(100),
+    reply: z.string().optional(),
+  }),
+  z.object({
     action: z.literal("create_quote"),
-    item_id: z.string().min(1),
+    item_id: z.string().min(1).optional(),
     quantity: z.number().int().positive().max(100).optional(),
+    items: z
+      .array(
+        z.object({
+          item_id: z.string().min(1),
+          quantity: z.number().int().positive().max(100).optional(),
+        })
+      )
+      .min(1)
+      .max(10)
+      .optional(),
     reply: z.string().optional(),
   }),
 ] as const;
@@ -92,6 +107,7 @@ export function degradeAction(action: AgentActionType): AgentActionType {
   if (
     action.action === "move_stage" ||
     action.action === "create_quote" ||
+    action.action === "search_inventory" ||
     action.action === "offer_slots" ||
     action.action === "book_slot"
   ) {

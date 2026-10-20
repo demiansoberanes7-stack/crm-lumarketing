@@ -34,11 +34,14 @@ no envía mensajes, no mueve etapas, no crea cotizaciones.
 ## Agente (comercial, en la Bandeja)
 
 El agente conversa con contactos reales y **sí actúa**: responde, actualiza el
-lead, mueve de etapa, ofrece y reserva slots, hace handoff a humano y puede
-**crear y enviar cotizaciones** (`create_quote`/`send_quote`) con idempotencia
-por mensaje y gate `sendProductQuotes`. Su prompt y acciones viven en
+lead, mueve de etapa, ofrece y reserva slots, hace handoff a humano, **consulta
+el inventario** (`search_inventory`, con IDs, precios y existencias reales) y
+puede **crear y enviar cotizaciones** de uno o varios productos
+(`create_quote`/`send_quote`) con idempotencia por mensaje y gate
+`sendProductQuotes`. Su prompt y acciones viven en
 `src/server/ai/prompts.ts` y `src/server/ai/actions.ts`; la ejecución, en
-`src/server/ai/pipeline.ts`. Su autoevaluación corre en el Laboratorio.
+`src/server/ai/pipeline.ts` y la búsqueda de inventario en
+`src/server/ai/inventory.ts`. Su autoevaluación corre en el Laboratorio.
 
 La configuración del Agente (perfil, tono, instrucciones, saludo, reglas, KB)
 sigue en Ajustes → Agente y no se movió: el Copiloto **no** la reemplaza ni la

@@ -32,7 +32,7 @@ export const AGENT_RULE_OPTIONS: {
   {
     key: "sendProductQuotes",
     title: "Enviar fichas o cotizaciones del catálogo",
-    description: "Cuando pregunten por un producto o servicio, enviar la ficha oficial del catálogo.",
+    description: "Consultar el inventario y enviar fichas o cotizaciones formales de productos disponibles desde la conversación.",
   },
   {
     key: "handoffOnRequest",

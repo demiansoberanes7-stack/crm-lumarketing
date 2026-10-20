@@ -886,7 +886,12 @@ El agente produce EXACTAMENTE UNA accion por turno:
 | `offer_slots` | Ofrecer slots disponibles (agenda) |
 | `book_slot` | Reservar un slot especifico (agenda) |
 | `send_quote` | Enviar la ficha de un producto del catalogo |
-| `create_quote` | Crear y enviar una cotizacion formal (idempotente; gate `sendProductQuotes`) |
+| `search_inventory` | Buscar en el inventario y devolver IDs, precios y existencias reales al modelo antes de cotizar |
+| `create_quote` | Crear y enviar una cotizacion formal de uno o varios productos (`items[]`, max. 10); idempotente, valida disponibilidad, moneda y existencias; gate `sendProductQuotes` |
+
+El catalogo del prompt se limita a 60 productos (`CATALOG_PROMPT_LIMIT`); con
+mas productos el agente debe usar `search_inventory` (maximo dos busquedas por
+turno) para obtener el ID exacto antes de cotizar.
 
 ## Flujo del Agente
 
