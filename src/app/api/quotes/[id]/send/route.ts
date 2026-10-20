@@ -7,11 +7,19 @@ export const dynamic = "force-dynamic";
 
 type _Params = { params: Promise<{ id: string }> };
 
-const sendSchema = z.object({
-  channel: z.enum(["whatsapp", "instagram", "messenger"]),
-  /** 053: chat elegido en el desplegable; opcional (si no, va al del contacto). */
-  conversationId: z.string().min(1).max(64).optional(),
-});
+const sendSchema = z.discriminatedUnion("channel", [
+  z.object({
+    channel: z.enum(["whatsapp", "instagram", "messenger"]),
+    /** 053: chat elegido en el desplegable; opcional (si no, va al del contacto). */
+    conversationId: z.string().min(1).max(64).optional(),
+  }),
+  z.object({
+    /** El destino es un hilo del buzón: la API nunca acepta una dirección tecleada. */
+    channel: z.literal("email"),
+    emailAccountId: z.string().min(1).max(255),
+    emailMessageId: z.string().min(1).max(255),
+  }),
+]);
 
 /** POST — enviar cotización por canal */
 export const POST = withAuth(async (session, req: Request, { params }) => {
@@ -20,12 +28,7 @@ export const POST = withAuth(async (session, req: Request, { params }) => {
   if (!body.ok) return body.response;
 
   try {
-    const result = await sendQuote(
-      session.organizationId,
-      id,
-      body.data.channel,
-      body.data.conversationId
-    );
+    const result = await sendQuote(session.organizationId, id, body.data);
     return Response.json({ ok: true, ...result });
   } catch (err) {
     const raw = String(err);

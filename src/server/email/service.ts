@@ -225,6 +225,30 @@ export async function syncInbox(organizationId: string, accountId: string): Prom
   return synced;
 }
 
+/**
+ * Corresponsal de un correo ya ingerido: en un entrante es el `from`; en un
+ * saliente, el primer destinatario que no somos nosotros. Es el mismo criterio
+ * con el que el buzón agrupa y rotula los hilos, así que responder "al hilo"
+ * siempre apunta al cliente que escribió y no a una dirección tecleada.
+ */
+export function emailParticipantOf(
+  message: { direction: string; from: string; to: unknown },
+  ownEmail: string
+): { email: string; name: string | null } {
+  const entries =
+    (message.to as { value?: Array<{ address?: string; name?: string }> } | null)?.value ?? [];
+  const own = ownEmail.trim().toLowerCase();
+  // Un saliente dirigido sólo a nuestra cuenta (un envío interno, un CC
+  // propio) no tiene a quién responder: se devuelve vacío y el llamador decide,
+  // en vez de contestarse a sí mismo por el fallback de la primera entrada.
+  const isOurs = (address: string | undefined) => !!address && address.trim().toLowerCase() === own;
+  const address = message.direction === "inbound"
+    ? message.from
+    : (entries.find((entry) => entry.address && !isOurs(entry.address))?.address ?? "");
+  const label = entries.find((entry) => entry.address === address)?.name?.trim();
+  return { email: address.trim(), name: label && label !== address ? label : null };
+}
+
 /** Enviar email con nodemailer */
 export async function sendEmail(
   organizationId: string,

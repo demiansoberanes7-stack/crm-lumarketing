@@ -2,13 +2,15 @@
  * Quotes Service — lógica de negocio del cotizador.
  *
  * Cotizaciones versionadas con partidas, descuentos, impuestos, vigencia.
- * PDF con marca Zorro Tech y envío por WhatsApp/Instagram/Messenger.
+ * PDF con marca Zorro Tech y envío por WhatsApp/Instagram/Messenger o,
+ * respondiendo dentro de su hilo, por correo.
  */
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
+import { emailParticipantOf, sendEmail } from "@/server/email/service";
 import { acceptQuoteIntoProjectTx } from "@/server/projects/from-quote";
 import { syncTaskById } from "@/server/agenda/tasks-sync";
 import { quotePdfFileName } from "./filename";
@@ -315,14 +317,109 @@ export async function updateQuote(
   });
 }
 
+/** Canales de chat que admiten una cotización; el correo va aparte. */
+export type QuoteChatChannel = "whatsapp" | "instagram" | "messenger";
+
+/**
+ * Destino del envío: un chat de la Bandeja (053: elegido por el operador o
+ * resuelto por el contacto) o un hilo del buzón de correo, identificado por el
+ * mensaje al que se responde.
+ */
+export type QuoteSendTarget =
+  | { channel: QuoteChatChannel; conversationId?: string }
+  | { channel: "email"; emailAccountId: string; emailMessageId: string };
+
+/** Resumen de la cotización en texto: cuerpo del correo y degradado de chat. */
+async function quoteSummaryLines(
+  organizationId: string,
+  quote: typeof schema.quote.$inferSelect
+): Promise<string[]> {
+  const full = await getQuote(organizationId, quote.id);
+  if (!full) throw new Error("Cotización no encontrada");
+  const { money } = await import("@/server/documents/pdf");
+  return [
+    `Cotización ${quote.quoteNumber}`,
+    ...full.items.map((item) => `${item.quantity} x ${item.name}: ${money(item.unitPrice * item.quantity)}`),
+    `Subtotal: ${money(quote.subtotal)}`,
+    `Descuento: ${money(quote.discountAmount)}`,
+    `IVA: ${money(quote.taxAmount)}`,
+    `Total: ${money(quote.total)} MXN`,
+    `Vigencia: ${quote.validUntil?.toLocaleDateString("es-MX") ?? "Sin fecha"}`,
+    ...(quote.message ? [quote.message] : []),
+  ];
+}
+
+/**
+ * Envía el PDF de la cotización respondiendo dentro del hilo del buzón. El
+ * destinatario lo dicta el propio hilo (nunca una dirección tecleada) y el
+ * asunto hereda el "Re:" para que el cliente lo vea en su conversación.
+ */
+async function sendQuoteByEmail(
+  db: QuoteTx,
+  organizationId: string,
+  quote: typeof schema.quote.$inferSelect,
+  target: { emailAccountId: string; emailMessageId: string },
+  productName: string
+): Promise<void> {
+  const [account] = await db
+    .select({ emailAddress: schema.emailAccount.emailAddress })
+    .from(schema.emailAccount)
+    .where(scoped(schema.emailAccount.organizationId, organizationId, eq(schema.emailAccount.id, target.emailAccountId)))
+    .limit(1);
+  if (!account) throw new Error("La cuenta de correo no pertenece a tu negocio");
+
+  const [anchor] = await db
+    .select()
+    .from(schema.emailMessage)
+    .where(scoped(schema.emailMessage.organizationId, organizationId, eq(schema.emailMessage.id, target.emailMessageId), eq(schema.emailMessage.accountId, target.emailAccountId)))
+    .limit(1);
+  if (!anchor) throw new Error("El hilo de correo no existe en esta cuenta");
+
+  const participant = emailParticipantOf(anchor, account.emailAddress);
+  if (!participant.email) {
+    throw new Error("Este hilo de correo no tiene una dirección del cliente a la que responder");
+  }
+
+  const [contactRow] = quote.contactId
+    ? await db.select({ name: schema.contact.name }).from(schema.contact)
+        .where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, quote.contactId))).limit(1)
+    : [];
+  const contactName = contactRow?.name?.trim() || participant.name || quote.quoteNumber;
+
+  const { quotePdf } = await import("./pdf");
+  const pdf = await quotePdf(organizationId, quote.id);
+  if (!pdf) throw new Error("No se pudo generar el PDF de la cotización");
+
+  const lines = await quoteSummaryLines(organizationId, quote);
+  await sendEmail(organizationId, target.emailAccountId, {
+    to: participant.email,
+    subject: /^re:\s/i.test(anchor.subject ?? "")
+      ? (anchor.subject ?? "Cotización")
+      : `Re: ${anchor.subject ?? "Cotización"}`,
+    text: [
+      `Hola ${contactName}, te envío la cotización ${quote.quoteNumber}. Adjunto el PDF con el detalle.`,
+      "",
+      ...lines,
+    ].join("\n"),
+    inReplyTo: anchor.messageId,
+    contactId: quote.contactId,
+    attachments: [
+      {
+        filename: quotePdfFileName(productName, contactName),
+        content: Buffer.from(pdf.bytes).toString("base64"),
+        contentType: "application/pdf",
+      },
+    ],
+  });
+}
+
 /** Enviar cotización (cambia status a sent, congelando la versión) */
 export async function sendQuote(
   organizationId: string,
   quoteId: string,
-  channel: "whatsapp" | "instagram" | "messenger",
-  /** 053: chat elegido por el operador. Si falta, se resuelve por el contacto. */
-  conversationId?: string
+  target: QuoteSendTarget
 ): Promise<{ waMessageId?: string; total: number }> {
+  const channel = target.channel;
   const sent = await getDb().transaction(async (db) => {
 
   const rows = await db
@@ -341,47 +438,58 @@ export async function sendQuote(
   if (!quote) throw new Error("Cotización no encontrada");
   if (quote.status !== "draft") throw new Error("Esta cotización ya no es un borrador");
 
-  // Resolver el chat de destino: el elegido explícitamente (y sólo si es del
-  // canal pedido), o el del contacto de la cotización como hasta ahora.
-  let conversation;
-  if (conversationId) {
-    const [picked] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.id, conversationId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
-    if (!picked) throw new Error("Ese chat no existe en este canal");
-    conversation = picked;
+  const [firstItem] = await db
+    .select({ name: schema.quoteItem.name })
+    .from(schema.quoteItem)
+    .where(scoped(schema.quoteItem.organizationId, organizationId, eq(schema.quoteItem.quoteId, quoteId)))
+    .orderBy(schema.quoteItem.position)
+    .limit(1);
+  const productName = firstItem?.name?.trim() || quote.quoteNumber;
+
+  // El contacto que queda registrado en la cotización: el del chat usado o,
+  // en correo, el que ya traía (los hilos de correo no tienen contacto).
+  let sentContactId = quote.contactId;
+
+  if (channel === "email") {
+    await sendQuoteByEmail(db, organizationId, quote, {
+      emailAccountId: target.emailAccountId,
+      emailMessageId: target.emailMessageId,
+    }, productName);
   } else {
-    if (!quote.contactId) throw new Error("Asigna un contacto antes de enviar");
-    const [byContact] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.contactId, quote.contactId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
-    if (!byContact) throw new Error("El contacto no tiene una conversación real en este canal");
-    conversation = byContact;
-  }
-  const { sendMediaMessage, sendText } = await import("@/server/inbox/send");
-  const { capabilitiesFor } = await import("@/server/channels/capabilities");
-  // El PDF sale como adjunto en todo canal que lo admita (WhatsApp, Messenger).
-  // Instagram no soporta outboundMedia, así que ahí degrada a resumen en texto.
-  if (capabilitiesFor(channel).outboundMedia) {
-    const { quotePdf } = await import("./pdf");
-    const pdf = await quotePdf(organizationId, quoteId);
-    if (!pdf) throw new Error("No se pudo generar el PDF de la cotización");
-    // El archivo que llega al chat se nombra por el destinatario, no por el
-    // número interno: "cotizacion para [nombre contacto]".
-    const targetContactId = conversation.contactId ?? quote.contactId;
-    const [contactRow] = targetContactId
-      ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, targetContactId))).limit(1)
-      : [];
-    const contactName = contactRow?.name?.trim() || quote.quoteNumber;
-    const [firstItem] = await db
-      .select({ name: schema.quoteItem.name })
-      .from(schema.quoteItem)
-      .where(scoped(schema.quoteItem.organizationId, organizationId, eq(schema.quoteItem.quoteId, quoteId)))
-      .orderBy(schema.quoteItem.position)
-      .limit(1);
-    const productName = firstItem?.name?.trim() || quote.quoteNumber;
-    await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: quotePdfFileName(productName, contactName) } });
-  } else {
-    const full = await getQuote(organizationId, quoteId);
-    if (!full) throw new Error("Cotización no encontrada");
-    const { money } = await import("@/server/documents/pdf");
-    await sendText({ organizationId, conversationId: conversation.id, text: [`Cotización ${quote.quoteNumber}`, ...full.items.map((item) => `${item.quantity} x ${item.name}: ${money(item.unitPrice * item.quantity)}`), `Subtotal: ${money(quote.subtotal)}`, `Descuento: ${money(quote.discountAmount)}`, `IVA: ${money(quote.taxAmount)}`, `Total: ${money(quote.total)} MXN`, `Vigencia: ${quote.validUntil?.toLocaleDateString("es-MX") ?? "Sin fecha"}`, quote.message ?? ""].join("\n") });
+    // Resolver el chat de destino: el elegido explícitamente (y sólo si es del
+    // canal pedido), o el del contacto de la cotización como hasta ahora.
+    let conversation;
+    if (target.conversationId) {
+      const [picked] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.id, target.conversationId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
+      if (!picked) throw new Error("Ese chat no existe en este canal");
+      conversation = picked;
+    } else {
+      if (!quote.contactId) throw new Error("Asigna un contacto antes de enviar");
+      const [byContact] = await db.select().from(schema.conversation).where(scoped(schema.conversation.organizationId, organizationId, eq(schema.conversation.contactId, quote.contactId), eq(schema.conversation.channel, channel), eq(schema.conversation.isTest, false))).limit(1);
+      if (!byContact) throw new Error("El contacto no tiene una conversación real en este canal");
+      conversation = byContact;
+    }
+    sentContactId = conversation.contactId;
+    const { sendMediaMessage, sendText } = await import("@/server/inbox/send");
+    const { capabilitiesFor } = await import("@/server/channels/capabilities");
+    // El PDF sale como adjunto en todo canal que lo admita (WhatsApp, Messenger).
+    // Instagram no soporta outboundMedia, así que ahí degrada a resumen en texto.
+    if (capabilitiesFor(channel).outboundMedia) {
+      const { quotePdf } = await import("./pdf");
+      const pdf = await quotePdf(organizationId, quoteId);
+      if (!pdf) throw new Error("No se pudo generar el PDF de la cotización");
+      // El archivo que llega al chat se nombra por el destinatario, no por el
+      // número interno: "Cotizacion <producto> - <cliente>".
+      const targetContactId = conversation.contactId ?? quote.contactId;
+      const [contactRow] = targetContactId
+        ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, targetContactId))).limit(1)
+        : [];
+      const contactName = contactRow?.name?.trim() || quote.quoteNumber;
+      await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: quotePdfFileName(productName, contactName) } });
+    } else {
+      const lines = await quoteSummaryLines(organizationId, quote);
+      await sendText({ organizationId, conversationId: conversation.id, text: lines.join("\n") });
+    }
   }
 
   await db
@@ -391,7 +499,7 @@ export async function sendQuote(
       sendChannel: channel,
       // La cotización queda ligada al chat por el que salió: la siguiente
       // edición/reeenvío parte de ese contacto y no de uno adivinado.
-      contactId: conversation.contactId,
+      contactId: sentContactId,
       lockedAt: new Date(),
       version: quote.version + 1,
       updatedAt: new Date(),

@@ -16,6 +16,72 @@ import { formatRemaining } from "@/components/inbox/helpers";
 const SEND_CHANNELS = ["whatsapp", "instagram", "messenger"] as const;
 type SendChannel = (typeof SEND_CHANNELS)[number];
 
+/** Cuenta de correo, tal como la devuelve /api/email/accounts. */
+interface EmailAccountLite {
+  id: string;
+  label: string;
+  email: string;
+  enabled: boolean;
+}
+
+/** Hilo del buzón, tal como lo devuelve /api/email/threads. */
+interface EmailThreadLite {
+  id: string;
+  subject: string;
+  participant: { name: string; email: string };
+  /** En orden cronológico: el último es el mensaje al que se responde. */
+  messages: { id: string; direction: "inbound" | "outbound" }[];
+  latestAt: string;
+}
+
+/** Lo que elige el operador en el desplegable: un chat o un hilo de correo. */
+type SendChoice =
+  | { kind: "chat"; channel: SendChannel; conversationId: string }
+  | { kind: "email"; emailAccountId: string; emailMessageId: string; contactName: string };
+
+/** Opciones de correo aplanadas, con el id del mensaje más reciente del hilo. */
+interface MailOption {
+  value: string;
+  accountId: string;
+  accountEmail: string;
+  accountLabel: string;
+  messageId: string;
+  participantName: string;
+  subject: string;
+}
+
+const MAIL_PREFIX = "mail:";
+
+function mailValue(accountId: string, messageId: string): string {
+  return `${MAIL_PREFIX}${accountId}|${messageId}`;
+}
+
+/**
+ * Decodifica el valor del desplegable. Los ids son opacos, así que se valida
+ * que la opción siga existiendo: si el chat o el hilo ya no está, no se envía.
+ */
+function parseChoice(
+  value: string,
+  chats: ConversationDto[],
+  mails: MailOption[]
+): SendChoice | null {
+  if (!value) return null;
+  if (value.startsWith(MAIL_PREFIX)) {
+    const mail = mails.find((m) => m.value === value);
+    return mail
+      ? {
+          kind: "email",
+          emailAccountId: mail.accountId,
+          emailMessageId: mail.messageId,
+          contactName: mail.participantName,
+        }
+      : null;
+  }
+  const chat = chats.find((c) => c.id === value);
+  if (!chat || !SEND_CHANNELS.includes(chat.channel as SendChannel)) return null;
+  return { kind: "chat", channel: chat.channel as SendChannel, conversationId: chat.id };
+}
+
 interface QuoteData {
   id: string;
   quoteNumber: string;
@@ -61,6 +127,8 @@ export function QuoteDetail({
   const [statusBusy, setStatusBusy] = useState(false);
   const [conversations, setConversations] = useState<ConversationDto[]>([]);
   const [chatId, setChatId] = useState<string>("");
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccountLite[]>([]);
+  const [threadsByAccount, setThreadsByAccount] = useState<Record<string, EmailThreadLite[]>>({});
 
   useEffect(() => {
     fetch("/api/conversations")
@@ -69,6 +137,39 @@ export function QuoteDetail({
         setConversations(Array.isArray(d.conversations) ? d.conversations : [])
       )
       .catch(() => setConversations([]));
+  }, []);
+
+  /**
+   * Los hilos del buzón también son destino de cotización. Se listan por
+   * cuenta activa; si el negocio no tiene correo configurado (o el que mira
+   * no es owner y /api/email/accounts le responde 403) simplemente no
+   * aparecen opciones de correo.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/email/accounts")
+      .then((r) => (r.ok ? r.json() : { accounts: [] }))
+      .then(async (d: { accounts?: EmailAccountLite[] }) => {
+        const accounts = (Array.isArray(d.accounts) ? d.accounts : []).filter((a) => a.enabled);
+        const entries = await Promise.all(
+          accounts.map(async (a) => {
+            const res = await fetch(`/api/email/threads?accountId=${encodeURIComponent(a.id)}`).catch(() => null);
+            const parsed = res?.ok ? ((await res.json()) as { threads?: EmailThreadLite[] }) : {};
+            return [a.id, Array.isArray(parsed.threads) ? parsed.threads : []] as const;
+          })
+        );
+        if (cancelled) return;
+        setEmailAccounts(accounts);
+        setThreadsByAccount(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEmailAccounts([]);
+        setThreadsByAccount({});
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /** Sólo chats de canales que pueden enviar cotización, agrupados por canal. */
@@ -81,17 +182,46 @@ export function QuoteDetail({
     return map;
   }, [conversations]);
 
-  /** Chat elegido, validado contra el canal que se va a usar. */
+  /** Un renglón por hilo de correo: se responde al mensaje más reciente. */
+  const mailOptions = useMemo<MailOption[]>(
+    () =>
+      emailAccounts.flatMap((account) =>
+        (threadsByAccount[account.id] ?? []).flatMap((thread) => {
+          const latest = thread.messages[thread.messages.length - 1];
+          if (!latest) return [];
+          return [
+            {
+              value: mailValue(account.id, latest.id),
+              accountId: account.id,
+              accountEmail: account.email,
+              accountLabel: account.label || account.email,
+              messageId: latest.id,
+              participantName: thread.participant.name || thread.participant.email,
+              subject: thread.subject,
+            },
+          ];
+        })
+      ),
+    [emailAccounts, threadsByAccount]
+  );
+
+  /** Destino elegido, validado contra los chats e hilos realmente disponibles. */
+  const choice = useMemo(
+    () => parseChoice(chatId, conversations, mailOptions),
+    [chatId, conversations, mailOptions]
+  );
+
+  /** Chat del destino, para avisos de ventana de respuesta. */
   const selectedChat = useMemo(
-    () => conversations.find((c) => c.id === chatId) ?? null,
-    [conversations, chatId]
+    () => (choice?.kind === "chat" ? conversations.find((c) => c.id === choice.conversationId) ?? null : null),
+    [choice, conversations]
   );
 
   useEffect(() => {
     // Al cargar la cotización, preselecciona el chat de su contacto.
     if (!quote?.contactId || chatId) return;
     const match = conversations.find((c) => c.contact.id === quote.contactId);
-    if (match) setChatId(match.id);
+    if (match && SEND_CHANNELS.includes(match.channel as SendChannel)) setChatId(match.id);
   }, [quote?.contactId, conversations, chatId]);
 
   useEffect(() => {
@@ -135,39 +265,35 @@ export function QuoteDetail({
     [quoteId, onUpdated]
   );
 
-  const sendVia = useCallback(
-    async (channel: SendChannel) => {
-      setSending(channel);
-      setError("");
-      const response = await fetch(`/api/quotes/${quoteId}/send`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          channel,
-          // Si el chat elegido es de este canal, se manda a ese; si no, la API
-          // resuelve por el contacto de la cotización (comportamiento clásico).
-          conversationId:
-            selectedChat && selectedChat.channel === channel
-              ? selectedChat.id
-              : undefined,
-        }),
-      }).catch(() => null);
-      setSending(null);
-      if (!response?.ok) { setError((await response?.json())?.error?.message ?? "No se pudo enviar"); return; }
-      const res = await fetch(`/api/quotes/${quoteId}`).catch(() => null);
-      if (res?.ok) {
-        const d = (await res.json()) as { quote: QuoteData };
-        setQuote(d.quote);
-      }
-      onUpdated();
-    },
-    [quoteId, onUpdated, selectedChat]
-  );
-
-  /** Envía al chat seleccionado: el canal lo dicta el chat, no el botón. */
-  const sendToSelected = useCallback(() => {
-    if (selectedChat) void sendVia(selectedChat.channel as SendChannel);
-  }, [sendVia, selectedChat]);
+  /** Envía al destino elegido: el canal lo dicta la selección, no el botón. */
+  const sendToSelected = useCallback(async () => {
+    if (!choice) return;
+    setSending(choice.kind);
+    setError("");
+    const response = await fetch(`/api/quotes/${quoteId}/send`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Correo: se manda el hilo (cuenta + mensaje), nunca una dirección
+      // tecleada; el servidor saca el destinatario de sus propios registros.
+      body: JSON.stringify(
+        choice.kind === "chat"
+          ? { channel: choice.channel, conversationId: choice.conversationId }
+          : {
+              channel: "email",
+              emailAccountId: choice.emailAccountId,
+              emailMessageId: choice.emailMessageId,
+            }
+      ),
+    }).catch(() => null);
+    setSending(null);
+    if (!response?.ok) { setError((await response?.json())?.error?.message ?? "No se pudo enviar"); return; }
+    const res = await fetch(`/api/quotes/${quoteId}`).catch(() => null);
+    if (res?.ok) {
+      const d = (await res.json()) as { quote: QuoteData };
+      setQuote(d.quote);
+    }
+    onUpdated();
+  }, [choice, quoteId, onUpdated]);
 
   if (!quote) {
     return (
@@ -307,9 +433,9 @@ export function QuoteDetail({
             <label className="text-sm font-medium" htmlFor="quote-chat">
               Enviar a
             </label>
-            {chatsByChannel.size === 0 ? (
+            {chatsByChannel.size === 0 && mailOptions.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No hay chats en canales conectados para enviar esta cotización.
+                No hay chats conectados ni hilos de correo a los que enviar esta cotización.
               </p>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
@@ -319,7 +445,7 @@ export function QuoteDetail({
                   value={chatId}
                   onChange={(e) => setChatId(e.target.value)}
                 >
-                  <option value="">— Elige un chat —</option>
+                  <option value="">— Elige un chat o un hilo de correo —</option>
                   {[...chatsByChannel.entries()].map(([channel, list]) => (
                     <optgroup key={channel} label={CHANNEL_LABEL[channel]}>
                       {list.map((c) => (
@@ -337,18 +463,33 @@ export function QuoteDetail({
                       ))}
                     </optgroup>
                   ))}
+                  {emailAccounts.map((account) => {
+                    const opts = mailOptions.filter((m) => m.accountId === account.id);
+                    if (!opts.length) return null;
+                    return (
+                      <optgroup key={account.id} label={`Correo · ${account.label || account.email}`}>
+                        {opts.map((m) => (
+                          <option key={m.value} value={m.value}>
+                            {m.participantName} · {m.subject}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!selectedChat || sending !== null}
-                  onClick={sendToSelected}
+                  disabled={!choice || sending !== null}
+                  onClick={() => void sendToSelected()}
                 >
                   {sending
                     ? "Enviando…"
-                    : selectedChat
-                      ? `Enviar por ${CHANNEL_LABEL[selectedChat.channel as Channel]}`
-                      : "Enviar cotización"}
+                    : choice?.kind === "chat"
+                      ? `Enviar por ${CHANNEL_LABEL[choice.channel]}`
+                      : choice?.kind === "email"
+                        ? "Enviar por Correo"
+                        : "Enviar cotización"}
                 </Button>
               </div>
             )}

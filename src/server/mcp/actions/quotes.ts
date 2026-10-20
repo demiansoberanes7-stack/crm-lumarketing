@@ -244,17 +244,15 @@ export const quotesActions = [
     scope: "crm.quotes.send",
     title: "Enviar cotización al cliente",
     description:
-      "Envía la cotización al chat del contacto por WhatsApp, Instagram o Messenger (usa conversations.list si necesitas elegir el chat). Solo borradores; respeta la ventana de respuesta y nunca toca conversaciones de prueba.",
+      "Envía la cotización al chat del contacto por WhatsApp, Instagram o Messenger (usa conversations.list si necesitas elegir el chat). Solo borradores; respeta la ventana de respuesta y nunca toca conversaciones de prueba. Los hilos de correo se responden desde el cotizador, no por esta acción.",
     destructive: true,
     input: quotesSend,
     handler: async (principal, input) => {
       try {
-        const result = await sendQuote(
-          principal.organizationId,
-          input.quoteId,
-          input.channel,
-          input.conversationId
-        );
+        const result = await sendQuote(principal.organizationId, input.quoteId, {
+          channel: input.channel,
+          conversationId: input.conversationId,
+        });
         return {
           text: `Cotización enviada por ${input.channel}.`,
           structuredContent: {

@@ -126,7 +126,10 @@ describe("cotización formal del agente", () => {
         unitPrice: 25000,
       }],
     }, undefined, { agentSourceMessageId: "msg_1" });
-    expect(mocks.sendQuote).toHaveBeenCalledWith("org_1", "qt_1", "whatsapp", "cv_1");
+    expect(mocks.sendQuote).toHaveBeenCalledWith("org_1", "qt_1", {
+      channel: "whatsapp",
+      conversationId: "cv_1",
+    });
     expect(mocks.sendText).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: "org_1",
       conversationId: "cv_1",
