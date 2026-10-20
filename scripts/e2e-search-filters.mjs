@@ -138,7 +138,7 @@ ok("búsqueda y etapa se combinan (nunca contradicen)",
    list.every((t) => t.includes(`Zoraida${S}`) && t.includes(stage)), JSON.stringify(list));
 await page.screenshot({ path: ".tmp/e2e-inbox.png" });
 
-console.log("\n== Contactos: búsqueda tolerante + filtro por etapa ==");
+console.log("\n== Contactos: búsqueda tolerante en la cartera de clientes ==");
 const cp = await ctx.newPage();
 await cp.goto(`${BASE}/contacts`, { waitUntil: "domcontentloaded" });
 const cbox = cp.getByLabel("Buscar contacto");
@@ -158,27 +158,22 @@ ok("teléfono con formato desde el servidor", has(cl, `Zoraida${S}`), JSON.strin
 await cbox.fill("");
 await cp.waitForTimeout(900);
 cl = await cRows();
-ok("la etapa se pinta en la ficha del contacto", cl.some((t) => t.includes(stage)),
+ok("la cartera solo trae tratos ganados y su etapa pintada",
+   cl.length > 0 && cl.every((t) => /cliente|customer/i.test(t)),
    JSON.stringify(cl.slice(0, 2)));
 
 const cSel = cp.getByLabel("Filtrar por etapa del embudo");
-ok("Contactos tiene selector de etapa", await cSel.isVisible());
-const cOptions = await cSel.locator("option").allInnerTexts();
-ok("las etapas vienen del pipeline completo",
-   cOptions[0] === "Toda etapa" && cOptions.length > 1, JSON.stringify(cOptions));
-await cSel.selectOption(stage);
-await cp.waitForTimeout(900);
-cl = await cRows();
-ok(`Contactos filtrado por '${stage}'`,
-   cl.length > 0 && cl.every((t) => t.includes(stage)), JSON.stringify(cl.length));
+ok("Contactos ya no ofrece el filtro de etapa", (await cSel.count()) === 0);
 
-// Camino infeliz: una etapa sin nadie no debe romper la pantalla.
-const empty = cOptions[cOptions.length - 1];
-await cSel.selectOption(empty);
+// Camino infeliz: una búsqueda sin nadie no debe romper la pantalla.
+const nada = `zzz-no-existe-${S}`;
+await cbox.fill(nada);
 await cp.waitForTimeout(900);
-const emptyCount = (await cRows()).length;
-ok(`etapa '${empty}' sin contactos → pantalla estable (${emptyCount} filas)`,
-   emptyCount >= 0 && (await cp.getByText("Contactos").first().isVisible()));
+ok(`búsqueda sin coincidencias ('${nada}') → lista vacía`, (await cRows()).length === 0);
+ok("y la pantalla sigue en pie", await cp.getByText("Contactos").first().isVisible());
+await cbox.fill("");
+await cp.waitForTimeout(900);
+ok("al limpiar vuelve la cartera", (await cRows()).length > 0);
 await cp.screenshot({ path: ".tmp/e2e-contacts.png" });
 
 await browser.close();

@@ -38,11 +38,13 @@ al montar se adopta lo que ya haya en el DOM.
 7. Bandeja: selector junto a «Todas / No leídas», con las etapas presentes.
    ✅ Filtrar deja solo esa etapa; «Toda etapa» restaura.
    ✅ Búsqueda + etapa se combinan (nunca se contradicen).
-8. Contactos: selector con las etapas del pipeline **completo** (orden real,
-   vía `GET /api/pipeline/stages`), y la etapa pintada en cada ficha.
-   ✅ Filtrar por etapa consulta al servidor (`?stage=`), aplicado ANTES del
-   corte de 200 para que nadie de esa etapa quede fuera.
-9. Camino infeliz: una etapa sin contactos no rompe la pantalla.
+8. Contactos: **sin filtro de etapa** desde 20-10-2026. La pantalla es la
+   cartera de clientes y pide siempre `?won=1`; la etapa sigue pintada en cada
+   ficha, y el embudo se revisa y se mueve en Pipeline (o en Bandeja, que sí
+   conserva su selector).
+   ✅ El servidor sigue aceptando `?stage=` para cualquier otro cliente; la
+   pantalla ya no lo usa.
+9. Camino infeliz: una búsqueda sin coincidencias no rompe la pantalla.
    ✅ Estado vacío honesto («Sin resultados», no «Sin contactos»).
 
 ## Búsqueda del servidor (Contactos)

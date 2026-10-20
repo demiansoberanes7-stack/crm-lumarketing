@@ -47,14 +47,12 @@ function stageTone(name: string | null): string {
 export function ContactsClient() {
   const router = useRouter();
   const [contacts, setContacts] = useState<ContactDto[]>([]);
-  const [query, setQuery] = useState("");
   /**
-   * Por defecto solo se ven los que ya son Cliente: Contactos es la cartera de
-   * clientes, el embudo vive en el Pipeline. "Todas las etapas" es la salida
-   * para revisar prospectos sin ir al tablero.
+   * Contactos es la cartera de clientes: solo se listan los tratos ganados.
+   * El embudo (prospectos en cualquier etapa) vive en el Pipeline, que es la
+   * pantalla donde se mueven, y ya no hay filtro de etapa aquí.
    */
-  const [stage, setStage] = useState("clientes");
-  const [stages, setStages] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<ContactDto | null>(null);
   const [viewing, setViewing] = useState<ContactDto | null>(null);
@@ -69,20 +67,10 @@ export function ContactsClient() {
     if (typed) setQuery(typed);
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      const res = await fetch("/api/pipeline/stages").catch(() => null);
-      if (!res?.ok) return;
-      const data = (await res.json()) as { stages: { name: string }[] };
-      setStages(data.stages.map((s) => s.name));
-    })();
-  }, []);
-
   const refetch = useCallback(async () => {
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
-    if (stage === "clientes") params.set("won", "1");
-    else if (stage !== "todas") params.set("stage", stage);
+    params.set("won", "1");
     if (showArchived) params.set("archived", "true");
     const res = await fetch(`/api/contacts?${params}`).catch(() => null);
     if (!res?.ok) return;
@@ -92,7 +80,7 @@ export function ContactsClient() {
         (a, b) => priorityRank(a.priority ?? null) - priorityRank(b.priority ?? null)
       )
     );
-  }, [query, stage, showArchived]);
+  }, [query, showArchived]);
 
   useEffect(() => {
     const t = setTimeout(() => void refetch(), 250);
@@ -141,8 +129,7 @@ export function ContactsClient() {
             onClick={() => {
               const params = new URLSearchParams();
               if (query.trim()) params.set("q", query.trim());
-              if (stage === "clientes") params.set("won", "1");
-              else if (stage !== "todas") params.set("stage", stage);
+              params.set("won", "1");
               if (showArchived) params.set("archived", "true");
               window.open(`/api/contacts/export?${params}`, "_blank");
             }}
@@ -161,22 +148,6 @@ export function ContactsClient() {
             />
             Ver archivados
           </label>
-          {stages.length > 0 && (
-            <select
-              value={stage}
-              onChange={(e) => setStage(e.target.value)}
-              aria-label="Filtrar por etapa del embudo"
-              className="h-9 rounded-md border border-input bg-card px-2 text-sm"
-            >
-              <option value="clientes">Solo clientes</option>
-              {stages.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-              <option value="todas">Todas las etapas</option>
-            </select>
-          )}
           <div className="relative w-full sm:w-auto">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -194,18 +165,11 @@ export function ContactsClient() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {contacts.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            {query.trim() || stage !== "clientes" ? (
+            {query.trim() ? (
               <>
                 <p className="text-sm font-medium">Sin resultados</p>
                 <p className="max-w-sm text-xs text-muted-foreground">
-                  Nadie coincide con
-                  {query.trim() ? ` «${query.trim()}»` : ""}
-                  {query.trim() && stage !== "clientes" ? " en" : ""}
-                  {stage === "clientes"
-                    ? " entre los clientes."
-                    : stage === "todas"
-                      ? "."
-                      : ` la etapa «${stage}».`}
+                  Nadie coincide con «{query.trim()}» entre los clientes.
                 </p>
               </>
             ) : (
