@@ -61,6 +61,9 @@ export function buildMessengerAttachmentBody(input: {
   return body;
 }
 
+/** Límite documentado de Zernio para adjuntos multipart. */
+const ZERNIO_MULTIPART_MAX_BYTES = 25 * 1024 * 1024;
+
 /**
  * Envía texto por el transporte que corresponda.
  *
@@ -105,34 +108,59 @@ export async function sendMessengerMedia(input: {
     if (!input.threadRef) {
       throw new MetaApiError("La conversación no tiene referencia de hilo en Zernio", { status: 400 });
     }
-    // Zernio mantiene un upload temporal público y luego recibe attachmentUrl
-    // en JSON. El contrato de mensajes no usa los campos multipart `file` ni
-    // `attachmentType`; ese formato provocaba 400 al enviar PDFs de cotización.
+    const endpoint = `/inbox/conversations/${encodeURIComponent(input.threadRef)}/messages`;
+    const tagFields = input.humanAgentTag
+      ? { messagingType: "MESSAGE_TAG", messageTag: "HUMAN_AGENT" }
+      : {};
+    /**
+     * Los documentos salen por multipart: Zernio/Meta usan el nombre del archivo
+     * subido. Con `attachmentUrl` + `attachmentName` en JSON el cliente veía la
+     * clave generada por el proveedor (timestamp + UUID) en lugar del nombre del
+     * cliente — mismo bug, mismo arreglo, que WhatsApp.
+     * El campo es `attachment`; `file` con `attachmentType` lo rechazó Zernio.
+     * Arriba del límite documentado se conserva la vía JSON.
+     */
+    if (input.attachmentType === "file" && input.data.byteLength <= ZERNIO_MULTIPART_MAX_BYTES) {
+      const form = new FormData();
+      form.set("accountId", input.credentials.accountRef ?? "");
+      form.set(
+        "attachment",
+        new Blob([new Uint8Array(input.data)], { type: input.mimeType }),
+        input.fileName ?? (input.mimeType === "application/pdf" ? "documento.pdf" : "documento")
+      );
+      for (const [key, value] of Object.entries(tagFields)) form.set(key, value);
+      const response = (await zernioFetch(endpoint, {
+        method: "POST",
+        token: input.credentials.token,
+        formData: form,
+        ...(input.idempotencyKey
+          ? { headers: { "Idempotency-Key": input.idempotencyKey } }
+          : {}),
+      })) as { data?: { messageId?: string }; message?: { id?: string }; id?: string };
+      const id = response.data?.messageId ?? response.message?.id ?? response.id;
+      if (!id) throw new MetaApiError("Zernio no devolvió el identificador del adjunto", { status: 502 });
+      return { platformMessageId: String(id) };
+    }
     const uploaded = await zernioUploadMediaDirect({
       token: input.credentials.token,
       data: input.data,
       fileName: input.fileName ?? "archivo",
       mimeType: input.mimeType,
     });
-    const response = (await zernioFetch(
-      `/inbox/conversations/${encodeURIComponent(input.threadRef)}/messages`,
-      {
-        method: "POST",
-        token: input.credentials.token,
-        body: {
-          accountId: input.credentials.accountRef,
-          attachmentUrl: uploaded.url,
-          attachmentType: input.attachmentType,
-          ...(input.attachmentType === "file" ? { attachmentName: input.fileName ?? uploaded.filename } : {}),
-          ...(input.humanAgentTag
-            ? { messagingType: "MESSAGE_TAG", messageTag: "HUMAN_AGENT" }
-            : {}),
-        },
-        ...(input.idempotencyKey
-          ? { headers: { "Idempotency-Key": input.idempotencyKey } }
-          : {}),
-      }
-    )) as { data?: { messageId?: string }; message?: { id?: string }; id?: string };
+    const response = (await zernioFetch(endpoint, {
+      method: "POST",
+      token: input.credentials.token,
+      body: {
+        accountId: input.credentials.accountRef,
+        attachmentUrl: uploaded.url,
+        attachmentType: input.attachmentType,
+        ...(input.attachmentType === "file" ? { attachmentName: input.fileName ?? uploaded.filename } : {}),
+        ...tagFields,
+      },
+      ...(input.idempotencyKey
+        ? { headers: { "Idempotency-Key": input.idempotencyKey } }
+        : {}),
+    })) as { data?: { messageId?: string }; message?: { id?: string }; id?: string };
     const id = response.data?.messageId ?? response.message?.id ?? response.id;
     if (!id) throw new MetaApiError("Zernio no devolvió el identificador del adjunto", { status: 502 });
     return { platformMessageId: String(id) };
