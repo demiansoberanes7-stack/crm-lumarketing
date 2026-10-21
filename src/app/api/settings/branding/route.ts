@@ -15,7 +15,8 @@ export async function GET() {
 }
 
 const putSchema = z.object({
-  name: z.string().trim().min(1).max(30),
+  /** Opcional: el nombre visible vive en Datos de Empresa, no en este panel. */
+  name: z.string().trim().min(1).max(30).optional(),
   accent: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)"),
   /** La moneda del negocio: la única que el tablero suma. */
   currency: z.enum(CURRENCIES),
@@ -34,16 +35,13 @@ export const PUT = withAuth(async (session, req: Request) => {
   }
   const body = await parseBody(req, putSchema);
   if (!body.ok) return body.response;
-  // El icono se conserva: este formulario es de nombre, color y moneda, y se
-  // sube y se quita por su propia ruta. Sin esto, guardar el nombre borraría
-  // el logo sin que nadie lo pidiera.
-  const actual = await getBranding(session.organizationId);
+  // Save parcial: el icono y los colores de PDF que no vienen en el body se
+  // conservan, y el nombre guardado tampoco se pisa si el panel ya no lo edita.
   await saveBranding(session.organizationId, {
-    ...body.data,
-    // Sin pdfColors en el body se conservan los guardados (mismo criterio
-    // que el icono: un PUT parcial no debe pisar lo que no viene).
-    pdfColors: body.data.pdfColors ?? actual.pdfColors,
-    favicon: actual.favicon,
+    name: body.data.name,
+    accent: body.data.accent,
+    currency: body.data.currency,
+    pdfColors: body.data.pdfColors,
   });
   return Response.json({ ok: true });
 });

@@ -5,7 +5,7 @@ import {
   MAX_FAVICON_BYTES,
   sniffFaviconMime,
 } from "@/lib/favicon";
-import { getBranding, saveBranding } from "@/server/branding";
+import { saveBranding } from "@/server/branding";
 import { mediaFilePath, saveMediaFile } from "@/server/whatsapp/media";
 
 export const dynamic = "force-dynamic";
@@ -46,14 +46,12 @@ export const PUT = withAuth(async (session, req: Request) => {
 
   await saveMediaFile(session.organizationId, FAVICON_ASSET, buf);
 
-  const branding = await getBranding(session.organizationId);
   // Marca de tiempo y no un contador: al quitar el icono no queda dónde
   // recordar por cuál íbamos, así que un contador reiniciaría en 1 y la URL
   // `?v=u1` sería la MISMA que la del logo anterior — el navegador seguiría
   // enseñando el viejo, que es justo lo que este número existe para evitar.
   const version = Date.now();
   await saveBranding(session.organizationId, {
-    ...branding,
     favicon: { mime, version },
   });
 
@@ -66,8 +64,7 @@ export const DELETE = withAuth(async (session) => {
     return apiError(403, "forbidden", "Solo el propietario puede cambiar la marca");
   }
 
-  const branding = await getBranding(session.organizationId);
-  await saveBranding(session.organizationId, { ...branding, favicon: null });
+  await saveBranding(session.organizationId, { favicon: null });
   // El archivo se borra DESPUÉS de que la marca ya no lo referencia: si esto
   // falla, queda un archivo huérfano —inofensivo— en vez de una marca
   // apuntando a algo que ya no está.

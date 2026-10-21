@@ -42,7 +42,7 @@ export function AppHeader({
         type="button"
         onClick={onOpenDrawer}
         aria-label="Abrir el menú"
-        className="flex min-h-10 shrink-0 items-center gap-0.5 rounded-lg pr-1.5 text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
+        className="flex min-h-10 min-w-0 items-center gap-0.5 rounded-lg pr-1.5 text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
       >
         <BrandLogo branding={branding} logoUrl={logoUrl} size="lg" />
         <ChevronDown className="h-4 w-4 shrink-0 text-text-3" strokeWidth={2} />

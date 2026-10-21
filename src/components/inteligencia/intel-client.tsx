@@ -74,6 +74,18 @@ function ingestSummary(result: unknown): string {
 }
 
 /**
+ * El explorador de nichos monitoreados es del CATÁLOGO, no de la búsqueda.
+ * Bajo una búsqueda activa se oculta entero: si sus paneles quedaran visibles,
+ * el mapa/serie de otro nicho parecería el resultado de la palabra buscada.
+ */
+export function showMonitoredExplorer(
+  overview: KeywordOverviewView | null,
+  searching: boolean
+): boolean {
+  return overview === null && !searching;
+}
+
+/**
  * Módulo de Inteligencia en una sola columna: todo lo que se consulta vive en
  * el mismo scroll, ordenado de la señal más externa y urgente (qué se busca
  * hoy) a la más propia (nichos monitoreados, contenido, audiencia, competencia
@@ -477,7 +489,9 @@ export function IntelClient() {
         </section>
       )}
 
-      {/* Explorador opcional: no se consulta ni se dibuja hasta abrirlo. */}
+      {/* Explorador opcional: no se consulta ni se dibuja hasta abrirlo, y
+          desaparece entero mientras hay una búsqueda activa. */}
+      {showMonitoredExplorer(overview, searching) && (
       <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Explorador de nichos monitoreados">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -495,12 +509,6 @@ export function IntelClient() {
 
         {explore && (
           <div className="mt-4 space-y-5">
-            {overview && (
-              <p className="rounded-md border border-warning-soft bg-warning-tint px-3 py-2 text-xs text-warning-text">
-                Este explorador muestra tus nichos monitoreados, no «{overview.query}».
-                El análisis de tu búsqueda está arriba.
-              </p>
-            )}
             <div className="flex flex-wrap items-center justify-end gap-3">
               {trends?.lastIngestAt && (
                 <span className="flex items-center gap-1 text-xs text-text-3">
@@ -517,14 +525,13 @@ export function IntelClient() {
             {/* Qué se busca ahora mismo en el país (Google Trends sin keyword propia). */}
             <TrendingPanel reloadKey={reloadKey} onMonitored={() => void loadTrends()} />
 
-      {/* Ranking accionable de los nichos monitoreados. Con una búsqueda
-          activa manda KeywordContentRanking, que sí es de esa palabra. */}
-      {!overview && trends && trends.trends.length > 0 && (
+      {/* Ranking accionable de los nichos monitoreados. */}
+      {trends && trends.trends.length > 0 && (
         <GtRanking ranking={buildRanking(trends.trends)} />
       )}
 
       {/* Gráfica comparativa multi-nicho (todas las líneas normalizadas) */}
-      {!overview && trends && trends.trends.length > 0 && (
+      {trends && trends.trends.length > 0 && (
         <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Interés comparado · últimos 30 días</h2>
@@ -662,6 +669,7 @@ export function IntelClient() {
           </div>
         )}
       </section>
+      )}
       </div>
     </div>
   );

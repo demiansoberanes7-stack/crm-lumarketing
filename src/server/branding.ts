@@ -6,6 +6,7 @@ import {
   normalizeBranding,
   type Branding,
 } from "@/lib/branding";
+import { normalizeBusinessSettings } from "@/lib/business-settings";
 
 /** Marca guardada en organization.metadata (JSON de Better Auth). */
 
@@ -19,6 +20,22 @@ function parseMetadata(metadata: string | null): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * El nombre visible del CRM es el del negocio (Datos de Empresa); la marca
+ * solo conserva el nombre como respaldo para negocios que aún no lo llenaron.
+ * Así la cabecera y la pestaña del navegador dicen lo mismo que las
+ * cotizaciones y nunca dos nombres distintos.
+ */
+function brandingWithBusinessName(
+  branding: Branding,
+  metadata: Record<string, unknown>
+): Branding {
+  const business = normalizeBusinessSettings(
+    (metadata.businessSettings as Parameters<typeof normalizeBusinessSettings>[0]) ?? null
+  );
+  return business.companyName ? { ...branding, name: business.companyName } : branding;
 }
 
 /**
@@ -52,8 +69,9 @@ export async function getBrandingContext(
   const meta = parseMetadata(rows[0].metadata);
   return {
     organizationId: rows[0].id,
-    branding: normalizeBranding(
-      (meta.branding as Partial<Branding> | undefined) ?? null
+    branding: brandingWithBusinessName(
+      normalizeBranding((meta.branding as Partial<Branding> | undefined) ?? null),
+      meta
     ),
   };
 }
@@ -90,9 +108,15 @@ export async function getBrandingContextForRequest(): Promise<{
   return getBrandingContext(session?.organizationId);
 }
 
+/**
+ * Guarda SOLO lo que llega: la marca se edita desde varios paneles (color,
+ * icono, PDF) y un PUT parcial no debe pisar lo que otro guardó. `name`
+ * omitido conserva el guardado; el nombre visible igual sale de Datos de
+ * Empresa (ver `brandingWithBusinessName`).
+ */
 export async function saveBranding(
   organizationId: string,
-  branding: Branding
+  patch: Partial<Branding>
 ): Promise<void> {
   const db = getDb();
   const rows = await db
@@ -101,7 +125,13 @@ export async function saveBranding(
     .where(eq(schema.organization.id, organizationId))
     .limit(1);
   const meta = parseMetadata(rows[0]?.metadata ?? null);
-  meta.branding = normalizeBranding(branding);
+  const current = normalizeBranding(
+    (meta.branding as Partial<Branding> | undefined) ?? null
+  );
+  const defined = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+  meta.branding = normalizeBranding({ ...current, ...defined });
   await db
     .update(schema.organization)
     .set({ metadata: JSON.stringify(meta) })

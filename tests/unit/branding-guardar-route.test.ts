@@ -129,6 +129,13 @@ describe("guardar la marca desde Ajustes → Marca", () => {
     expect(marcaEscrita().pdfColors.header).toBe("#b8963e");
   });
 
+  it("un PUT sin nombre (solo color) no pisa el nombre guardado", async () => {
+    selectQueue.push([orgRow({ name: "LUMARK", accent: "#65a30d", currency: "MXN" })]);
+    await expect(put({ accent: "#b8963e", currency: "MXN" })).resolves.toMatchObject({ status: 200 });
+    expect(marcaEscrita().name).toBe("LUMARK");
+    expect(marcaEscrita().accent).toBe("#b8963e");
+  });
+
   it("un color inválido no escribe nada", async () => {
     selectQueue.push([orgRow({ name: "Dental Zen", accent: "#65a30d", currency: "MXN" })]);
     await expect(put({ ...completo, accent: "rojo" })).resolves.toMatchObject({ status: 422 });

@@ -101,6 +101,35 @@ describe("marca del documento con varios negocios en la instancia", () => {
     expect((await marca()).accent).toBe("#b8963e");
   });
 
+  it("el nombre visible sale de Datos de Empresa, no del nombre de la marca", async () => {
+    mocks.getSessionOrNull.mockResolvedValue(session);
+    dbWith([{
+      id: "org_2",
+      metadata: JSON.stringify({
+        branding: { name: "LUMARK", accent: "#b8963e" },
+        businessSettings: { companyName: "Honeycat" },
+      }),
+    }]);
+
+    const branding = await marca();
+    expect(branding.name).toBe("Honeycat");
+    // El resto de la marca (acento) no se toca.
+    expect(branding.accent).toBe("#b8963e");
+  });
+
+  it("sin nombre en Datos de Empresa cae al nombre guardado en la marca", async () => {
+    mocks.getSessionOrNull.mockResolvedValue(session);
+    dbWith([{
+      id: "org_2",
+      metadata: JSON.stringify({
+        branding: { name: "LUMARK", accent: "#b8963e" },
+        businessSettings: { companyName: "   " },
+      }),
+    }]);
+
+    expect((await marca()).name).toBe("LUMARK");
+  });
+
   it("el negocio en sesión ya no existe → neutra, nunca la fila de un vecino", async () => {
     mocks.getSessionOrNull.mockResolvedValue(session);
     dbWith([]);

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ACCENT_PRESETS,
   accentCssVariables,
@@ -18,7 +19,6 @@ import { useResolvedTheme } from "@/components/use-theme";
 import { BrandLogo } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const ID_ESTILO_MARCA = "marca-acento";
@@ -84,7 +84,9 @@ export function BrandingClient() {
     const res = await fetch("/api/settings/branding", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), accent, currency, pdfColors }),
+      // El nombre NO se manda: sale de Datos de Empresa. Mandarlo aquí
+      // devolvería el segundo nombre que este panel justamente eliminó.
+      body: JSON.stringify({ accent, currency, pdfColors }),
     }).catch(() => null);
     setSaving(false);
     if (!res?.ok) {
@@ -108,23 +110,26 @@ export function BrandingClient() {
         <CardHeader>
           <CardTitle>Marca del CRM</CardTitle>
           <CardDescription>
-            Este CRM es tuyo: ponle el nombre de tu negocio y tu color. Se
-            reflejan en toda la interfaz que usa tu equipo y en los PDF. La
-            pantalla de inicio de sesión lleva la marca de la instancia: si en
-            ella hay varios negocios, se ve la neutra, nunca el logo de otro.
+            El nombre que ven tu equipo y la pestaña del navegador es el de
+            Datos de Empresa. Aquí eliges el color y la moneda de la interfaz y
+            de los PDF. La pantalla de inicio de sesión lleva la marca de la
+            instancia: si en ella hay varios negocios, se ve la neutra, nunca
+            el logo de otro.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
-            <Label htmlFor="brand-name">Nombre</Label>
-            <Input
-              id="brand-name"
-              maxLength={30}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="ZORRO TECH"
-              className="max-w-xs"
-            />
+            <Label>Nombre visible</Label>
+            <p className="rounded-md border border-input bg-muted px-3 py-2 text-sm">
+              {name.trim() || DEFAULT_BRANDING.name}
+            </p>
+            <p className="text-xs text-text-3">
+              Se cambia en{" "}
+              <Link href="/settings/business" className="font-semibold text-brand-text hover:underline">
+                Datos de Empresa
+              </Link>
+              , junto con el logo, el RFC y la dirección de las cotizaciones.
+            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -222,7 +227,7 @@ export function BrandingClient() {
 
           {error && <p className="text-sm text-destructive">{error}</p>}
           {saved && <p className="text-sm" style={{ color: previewSet.text }}>Marca guardada ✓</p>}
-          <Button disabled={saving || !name.trim()} onClick={() => void save()}>
+          <Button disabled={saving} onClick={() => void save()}>
             {saving ? "Guardando…" : "Guardar marca"}
           </Button>
         </CardContent>
@@ -274,7 +279,7 @@ export function BrandingClient() {
               </div>
             </div>
           ))}
-          <Button disabled={saving || !name.trim()} onClick={() => void save()}>
+          <Button disabled={saving} onClick={() => void save()}>
             {saving ? "Guardando…" : "Guardar colores"}
           </Button>
         </CardContent>

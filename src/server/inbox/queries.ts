@@ -1,8 +1,10 @@
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { isHumanAgentWindowOpen, isWindowOpenFor, windowRemainingMsFor } from "@/server/inbox/window";
 import { capabilitiesFor } from "@/server/channels/capabilities";
+import { disabledChannelsFor } from "@/server/ai/channel-policy";
+import { commentGroupKey, foldCommentThreads, parseCommentIdentity } from "@/lib/comment-thread";
 import type { Channel } from "@/lib/channels";
 import type { ConversationDto } from "@/lib/types";
 
@@ -64,13 +66,22 @@ export async function listConversations(
     )
     .orderBy(desc(sql`coalesce(${schema.conversation.lastMessageAt}, ${schema.conversation.createdAt})`));
 
-  return rows.map((r) => {
+  const disabledChannels = await disabledChannelsFor(organizationId);
+  // Una fila por PERSONA en Comentarios: las conversaciones viejas por post
+  // (y la nueva por autor) se funden aquí, sin mover ni borrar filas.
+  return foldCommentThreads(rows).map((r) => {
     // Recupera conversaciones antiguas donde el mensaje sí quedó persistido
     // pero el marcador de ventana no (p. ej. una ingesta parcial previa).
     const conversation = r.conversation.lastInboundAt || !r.effectiveLastInboundAt
       ? r.conversation
       : { ...r.conversation, lastInboundAt: r.effectiveLastInboundAt };
-    return serializeConversation(conversation, r.contact, r.preview, r.stageName);
+    return serializeConversation(
+      conversation,
+      r.contact,
+      r.preview,
+      r.stageName,
+      !disabledChannels.includes(conversation.channel as Channel)
+    );
   });
 }
 
@@ -115,12 +126,54 @@ export async function getConversation(
     : row;
 }
 
+/**
+ * Conversaciones que forman el hilo de una PERSONA en Comentarios: la
+ * representativa (la que se abrió) más las viejas, que tenían una por post.
+ * Devuelve null cuando la conversación no es de Comentarios.
+ */
+async function commentThreadConversationIds(
+  organizationId: string,
+  conversationId: string
+): Promise<string[] | null> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: schema.conversation.id,
+      identity: schema.contact.waIdentity,
+    })
+    .from(schema.conversation)
+    .innerJoin(
+      schema.contact,
+      eq(schema.conversation.contactId, schema.contact.id)
+    )
+    .where(
+      scoped(
+        schema.conversation.organizationId,
+        organizationId,
+        eq(schema.conversation.isTest, false),
+        eq(schema.conversation.channel, "comments")
+      )
+    );
+  const target = rows.find((r) => r.id === conversationId);
+  if (!target) return null;
+  if (!parseCommentIdentity(target.identity)) return [conversationId];
+  const key = commentGroupKey(target.identity);
+  const ids = rows
+    .filter((r) => commentGroupKey(r.identity) === key)
+    .map((r) => r.id);
+  return ids.length ? ids : [conversationId];
+}
+
 export async function listMessages(
   organizationId: string,
   conversationId: string,
   since?: Date
 ) {
   const db = getDb();
+  // El hilo de comentarios es de la persona: se cargan también los mensajes
+  // de sus conversaciones viejas (una por post) para que la vista muestre la
+  // historia completa aunque la fila abierta sea la más reciente.
+  const groupIds = await commentThreadConversationIds(organizationId, conversationId);
   return db
     .select({
       message: schema.message,
@@ -146,11 +199,19 @@ export async function listMessages(
       scoped(
         schema.message.organizationId,
         organizationId,
-        eq(schema.message.conversationId, conversationId),
+        groupIds
+          ? inArray(schema.message.conversationId, groupIds)
+          : eq(schema.message.conversationId, conversationId),
         since ? gt(schema.message.createdAt, since) : undefined
       )
     )
-    .orderBy(schema.message.createdAt);
+    // En comentarios manda la hora del comentario, no la de ingesta: un sync
+    // tardío inserta varios a la vez y `created_at` los desordenaría.
+    .orderBy(
+      groupIds
+        ? sql`coalesce(${schema.message.waTimestamp}, ${schema.message.createdAt})`
+        : schema.message.createdAt
+    );
 }
 
 /**
@@ -170,7 +231,8 @@ export function serializeConversation(
   c: typeof schema.conversation.$inferSelect,
   contact: typeof schema.contact.$inferSelect,
   preview: string | null = null,
-  stageName: string | null = null
+  stageName: string | null = null,
+  channelAiEnabled = true
 ): ConversationDto {
   // Ventana según el canal, no un supuesto de WhatsApp:
   // - google_business (sin ventana): siempre enviable.
@@ -193,6 +255,7 @@ export function serializeConversation(
     contact: { id: contact.id, name: contact.name, phone: contact.phone },
     stageName,
     aiEnabled: c.aiEnabled,
+    channelAiEnabled,
     handoffAt: c.handoffAt?.toISOString() ?? null,
     handoffReason: c.handoffReason,
     lastInboundAt: c.lastInboundAt?.toISOString() ?? null,
@@ -222,13 +285,22 @@ export async function updateConversation(
   }
   if (patch.markRead) set.unreadCount = 0;
 
+  // Marcar leído el hilo de una persona limpia también sus conversaciones
+  // viejas por post; si no, al recargar reaparecería el contador sumado.
+  const markReadIds =
+    patch.markRead !== undefined
+      ? await commentThreadConversationIds(organizationId, conversationId)
+      : null;
+
   await db
     .update(schema.conversation)
     .set(set)
     .where(
       and(
         eq(schema.conversation.organizationId, organizationId),
-        eq(schema.conversation.id, conversationId)
+        markReadIds
+          ? inArray(schema.conversation.id, markReadIds)
+          : eq(schema.conversation.id, conversationId)
       )
     );
   const [updated] = await db

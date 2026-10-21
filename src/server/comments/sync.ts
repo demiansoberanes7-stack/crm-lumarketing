@@ -15,6 +15,13 @@ import {
 } from "@/server/comments/fetch";
 import type { TikTokCredentials } from "@/server/tiktok/credentials";
 import { getTikTokCredentialsByOrg } from "@/server/tiktok/credentials";
+import {
+  COMMENT_IDENTITY_PREFIX,
+  commentContactIdentity,
+  type SocialCommentPlatform,
+} from "@/lib/comment-thread";
+
+export type { SocialCommentPlatform };
 
 /**
  * Sync de comentarios de publicaciones (Instagram / Facebook / TikTok) hacia
@@ -24,25 +31,13 @@ import { getTikTokCredentialsByOrg } from "@/server/tiktok/credentials";
  * upsert es por ese campo y el mensaje entrante usa un id derivado del
  * comentario como `wa_message_id`, así que un segundo poller no duplica nada.
  *
- * Una hebra POR AUTOR/POST: la identidad del contacto es
- * `{igc|fbc}:{postExternalId}:{authorExternalId}`, así que todos los comentarios
- * de un mismo autor sobre un mismo post caen en una sola conversación.
+ * Una hebra POR PERSONA: la identidad del contacto es `{igc|fbc|ttc}:{autor}`,
+ * así que todos los comentarios de una persona caen en una sola conversación;
+ * la publicación de cada comentario vive en `social_comment`. Los hilos viejos
+ * (`prefijo:post:autor`) se agrupan en la lista con la misma llave.
  */
 
 export type SyncResult = { comments: number; newComments: number };
-
-/** Prefijo de la identidad y del mensaje entrante según la plataforma. */
-export type SocialCommentPlatform = "instagram" | "messenger" | "tiktok";
-
-function platformBits(platform: SocialCommentPlatform) {
-  if (platform === "instagram") return { prefix: "igc", channel: "comments" as const };
-  if (platform === "messenger") return { prefix: "fbc", channel: "comments" as const };
-  return { prefix: "ttc", channel: "comments" as const };
-}
-
-function commentIdentity(platform: SocialCommentPlatform, c: RawSocialComment): string {
-  return `${platformBits(platform).prefix}:${c.postExternalId}:${c.authorExternalId}`;
-}
 
 /**
  * Upsert del comentario + su ingest en la Bandeja. Devuelve true si el
@@ -91,19 +86,19 @@ async function upsertCommentIntoInbox(input: {
   // ── Ingest en la Bandeja (solo comentarios nuevos) ──
   if (!isNew) return false;
 
-  const identity = commentIdentity(platform, comment);
+  const identity = commentContactIdentity(platform, comment.authorExternalId);
   const { contact } = await getOrCreateContactByIdentity(organizationId, {
     identity,
-    channel: platformBits(platform).channel,
+    channel: "comments",
     phone: null,
     waUserId: null,
     profileName: comment.authorName ?? null,
   });
+  // El hilo es de la persona: el post ya no encabeza la conversación. La
+  // publicación de cada respuesta se resuelve en el envío desde el último
+  // comentario de este autor en `social_comment`.
   const conversation = await getOrCreateConversation(organizationId, contact.id, {
     channel: "comments",
-    // threadRef = plataforma:post (estable por hebra); el send path lo usa para
-    // ubicar el comentario al que responder.
-    threadRef: `${platform === "instagram" ? "ig" : platform === "messenger" ? "fb" : "tt"}:${comment.postExternalId}`,
   });
 
   // Los comentarios se responden a mano: el reply es PÚBLICO y el agente nunca
@@ -116,7 +111,7 @@ async function upsertCommentIntoInbox(input: {
     conversation.aiEnabled = false;
   }
 
-  const waMessageId = `${platformBits(platform).prefix}_${comment.externalCommentId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  const waMessageId = `${COMMENT_IDENTITY_PREFIX[platform]}_${comment.externalCommentId.replace(/[^a-zA-Z0-9]/g, "_")}`;
   const inserted = await db
     .insert(schema.message)
     .values({

@@ -7,6 +7,8 @@ import {
   type MarketIdea,
 } from "@/lib/intel-content";
 import { KeywordContentRanking } from "@/components/inteligencia/gt-ranking";
+import { showMonitoredExplorer } from "@/components/inteligencia/intel-client";
+import type { KeywordOverviewView } from "@/components/inteligencia/keyword-view";
 
 function idea(label: string, overrides: Partial<MarketIdea> = {}): MarketIdea {
   return {
@@ -177,5 +179,17 @@ describe("panel de contenido de la búsqueda", () => {
     expect(html).toContain("«camara lenta»");
     expect(html).toContain("No hay proveedores configurados.");
     expect(html).not.toContain("Smartphones");
+  });
+});
+
+describe("explorador del catálogo bajo una búsqueda", () => {
+  it("no se muestra mientras se analiza ni cuando hay resultado en pantalla", () => {
+    expect(showMonitoredExplorer(null, true)).toBe(false);
+    expect(showMonitoredExplorer({} as KeywordOverviewView, false)).toBe(false);
+    expect(showMonitoredExplorer({} as KeywordOverviewView, true)).toBe(false);
+  });
+
+  it("solo aparece cuando la persona no ha buscado nada", () => {
+    expect(showMonitoredExplorer(null, false)).toBe(true);
   });
 });

@@ -128,6 +128,23 @@ describe("layout raíz: el color guardado llega al navegador", () => {
     });
   });
 
+  it("la pestaña usa el nombre de Datos de Empresa, no el de Marca", async () => {
+    mocks.getSessionOrNull.mockResolvedValue(session);
+    dbReturning([{
+      id: "org_2",
+      metadata: JSON.stringify({
+        branding: { name: "LUMARK", accent: "#b8963e" },
+        businessSettings: { companyName: "Honeycat" },
+      }),
+    }]);
+    await expect(generateMetadata()).resolves.toMatchObject({
+      title: {
+        default: "Honeycat — CRM de WhatsApp",
+        template: "%s — Honeycat",
+      },
+    });
+  });
+
   it("sin marca guardada el documento sigue pintando el acento por defecto", async () => {
     const markup = await html([{ id: "org_2", metadata: null }], true);
     expect(markup).toContain(accentCssVariables(DEFAULT_BRANDING.accent));

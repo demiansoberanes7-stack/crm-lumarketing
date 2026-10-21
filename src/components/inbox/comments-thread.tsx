@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ExternalLink,
@@ -11,14 +11,15 @@ import {
 import { ContactAvatar } from "@/components/avatar";
 import { ChannelBadge } from "@/components/channel-badge";
 import { commentBodyText } from "@/lib/comments-format";
+import { groupCommentsByPost } from "@/lib/comment-thread";
 import type { MessageCommentDto, MessageDto } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Hilo del canal Comentarios con la lectura de Facebook: la publicación se
- * muestra UNA vez arriba (caption y enlace), y debajo van los comentarios con
- * autor, hora y respuestas anidadas. Antes cada burbuja repetía el caption
- * como cabecera `sobre: …`, que es exactamente lo que hacía ilegible el hilo.
+ * Hilo del canal Comentarios con la lectura de Facebook: cada publicación se
+ * muestra UNA vez con su caption y enlace, y debajo van los comentarios con
+ * autor, hora y respuestas anidadas. El hilo es de la PERSONA, así que puede
+ * tener varias publicaciones: cada una lleva su propia tarjeta, en orden.
  */
 
 const PLATFORM = {
@@ -224,14 +225,11 @@ export function CommentsThread({
   }, [messages.length]);
 
   const comments = messages.flatMap((m) => (m.comment ? [m.comment] : []));
-  const post = comments[0] ?? null;
-  const postCaption = comments.find((c) => c.postCaption)?.postCaption ?? null;
-  const postUrl = comments.find((c) => c.postUrl)?.postUrl ?? null;
+  const groups = groupCommentsByPost(messages);
   // Solo se anida una respuesta si su padre está en esta misma hebra: si el
   // autor respondió a un comentario de otra persona, sangrar el renglón haría
   // creer que cuelga del comentario anterior.
   const commentIds = new Set(comments.map((c) => c.externalCommentId));
-  const inboundCount = messages.filter((m) => m.direction === "in").length;
 
   return (
     <div
@@ -240,53 +238,55 @@ export function CommentsThread({
       className="thread-bg flex flex-1 flex-col overflow-y-auto overscroll-contain px-3 py-5 sm:px-[4%]"
     >
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
-        {post && (
-          <PostContext
-            platform={post.platform}
-            caption={postCaption}
-            postUrl={postUrl}
-          />
-        )}
+        {groups.map((group) => (
+          <Fragment key={group.key}>
+            <PostContext
+              platform={group.platform}
+              caption={group.postCaption}
+              postUrl={group.postUrl}
+            />
 
-        <section className="overflow-hidden rounded-xl border border-border-strong bg-background shadow-sm">
-          <header className="flex items-center gap-2 border-b border-border bg-subtle px-4 py-2.5">
-            <MessageCircle className="h-4 w-4 text-brand" strokeWidth={1.8} />
-            <p className="text-[12.5px] font-semibold">Comentarios</p>
-            <span className="rounded-full border border-border-strong bg-background px-1.5 text-[10.5px] font-semibold text-text-3">
-              {inboundCount}
-            </span>
-            <span className="ml-auto rounded-full border border-border-strong bg-background px-2 py-0.5 text-[10.5px] font-medium text-text-3">
-              Público
-            </span>
-          </header>
+            <section className="overflow-hidden rounded-xl border border-border-strong bg-background shadow-sm">
+              <header className="flex items-center gap-2 border-b border-border bg-subtle px-4 py-2.5">
+                <MessageCircle className="h-4 w-4 text-brand" strokeWidth={1.8} />
+                <p className="text-[12.5px] font-semibold">Comentarios</p>
+                <span className="rounded-full border border-border-strong bg-background px-1.5 text-[10.5px] font-semibold text-text-3">
+                  {group.inboundCount}
+                </span>
+                <span className="ml-auto rounded-full border border-border-strong bg-background px-2 py-0.5 text-[10.5px] font-medium text-text-3">
+                  Público
+                </span>
+              </header>
 
-          <div className="divide-y divide-border">
-            {messages.map((m, i) => {
-              const prev = messages[i - 1];
-              const newDay =
-                !prev ||
-                new Date(prev.createdAt).toDateString() !==
-                  new Date(m.createdAt).toDateString();
-              const parentId = m.comment?.parentExternalId ?? null;
-              return (
-                <div key={m.id}>
-                  {newDay && (
-                    <div className="flex items-center gap-3 border-b border-border bg-subtle px-4 py-1.5">
-                      <span className="kicker text-text-3">{dayLabel(m.createdAt)}</span>
-                      <span className="h-px flex-1 bg-border" />
+              <div className="divide-y divide-border">
+                {group.messages.map((m, i) => {
+                  const prev = group.messages[i - 1];
+                  const newDay =
+                    !prev ||
+                    new Date(prev.createdAt).toDateString() !==
+                      new Date(m.createdAt).toDateString();
+                  const parentId = m.comment?.parentExternalId ?? null;
+                  return (
+                    <div key={m.id}>
+                      {newDay && (
+                        <div className="flex items-center gap-3 border-b border-border bg-subtle px-4 py-1.5">
+                          <span className="kicker text-text-3">{dayLabel(m.createdAt)}</span>
+                          <span className="h-px flex-1 bg-border" />
+                        </div>
+                      )}
+                      <CommentRow
+                        message={m}
+                        postCaption={group.postCaption}
+                        contactName={contactName}
+                        nested={Boolean(parentId && commentIds.has(parentId))}
+                      />
                     </div>
-                  )}
-                  <CommentRow
-                    message={m}
-                    postCaption={postCaption}
-                    contactName={contactName}
-                    nested={Boolean(parentId && commentIds.has(parentId))}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                  );
+                })}
+              </div>
+            </section>
+          </Fragment>
+        ))}
       </div>
     </div>
   );
