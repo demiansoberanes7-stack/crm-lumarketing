@@ -1,6 +1,9 @@
 import type { schema } from "@/lib/db";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import { WEEKDAYS, type WeekdayKey } from "@/lib/time/slots";
+import type { WeeklyHours } from "@/server/agenda/settings";
 import { normalizeAgentFichaFields, normalizeAgentRules } from "@/lib/agent-config";
+import { supportsWhatsAppMarkdown } from "@/server/ai/reply-format";
 
 type AgentProfile = typeof schema.agentProfile.$inferSelect;
 type KbEntry = typeof schema.kbEntry.$inferSelect;
@@ -56,6 +59,46 @@ export function renderCatalog(
 }
 
 /**
+ * 015 — Lo que el agente necesita saber del calendario para NO prometer huecos
+ * imposibles. El motor de disponibilidad ya filtra los solapamientos; esto es
+ * para que el modelo hable con conocimiento de causa ("atendemos de 9 a 6").
+ */
+export type AgentBusinessHours = {
+  weeklyHours: WeeklyHours;
+  timezone: string;
+  slotMinutes: number;
+  bufferMinutes: number;
+  minNoticeHours: number;
+  maxDaysAhead: number;
+};
+
+const WEEKDAY_ABBR: Record<WeekdayKey, string> = {
+  mon: "lun",
+  tue: "mar",
+  wed: "mié",
+  thu: "jue",
+  fri: "vie",
+  sat: "sáb",
+  sun: "dom",
+};
+
+/** "lun 09:00-18:00, mar 10:00-14:00 · cerrado: jue, sab" en una línea. */
+export function renderBusinessHours(hours: AgentBusinessHours): string {
+  const open: string[] = [];
+  const closed: string[] = [];
+  for (const key of WEEKDAYS) {
+    const intervals = hours.weeklyHours[key] ?? [];
+    if (intervals.length === 0) closed.push(WEEKDAY_ABBR[key]);
+    else
+      open.push(
+        `${WEEKDAY_ABBR[key]} ${intervals.map((i) => `${i.start}-${i.end}`).join("/")}`
+      );
+  }
+  const days = open.length > 0 ? open.join(", ") : "sin días habilitados";
+  return `${days}${closed.length > 0 ? ` · cerrado: ${closed.join(", ")}` : ""} (zona ${hours.timezone}, citas de ${hours.slotMinutes} min${hours.bufferMinutes > 0 ? ` con ${hours.bufferMinutes} min entre citas` : ""}, aviso mínimo ${hours.minNoticeHours} h, hasta ${hours.maxDaysAhead} días adelante)`;
+}
+
+/**
  * System prompt del agente (v1: inyecta el KB completo — el límite se
  * documenta con el contador de tamaño en la UI).
  */
@@ -69,6 +112,16 @@ export function buildAgentSystemPrompt(input: {
    * token en hablar de horarios: la agenda no existe aquí.
    */
   agenda?: boolean;
+  /**
+   * Horario real del negocio. Solo tiene sentido con `agenda`; sin él, el
+   * agente sigue ofreciendo huecos (los calcula el motor) pero no los cita.
+   */
+  businessHours?: AgentBusinessHours | null;
+  /**
+   * Nombre de Datos de Empresa. Sin él, "el asistente de este negocio" deja
+   * al modelo sin cómo llamarse cuando el cliente pregunta por la marca.
+   */
+  businessName?: string | null;
   /**
    * Canal real de la conversación. Decirlo mal ("asistente de WhatsApp" en un
    * chat de Messenger) empuja al modelo a prometer cosas del canal equivocado.
@@ -90,6 +143,10 @@ export function buildAgentSystemPrompt(input: {
     ? [
         "- NUNCA escribas tú los horarios ni los inventes: usa offer_slots y el sistema pega los reales.",
         "- book_slot solo acepta un horario que el sistema ofreció antes en ESTA conversación. Si el cliente pide otro, vuelve a ofrecer con offer_slots.",
+        // El cliente empuja ("agéndame a las 10 aunque sea") y el modelo cede:
+        // hay que decirle que la disponibilidad no es negociable, porque el
+        // motor rechaza el hueco y la conversación se encicla.
+        "- Si el horario que pide el cliente no está entre los ofrecidos, no lo agendes a la fuerza: ofrece de nuevo. El sistema jamás agenda dos citas encima.",
         "- Si el cliente quiere CANCELAR una cita → handoff: esa decisión no es tuya.",
       ]
     : [];
@@ -110,6 +167,7 @@ export function buildAgentSystemPrompt(input: {
       ? [
           '- {"action":"create_quote","item_id":"<ID del producto>","quantity":1,"reply":"..."} — crear y enviar una cotización formal de UN producto por el chat actual.',
           '- {"action":"create_quote","items":[{"item_id":"<ID>","quantity":1},{"item_id":"<ID>","quantity":2}],"reply":"..."} — cotizar VARIOS productos en una sola cotización (máximo 10).',
+          '- {"action":"create_quote","items":[...],"iva":false,"reply":"..."} — SOLO cuando el cliente pidió expresamente una cotización sin IVA o sin impuestos: la cotización sale con 0% de impuesto.',
         ]
       : []),
     ...(rules.moveStageOnIntent
@@ -128,6 +186,7 @@ export function buildAgentSystemPrompt(input: {
           "- Si el cliente pide precio, disponibilidad o información de un producto, usa send_quote para compartir su ficha oficial (el sistema arma el mensaje con precio, inventario, descripción, ficha técnica y sitio).",
           "- Si el producto que pide el cliente no está en el catálogo mostrado o no estás seguro de su ID, usa PRIMERO search_inventory con las palabras del cliente. Usa después el ID exacto que te devuelva el sistema; nunca inventes IDs, precios ni existencias.",
           "- Si el cliente solicita explícitamente una cotización, presupuesto formal o propuesta de compra, usa create_quote con productos disponibles del catálogo y la cantidad indicada (por defecto 1). Para varios productos usa items; no inventes descuentos ni cantidades mayores al inventario reportado.",
+          "- Si el cliente pide la cotización SIN IVA o sin impuestos, manda create_quote con \"iva\": false y dile en el reply que la cotización va sin impuestos. Nunca le quites el IVA por tu cuenta si no lo pidió.",
         ]
       : []),
     ...(rules.handoffOnRequest
@@ -150,16 +209,41 @@ export function buildAgentSystemPrompt(input: {
       case "fr":
         return "Vous répondez TOUJOURS en français, avec des messages courts et naturels pour le chat.";
       case "auto":
-      default:
-        return profile.fallbackLanguage === "en"
-          ? "Respond in the customer's language; if unsure, respond in English. Keep messages short and natural for chat."
-          : profile.fallbackLanguage === "pt"
-            ? "Responda no idioma do cliente; se não tiver certeza, responda em português. Mensagens curtas e naturais."
-            : profile.fallbackLanguage === "fr"
-              ? "Répondez dans la langue du client ; en cas de doute, répondez en français. Messages courts et naturels."
-              : "Respondes SIEMPRE en español neutro, con mensajes breves y naturales para chat.";
+      default: {
+        // "Automático" tenía un bug: con el respaldo en español (el default) la
+        // línea se reducía a "SIEMPRE en español", así que un cliente que
+        // escribía en inglés recibía español. El respaldo solo entra a dudas.
+        const fallbackName =
+          profile.fallbackLanguage === "en"
+            ? "inglés"
+            : profile.fallbackLanguage === "pt"
+              ? "portugués"
+              : profile.fallbackLanguage === "fr"
+                ? "francés"
+                : "español neutro";
+        return `Respondes en el idioma en que te escribe el cliente; si no lo puedes identificar con seguridad, usas ${fallbackName}. Nunca mezcles idiomas dentro del mismo mensaje.`;
+      }
     }
   })();
+
+  /**
+   * El contrato de formato es lo que evita el párrafo amontonado: la red
+   * determinista está en `reply-format.ts`, pero si el modelo ya escribe en
+   * renglones, la red casi nunca se usa.
+   */
+  const formattingLines = [
+    "FORMATO DEL MENSAJE (se lee en el móvil, no en un documento):",
+    "- Máximo 2 renglones por párrafo; separa cada bloque con UNA línea en blanco.",
+    "- Precios, productos u opciones: un elemento por renglón, con viñeta y el importe al final. Ejemplo exacto:",
+    "  • iPhone 15 — $18,999",
+    "  • Funda de silicona — $299",
+    "- Jamás enumeres varios productos o precios seguidos dentro de un solo párrafo.",
+    "- Máximo 6 viñetas por mensaje; si hay más, manda 6 y ofrece el resto en el siguiente mensaje.",
+    supportsWhatsAppMarkdown(input.channel)
+      ? "- Para destacar usa *asteriscos*. Nada de títulos markdown (#) ni enlaces [texto](url): escribe la URL sola."
+      : "- Escribe en texto plano: en este canal los asteriscos y las almohadillas se imprimen tal cual y ensucian el mensaje.",
+    "- No repitas el saludo en cada turno ni firmes con «Atentamente» o «Saludos».",
+  ].join("\n");
 
   const businessLines = [
     profile.businessIndustry ? `Industria del negocio: ${profile.businessIndustry}` : null,
@@ -168,12 +252,22 @@ export function buildAgentSystemPrompt(input: {
   ].filter(Boolean);
 
   return [
-    `Eres "${profile.name}", el asistente de ${CHANNEL_LABEL[input.channel ?? "whatsapp"]} de este negocio. ${languageLine}`,
+    `Eres "${profile.name}", el asistente de ${CHANNEL_LABEL[input.channel ?? "whatsapp"]} de ${input.businessName?.trim() || "este negocio"}. ${languageLine}`,
+    formattingLines,
     ...businessLines,
+    input.agenda && input.businessHours
+      ? `Horario de atención del negocio: ${renderBusinessHours(input.businessHours)}. Los huecos libres los calcula el sistema; nunca los inventes ni prometas fuera de este horario.`
+      : null,
     profile.tone ? `Tono: ${profile.tone}` : null,
     profile.instructions ? `Instrucciones del negocio:\n${profile.instructions}` : null,
     profile.escalationRules
       ? `Reglas de escalado a humano:\n${profile.escalationRules}`
+      : null,
+    // Sin esta línea, las reglas de acción que van abajo (más largas y más
+    // recientes en el prompt) ganaban la pelea y "Instrucciones del negocio"
+    // quedaba como adorno: es lo que el dueño percibía como "no hace caso".
+    profile.instructions || profile.escalationRules
+      ? "JERARQUÍA: las Instrucciones del negocio y las Reglas de escalado mandan sobre el tono, el formato y las reglas de acción de este prompt. Si contradicen una regla general, aplica la instrucción del negocio."
       : null,
     profile.greeting ? `Saludo sugerido para conversaciones nuevas: ${profile.greeting}` : null,
     rules.strictKnowledgeBase

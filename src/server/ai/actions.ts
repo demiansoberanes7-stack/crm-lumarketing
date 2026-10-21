@@ -48,6 +48,12 @@ const baseActions = [
       .min(1)
       .max(10)
       .optional(),
+    /**
+     * `false` solo cuando el cliente lo pidió con palabras («sin IVA»,
+     * «sin impuestos»). Se exige el valor explícito porque el default del
+     * cotizador es 16% y bajarlo por iniciativa del modelo sería inventar.
+     */
+    iva: z.boolean().optional(),
     reply: z.string().optional(),
   }),
 ] as const;

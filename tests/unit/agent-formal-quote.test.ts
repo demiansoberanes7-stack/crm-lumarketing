@@ -88,6 +88,7 @@ function queueTurn(
     [],
     [baseProduct],
     [{ id: "stg_1", name: "Nuevo" }],
+    [], // datos de empresa (el nombre va ahora en el system prompt)
     ...(options.extras ?? []),
     options.quoteProducts ?? [baseProduct]
   );

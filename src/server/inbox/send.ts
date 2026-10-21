@@ -58,6 +58,7 @@ import {
   windowClosedMessage,
 } from "@/server/channels/capabilities";
 import { isChannelEnabled } from "@/server/channels/enabled";
+import { parseCommentIdentity } from "@/lib/comment-thread";
 import { serializeMessage } from "@/server/inbox/ingest";
 import {
   saveMediaFile,
@@ -366,7 +367,7 @@ async function prepareSend(
   }
 
   // Comentarios de publicaciones: la "respuesta" es un reply PÚBLICO al
-  // comentario (igc/fbc/ttc:post en la identidad). Transporte propio, sin
+  // comentario (identidad `igc|fbc|ttc:autor`). Transporte propio, sin
   // ventana de 24 h, sin media, sin recibos.
   if (row.conversation.channel === "comments") {
     if (!isChannelEnabled("comments")) {
@@ -375,40 +376,44 @@ async function prepareSend(
         "El canal de Comentarios está desactivado en esta instancia"
       );
     }
-    // La identidad del contacto es `{igc|fbc}:{post}:{author}`: de ahí se
-    // obtiene el autor y el post para localizar el último comentario a responder.
-    const identityParts = row.contact.waIdentity.split(":");
-    const prefix = identityParts[0];
-    const postExternalId = identityParts[1];
-    const authorExternalId = identityParts[2];
-    const platform =
-      prefix === "igc" ? "instagram" : prefix === "fbc" ? "messenger" : prefix === "ttc" ? "tiktok" : null;
-    if (!platform || !postExternalId || !authorExternalId) {
+    // La identidad da plataforma y autor; el post se resuelve con el último
+    // comentario de esa persona (las identidades viejas aún lo incrustan y
+    // se respetan para no responder en otro post).
+    const parsed = parseCommentIdentity(row.contact.waIdentity);
+    if (!parsed) {
       throw new SendError(
         "meta_error",
         "Esta conversación no tiene un comentario asociado para responder"
       );
     }
+    const { platform, authorExternalId, legacyPostExternalId } = parsed;
     const latestRows = await getDb()
-      .select({ externalCommentId: schema.socialComment.externalCommentId })
+      .select({
+        externalCommentId: schema.socialComment.externalCommentId,
+        postExternalId: schema.socialComment.postExternalId,
+      })
       .from(schema.socialComment)
       .where(
         and(
           eq(schema.socialComment.organizationId, organizationId),
           eq(schema.socialComment.platform, platform),
-          eq(schema.socialComment.postExternalId, postExternalId),
-          eq(schema.socialComment.authorExternalId, authorExternalId)
+          eq(schema.socialComment.authorExternalId, authorExternalId),
+          ...(legacyPostExternalId
+            ? [eq(schema.socialComment.postExternalId, legacyPostExternalId)]
+            : [])
         )
       )
       .orderBy(desc(schema.socialComment.commentTime))
       .limit(1);
-    const replyCommentId = latestRows[0]?.externalCommentId;
-    if (!replyCommentId) {
+    const latest = latestRows[0];
+    if (!latest) {
       throw new SendError(
         "meta_error",
         "No se encontró el comentario al que responder en esta conversación"
       );
     }
+    const replyCommentId = latest.externalCommentId;
+    const postExternalId = latest.postExternalId;
     // El reply público se enruta al transporte de la plataforma del comentario.
     let token: string;
     let accountRef: string | undefined;

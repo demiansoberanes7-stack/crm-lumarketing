@@ -28,6 +28,7 @@ function profile(overrides: Partial<AgentProfile> = {}): AgentProfile {
     fallbackLanguage: "es",
     reactWithEmoji: false,
     activeInNewConversations: true,
+    disabledChannels: [],
     businessIndustry: null,
     businessLocation: null,
     businessDescription: null,
@@ -110,5 +111,99 @@ describe("reglas y campos de ficha del prompt del agente", () => {
 
     expect(text).toContain("solo aparecen 60");
     expect(text).not.toContain("search_inventory");
+  });
+});
+
+/**
+ * Auditoría de Ajustes → Agente: cada campo de la tarjeta tiene que llegar al
+ * prompt y pesar más que las reglas generales.
+ */
+describe("prompt del agente según la configuración guardada", () => {
+  function built(
+    agentProfile: AgentProfile,
+    extra: Partial<Parameters<typeof buildAgentSystemPrompt>[0]> = {}
+  ) {
+    return buildAgentSystemPrompt({
+      profile: agentProfile,
+      kb: [],
+      catalog: [],
+      stages: [{ name: "Interesado" }],
+      ...extra,
+    });
+  }
+
+  it("«automático» deja de ser español forzado: el respaldo solo cubre la duda", () => {
+    const text = built(profile({ responseLanguage: "auto", fallbackLanguage: "es" }));
+    expect(text).toContain("Respondes en el idioma en que te escribe el cliente");
+    expect(text).not.toContain("Respondes SIEMPRE en español neutro");
+  });
+
+  it("el idioma fijo sigue siendo fijo", () => {
+    expect(built(profile({ responseLanguage: "en" }))).toContain(
+      "You are ALWAYS responding in English"
+    );
+  });
+
+  it("manda el contrato de formato del mensaje, con negrita solo en WhatsApp", () => {
+    const wa = built(profile(), { channel: "whatsapp" });
+    expect(wa).toContain("FORMATO DEL MENSAJE");
+    expect(wa).toContain("un elemento por renglón");
+    expect(wa).toContain("usa *asteriscos*");
+
+    const ig = built(profile(), { channel: "instagram" });
+    expect(ig).toContain("Escribe en texto plano");
+    expect(ig).not.toContain("usa *asteriscos*");
+  });
+
+  it("las instrucciones del negocio se declaran por encima de las reglas generales", () => {
+    const text = built(profile({ instructions: "Nunca ofrezcas descuentos." }));
+    expect(text).toContain("JERARQUÍA: las Instrucciones del negocio");
+    expect(text.indexOf("Nunca ofrezcas descuentos.") <
+      text.indexOf("En cada turno respondes ÚNICAMENTE")).toBe(true);
+  });
+
+  it("usa el nombre de Datos de Empresa para presentarse", () => {
+    expect(built(profile(), { businessName: "Celularite" })).toContain(
+      'de Celularite. '
+    );
+    expect(built(profile())).toContain("de este negocio");
+  });
+
+  it("con agenda encendida conoce el horario real del negocio", () => {
+    const text = built(profile(), {
+      agenda: true,
+      businessHours: {
+        weeklyHours: {
+          mon: [{ start: "09:00", end: "18:00" }],
+          tue: [{ start: "09:00", end: "14:00" }],
+        },
+        timezone: "America/Mexico_City",
+        slotMinutes: 30,
+        bufferMinutes: 15,
+        minNoticeHours: 2,
+        maxDaysAhead: 7,
+      },
+    });
+    expect(text).toContain("lun 09:00-18:00, mar 09:00-14:00");
+    expect(text).toContain("cerrado: mié, jue, vie, sáb, dom");
+    expect(text).toContain("con 15 min entre citas");
+    expect(text).toContain('"action":"offer_slots"');
+  });
+
+  it("sin agenda no habla de horarios ni ofrece acciones de cita", () => {
+    const text = built(profile());
+    expect(text).not.toContain("Horario de atención del negocio");
+    expect(text).not.toContain("offer_slots");
+  });
+
+  it("la cotización sin IVA es una acción explícita, nunca un favor", () => {
+    const text = built(profile());
+    expect(text).toContain('"iva":false');
+    expect(text).toContain("Si el cliente pide la cotización SIN IVA");
+  });
+
+  it("la agenda nunca encima citas y no cede ante la insistencia", () => {
+    const text = built(profile(), { agenda: true });
+    expect(text).toContain("El sistema jamás agenda dos citas encima");
   });
 });

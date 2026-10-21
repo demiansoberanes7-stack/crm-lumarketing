@@ -17,12 +17,16 @@ import {
   resolveStage,
   type AgentActionType,
 } from "@/server/ai/actions";
+import { isChannelAiDisabled } from "@/server/ai/channel-policy";
+import { formatAgentReply } from "@/server/ai/reply-format";
 import { matchesHandoffIntent, matchesPipelineKeyword } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { renderInventoryResults, searchInventory } from "@/server/ai/inventory";
 import { agendaEnabled } from "@/server/agenda/flag";
+import { getSettings } from "@/server/agenda/settings";
 import { bookSlot, offerSlots } from "@/server/agenda/agent";
 import { getOffers, mapaDeHuecosParaModelo } from "@/server/agenda/offers";
+import { getBusinessSettings } from "@/server/business-settings";
 import { upsertFicha } from "@/server/bot/ficha";
 
 /**
@@ -172,6 +176,19 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     return;
   }
   const agentRules = normalizeAgentRules(profile.rules);
+  // Ajustes → Agente → Respuesta: canales apagados de raíz. Manda sobre el
+  // interruptor del chat: si el canal está apagado, ningún chat responde.
+  if (
+    !conversation.isTest &&
+    isChannelAiDisabled(profile.disabledChannels, conversation.channel)
+  ) {
+    silentTurn(
+      conversationId,
+      organizationId,
+      `canal_apagado:${conversation.channel}`
+    );
+    return;
+  }
   // El toggle global aplica a conversaciones reales; el Laboratorio evalúa el
   // comportamiento configurado aunque el agente aún no esté encendido.
   if (!conversation.isTest && !profile.enabled) {
@@ -264,6 +281,14 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
           type: "conversation.updated",
           data: { conversation: { id: conversationId } },
         });
+        // El atajo también debe la espera y el emoji configurados: antes los
+        // saltaba, así que «Espera máxima» solo funcionaba en las respuestas
+        // que pasaban por el modelo.
+        await observeEtiquette(
+          conversation,
+          profile,
+          lastInbound.waMessageId ?? lastInbound.providerMessageId
+        );
         await deliverReply(conversation, `Listo, tu solicitud ha sido registrada en "${targetStage}".`);
         return;
       }
@@ -295,6 +320,17 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const ofertas = agenda ? await getOffers(organizationId, conversationId) : [];
   const mapaDeHuecos = mapaDeHuecosParaModelo(ofertas);
 
+  /**
+   * Nombre del negocio y horario. Se leen aquí porque el modelo los necesita
+   * para responder "de qué negocio me hablas" y "¿atendéis los sábados?": el
+   * dueño los tiene configurados en Datos de Empresa y en Ajustes → Agenda, y
+   * hasta ahora ninguna de las dos llegaba al prompt.
+   */
+  const business = await getBusinessSettings(organizationId);
+  const businessHours = agenda
+    ? await getSettings(organizationId)
+    : null;
+
   const messages: ChatMessage[] = [
     {
       role: "system",
@@ -304,6 +340,8 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         catalog,
         stages,
         agenda,
+        businessHours,
+        businessName: business.companyName,
         channel: conversation.channel as Channel,
       }),
     },
@@ -404,23 +442,15 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     action = { ...action, ficha: undefined };
   }
 
-  // Zorro Tech — espera humana antes de responder (solo conversaciones reales).
-  // El Laboratorio (is_test) no espera: su objetivo es evaluar el modelo, no
-  // simular tiempos de escritura.
-  if (!conversation.isTest && profile.maxResponseWaitSeconds > 0 && action.action !== "none") {
-    await new Promise((resolve) => setTimeout(resolve, profile.maxResponseWaitSeconds * 1000));
-  }
-
-  // «Reaccionar con emoji»: el agente marca el mensaje del cliente justo antes
-  // de contestar (señal de "ya lo vi"). Decorativo: si el canal no tiene
-  // reacciones, reactToInbound no hace nada y el turno sigue igual.
-  if (!conversation.isTest && profile.reactWithEmoji && action.action !== "none") {
-    await reactToInbound({
-      conversationId,
-      organizationId,
-      messageId: lastInbound.waMessageId ?? lastInbound.providerMessageId,
-      emoji: "👍",
-    });
+  // Zorro Tech — la espera humana y la reacción con emoji, justo antes de
+  // contestar. Viven en un helper porque las dos son costumbres de TODA
+  // respuesta, no solo de la que sale del modelo.
+  if (action.action !== "none") {
+    await observeEtiquette(
+      conversation,
+      profile,
+      lastInbound.waMessageId ?? lastInbound.providerMessageId
+    );
   }
 
   // 015 — Agenda. Un fallo del motor degrada el turno (el agente responde sin
@@ -653,6 +683,9 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
       const { createQuote, getQuote, sendQuote } = await import("@/server/quotes/service");
       try {
+        // «Sin IVA» es una petición del cliente, no un antojo del modelo: solo
+        // se baja el impuesto cuando la acción lo trae explícitamente en false.
+        const sinIva = action.iva === false;
         const quoteId = await createQuote(organizationId, {
           contactId: conversation.contactId,
           items: ids.map((id) => {
@@ -665,6 +698,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
               unitPrice: product.price,
             };
           }),
+          taxRate: sinIva ? 0 : undefined,
         }, undefined, { agentSourceMessageId: lastInbound.id });
         const quote = await getQuote(organizationId, quoteId);
         if (!quote) throw new Error("La cotización no quedó disponible después de crearla");
@@ -677,9 +711,10 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         }
 
         const total = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(quote.total / 100);
+        const impuesto = quote.taxRate === 0 ? " sin IVA" : "";
         const reply = quote.status === "draft"
-          ? `Te comparto la cotización ${quote.quoteNumber} por ${total} MXN.`
-          : `La cotización ${quote.quoteNumber} ya está registrada con estado ${quote.status}.`;
+          ? `Te comparto la cotización ${quote.quoteNumber} por ${total} MXN${impuesto}.`
+          : `La cotización ${quote.quoteNumber} ya está registrada${impuesto} con estado ${quote.status}.`;
         await deliverReply(conversation, action.reply ? `${action.reply}\n\n${reply}` : reply);
       } catch (error) {
         console.error(`[agente] no se pudo enviar la cotización: ${error}`);
@@ -688,6 +723,9 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       return;
     }
     case "handoff": {
+      // `handoffOnRequest` off no le quita al cliente el derecho a un humano:
+      // apaga el atajo por patrón y su línea en el prompt, pero si el modelo
+      // decide escalar porque el cliente lo pidió, aquí se acata.
       if (action.farewell) {
         await deliverReply(conversation, action.farewell);
       }
@@ -698,21 +736,59 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 }
 
 type Conversation = typeof schema.conversation.$inferSelect;
+type AgentProfileRow = typeof schema.agentProfile.$inferSelect;
+
+/**
+ * Las dos costumbres que Ajustes → Agente configura antes de cada respuesta:
+ * la espera «humana» (`maxResponseWaitSeconds`) y la reacción con emoji.
+ * Decorativas ambas: si el canal no admite reacciones, `reactToInbound` no hace
+ * nada y el turno sigue. El Laboratorio no espera — evalúa el modelo.
+ */
+async function observeEtiquette(
+  conversation: Conversation,
+  profile: AgentProfileRow,
+  inboundMessageId: string | null
+): Promise<void> {
+  if (conversation.isTest) return;
+  if (profile.maxResponseWaitSeconds > 0) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, profile.maxResponseWaitSeconds * 1000)
+    );
+  }
+  if (profile.reactWithEmoji) {
+    await reactToInbound({
+      conversationId: conversation.id,
+      organizationId: conversation.organizationId,
+      messageId: inboundMessageId,
+      emoji: "👍",
+    });
+  }
+}
 
 /** Entrega la respuesta: envío real o persistencia sandbox (is_test). */
 async function deliverReply(
   conversation: Conversation,
   text: string
 ): Promise<void> {
+  // Un solo embudo de formato: el prompt pide renglones, aquí se cumple. Se
+  // aplica también al sandbox para que el Laboratorio vea el texto real.
+  const formatted = formatAgentReply(
+    text,
+    conversation.channel as Channel
+  ).trim();
+  if (!formatted) {
+    silentTurn(conversation.id, conversation.organizationId, "respuesta_vacia");
+    return;
+  }
   if (conversation.isTest) {
-    await persistTestOutbound(conversation, text);
+    await persistTestOutbound(conversation, formatted);
     return;
   }
   try {
     await sendText({
       conversationId: conversation.id,
       organizationId: conversation.organizationId,
-      text,
+      text: formatted,
       aiGenerated: true,
     });
   } catch (err) {
