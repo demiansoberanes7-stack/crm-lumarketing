@@ -135,11 +135,15 @@ export function NewQuoteDialog({
           unitPrice: Math.round(item.unitPrice * 100),
         })),
         discountType: discountType === "none" ? null : discountType,
-        discountValue: discountValue ? (discountType === "fixed" ? Math.round(Number(discountValue) * 100) : Number(discountValue)) : undefined,
-        taxRate: Number(taxRate),
+        discountValue: discountValue ? (discountType === "fixed" ? Math.round(Number(discountValue) * 100) : Math.round(Number(discountValue))) : undefined,
+        // `Number("")` es 0: sin este tope, borrar el campo dejaba la cotización
+        // «sin IVA» sin querer y un 16.5 rebotaba contra el `z.int()` de la API.
+        taxRate: Math.max(0, Math.min(100, Math.round(Number(taxRate) || 0))),
         validDays: Number(validDays) || 30,
-        notes: notes || undefined,
-        paymentConditions: paymentConditions || undefined,
+        // Van tal cual, no `|| undefined`: vaciar Notas tiene que borrarlas, y un
+        // `undefined` aquí hace que el backend conserve el texto viejo.
+        notes,
+        paymentConditions,
       }),
     }).catch(() => null);
     setSaving(false);

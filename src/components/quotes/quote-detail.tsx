@@ -129,18 +129,67 @@ export function QuoteDetail({
   const [editingName, setEditingName] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const [conversations, setConversations] = useState<ConversationDto[]>([]);
+  const [chatsFailed, setChatsFailed] = useState(false);
   const [chatId, setChatId] = useState<string>("");
   const [emailAccounts, setEmailAccounts] = useState<EmailAccountLite[]>([]);
   const [threadsByAccount, setThreadsByAccount] = useState<Record<string, EmailThreadLite[]>>({});
+  const [mailFailed, setMailFailed] = useState(false);
+
+  const reloadChats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/conversations");
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { conversations?: ConversationDto[] };
+      setConversations(Array.isArray(data.conversations) ? data.conversations : []);
+      setChatsFailed(false);
+    } catch {
+      // Un 500 vaciaba el selector «Enviar a» y la pantalla aseguraba «no hay
+      // chats conectados»: el chat sí estaba en la bandeja, la lectura no llegó.
+      setChatsFailed(true);
+    }
+  }, []);
+
+  const reloadMail = useCallback(async () => {
+    try {
+      const res = await fetch("/api/email/accounts");
+      // 403 es legítimo: quien mira no es owner y simplemente no ve correo.
+      if (res.status === 403) {
+        setEmailAccounts([]);
+        setThreadsByAccount({});
+        setMailFailed(false);
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { accounts?: EmailAccountLite[] };
+      if (!Array.isArray(data.accounts)) throw new Error("respuesta inesperada");
+      const accounts = data.accounts.filter((a) => a.enabled);
+      let threadReadFailed = false;
+      const entries = await Promise.all(
+        accounts.map(async (a) => {
+          const threadsRes = await fetch(
+            `/api/email/threads?accountId=${encodeURIComponent(a.id)}`
+          ).catch(() => null);
+          const parsed = threadsRes?.ok
+            ? ((await threadsRes.json().catch(() => null)) as { threads?: EmailThreadLite[] } | null)
+            : null;
+          if (!parsed) {
+            threadReadFailed = true;
+            return [a.id, [] as EmailThreadLite[]] as const;
+          }
+          return [a.id, Array.isArray(parsed.threads) ? parsed.threads : []] as const;
+        })
+      );
+      setEmailAccounts(accounts);
+      setThreadsByAccount(Object.fromEntries(entries));
+      setMailFailed(threadReadFailed);
+    } catch {
+      setMailFailed(true);
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/conversations")
-      .then((r) => (r.ok ? r.json() : { conversations: [] }))
-      .then((d: { conversations?: ConversationDto[] }) =>
-        setConversations(Array.isArray(d.conversations) ? d.conversations : [])
-      )
-      .catch(() => setConversations([]));
-  }, []);
+    void reloadChats();
+  }, [reloadChats]);
 
   /**
    * Los hilos del buzón también son destino de cotización. Se listan por
@@ -149,31 +198,8 @@ export function QuoteDetail({
    * aparecen opciones de correo.
    */
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/email/accounts")
-      .then((r) => (r.ok ? r.json() : { accounts: [] }))
-      .then(async (d: { accounts?: EmailAccountLite[] }) => {
-        const accounts = (Array.isArray(d.accounts) ? d.accounts : []).filter((a) => a.enabled);
-        const entries = await Promise.all(
-          accounts.map(async (a) => {
-            const res = await fetch(`/api/email/threads?accountId=${encodeURIComponent(a.id)}`).catch(() => null);
-            const parsed = res?.ok ? ((await res.json()) as { threads?: EmailThreadLite[] }) : {};
-            return [a.id, Array.isArray(parsed.threads) ? parsed.threads : []] as const;
-          })
-        );
-        if (cancelled) return;
-        setEmailAccounts(accounts);
-        setThreadsByAccount(Object.fromEntries(entries));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setEmailAccounts([]);
-        setThreadsByAccount({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void reloadMail();
+  }, [reloadMail]);
 
   /** Sólo chats de canales que pueden enviar cotización, agrupados por canal. */
   const chatsByChannel = useMemo(() => {
@@ -207,6 +233,20 @@ export function QuoteDetail({
       ),
     [emailAccounts, threadsByAccount]
   );
+
+  // El aviso de lectura fallida solo pinta cuando no hay ningún destino en
+  // pantalla Y alguna de las dos lecturas cayó: si ambas respondieron bien y
+  // simplemente no hay a dónde enviar, eso es un vacío real, no un error.
+  const noSendTargets = chatsByChannel.size === 0 && mailOptions.length === 0;
+  const sendTargetsError = !noSendTargets
+    ? null
+    : chatsFailed && mailFailed
+      ? "No se pudieron leer los chats ni los hilos de correo; reintenta antes de asumir que no hay destinos."
+      : chatsFailed
+        ? "No se pudo leer la lista de chats; reintenta antes de asumir que no hay destinos."
+        : mailFailed
+          ? "No se pudieron leer los hilos de correo; reintenta antes de asumir que no hay destinos."
+          : null;
 
   /** Destino elegido, validado contra los chats e hilos realmente disponibles. */
   const choice = useMemo(
@@ -308,6 +348,10 @@ export function QuoteDetail({
 
   const discount = quote.discountAmount;
   const pdfFilename = `${displayName || quote.quoteNumber}.pdf`;
+  // El PDF imprime `clientPhone ?? teléfono del contacto`; la pantalla tenía que
+  // decir lo mismo o una cotización vieja se veía sin número aquí y con número
+  // en el archivo.
+  const shownPhone = quote.clientPhone ?? quote.contactPhone;
 
   return (
     <Card>
@@ -380,7 +424,7 @@ export function QuoteDetail({
         {quote.message && <p className="mb-3 whitespace-pre-wrap text-sm">{quote.message}</p>}
         <div className="mb-3 text-sm text-muted-foreground">
           {quote.contactName ?? "Sin contacto"}
-          {quote.clientPhone ? ` · ${quote.clientPhone}` : ""} · {formatDate(quote.createdAt)}
+          {shownPhone ? ` · ${shownPhone}` : ""} · {formatDate(quote.createdAt)}
         </div>
 
         <div className="mb-4 overflow-x-auto">
@@ -437,7 +481,21 @@ export function QuoteDetail({
             <label className="text-sm font-medium" htmlFor="quote-chat">
               Enviar a
             </label>
-            {chatsByChannel.size === 0 && mailOptions.length === 0 ? (
+            {noSendTargets && sendTargetsError ? (
+              <p className="text-xs text-destructive">
+                {sendTargetsError}{" "}
+                <button
+                  type="button"
+                  className="font-medium underline"
+                  onClick={() => {
+                    void reloadChats();
+                    void reloadMail();
+                  }}
+                >
+                  Reintentar
+                </button>
+              </p>
+            ) : noSendTargets ? (
               <p className="text-sm text-muted-foreground">
                 No hay chats conectados ni hilos de correo a los que enviar esta cotización.
               </p>

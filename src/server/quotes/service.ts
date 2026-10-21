@@ -91,6 +91,19 @@ function calculateTotals(items: QuoteInput["items"], input: {
 }
 
 /**
+ * El par de descuento, siempre coherente: un `discountValue` guardado sin
+ * `discountType` no aplica en los totales, pero el editor lo volvía a rellenar
+ * la próxima vez y el dueño aplicaba un porcentaje que nunca pidió.
+ */
+function discountPair(input: {
+  discountType?: "fixed" | "percentage" | null;
+  discountValue?: number | null;
+}): { discountType: "fixed" | "percentage" | null; discountValue: number | null } {
+  const type = input.discountType ?? null;
+  return { discountType: type, discountValue: type ? input.discountValue ?? null : null };
+}
+
+/**
  * Valida que los productId existan EN ESTA organización y que el stock vigente
  * alcance para la cantidad pedida (null = sin control, no valida).
  * Se usa en createQuote, updateQuote y changeQuoteStatus: sin la tercera
@@ -193,8 +206,7 @@ export async function createQuote(
     currency: "MXN",
     validUntil,
     subtotal: totals.subtotal,
-    discountType: input.discountType ?? null,
-    discountValue: input.discountValue ?? null,
+    ...discountPair(input),
     discountAmount: totals.discountAmount,
     taxRate: input.taxRate ?? 16,
     taxAmount: totals.taxAmount,
@@ -278,7 +290,15 @@ export async function updateQuote(
   if (!quote) throw new Error("Cotización no encontrada");
   if (quote.status !== "draft") throw new Error("Solo se pueden editar cotizaciones en borrador");
   const previous = await getQuote(organizationId, quoteId);
-  input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...input };
+  // Parche PARCIAL de verdad: un chamador puede mandar la clave con `undefined`
+  // (el handler MCP siempre construye todas, ver `mcp/actions/quotes.ts`) y eso
+  // NO es una orden de borrar. Sin este filtro, editar solo las notas de una
+  // cotización «sin IVA» volvía a imponer 16%, y el contacto, el descuento y las
+  // partidas se iban a `null`. `null` explícito sí borra.
+  const patch = Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined)
+  ) as Partial<QuoteInput>;
+  input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...patch };
 
   // Aislamiento: los productId de las partidas nuevas tienen que existir en
   // ESTA organización, y el stock vigente tiene que alcanzar — sin esto, un
@@ -298,15 +318,15 @@ export async function updateQuote(
       clientPhone:
         input.clientPhone === undefined ? quote.clientPhone : normalizeClientPhone(input.clientPhone),
       subtotal: totals.subtotal,
-      discountType: input.discountType ?? null,
-      discountValue: input.discountValue ?? null,
+      ...discountPair(input),
       discountAmount: totals.discountAmount,
       taxRate: input.taxRate ?? 16,
       taxAmount: totals.taxAmount,
       total: totals.total,
-      paymentMethod: input.paymentConditions
-        ? { ...(quote.paymentMethod as Record<string, unknown> ?? {}), ...(input.paymentMethod ?? {}), conditions: input.paymentConditions }
-        : input.paymentMethod ?? quote.paymentMethod ?? null,
+      paymentMethod:
+        input.paymentConditions !== undefined
+          ? { ...(quote.paymentMethod as Record<string, unknown> ?? {}), ...(input.paymentMethod ?? {}), conditions: input.paymentConditions }
+          : input.paymentMethod ?? quote.paymentMethod ?? null,
       message: input.notes ?? quote.message,
       validUntil: input.validDays ? new Date(Date.now() + input.validDays * 86400000) : quote.validUntil,
       updatedAt: new Date(),
@@ -758,7 +778,28 @@ export async function listQuotes(
     .limit(opts?.limit ?? 50)
     .offset(opts?.offset ?? 0);
 
-  return rows;
+  // El listado pinta «COT-0042 — María López» y sin esto todas las tarjetas
+  // dirían «Sin contacto». Segunda consulta acotada al tenant, no un join: la
+  // forma de la fila la consumen también las acciones MCP y no cambia.
+  const contactIds = [...new Set(rows.map((row) => row.contactId).filter((id): id is string => Boolean(id)))];
+  const names = new Map<string, string>();
+  if (contactIds.length > 0) {
+    const contacts = await db
+      .select({ id: schema.contact.id, name: schema.contact.name })
+      .from(schema.contact)
+      .where(
+        and(
+          eq(schema.contact.organizationId, organizationId),
+          inArray(schema.contact.id, contactIds)
+        )
+      );
+    for (const contact of contacts) names.set(contact.id, contact.name);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    contactName: row.contactId ? names.get(row.contactId) ?? null : null,
+  }));
 }
 
 /**

@@ -59,6 +59,24 @@ describe("wrapText", () => {
     }
     expect(lines.join(" ")).toBe(condiciones);
   });
+
+  it("parte una palabra sola más ancha que la caja", () => {
+    // Un código de modelo o una URL sin espacios: antes viajaba entera y se
+    // imprimía sobresaliendo de la columna de descripciones.
+    const token = "CLAVE-DE-MODELO-MUY-LARGA-SIN-ESPACIOS-PARA-CABER-0123456789";
+    const lines = wrapText(token, bold, 11, QUOTE_COLS.descW);
+
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines) {
+      expect(bold.widthOfTextAtSize(line, 11)).toBeLessThanOrEqual(QUOTE_COLS.descW);
+    }
+    expect(lines.join("")).toBe(token);
+  });
+
+  it("no parte una palabra que ya cabe", () => {
+    const colW = CONTENT_W / 2 - 20;
+    expect(wrapText("iPhone 15", regular, 9, colW)).toEqual(["iPhone 15"]);
+  });
 });
 
 describe("geometría de la tabla de cotización", () => {

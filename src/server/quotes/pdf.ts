@@ -157,6 +157,11 @@ export async function quotePdf(organizationId: string, id: string) {
   if (quote.contactName) wrapInto(leftLines, quote.contactName, bold, 10, DARK, 14);
   if (quote.contactEmail) wrapInto(leftLines, quote.contactEmail, regular, 9, GRAY, 13);
   if (quote.contactPhone) wrapInto(leftLines, quote.contactPhone, regular, 9, GRAY, 13);
+  // Igual que NOTAS con «Sin notas»: una etiqueta sola en el PDF es el bloque
+  // vacío que el dueño reportó en COT-0004.
+  if (leftLines.length === 1) {
+    leftLines.push({ text: "Sin contacto asignado", font: regular, size: 9, color: GRAY, h: 13 });
+  }
 
   // Una sola caja de Notas: la que escribe el operador en el diálogo y, encima,
   // las condiciones de pago que ya venían guardadas en una cotización vieja.

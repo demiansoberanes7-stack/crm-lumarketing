@@ -17,17 +17,29 @@ export function clean(s: string): string {
 
 /** Parte un texto en líneas que caben en `maxWidth`. */
 export function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = text.split(" ");
   const lines: string[] = [];
   let current = "";
-  for (const word of words) {
-    const test = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = test;
+  for (const word of text.split(" ")) {
+    const joined = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(joined, size) <= maxWidth) {
+      current = joined;
+      continue;
     }
+    // No cabe. Si la palabra sola ya es más ancha que la caja (un código de
+    // modelo, una URL), se parte por ancho: antes viajera entera y se imprimía
+    // sobresaliendo de la columna o fuera del margen derecho.
+    if (current) lines.push(current);
+    current = "";
+    let buffer = "";
+    for (const char of Array.from(word)) {
+      if (buffer && font.widthOfTextAtSize(buffer + char, size) > maxWidth) {
+        lines.push(buffer);
+        buffer = char;
+      } else {
+        buffer += char;
+      }
+    }
+    current = buffer;
   }
   if (current) lines.push(current);
   return lines.length ? lines : [""];

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { NewQuoteDialog } from "./new-quote-dialog";
 import { QuoteDetail } from "./quote-detail";
 import { CatalogClient } from "@/components/catalog/catalog-client";
+import { LoadError } from "@/components/load-error";
 import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
 
 interface Quote {
@@ -31,6 +32,7 @@ type Tab = "active" | "archived";
 
 export function QuotesClient() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [listFailed, setListFailed] = useState(false);
   const [showNewQuote, setShowNewQuote] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
@@ -39,9 +41,13 @@ export function QuotesClient() {
   const refetch = useCallback(async () => {
     const archived = activeTab === "archived" ? "&archived=1" : "";
     const res = await fetch(`/api/quotes?${archived}`).catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      setListFailed(true);
+      return;
+    }
     const data = (await res.json()) as { quotes: Quote[] };
     setQuotes(data.quotes);
+    setListFailed(false);
   }, [activeTab]);
 
   useEffect(() => {
@@ -117,7 +123,13 @@ export function QuotesClient() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {quotes.length === 0 ? (
+        {listFailed && quotes.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la lista de cotizaciones."
+            detail="No es que no existan: la lista no llegó. Reintenta y, si sigue, avisa."
+            onRetry={() => void refetch()}
+          />
+        ) : quotes.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <p className="text-sm font-medium">Sin cotizaciones</p>
             <p className="max-w-sm text-xs text-muted-foreground">
