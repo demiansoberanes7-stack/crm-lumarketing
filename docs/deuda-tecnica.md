@@ -201,11 +201,22 @@ la respuesta de media.
 
 ### 6.4 Cómo verificar lo de esta sección
 
-Hoy la suite local es 129 archivos / 1123 pruebas (`pnpm test`), y producción responde
-`{"ok":true,"version":"1.3.0","commit":"53f38c0"}` en `/api/health`. Los probes de regresión de
+Hoy la suite local es 155 archivos / 1471 pruebas (`pnpm test`, ~142 s), y producción responde
+`{"ok":true,"version":"1.8.0","commit":"ddb4c65"}` en `/api/health`. *(Estos dos números caducan:
+hasta hoy decían 129/1123 pruebas y `v1.3.0 · 53f38c0` en producción — el estado de la instancia
+cuando se escribió esta sección, tres releases antes (`v1.6.0`, `v1.7.0`, `v1.8.0`). Hay que
+volver a medirlos, no retocarlos a ojo.)* Los probes de regresión de
 A-01 se corren **dentro** del contenedor `crm-lumarketing-caddy-1` contra `http://app:3000`
 (HTTPS desde la VM no sirve: se hairpina y devuelve `code=000`): una ruta con `%2e%2e%2f` debe dar **422**,
 un archivo inexistente **404**, y un logo real 200 con `nosniff`.
+
+Para saber si el esquema quedó al día tras un despliegue, dos cosas que no son obvias y que este
+runbook no decía (ver §6.16): el log de arranque **no** enumera las migraciones aplicadas —solo
+`[migrate] migraciones aplicadas`, que también sale cuando no había nada que hacer—, y **contar
+filas del ledger no prueba nada** porque ahí conviven 82 entradas del journal con 80 filas por
+culpa de dos migraciones aplicadas a mano. Lo que sí prueba: comparar las filas del ledger con
+el manifest **por hash del SQL** (la fórmula la firma `scripts/migrate.mjs`), o verificar el
+objeto concreto en `information_schema`.
 
 ### 6.5 Pase de «cada configuración hace lo que promete» (2026-10-19, tarde)
 
@@ -856,6 +867,14 @@ Qué trae esta versión, en orden de las secciones:
 entradas. SemVer **1.7.0 → 1.8.0** (menor: hay capacidad nueva para el usuario — correo como
 fuente de prospectos, citas de alta manual, rail legible).
 
+**Despliegue verificado** (Regla 3, medido dentro de la VM a las 22:50Z del 21-10-2026): CI
+`Build & Push Docker Image` en verde sobre `ddb4c65` (run 39688071526, 7m54s, con `db:guard`
+como primer paso), el contenedor servido lleva `org.opencontainers.image.revision = ddb4c65…`,
+`/api/health` responde `{"ok":true,"version":"1.8.0","commit":"ddb4c65"}` y el arranque cierra
+con `[migrate] migraciones aplicadas` + `Ready in 6.1s` sin errores. Tag **`v1.8.0`** empujado
+como ancla de rollback (empujar un tag no dispara un segundo despliegue: el workflow solo mira
+`push: branches: [main]` y `workflow_dispatch`).
+
 Documentación actualizada en la misma pasada: `docs/SISTEMA-COMPLETO.md` (capítulos nuevos **§33
 Inteligencia de mercado**, **§34 Agenda y Citas**, **§35 Capas del shell**, índice, y el barrido
 de «Calendario» → «Citas»), `docs/DOCUMENTACION-COMPLETA-SISTEMA.md` (versión, métricas reales
@@ -878,4 +897,35 @@ alguien añade un archivo; hay que volver a contarla, no actualizarla «a ojo».
 - Envío real con plantilla, reconexión de Google Calendar (token aún revocado, app OAuth sin
   publicar) y las llamadas vivas a SerpApi/Apify/YouTube/DENUE.
 - Revocación del PAT de GitHub pegado en el chat (**P0, sigue siendo acción del dueño**).
+
+### 6.16 El ledger de migraciones cuenta 80 y el journal 82 (21-10-2026)
+
+Al verificar el despliegue, un número no cuadraba: `drizzle.__drizzle_migrations` tenía **80
+filas** frente a **82 entradas** del journal. Se investigó por hash del SQL (la fórmula de
+`scripts/migrate.mjs`), no por `created_at`, y el resultado es que **no hay migración pendiente**:
+las dos entradas sin fila son `0044_integration_credentials_encrypted` y `0062_mcp_oauth`. Las dos
+están **en el esquema vivo**: columnas (`integration.credentials_cipher/iv/tag`, 3 de 3) y tablas
+(`mcp_authorization_code`, `mcp_access_token`, 2 de 2). Que se aplicaron a mano es **inferencia**,
+no testigo: el único modo de que el DDL exista sin fila que lo registre es haber corrido ese SQL
+fuera de `migrate()`.
+
+Por qué no se aplicaron solas al arrancar: `migrate()` no busca «¿está esta migración?», sino que
+lee el **último** `created_at` del ledger y ejecuta solo las entradas con `when` mayor. Como esas
+dos se insertaron con un `when` anterior al watermark que ya tenía la base, quedan excluidas para
+siempre. `reconcileMigrationLedger()` corrige watermarks y purga filas huérfanas por hash, pero no
+puede inventar una fila que nunca existió.
+
+**No se actúa sobre esto** (Regla 2: sería escribir en producción para cambiar un contador que no
+afecta a nada). Lo que sí queda como norma, y ya está escrito en `docs/SISTEMA-COMPLETO.md`
+(§ Migraciones):
+
+- Un `.sql` que entra tarde en la cadena se escribe **idempotente** (`IF NOT EXISTS`), porque es la
+  única forma de que sea correcto aplicado y no aplicado.
+- Nunca retrodatar un `when`: el guard de orden de `scripts/migrate.mjs` lo impide en el arranque y
+  `pnpm db:guard` en CI, pero la razón es esta regla de watermark, no el estilo.
+- Para responder «¿está el esquema al día?» no vale contar filas del ledger: hay que comparar por
+  hash o mirar el objeto concreto (`information_schema`).
+- Log de arranque no enumera migraciones. `[migrate] migraciones aplicadas` también se imprime
+  cuando no había nada que aplicar; quien depure un despliegue buscando esa lista no la va a
+  encontrar. Ya está escrito en el runbook de §6.4.
 

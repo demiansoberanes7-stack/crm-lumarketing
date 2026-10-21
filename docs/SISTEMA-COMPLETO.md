@@ -311,7 +311,42 @@ La cadena completa de migraciones vive en `drizzle/` (`drizzle/0000_baseline.sql
 
 - La lista canónica es `ls drizzle/*.sql` — este documento no la duplica: ya hubo doc obsoleto que hablaba de "9 migraciones" cuando el sistema iba mucho más allá.
 - Para añadir cambios de esquema: editar `src/lib/db/schema.ts` → `pnpm db:generate` → revisar el SQL generado en `drizzle/` → commitear el archivo **y** el journal.
-- Verificación en un despliegue: los logs de arranque muestran cada migración aplicada; `drizzle/meta/_journal.json` debe coincidir con los archivos presentes.
+
+**Cómo decide `migrate()` qué aplicar.** `Dockerfile:68` arranca `node migrate.mjs && node
+server.js`; dentro, drizzle lee el journal y lo compara contra el **último** `created_at` del
+ledger (`… order by created_at desc limit 1`), y ejecuta únicamente las entradas cuyo `when`
+sea mayor. Es una regla de *watermark*, no un "está o no está en la tabla". De ahí dos
+consecuencias que hay que saber antes de depurar nada:
+
+- El log de arranque no enumera las migraciones aplicadas. Lo que sale en un arranque normal
+  es el aviso de `CREATE TABLE IF NOT EXISTS` sobre el propio ledger y
+  `[migrate] migraciones aplicadas` — que también se imprime cuando no había nada que
+  aplicar. Verificar un despliegue por esa línea es comprobar que el proceso no murió.
+- Un `when` **retrodatado** no se aplica jamás a una base que ya va más adelante: el
+  watermark lo excluye en silencio y el esquema queda distinto al journal. Por eso el
+  journal de este repo se escribe siempre con `when` estrictamente creciente:
+  `scripts/migrate.mjs` aborta con `Orden de migraciones inválido en <tag>` si una entrada
+  no supera la anterior, y `scripts/check-migrations.mjs` —el mismo control sin acceso a la
+  BD, que corre primero en CI— reporta `journal: orden de migraciones inválido en <tag>`.
+
+**El ledger y el journal no tienen por qué contar lo mismo.** Antes de `migrate()`,
+`reconcileMigrationLedger()` (`scripts/migrate.mjs:44`) cruza cada fila del ledger con el
+manifest **por sha256 del SQL**: si el hash no está en el journal la borra (fila huérfana),
+y si está pero con otro `when` corrige el watermark. Su límite es lo que no puede inventar:
+una migración aplicada a mano deja el esquema correcto pero **ninguna fila**, y ahí no hay
+hash que reconciliar.
+
+Medido en producción (21-10-2026, sobre `ddb4c65`): journal con 82 entradas, ledger con 80
+filas, y las dos que faltan son `0044_integration_credentials_encrypted` y
+`0062_mcp_oauth` — con el DDL hecho y sin fila que lo registre, que es la firma de haberse
+corrido a mano (inferencia: no hay otro modo de que el esquema exista y el ledger no lo sepa).
+No hay deriva: sus tres columnas
+(`integration.credentials_cipher/iv/tag`) y sus dos tablas (`mcp_authorization_code`,
+`mcp_access_token`) existen en la BD, y el `when` de las dos quedó por debajo del watermark
+actual, así que `migrate()` ya no las mira nunca. La convención que esto obliga a sostener es
+la que ya siguen: **todo `.sql` que se inserta tarde en la cadena se escribe idempotente**
+(`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`), porque es la única forma de que
+sea correcto tanto si se aplica como si el ledger ya lo daba por hecho.
 
 **Journal**: `drizzle/meta/_journal.json`
 
