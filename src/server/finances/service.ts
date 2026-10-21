@@ -7,6 +7,7 @@
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import { zonedMonthBounds } from "@/lib/dates";
 import { scoped } from "@/lib/db/tenant";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { createHash } from "node:crypto";
@@ -16,12 +17,15 @@ export type BalancePeriod = {
   to: Date;
 };
 
-/** Obtener rango de fechas del mes actual */
+/** Rango del mes en curso, cortado en la zona del negocio y con los mismos
+ *  extremos que `reportPeriod`: dos «meses actuales» distintos sumaban cifras
+ *  diferentes en el KPI y en el reporte de Balance. */
 export function currentMonthRange(): BalancePeriod {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1);
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-  return { from, to };
+  const bounds = zonedMonthBounds();
+  return {
+    from: new Date(`${bounds.from}T00:00:00Z`),
+    to: new Date(`${bounds.to}T23:59:59.999Z`),
+  };
 }
 
 /** KPIs del mes actual: ingresos, egresos, balance */

@@ -1,3 +1,4 @@
+import { zonedDateInput } from "@/lib/dates";
 import type { schema } from "@/lib/db";
 
 export type DashboardInput = {
@@ -37,7 +38,11 @@ const counts = <T>(rows: T[], key: (row: T) => string) => groups(rows, key).map(
 export function buildDashboard(input: DashboardInput, period: string, now = new Date()) {
   const { from, to, label } = dashboardRange(period, now);
   const within = (date: Date) => date >= from && date <= to;
-  const today = to.toISOString().slice(0, 10);
+  // El día que vence una cuenta se guarda al mediodía UTC (`T12:00:00Z`), así que
+  // su fecha `YYYY-MM-DD` es la que escribió el dueño. «Hoy» tiene que compararse
+  // en el calendario del negocio: con el día UTC una cuenta vencía 6 horas antes,
+  // a las 18:00 de la Ciudad de México del propio día de vencimiento.
+  const today = zonedDateInput(to);
   const dueBeforeToday = (date: Date | null) => date !== null && date.toISOString().slice(0, 10) < today;
   const allProjects = input.projects.filter((p) => p.createdAt <= to);
   const currentProjects = allProjects.filter((p) => !p.archivedAt);

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { randomUuid } from "@/lib/utils";
+import { zonedDateInput } from "@/lib/dates";
 
 interface NewPaymentDialogProps {
   onClose: () => void;
@@ -20,7 +21,10 @@ export function NewPaymentDialog({ onClose, onSaved }: NewPaymentDialogProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [requestId] = useState(() => randomUuid());
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  // «Hoy» en el día del negocio: `toISOString()` manda el día UTC, y desde las
+  // 18:00 de la Ciudad de México ya es mañana — el pago quedaba fechado un día
+  // después y se salía del periodo consultado.
+  const [fecha, setFecha] = useState(() => zonedDateInput());
   const [chargeId, setChargeId] = useState("");
   const [charges, setCharges] = useState<Array<{ id: string; concept: string; totalAmount: number; paidAmount: number }>>([]);
   useEffect(() => { void fetch("/api/charges").then((r) => r.json()).then((d) => setCharges(d.charges)).catch(() => setError("No se pudieron consultar las cuentas por cobrar")); }, []);

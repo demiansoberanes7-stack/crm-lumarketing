@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { zonedMonthBounds } from "@/lib/dates";
 import { NewPaymentDialog } from "./new-payment-dialog";
 import { NewExpenseDialog } from "./new-expense-dialog";
 import { NewReceivable } from "./new-receivable";
@@ -73,8 +74,8 @@ export function BalanceClient() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const [showReceivable, setShowReceivable] = useState(false);
-  const [from, setFrom] = useState(new Date().toISOString().slice(0, 7) + "-01");
-  const [to, setTo] = useState(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 0)).toISOString().slice(0, 10));
+  const [from, setFrom] = useState(() => zonedMonthBounds().from);
+  const [to, setTo] = useState(() => zonedMonthBounds().to);
   const [period, setPeriod] = useState("");
   const [error, setError] = useState("");
   const [payingId, setPayingId] = useState<string | null>(null);

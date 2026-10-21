@@ -1,12 +1,16 @@
 import { eq, gte, lte, desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { zonedMonthBounds } from "@/lib/dates";
 import { scoped } from "@/lib/db/tenant";
 export function reportPeriod(search: URLSearchParams) {
-  const now = new Date();
   const start = search.get("from"); const end = search.get("to");
   if (!!start !== !!end) throw new Error("Indica ambas fechas");
-  const from = start ?? `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
-  const to = end ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  // El mes en curso se corta en la zona del negocio: en UTC el día 1 del mes
+  // siguiente llega 6 horas antes, así que la última tarde del mes el reporte
+  // abría en un mes que todavía no existe y salía vacío.
+  const bounds = zonedMonthBounds();
+  const from = start ?? bounds.from;
+  const to = end ?? bounds.to;
   for (const value of [from, to]) {
     const date = new Date(`${value}T00:00:00Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error("Fecha no válida");

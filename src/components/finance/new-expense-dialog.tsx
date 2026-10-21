@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { zonedDateInput } from "@/lib/dates";
 
 interface NewExpenseDialogProps {
   onClose: () => void;
@@ -20,7 +21,8 @@ export function NewExpenseDialog({ onClose, onSaved }: NewExpenseDialogProps) {
   const [notas, setNotas] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  // Mismo criterio que el pago: el día del negocio, no el día UTC del contenedor.
+  const [fecha, setFecha] = useState(() => zonedDateInput());
   const [referencia, setReferencia] = useState("");
 
   async function handleSave() {
