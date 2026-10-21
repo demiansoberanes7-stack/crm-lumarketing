@@ -35,7 +35,12 @@ describe("versión de la app", () => {
       path.join(RAIZ, "src", "components", "app-nav.tsx"),
       "utf8"
     );
-    const insignia = nav.slice(nav.indexOf("versionLabel()") - 600);
+    // El anclaje tiene que existir de verdad: con `indexOf` en -1 el slice se
+    // convierte en «la cola del archivo», que pasaba por accidente y deja de
+    // pasar en cuanto alguien agrega algo después de la insignia.
+    const llamada = nav.indexOf("versionLabel(sha)");
+    expect(llamada).toBeGreaterThan(-1);
+    const insignia = nav.slice(llamada - 600, llamada + 120);
     expect(insignia).toContain("branding.name");
     expect(insignia).not.toMatch(/`[A-Z][^`]*\$\{/);
   });

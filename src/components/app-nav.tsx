@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
@@ -29,16 +29,18 @@ function navItemClass(active: boolean, showLabel: boolean) {
   );
 }
 
-/** Tooltip CSS: aparece al hover del Link padre (group). Solo en modo icono. */
-function NavTooltip({ label }: { label: string }) {
-  return (
-    <span
-      role="tooltip"
-      className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-md transition-opacity duration-100 group-hover:opacity-100 lg:group-hover:opacity-100"
-    >
-      {label}
-    </span>
-  );
+/**
+ * Centro vertical del renglón dentro del `<aside>`.
+ *
+ * El globo dejó de ser hijo del enlace: el `nav` es la región con scroll y un
+ * contenedor de scroll recorta todo lo que asoma de su caja, incluidos los
+ * tooltips que salen a la derecha del rail.
+ */
+export function tooltipTop(
+  item: { top: number; height: number },
+  aside: { top: number }
+): number {
+  return item.top - aside.top + item.height / 2;
 }
 
 const AVATARS = [
@@ -91,6 +93,21 @@ export function AppNav({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [savingAvatar, setSavingAvatar] = useState<AvatarId | "reset" | null>(null);
   const selectedAvatar = avatarOption(avatar);
+  const asideRef = useRef<HTMLElement>(null);
+  /**
+   * Etiqueta del renglón bajo el cursor y su centro vertical. Vive en el
+   * `<aside>`, no en el renglón, porque el `nav` ahora tiene scroll.
+   */
+  const [tip, setTip] = useState<{ label: string; top: number } | null>(null);
+
+  function showTip(target: HTMLElement, label: string) {
+    const aside = asideRef.current;
+    if (!aside) return;
+    setTip({
+      label,
+      top: tooltipTop(target.getBoundingClientRect(), aside.getBoundingClientRect()),
+    });
+  }
 
   async function chooseAvatar(value: AvatarId | null) {
     setSavingAvatar(value ?? "reset");
@@ -119,12 +136,25 @@ export function AppNav({
 
   return (
     <aside
+      ref={asideRef}
       // Móvil: cajón que se desliza desde la izquierda (siempre montado, así
       // la transición corre en ambos sentidos). Escritorio: rail fijo de solo
       // iconos medianos con tooltip al hover.
+      //
+      // `lg:relative` y no `lg:static`: el globo del tooltip se posiciona
+      // contra este borde para poder salir del rail sin que el scroll del
+      // `nav` lo recorte.
+      //
+      // `lg:z-40` y no `lg:z-auto`: el `lg:translate-x-0` de abajo deja de ser
+      // un adorno — un `transform` convierte al `<aside>` en contexto de
+      // apilamiento, así que el `z-50` del globo solo vale DENTRO del rail. Fuera
+      // de él, el rail competía con `z-auto` (0) contra la cabecera `sticky z-30`
+      // que viene después en el DOM, y por eso el nombre del módulo salía
+      // pintado por detrás. 40 queda por encima de la cabecera (30) y por
+      // debajo de los diálogos de página (50) y del ⌘K (70), que sí deben tapar.
       className={cn(
         "fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-y-auto border-r bg-subtle pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] transition-[transform,visibility,width] duration-200",
-        "lg:static lg:visible lg:z-auto lg:w-[72px] lg:translate-x-0 lg:overflow-visible lg:px-3 lg:transition-[width]",
+        "lg:visible lg:relative lg:z-40 lg:w-[72px] lg:translate-x-0 lg:overflow-visible lg:px-3 lg:transition-[width]",
         open ? "visible w-[17rem] translate-x-0 px-3 shadow-pop" : "invisible w-[17rem] -translate-x-full px-3"
       )}
     >
@@ -153,8 +183,14 @@ export function AppNav({
         </Link>
       </div>
 
-      {/* Nav: en escritorio solo iconos con tooltip; en móvil drawer, con label. */}
-      <nav className="flex flex-col gap-0.5 lg:items-center">
+      {/* Nav: en escritorio solo iconos con tooltip; en móvil drawer, con label.
+          Es la única región con scroll del rail: así el logo, el avatar y la
+          versión nunca quedan debajo del borde, por corta que sea la ventana.
+          Sin barra visible: el rail mide 72px. */}
+      <nav
+        onScroll={() => setTip(null)}
+        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto [scrollbar-width:none] lg:items-center [&::-webkit-scrollbar]:hidden"
+      >
         {renderedNav.map((item) => {
           const active = isNavActive(pathname, item.href);
           return (
@@ -163,30 +199,30 @@ export function AppNav({
               href={item.href}
               className={navItemClass(active, true)}
               aria-label={item.label}
+              onMouseEnter={(e) => showTip(e.currentTarget, item.label)}
+              onMouseLeave={() => setTip(null)}
             >
               <item.icon
                 className={cn("h-5 w-5 shrink-0", active ? "text-brand" : "text-text-3")}
                 strokeWidth={1.8}
               />
               <span className="flex-1 truncate lg:hidden">{item.label}</span>
-              {item.badge && unread > 0 && (
+              {item.badge && unread ? (
                 <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-brand-fg lg:right-1 lg:top-1">
                   {unread > 9 ? "9+" : unread}
                 </span>
-              )}
-              {/* Tooltip solo en escritorio (drawer ya muestra el label). */}
-              <span className="hidden lg:contents">
-                <NavTooltip label={item.label} />
-              </span>
+              ) : null}
             </Link>
           );
         })}
       </nav>
 
-      <div className="flex-1" />
-
       {/* Usuario: avatar elegible + cuenta; en drawer, nombre completo. */}
-      <div className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:justify-center lg:px-0">
+      <div
+        className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:justify-center lg:px-0"
+        onMouseEnter={(e) => showTip(e.currentTarget, `${userName} · cuenta y avatar`)}
+        onMouseLeave={() => setTip(null)}
+      >
         <button
           type="button"
           aria-label={`Cuenta y avatar de ${userName}`}
@@ -269,11 +305,6 @@ export function AppNav({
             </div>
           </>
         )}
-
-        {/* Tooltip del usuario en escritorio. */}
-        <span className="hidden lg:contents">
-          <NavTooltip label={`${userName} · cuenta y avatar`} />
-        </span>
       </div>
 
       {/* Versión del build: discreta, clic para ver el commit. */}
@@ -288,6 +319,23 @@ export function AppNav({
       >
         {showVersion && sha ? versionLabel(sha) : APP_VERSION}
       </button>
+
+      {/*
+        Globo del renglón bajo el cursor. Es hijo del `<aside>` y no del enlace
+        porque el `nav` ahora es contenedor de scroll, y un contenedor de scroll
+        recorta lo que asoma por su derecha: el tooltip dejaría de verse justo
+        en las ventanas donde el menú necesita desplazarse. Solo escritorio: el
+        drawer ya trae las etiquetas.
+      */}
+      {tip && (
+        <span
+          role="tooltip"
+          style={{ top: tip.top }}
+          className="pointer-events-none absolute left-full z-50 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md lg:block"
+        >
+          {tip.label}
+        </span>
+      )}
     </aside>
   );
 }
