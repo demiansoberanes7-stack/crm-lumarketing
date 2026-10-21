@@ -46,6 +46,24 @@ export type MessageMediaDto = {
   payload: unknown;
 };
 
+/**
+ * Contexto de un comentario público: la publicación sobre la que se comentó
+ * y el autor. Viaja en el mensaje entrante para que el hilo muestre la
+ * publicación UNA vez (tarjeta superior) en lugar de repetir el caption
+ * dentro de cada burbuja.
+ */
+export type MessageCommentDto = {
+  platform: "instagram" | "messenger" | "tiktok";
+  externalCommentId: string;
+  postExternalId: string;
+  postCaption: string | null;
+  authorName: string | null;
+  /** Comentario al que responde, cuando es una respuesta dentro del hilo. */
+  parentExternalId: string | null;
+  /** Enlace a la publicación original cuando la plataforma lo permite. */
+  postUrl: string | null;
+};
+
 export type MessageDto = {
   id: string;
   conversationId: string;
@@ -59,6 +77,8 @@ export type MessageDto = {
   /** 008 — Origen del saliente (en entrantes viene 'operator' y se ignora). */
   origin: "ai" | "operator" | "manual" | "template";
   media: MessageMediaDto | null;
+  /** Presente solo en mensajes entrantes del canal Comentarios. */
+  comment: MessageCommentDto | null;
   createdAt: string;
 };
 
@@ -113,6 +133,10 @@ export type ContactDto = {
   priority?: PriorityValue | null;
   /** Lo que se sabe del lead. `{}` mientras nadie haya calificado. */
   ficha?: FichaDto;
+  /** Cuándo aceptó recibir plantillas de marketing por WhatsApp (opt-in Meta). */
+  waMarketingOptInAt?: string | null;
+  /** Cómo se obtuvo ese consentimiento. */
+  waMarketingOptInSource?: string | null;
 };
 
 /* ============================================================

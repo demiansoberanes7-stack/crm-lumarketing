@@ -122,11 +122,25 @@ export async function listMessages(
 ) {
   const db = getDb();
   return db
-    .select({ message: schema.message, media: schema.mediaAsset })
+    .select({
+      message: schema.message,
+      media: schema.mediaAsset,
+      // El comentario dueño del mensaje: el id de plataforma del mensaje
+      // entrante es el mismo `external_comment_id`. Es lo que permite pintar
+      // la publicación y el autor sin volver a pegar el caption en el texto.
+      comment: schema.socialComment,
+    })
     .from(schema.message)
     .leftJoin(
       schema.mediaAsset,
       eq(schema.message.mediaAssetId, schema.mediaAsset.id)
+    )
+    .leftJoin(
+      schema.socialComment,
+      and(
+        eq(schema.socialComment.organizationId, schema.message.organizationId),
+        eq(schema.socialComment.externalCommentId, schema.message.providerMessageId)
+      )
     )
     .where(
       scoped(
@@ -137,6 +151,19 @@ export async function listMessages(
       )
     )
     .orderBy(schema.message.createdAt);
+}
+
+/**
+ * Los comentarios viejos guardaron el caption de la publicación como prefijo
+ * `sobre: …\n\n` dentro del texto. La lista sigue leyendo ese texto: aquí se
+ * recorta para que el renglón muestre el comentario, no la cabecera repetida.
+ * Los mensajes nuevos ya guardan solo el cuerpo.
+ */
+function cleanCommentPreview(channel: string, preview: string | null): string | null {
+  if (channel !== "comments" || !preview) return preview;
+  const split = preview.indexOf("\n\n");
+  if (preview.startsWith("sobre: ") && split > 0) return preview.slice(split + 2);
+  return preview;
 }
 
 export function serializeConversation(
@@ -176,7 +203,7 @@ export function serializeConversation(
       ? 0
       : windowRemainingMsFor(c.lastInboundAt, caps.windowMs),
     humanAgentMode,
-    preview,
+    preview: cleanCommentPreview(c.channel, preview),
   };
 }
 

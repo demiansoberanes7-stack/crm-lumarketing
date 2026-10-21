@@ -76,7 +76,9 @@ export const messagesActions = [
         text: `Se encontraron ${limited.length} mensajes.`,
         structuredContent: {
           count: limited.length,
-          messages: limited.map((row) => serializeMessage(row.message, row.media)),
+          messages: limited.map((row) =>
+            serializeMessage(row.message, row.media, row.comment)
+          ),
         },
       };
     },

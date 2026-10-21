@@ -24,6 +24,8 @@ export interface RawSocialComment {
   /** Id de la publicación (media de IG / post de la página). */
   postExternalId: string;
   postCaption: string | null;
+  /** Enlace público a la publicación, cuando la plataforma lo devuelve. */
+  postUrl: string | null;
   /** Id estable del autor (IG user id / PSID). */
   authorExternalId: string;
   authorName: string | null;
@@ -38,7 +40,7 @@ const DEFAULT_MEDIA_LIMIT = 25;
 const DEFAULT_COMMENTS_LIMIT = 50;
 const MAX_TIKTOK_COMMENT_PAGES = 10;
 
-type IgMedia = { id: string; caption?: string; timestamp?: string };
+type IgMedia = { id: string; caption?: string; timestamp?: string; permalink?: string };
 type IgComment = {
   id: string;
   text?: string;
@@ -47,7 +49,7 @@ type IgComment = {
   from?: { id?: string; username?: string };
   replies?: { data?: IgComment[] };
 };
-type FbPost = { id: string; message?: string; created_time?: string };
+type FbPost = { id: string; message?: string; created_time?: string; permalink_url?: string };
 type FbComment = {
   id: string;
   message?: string;
@@ -93,7 +95,7 @@ export async function fetchInstagramComments(
 
   try {
     const media = await graphRequest<{ data?: IgMedia[] }>(
-      `${creds.igUserId}/media?fields=id,caption,timestamp&limit=${mediaLimit}`,
+      `${creds.igUserId}/media?fields=id,caption,timestamp,permalink&limit=${mediaLimit}`,
       { method: "GET", token: creds.token }
     );
 
@@ -111,6 +113,7 @@ export async function fetchInstagramComments(
           externalCommentId: c.id,
           postExternalId: m.id,
           postCaption: firstNonEmpty(m.caption),
+          postUrl: firstNonEmpty(m.permalink),
           authorExternalId: parentAuthor,
           authorName: firstNonEmpty(c.from?.username, c.username),
           body,
@@ -126,6 +129,7 @@ export async function fetchInstagramComments(
             externalCommentId: r.id,
             postExternalId: m.id,
             postCaption: firstNonEmpty(m.caption),
+            postUrl: firstNonEmpty(m.permalink),
             authorExternalId: rAuthor,
             authorName: firstNonEmpty(r.from?.username, r.username),
             body: rBody,
@@ -172,7 +176,7 @@ export async function fetchMessengerComments(
 
   try {
     const posts = await graphRequest<{ data?: FbPost[] }>(
-      `${creds.pageId}/published_posts?fields=id,message,created_time&limit=${postLimit}`,
+      `${creds.pageId}/published_posts?fields=id,message,created_time,permalink_url&limit=${postLimit}`,
       { method: "GET", token: creds.token }
     );
 
@@ -190,6 +194,7 @@ export async function fetchMessengerComments(
           externalCommentId: c.id,
           postExternalId: p.id,
           postCaption: firstNonEmpty(p.message),
+          postUrl: firstNonEmpty(p.permalink_url),
           authorExternalId: author,
           authorName: firstNonEmpty(c.from?.name),
           body,
@@ -205,6 +210,7 @@ export async function fetchMessengerComments(
             externalCommentId: r.id,
             postExternalId: p.id,
             postCaption: firstNonEmpty(p.message),
+            postUrl: firstNonEmpty(p.permalink_url),
             authorExternalId: rAuthor,
             authorName: firstNonEmpty(r.from?.name),
             body: rBody,
@@ -257,13 +263,24 @@ async function fetchZernioInboxComments(
     const postsResponse = (await zernioFetch(
       `/inbox/comments?platform=${platform}&accountId=${encodeURIComponent(creds.accountRef)}&limit=${postLimit}`,
       { token: creds.token }
-    )) as { data?: Array<{ id?: string; platformPostId?: string; content?: string | null; commentCount?: number }> };
+    )) as {
+      data?: Array<{
+        id?: string;
+        platformPostId?: string;
+        content?: string | null;
+        commentCount?: number;
+        permalink?: string | null;
+        postUrl?: string | null;
+        url?: string | null;
+      }>;
+    };
 
     const comments: RawSocialComment[] = [];
     const seen = new Set<string>();
     for (const post of postsResponse.data ?? []) {
       const postExternalId = post.platformPostId ?? post.id;
       if (!postExternalId || (post.commentCount ?? 0) <= 0) continue;
+      const postUrl = firstNonEmpty(post.permalink, post.postUrl, post.url);
 
       let cursor: string | null = null;
       for (let page = 0; page < MAX_TIKTOK_COMMENT_PAGES; page++) {
@@ -281,9 +298,9 @@ async function fetchZernioInboxComments(
         };
 
         for (const comment of response.comments ?? []) {
-          appendZernioComment(comments, seen, comment, postExternalId, post.content ?? null, null);
+          appendZernioComment(comments, seen, comment, postExternalId, post.content ?? null, postUrl, null);
           for (const reply of comment.replies ?? []) {
-            appendZernioComment(comments, seen, reply, postExternalId, post.content ?? null, comment.id ?? null);
+            appendZernioComment(comments, seen, reply, postExternalId, post.content ?? null, postUrl, comment.id ?? null);
           }
           // Facebook: los replies en línea están capados a 10; el resto se
           // pide con commentId (prefiere el reply completo al conteo exacto).
@@ -298,7 +315,7 @@ async function fetchZernioInboxComments(
               { token: creds.token }
             )) as { comments?: ZernioTikTokComment[] };
             for (const reply of thread.comments ?? []) {
-              appendZernioComment(comments, seen, reply, postExternalId, post.content ?? null, comment.id);
+              appendZernioComment(comments, seen, reply, postExternalId, post.content ?? null, postUrl, comment.id);
             }
           }
         }
@@ -342,6 +359,7 @@ function appendZernioComment(
   comment: ZernioTikTokComment,
   postExternalId: string,
   postCaption: string | null,
+  postUrl: string | null,
   parentExternalId: string | null
 ): void {
   const authorExternalId = comment.from?.id;
@@ -356,6 +374,7 @@ function appendZernioComment(
     externalCommentId: comment.id,
     postExternalId,
     postCaption,
+    postUrl,
     authorExternalId,
     authorName: firstNonEmpty(comment.from?.name, comment.from?.username),
     body,

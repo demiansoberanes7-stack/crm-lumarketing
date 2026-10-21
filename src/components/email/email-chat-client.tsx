@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Mail, Pencil, RefreshCw, Search, Send, Paperclip, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  Mail,
+  Pencil,
+  Quote,
+  RefreshCw,
+  Search,
+  Send,
+  Paperclip,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { matchesQuery } from "@/lib/search";
@@ -12,12 +23,17 @@ import { ChannelBadge } from "@/components/channel-badge";
 import { formatTime } from "@/components/inbox/helpers";
 import type { EmailChatThread } from "@/app/api/email/threads/route";
 import { bufferToBase64 } from "@/lib/base64";
+import { emailSnippet, parseEmailBody } from "@/lib/email-format";
 import { EmailComposeDialog, type EmailAttachment } from "./email-compose-dialog";
 
 type EmailAccount = { id: string; label: string | null; email: string; enabled: boolean };
 
 function bubbleTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function dayLabel(iso: string): string {
@@ -27,6 +43,119 @@ function dayLabel(iso: string): string {
   if (days === 0) return "Hoy";
   if (days === 1) return "Ayer";
   return d.toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function fullStamp(iso: string): string {
+  return `${dayLabel(iso)} · ${bubbleTime(iso)}`;
+}
+
+/**
+ * Un correo como tarjeta, no como burbuja de chat: el cuerpo propio primero,
+ * la firma y el historial citado plegados. Así una respuesta de tres líneas
+ * no arrastra media conversación encima.
+ */
+export function EmailMessageCard({
+  message,
+  participant,
+}: {
+  message: EmailChatThread["messages"][number];
+  participant: EmailChatThread["participant"];
+}) {
+  const [showQuoted, setShowQuoted] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
+  const parsed = parseEmailBody(message.text);
+  const out = message.direction === "outbound";
+  const author = out ? "Tú" : participant.name;
+
+  return (
+    <article
+      className={cn(
+        "overflow-hidden rounded-xl border shadow-sm",
+        out
+          ? "border-bubble-out-border bg-bubble-out"
+          : "border-border-strong bg-background"
+      )}
+    >
+      <header
+        className={cn(
+          "flex items-center gap-2.5 border-b px-4 py-2.5",
+          out ? "border-bubble-out-border" : "border-border"
+        )}
+      >
+        <ContactAvatar
+          name={author}
+          seed={out ? "yo" : participant.email}
+          size="sm"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold leading-tight">
+            {author}
+          </p>
+          <p className="truncate font-mono text-[10px] tracking-[0.02em] text-text-3">
+            {out ? `para ${participant.email}` : message.from}
+          </p>
+        </div>
+        <time
+          dateTime={message.createdAt}
+          className="shrink-0 font-mono text-[10.5px] tracking-[0.02em] text-text-3"
+        >
+          {fullStamp(message.createdAt)}
+        </time>
+      </header>
+
+      <div className="px-4 py-3.5">
+        {parsed.main ? (
+          <p className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.65]">
+            {parsed.main}
+          </p>
+        ) : (
+          <p className="text-[12.5px] italic text-text-3">(sin contenido)</p>
+        )}
+
+        {parsed.signature && (
+          <div className="mt-3 border-t border-dashed border-border-strong pt-2">
+            <button
+              type="button"
+              onClick={() => setShowSignature((v) => !v)}
+              className="text-[11.5px] font-semibold text-text-3 transition-colors hover:text-foreground"
+            >
+              {showSignature ? "Ocultar firma" : "Mostrar firma"}
+            </button>
+            {showSignature && (
+              <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-text-3">
+                {parsed.signature}
+              </p>
+            )}
+          </div>
+        )}
+
+        {parsed.quoted && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setShowQuoted((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-strong bg-background px-2.5 py-1 text-[11px] font-semibold text-text-2 transition-colors hover:border-text-3 hover:text-foreground"
+            >
+              <Quote className="h-3 w-3" strokeWidth={1.8} />
+              {showQuoted ? "Ocultar historial citado" : "Mostrar historial citado"}
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform",
+                  showQuoted && "rotate-180"
+                )}
+                strokeWidth={1.8}
+              />
+            </button>
+            {showQuoted && (
+              <blockquote className="mt-2 whitespace-pre-wrap break-words border-l-2 border-border-strong pl-3 text-[12.5px] leading-relaxed text-text-3">
+                {parsed.quoted}
+              </blockquote>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  );
 }
 
 /**
@@ -377,7 +506,7 @@ export function EmailChatClient({ channels }: { channels: readonly Channel[] }) 
                 const unread = t.unread;
                 const active = selectedId === t.id;
                 const snippet =
-                  t.messages[t.messages.length - 1]?.text?.replace(/\s+/g, " ").slice(0, 90) ??
+                  emailSnippet(t.messages[t.messages.length - 1]?.text ?? null) ||
                   "(sin contenido)";
                 return (
                   <li key={t.id} className="relative border-b border-border">
@@ -482,37 +611,28 @@ export function EmailChatClient({ channels }: { channels: readonly Channel[] }) 
 
             <div
               ref={scrollRef}
-              className="thread-bg flex flex-1 flex-col gap-[3px] overflow-y-auto overscroll-contain px-3 py-5 sm:px-[6%]"
+              className="thread-bg flex flex-1 flex-col overflow-y-auto overscroll-contain px-3 py-5 sm:px-[5%]"
             >
-              {selected.messages.map((m, i) => {
-                const prev = selected.messages[i - 1];
-                const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
-                const grouped = !newDay && prev !== undefined && prev.direction === m.direction;
-                const out = m.direction === "outbound";
-                return (
-                  <div key={m.id}>
-                    {newDay && (
-                      <div className="my-3 flex justify-center">
-                        <span className="kicker rounded-full border border-border-strong bg-background px-3 py-1 text-text-2 shadow-sm">
-                          {dayLabel(m.createdAt)}
-                        </span>
-                      </div>
-                    )}
-                    <div className={cn("flex", out ? "justify-end" : "justify-start", grouped ? "mt-[3px]" : "mt-2.5")}>
-                      <div className={cn(
-                        "max-w-[85%] rounded-[14px] border px-3 pb-1.5 pt-2 text-[13.5px] leading-[1.45] shadow-sm sm:max-w-[64%]",
-                        out ? "border-bubble-out-border bg-bubble-out text-bubble-out-text" : "border-bubble-in-border bg-bubble-in",
-                        !grouped && (out ? "rounded-tr-[5px]" : "rounded-tl-[5px]"),
-                      )}>
-                        <span className="whitespace-pre-wrap break-words">{m.text ?? "(sin contenido)"}</span>
-                        <span className="float-right ml-2 mt-1 font-mono text-[10px] tracking-[0.04em] text-text-3">
-                          {bubbleTime(m.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <div className="mx-auto flex w-full max-w-[820px] flex-col gap-3">
+                <div className="rounded-xl border border-border-strong bg-background px-4 py-3 shadow-sm">
+                  <p className="kicker text-text-3">Asunto</p>
+                  <h3 className="mt-0.5 text-[16px] font-semibold leading-snug tracking-tight">
+                    {selected.subject}
+                  </h3>
+                  <p className="mt-1 text-[11px] text-text-3">
+                    {selected.messages.length}{" "}
+                    {selected.messages.length === 1 ? "mensaje" : "mensajes"} ·{" "}
+                    {selected.participant.name}
+                  </p>
+                </div>
+                {selected.messages.map((m) => (
+                  <EmailMessageCard
+                    key={m.id}
+                    message={m}
+                    participant={selected.participant}
+                  />
+                ))}
+              </div>
             </div>
 
             {/* Compositor en píldora, idéntico al de la Bandeja */}

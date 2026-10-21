@@ -10,6 +10,7 @@ import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
 import { useEvents } from "@/components/use-events";
 import { ConversationList } from "./conversation-list";
+import { CommentsThread } from "./comments-thread";
 import { MessageThread } from "./message-thread";
 import { Composer } from "./composer";
 import { ContactPanel } from "./contact-panel";
@@ -197,6 +198,7 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
         aiGenerated: false,
         origin: "operator",
         media: null,
+        comment: null,
         createdAt: p.createdAt,
       })),
     ];
@@ -347,7 +349,14 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
                 </button>
               )}
             </header>
-            <MessageThread messages={thread} />
+            {selected.channel === "comments" ? (
+              <CommentsThread
+                messages={thread}
+                contactName={selected.contact.name}
+              />
+            ) : (
+              <MessageThread messages={thread} />
+            )}
             <Composer
               conversation={selected}
               onSend={sendText}

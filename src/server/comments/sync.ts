@@ -44,14 +44,6 @@ function commentIdentity(platform: SocialCommentPlatform, c: RawSocialComment): 
   return `${platformBits(platform).prefix}:${c.postExternalId}:${c.authorExternalId}`;
 }
 
-/** Texto del mensaje entrante en la Bandeja: cuerpo del comentario. */
-export function commentMessageText(c: RawSocialComment): string {
-  const header = c.postCaption
-    ? `sobre: ${c.postCaption.slice(0, 120)}${c.postCaption.length > 120 ? "…" : ""}`
-    : null;
-  return header ? `${header}\n\n${c.body}` : c.body;
-}
-
 /**
  * Upsert del comentario + su ingest en la Bandeja. Devuelve true si el
  * comentario era NUEVO (para contar `newComments`).
@@ -85,6 +77,10 @@ async function upsertCommentIntoInbox(input: {
       postExternalId: comment.postExternalId,
       postCaption: comment.postCaption,
       authorExternalId: comment.authorExternalId,
+      // La URL de la publicación no tiene columna propia: se guarda en `raw`
+      // y el hilo la lee de ahí. Sin ella la tarjeta de la publicación queda
+      // sin enlace, que es lo único opcional del contexto.
+      raw: comment.postUrl ? { postUrl: comment.postUrl } : null,
       authorName: comment.authorName,
       body: comment.body,
       parentExternalId: comment.parentExternalId,
@@ -132,7 +128,7 @@ async function upsertCommentIntoInbox(input: {
       providerMessageId: comment.externalCommentId,
       direction: "in",
       type: "text",
-      text: commentMessageText(comment),
+      text: comment.body,
       status: "delivered",
       waTimestamp: comment.commentTime,
     })
@@ -228,7 +224,13 @@ type ZernioCommentEvent = {
     parentCommentId?: string | null;
     author?: { id?: string; name?: string; username?: string; isOwnAccount?: boolean };
   };
-  post?: { platformPostId?: string; content?: string | null };
+  post?: {
+    platformPostId?: string;
+    content?: string | null;
+    permalink?: string | null;
+    postUrl?: string | null;
+    url?: string | null;
+  };
 };
 
 /** `comment.platform` de Zernio → plataforma interna de la bandeja. */
@@ -274,6 +276,8 @@ export function parseZernioCommentEvent(payload: unknown): {
       externalCommentId: comment.id,
       postExternalId,
       postCaption: event.post?.content ?? null,
+      postUrl:
+        event.post?.permalink ?? event.post?.postUrl ?? event.post?.url ?? null,
       authorExternalId: comment.author.id,
       authorName: comment.author.name ?? comment.author.username ?? null,
       body: comment.text.trim(),

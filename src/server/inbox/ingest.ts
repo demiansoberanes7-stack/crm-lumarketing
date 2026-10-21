@@ -23,8 +23,9 @@ import { atribucionEnabled } from "@/server/attribution/flag";
 import { recordAttribution } from "@/server/attribution/store";
 import { recordReferralTouch } from "@/server/attribution/touch";
 import { onLeadActivity } from "@/server/inbox/lead-activity";
+import { requeueWaitingBroadcasts } from "@/server/broadcasts/requeue";
 import { maybeRunAgentTurn } from "@/server/ai/trigger";
-import type { MessageDto, MessageMediaDto } from "@/lib/types";
+import type { MessageCommentDto, MessageDto, MessageMediaDto } from "@/lib/types";
 
 /** Tipos de contenido soportados; el resto se ignora sin error. */
 const SUPPORTED_TYPES = new Set([
@@ -543,6 +544,16 @@ export async function ingestInboundMessage(input: {
     console.error(`[pipeline] no se pudo registrar actividad del contacto ${contact.id}:`, err);
   }
 
+  // La ventana se acaba de reabrir: los envíos programados que esperaban al
+  // cliente pueden salir ya, dentro de la nueva ventana.
+  if (!isDuplicate) {
+    try {
+      await requeueWaitingBroadcasts(organizationId, conversation.id);
+    } catch (err) {
+      console.error(`[broadcasts] no se pudieron reencolar los envíos en espera de ${conversation.id}:`, err);
+    }
+  }
+
   if (!isDuplicate) {
     publish(organizationId, {
       type: "message.new",
@@ -592,9 +603,49 @@ function toDate(timestamp: string): Date {
   return new Date();
 }
 
+/**
+ * Enlace a la publicación. Instagram y TikTok no permiten reconstruirlo desde
+ * el id: solo se usa el que la API guardó en `raw`. Facebook sí, porque el id
+ * es `{página}_{post}`.
+ */
+function commentPostUrl(
+  platform: "instagram" | "messenger" | "tiktok",
+  postExternalId: string,
+  raw: unknown
+): string | null {
+  const stored =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as { postUrl?: unknown }).postUrl
+      : null;
+  if (typeof stored === "string" && /^https?:\/\//i.test(stored)) return stored;
+  if (platform === "messenger") {
+    const [pageId, postId] = postExternalId.split("_");
+    if (pageId && postId) return `https://www.facebook.com/${pageId}/posts/${postId}`;
+  }
+  return null;
+}
+
+function serializeComment(
+  c: typeof schema.socialComment.$inferSelect
+): MessageCommentDto | null {
+  if (c.platform !== "instagram" && c.platform !== "messenger" && c.platform !== "tiktok") {
+    return null;
+  }
+  return {
+    platform: c.platform,
+    externalCommentId: c.externalCommentId,
+    postExternalId: c.postExternalId,
+    postCaption: c.postCaption,
+    authorName: c.authorName,
+    parentExternalId: c.parentExternalId,
+    postUrl: commentPostUrl(c.platform, c.postExternalId, c.raw),
+  };
+}
+
 export function serializeMessage(
   m: typeof schema.message.$inferSelect,
-  media: typeof schema.mediaAsset.$inferSelect | null = null
+  media: typeof schema.mediaAsset.$inferSelect | null = null,
+  comment: typeof schema.socialComment.$inferSelect | null = null
 ) {
   return {
     id: m.id,
@@ -619,6 +670,7 @@ export function serializeMessage(
           payload: media.payload,
         }
       : null,
+    comment: comment && m.direction === "in" ? serializeComment(comment) : null,
     createdAt: (m.waTimestamp ?? m.createdAt).toISOString(),
   };
 }

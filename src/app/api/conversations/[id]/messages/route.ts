@@ -22,7 +22,9 @@ export const GET = withAuth(async (session, req: Request, ctx: Params) => {
     since && !Number.isNaN(since.getTime()) ? since : undefined
   );
   return Response.json({
-    messages: messages.map((r) => serializeMessage(r.message, r.media)),
+    messages: messages.map((r) =>
+      serializeMessage(r.message, r.media, r.comment)
+    ),
   });
 });
 
@@ -79,6 +81,9 @@ export const POST = withAuth(async (session, req: Request, ctx: Params) => {
             conversationId: id,
             organizationId: session.organizationId,
             text: data.text,
+            // Respuesta escrita por el operador desde la bandeja: puede usar
+            // HUMAN_AGENT dentro de los 7 días.
+            humanAgentTagAllowed: true,
           })
         : data.type === "location"
           ? await sendStructured({
