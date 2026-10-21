@@ -10,6 +10,7 @@ import {
   setGoogleTasksSync,
 } from "@/server/agenda/connectors/google-credentials";
 import { googleOAuthRedirectUri } from "@/server/agenda/google-oauth";
+import { syncPendingTasks } from "@/server/agenda/tasks-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -61,12 +62,17 @@ export const PUT = withOwner(async (session, req: Request) => {
     calendarId,
   });
 
+  // Credenciales nuevas con el interruptor ya encendido: las tareas que
+  // quedaron sin evento durante el corte se crean ahora.
+  const backfilled = await syncPendingTasks(session.organizationId);
+
   return Response.json({
     connection: {
       status: "connected",
       secretLast4: secretLast4(body.data.clientSecret),
       fields: { clientId: body.data.clientId, calendarId },
     },
+    backfilled,
   });
 });
 
@@ -90,5 +96,10 @@ export const PATCH = withOwner(async (session, req: Request) => {
   const creds = await getGoogleCredentials(session.organizationId);
   if (!creds) return apiError(409, "google_not_connected", "Conecta Google antes de sincronizar tareas");
   await setGoogleTasksSync(session.organizationId, body.data.syncTasks);
-  return Response.json({ syncTasks: body.data.syncTasks });
+  // Al encenderlo, las tareas que ya tenían fecha se suben de inmediato; si no,
+  // el dueño tendría que editarlas una por una para que aparecieran.
+  const backfilled = body.data.syncTasks
+    ? await syncPendingTasks(session.organizationId)
+    : { synced: 0, failed: 0 };
+  return Response.json({ syncTasks: body.data.syncTasks, backfilled });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearGoogleTokenCache } from "@/server/agenda/connectors/google-credentials";
 
 /**
  * Google Calendar como destinatorio de Pendientes y tareas de proyecto.
@@ -16,7 +17,11 @@ const state = {
   calls: [] as Call[],
   saves: [] as Record<string, unknown>[],
   selectRow: null as Record<string, unknown> | null,
+  /** Filas por tabla para las consultas de relleno. */
+  rowsByTable: {} as Record<string, Record<string, unknown>[]>,
   diagnostics: [] as { code?: string; metadata?: Record<string, unknown> }[],
+  /** Organizaciones cuya credencial se marcó como rota. */
+  marked: [] as string[],
   /** Qué responde cada petición: status por defecto 200 con este JSON. */
   respond: (_call: Call): { status: number; json?: unknown } => ({ status: 200, json: {} }),
 };
@@ -27,8 +32,13 @@ function reset() {
   state.calls = [];
   state.saves = [];
   state.selectRow = null;
+  state.rowsByTable = {};
   state.diagnostics = [];
+  state.marked = [];
   state.respond = () => ({ status: 200, json: {} });
+  // El access token se cachea por proceso: sin limpiarlo, un test hereda el
+  // "tok" de otro y el rechazo del refresh token nunca llega a ejercitarse.
+  clearGoogleTokenCache();
 }
 
 vi.mock("@/lib/db", () => ({
@@ -41,17 +51,25 @@ vi.mock("@/lib/db", () => ({
     }),
     select: () => {
       const chain: Record<string, unknown> = {};
-      chain.from = () => chain;
+      let table = "";
+      chain.from = (source: { __table?: string }) => {
+        table = source.__table ?? "";
+        return chain;
+      };
       chain.leftJoin = () => chain;
       chain.where = () => chain;
-      chain.limit = async () => (state.selectRow ? [state.selectRow] : []);
+      chain.limit = async () => {
+        const rows = state.rowsByTable[table];
+        if (rows) return rows;
+        return state.selectRow ? [state.selectRow] : [];
+      };
       return chain;
     },
   }),
   schema: {
-    caltodoTask: { id: "id", organizationId: "organization_id" },
-    projectTask: { id: "id", organizationId: "organization_id" },
-    project: { id: "id", name: "name" },
+    caltodoTask: { id: "id", organizationId: "organization_id", __table: "caltodoTask" },
+    projectTask: { id: "id", organizationId: "organization_id", __table: "projectTask" },
+    project: { id: "id", name: "name", __table: "project" },
   },
 }));
 
@@ -61,6 +79,9 @@ vi.mock("@/server/agenda/connectors/google-credentials", async (importOriginal) 
   return {
     ...actual,
     getGoogleCredentials: async () => state.creds,
+    markGoogleError: async (organizationId: string) => {
+      state.marked.push(organizationId);
+    },
   };
 });
 
@@ -76,10 +97,9 @@ vi.mock("@/server/diagnostics/logger", () => ({
 }));
 
 async function load() {
-  const { pushTaskEvent, syncTaskById, taskEventIdFor, removeTaskEvent } = await import(
-    "@/server/agenda/tasks-sync"
-  );
-  return { pushTaskEvent, syncTaskById, taskEventIdFor, removeTaskEvent };
+  const { pushTaskEvent, syncTaskById, syncPendingTasks, taskEventIdFor, removeTaskEvent } =
+    await import("@/server/agenda/tasks-sync");
+  return { pushTaskEvent, syncTaskById, syncPendingTasks, taskEventIdFor, removeTaskEvent };
 }
 
 function connected(syncTasks = true) {
@@ -186,6 +206,8 @@ describe("sincronización de tareas con Google Calendar", () => {
       description: "Presupuesto",
       start: { dateTime: "2026-10-08T15:00:00.000Z" },
       end: { dateTime: "2026-10-08T16:00:00.000Z" },
+      // Sin esto, un calendario sin avisos por defecto no notifica la tarea.
+      reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 30 }] },
     });
     expect(state.saves).toEqual([{ googleEventId: "evt_1" }]);
   });
@@ -263,6 +285,8 @@ describe("sincronización de tareas con Google Calendar", () => {
       summary: "[Cafetería Norte] Instalación",
       start: { date: "2026-10-12" },
       end: { date: "2026-10-13" },
+      // Todo el día empieza a medianoche: 540 minutos = 9:00 del día límite.
+      reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 540 }] },
     });
   });
 
@@ -328,6 +352,127 @@ describe("sincronización de tareas con Google Calendar", () => {
     expect(await taskEventIdFor("org_1", "t1")).toBeNull();
 
     await removeTaskEvent("org_1", "evt_1");
+    expect(state.calls).toHaveLength(0);
+  });
+
+  it("un refresh token revocado marca la conexión como rota", async () => {
+    const { pushTaskEvent } = await load();
+    state.creds = connected();
+    vi.stubGlobal("fetch", async () =>
+      new Response(
+        JSON.stringify({
+          error: "invalid_grant",
+          error_description: "Token has been expired or revoked.",
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      )
+    );
+
+    await pushTaskEvent("org_1", {
+      id: "t1",
+      kind: "caltodo",
+      title: "Llamar a Ana",
+      start: new Date("2026-10-08T15:00:00Z"),
+    });
+
+    expect(state.marked).toEqual(["org_1"]);
+    expect(state.diagnostics).toHaveLength(1);
+    expect(state.saves).toHaveLength(0);
+  });
+
+  it("el relleno sube las tareas con fecha que aún no tienen evento", async () => {
+    const { syncPendingTasks } = await load();
+    state.creds = connected();
+    state.respond = () => ({ status: 200, json: { id: "evt_nuevo" } });
+    state.rowsByTable = {
+      caltodoTask: [
+        {
+          id: "t1",
+          title: "Llamar a Ana",
+          details: null,
+          scheduledStart: new Date("2026-10-21T19:14:00Z"),
+          scheduledEnd: null,
+          duration: 60,
+          googleEventId: null,
+        },
+      ],
+      projectTask: [
+        {
+          id: "prjt_1",
+          title: "Instalación",
+          description: null,
+          dueDate: new Date("2026-10-25T12:00:00Z"),
+          googleEventId: null,
+          projectName: "Cafetería Norte",
+        },
+      ],
+    };
+
+    const result = await syncPendingTasks("org_1");
+
+    expect(result).toEqual({ synced: 2, failed: 0 });
+    expect(state.saves).toEqual([
+      { googleEventId: "evt_nuevo" },
+      { googleEventId: "evt_nuevo" },
+    ]);
+    const bodies = state.calls
+      .filter((c) => c.method === "POST" && c.url.includes("/events"))
+      .map((c) => JSON.parse(c.body ?? "{}"));
+    expect(bodies.map((b) => b.summary)).toEqual([
+      "Llamar a Ana",
+      "[Cafetería Norte] Instalación",
+    ]);
+  });
+
+  it("el relleno se corta al primer rechazo de credenciales", async () => {
+    const { syncPendingTasks } = await load();
+    state.creds = connected();
+    state.rowsByTable = {
+      caltodoTask: [
+        {
+          id: "t1",
+          title: "Una",
+          details: null,
+          scheduledStart: new Date("2026-10-21T19:14:00Z"),
+          scheduledEnd: null,
+          duration: 60,
+          googleEventId: null,
+        },
+        {
+          id: "t2",
+          title: "Otra",
+          details: null,
+          scheduledStart: new Date("2026-10-22T19:14:00Z"),
+          scheduledEnd: null,
+          duration: 60,
+          googleEventId: null,
+        },
+      ],
+      projectTask: [],
+    };
+    vi.stubGlobal("fetch", async () =>
+      new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const result = await syncPendingTasks("org_1");
+
+    // Un solo intento fallido, no dos: el token muerto no se repite.
+    expect(result).toEqual({ synced: 0, failed: 1 });
+    expect(state.marked).toEqual(["org_1"]);
+  });
+
+  it("sin el interruptor encendido el relleno no toca Google", async () => {
+    const { syncPendingTasks } = await load();
+    state.creds = connected(false);
+    state.rowsByTable = {
+      caltodoTask: [{ id: "t1", title: "Una" }],
+      projectTask: [],
+    };
+
+    expect(await syncPendingTasks("org_1")).toEqual({ synced: 0, failed: 0 });
     expect(state.calls).toHaveLength(0);
   });
 });

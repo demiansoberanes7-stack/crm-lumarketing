@@ -258,12 +258,26 @@ export function ConnectorCredentials({
       });
       return;
     }
+    const data = (await res.json().catch(() => null)) as {
+      backfilled?: { synced: number; failed: number };
+    } | null;
     setSyncTasks(next);
+    const failed = next ? (data?.backfilled?.failed ?? 0) : 0;
+    const synced = next ? (data?.backfilled?.synced ?? 0) : 0;
+    if (failed > 0) {
+      setMessage({
+        kind: "error",
+        text: `${failed} tarea(s) no se pudieron enviar a Google. Revisa la conexión y vuelve a autorizar.`,
+      });
+      return;
+    }
     setMessage({
       kind: "ok",
-      text: next
-        ? "Sincronización de tareas encendida"
-        : "Sincronización de tareas apagada",
+      text: !next
+        ? "Sincronización de tareas apagada"
+        : synced > 0
+          ? `Sincronización encendida — ${synced} tarea(s) enviadas al calendario`
+          : "Sincronización de tareas encendida",
     });
   }
 
@@ -293,7 +307,8 @@ export function ConnectorCredentials({
         {connection?.status === "error" && (
           <p className="rounded-sm border border-danger-soft bg-danger-tint px-3 py-2 text-sm text-danger-text">
             {meta.label} rechazó las últimas credenciales. Las citas se siguen
-            agendando, pero sin enlace hasta que vuelvas a conectar.
+            agendando, pero sin enlace, y las tareas dejan de crear eventos
+            hasta que vuelvas a conectar.
           </p>
         )}
 
@@ -334,8 +349,9 @@ export function ConnectorCredentials({
             <p className="text-xs text-text-3">
               Cada tarea con fecha se crea como evento en{" "}
               {values.calendarId || "tu calendario"}: editarla mueve ese mismo
-              evento y borrarla lo elimina. Apagarlo no borra los eventos ya
-              creados.
+              evento y borrarla lo elimina. Google te avisa 30 minutos antes; las
+              fechas límite de proyecto avisan a las 9:00 del día. Apagarlo no
+              borra los eventos ya creados.
             </p>
           </div>
         )}

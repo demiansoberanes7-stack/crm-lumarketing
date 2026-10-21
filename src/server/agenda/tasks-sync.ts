@@ -1,4 +1,4 @@
-import { and, eq, getTableColumns } from "drizzle-orm";
+import { and, eq, getTableColumns, isNotNull, isNull, ne } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { hasIdKind } from "@/lib/db/ids";
@@ -7,6 +7,7 @@ import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { googleFetch } from "@/server/agenda/connectors/google";
 import {
   getGoogleCredentials,
+  markGoogleError,
   type GoogleCreds,
 } from "@/server/agenda/connectors/google-credentials";
 
@@ -70,6 +71,23 @@ function ymd(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Recordatorios explícitos: con `useDefault` el aviso depende de la
+ * configuración del calendario del dueño, y un calendario sin avisos por
+ * defecto no notificaría nada. Se fija un popup y Google lo respeta.
+ *
+ * En los eventos de todo el día (fechas límite de proyecto) el "inicio" es la
+ * medianoche, por eso 9:00 son 540 minutos.
+ */
+function reminders(task: SyncableTask): Record<string, unknown> {
+  return {
+    useDefault: false,
+    overrides: [
+      { method: "popup", minutes: task.kind === "project" ? 9 * 60 : 30 },
+    ],
+  };
+}
+
 function eventBody(task: SyncableTask): Record<string, unknown> {
   const start = task.start as Date;
   const summary = task.prefix ? `[${task.prefix}] ${task.title}` : task.title;
@@ -82,6 +100,7 @@ function eventBody(task: SyncableTask): Record<string, unknown> {
       description,
       start: { date: ymd(start) },
       end: { date: ymd(new Date(start.getTime() + DAY_MS)) },
+      reminders: reminders(task),
     };
   }
   const end =
@@ -93,6 +112,7 @@ function eventBody(task: SyncableTask): Record<string, unknown> {
     description,
     start: { dateTime: start.toISOString() },
     end: { dateTime: end.toISOString() },
+    reminders: reminders(task),
   };
 }
 
@@ -185,6 +205,19 @@ async function readTask(
   };
 }
 
+/**
+ * Credencial rechazada (refresh token revocado o revocado por Google).
+ * Se comprueba la marca del error y no `instanceof` para no depender de que
+ * ambas rutas compartan la misma instancia del módulo.
+ */
+function isRevokedCredentials(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { isAuthError?: unknown }).isAuthError === true
+  );
+}
+
 /** El fallo de Google se anota y se sigue: la tarea ya está guardada. */
 async function noteFailure(
   organizationId: string,
@@ -202,6 +235,12 @@ async function noteFailure(
     });
   } catch {
     /* ni siquiera el diagnóstico puede tumbar la operación */
+  }
+  // Un refresh token revocado deja de funcionar en silencio: la tarea se
+  // guarda, pero sin evento. Marcarlo hace que Ajustes pida reconectar en vez
+  // de seguir diciendo "conectado".
+  if (isRevokedCredentials(error)) {
+    await markGoogleError(organizationId).catch(() => {});
   }
 }
 
@@ -307,4 +346,102 @@ export async function removeTaskEvent(
   } catch (error) {
     await noteFailure(organizationId, googleEventId, error);
   }
+}
+
+/**
+ * Pone al día las tareas que ya existían cuando se encendió la sincronización
+ * o cuando se reconectó Google. Sin esto, activar el interruptor solo servía
+ * para lo que se creara después, y quien reconectaba tras un token revocado
+ * seguía viendo tareas viejas sin evento.
+ *
+ * Solo lee filas SIN `google_event_id`: nunca duplica un evento existente.
+ * Si Google rechaza las credenciales, corta en el primer fallo en vez de
+ * martillar la API con el mismo token muerto.
+ */
+export async function syncPendingTasks(
+  organizationId: string,
+  limit = 100
+): Promise<{ synced: number; failed: number }> {
+  const creds = await syncContext(organizationId);
+  if (!creds) return { synced: 0, failed: 0 };
+
+  const db = getDb();
+  const pending: SyncableTask[] = [];
+
+  try {
+    const caltodoRows = await db
+      .select()
+      .from(schema.caltodoTask)
+      .where(
+        and(
+          scoped(schema.caltodoTask.organizationId, organizationId),
+          eq(schema.caltodoTask.completed, false),
+          isNotNull(schema.caltodoTask.scheduledStart),
+          isNull(schema.caltodoTask.googleEventId)
+        )
+      )
+      .limit(limit);
+
+    for (const row of caltodoRows) {
+      if (!row.scheduledStart) continue;
+      pending.push({
+        id: row.id,
+        kind: "caltodo",
+        title: row.title,
+        description: row.details,
+        start: row.scheduledStart,
+        end:
+          row.scheduledEnd ??
+          new Date(row.scheduledStart.getTime() + (row.duration ?? 60) * 60_000),
+        googleEventId: row.googleEventId,
+      });
+    }
+
+    const projectRows = await db
+      .select({
+        ...getTableColumns(schema.projectTask),
+        projectName: schema.project.name,
+      })
+      .from(schema.projectTask)
+      .leftJoin(schema.project, eq(schema.project.id, schema.projectTask.projectId))
+      .where(
+        and(
+          scoped(schema.projectTask.organizationId, organizationId),
+          ne(schema.projectTask.estado, "terminado"),
+          isNotNull(schema.projectTask.dueDate),
+          isNull(schema.projectTask.googleEventId)
+        )
+      )
+      .limit(limit);
+
+    for (const row of projectRows) {
+      if (!row.dueDate) continue;
+      pending.push({
+        id: row.id,
+        kind: "project",
+        title: row.title,
+        description: row.description,
+        start: row.dueDate,
+        googleEventId: row.googleEventId,
+        prefix: row.projectName,
+      });
+    }
+  } catch (error) {
+    await noteFailure(organizationId, "backfill", error);
+    return { synced: 0, failed: 0 };
+  }
+
+  let synced = 0;
+  let failed = 0;
+  for (const task of pending.slice(0, limit)) {
+    try {
+      await pushWithCreds(creds, organizationId, task);
+      synced += 1;
+    } catch (error) {
+      failed += 1;
+      await noteFailure(organizationId, task.id, error);
+      if (isRevokedCredentials(error)) break;
+    }
+  }
+  return { synced, failed };
 }

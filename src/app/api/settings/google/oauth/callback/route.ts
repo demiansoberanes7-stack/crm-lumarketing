@@ -2,6 +2,7 @@ import { withOwner } from "@/lib/api";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
 import { googleConnector } from "@/server/agenda/connectors/google";
 import { saveGoogleCredentials } from "@/server/agenda/connectors/google-credentials";
+import { syncPendingTasks } from "@/server/agenda/tasks-sync";
 import {
   consumeGoogleOAuthState,
   exchangeGoogleAuthCode,
@@ -61,6 +62,13 @@ export const GET = withOwner(async (session, req: Request) => {
     refreshToken,
     calendarId: pending.calendarId,
   });
+
+  // Reconectar es el momento natural para recuperar las tareas que se
+  // quedaron sin evento mientras el token estaba revocado.
+  await syncPendingTasks(session.organizationId).catch(() => ({
+    synced: 0,
+    failed: 0,
+  }));
 
   return Response.redirect(googleOAuthReturnUrl("ok"), 302);
 });
