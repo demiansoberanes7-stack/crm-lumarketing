@@ -287,8 +287,11 @@ export async function updateConversation(
 
   // Marcar leído el hilo de una persona limpia también sus conversaciones
   // viejas por post; si no, al recargar reaparecería el contador sumado.
+  // El abanico solo corre cuando de verdad se marca leído: con `markRead:
+  // false` (lo que manda el MCP o cualquier cliente del API) se escribía el
+  // `updatedAt` de TODA la hilera de un hilo sin limpiar nada.
   const markReadIds =
-    patch.markRead !== undefined
+    patch.markRead === true
       ? await commentThreadConversationIds(organizationId, conversationId)
       : null;
 

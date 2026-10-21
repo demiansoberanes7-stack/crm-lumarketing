@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import { descNullsLast } from "@/lib/db/order";
 import { scoped } from "@/lib/db/tenant";
 import { isMediumValue, isSocialNetwork, normalizeMedium } from "@/lib/contact-medium";
 import { normalizeMx } from "@/lib/meta/client";
@@ -87,7 +88,7 @@ export async function getContactStage(
     )
     // Multi-oportunidad: el contacto puede tener varias. Las rutas 1:1 (UI,
     // bot, agenda) operan sobre la principal y, de igual, la más activa.
-    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
+    .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
     .limit(1);
   return rows[0] ?? null;
 }

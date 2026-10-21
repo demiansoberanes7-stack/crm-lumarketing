@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import { descNullsLast } from "@/lib/db/order";
 import { recordLeadCreated } from "@/server/leads/stage-history";
 import { recordLeadFirstTouch } from "@/server/attribution/touch";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
@@ -15,7 +16,9 @@ import type { StageChangeSource } from "@/lib/types";
 function leadPreferenceOrder() {
   return [
     desc(schema.lead.isPrimary),
-    desc(schema.lead.lastActivityAt),
+    // Sin `nulls last`, un lead sin actividad le ganaba al activo: Postgres
+    // pone los NULL primero en un DESC.
+    descNullsLast(schema.lead.lastActivityAt),
     desc(schema.lead.createdAt),
   ];
 }
