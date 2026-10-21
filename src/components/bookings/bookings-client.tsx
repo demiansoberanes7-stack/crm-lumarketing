@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ContactPicker } from "@/components/contact-picker";
 import { useEvents } from "@/components/use-events";
+import { LoadError } from "@/components/load-error";
 
 /** 015 — Citas: lo agendado por el operador y por la IA, con sus acciones. */
 
@@ -30,6 +32,25 @@ type Booking = {
 
 type Slot = { startUtc: string; label: string };
 
+/**
+ * El instante de la cita manual, en UTC.
+ *
+ * Un hueco de la disponibilidad ya llega en UTC; la hora impuesta viene de un
+ * `datetime-local`, que el navegador escribe SIN zona y hay que interpretar
+ * como hora local del operador — si se mandara crudo, el servidor lo leería
+ * como UTC y la cita quedaría 6 horas corrida.
+ */
+export function citaStartUtc(
+  choice: "hueco" | "otra",
+  slot: string,
+  custom: string
+): string | null {
+  if (choice === "hueco") return slot || null;
+  if (!custom) return null;
+  const ms = Date.parse(custom);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
 const STATUS_LABEL: Record<Booking["status"], string> = {
   agendada: "Agendada",
   realizada: "Realizada",
@@ -39,12 +60,21 @@ const STATUS_LABEL: Record<Booking["status"], string> = {
 
 export function BookingsClient() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
+  const [listFailed, setListFailed] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<string | null>(null);
   const [blockStart, setBlockStart] = useState("");
   const [blockMinutes, setBlockMinutes] = useState(60);
+  // Alta manual de la cita: contacto, hora y nota. `slotChoice` decide si el
+  // operador escoge un hueco de su horario o impone una hora concreta.
+  const [citaContactId, setCitaContactId] = useState<string | null>(null);
+  const [slotChoice, setSlotChoice] = useState<"hueco" | "otra">("hueco");
+  const [citaSlot, setCitaSlot] = useState("");
+  const [citaCustom, setCitaCustom] = useState("");
+  const [citaNotes, setCitaNotes] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     void refresh();
@@ -61,12 +91,14 @@ export function BookingsClient() {
     if (list?.ok) {
       const data = (await list.json()) as { bookings: Booking[] };
       setBookings(data.bookings);
+      setListFailed(false);
     } else {
       setBookings([]);
+      setListFailed(true);
     }
     if (avail?.ok) {
       const data = (await avail.json()) as { slots: Slot[] };
-      setSlots(data.slots.slice(0, 12));
+      setSlots(data.slots);
     }
   }
 
@@ -114,11 +146,141 @@ export function BookingsClient() {
     await refresh();
   }
 
+  /**
+   * Alta manual. El servidor es el que valida: un horario fuera del configured
+   * o ya ocupado vuelve `slot_taken`, así que el mensaje se deja ver tal cual
+   * en vez de fingir que la cita se creó.
+   */
+  async function createCita() {
+    const startUtc = citaStartUtc(slotChoice, citaSlot, citaCustom);
+    if (!citaContactId || !startUtc) return;
+    setCreating(true);
+    setError(null);
+    const res = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "session",
+        contactId: citaContactId,
+        startUtc,
+        notes: citaNotes.trim() || null,
+      }),
+    }).catch(() => null);
+    setCreating(false);
+    if (res?.status !== 201) {
+      const data = (await res?.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setError(
+        data?.error?.message ??
+          "No se pudo crear la cita. Si elegiste «otra hora», puede que ese instante esté fuera de tu horario o ya ocupado."
+      );
+      return;
+    }
+    setCitaSlot("");
+    setCitaCustom("");
+    setCitaNotes("");
+    await refresh();
+  }
+
   if (!bookings) return <p className="text-sm text-text-3">Cargando…</p>;
 
   return (
     <div className="space-y-6">
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <section className="space-y-3 rounded-md border p-4">
+        <div>
+          <h3 className="text-sm font-semibold">Nueva cita</h3>
+          <p className="text-sm text-text-3">
+            Tú la creas, sin esperar a que la IA cierre el hueco en el chat.
+          </p>
+        </div>
+
+        <ContactPicker value={citaContactId} onChange={setCitaContactId} />
+
+        <div className="space-y-1.5">
+          <Label htmlFor="cita-mode">Hora</Label>
+          <select
+            id="cita-mode"
+            value={slotChoice}
+            onChange={(e) =>
+              setSlotChoice(e.target.value === "otra" ? "otra" : "hueco")
+            }
+            className="w-full rounded-md border bg-card p-2 text-sm sm:w-64"
+          >
+            <option value="hueco">
+              Un hueco libre de mi horario ({slots.length})
+            </option>
+            <option value="otra">Otra hora concreta</option>
+          </select>
+        </div>
+
+        {slotChoice === "hueco" ? (
+          slots.length === 0 ? (
+            <p className="text-sm text-text-3">
+              No hay huecos libres que ofrecer: configura tu horario en Ajustes
+              → Calendario, o elige «Otra hora concreta».
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="cita-slot">Hueco</Label>
+              <select
+                id="cita-slot"
+                value={citaSlot}
+                onChange={(e) => setCitaSlot(e.target.value)}
+                className="w-full rounded-md border bg-card p-2 text-sm sm:w-72"
+              >
+                <option value="">Elige un hueco…</option>
+                {slots.map((s) => (
+                  <option key={s.startUtc} value={s.startUtc}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor="cita-custom">Inicio</Label>
+            <Input
+              id="cita-custom"
+              type="datetime-local"
+              value={citaCustom}
+              onChange={(e) => setCitaCustom(e.target.value)}
+              className="w-56"
+            />
+            <p className="text-xs text-text-3">
+              Se respeta igual que las citas de la IA: si el horario está
+              ocupado o cae fuera de tu jornada, el servidor la rechaza y te lo
+              dice.
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <Label htmlFor="cita-notes">Nota (opcional)</Label>
+          <textarea
+            id="cita-notes"
+            value={citaNotes}
+            onChange={(e) => setCitaNotes(e.target.value)}
+            rows={2}
+            placeholder="Qué se va a atender, dónde, con quién…"
+            className="w-full rounded-md border bg-card p-2 text-sm"
+          />
+        </div>
+
+        <Button
+          onClick={createCita}
+          disabled={
+            creating ||
+            !citaContactId ||
+            citaStartUtc(slotChoice, citaSlot, citaCustom) === null
+          }
+        >
+          {creating ? "Agendando…" : "Agendar cita"}
+        </Button>
+      </section>
 
       <section className="space-y-2">
         <h3 className="text-sm font-semibold">Bloquear un rango</h3>
@@ -163,11 +325,20 @@ export function BookingsClient() {
         <h3 className="text-sm font-semibold">
           Citas <span className="text-text-3">({bookings.length})</span>
         </h3>
-        {bookings.length === 0 && (
-          <p className="text-sm text-text-3">
-            Todavía no hay nada agendado. Configura tu horario en Ajustes →
-            Calendario para empezar a recibir citas.
-          </p>
+        {listFailed && bookings.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la agenda."
+            detail="«Todavía no hay nada agendado» sería otra cosa: la lista de citas no llegó. Reintenta y, si sigue, avisa."
+            onRetry={() => void refresh()}
+          />
+        ) : (
+          bookings.length === 0 && (
+            <p className="text-sm text-text-3">
+              Todavía no hay nada agendado. Crea la primera arriba con «Nueva
+              cita», o configura tu horario en Ajustes → Calendario para que la
+              IA empiece a cerrar huecos sola.
+            </p>
+          )
         )}
         <ul className="divide-y rounded-md border">
           {bookings.map((b) => (
@@ -287,7 +458,7 @@ export function BookingsClient() {
                       No hay huecos libres para mover esta cita.
                     </p>
                   )}
-                  {slots.map((s) => (
+                  {slots.slice(0, 12).map((s) => (
                     <button
                       key={s.startUtc}
                       type="button"

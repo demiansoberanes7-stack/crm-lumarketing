@@ -51,7 +51,12 @@ export const NAV: NavItem[] = [
   { href: "/broadcasts", label: "Envíos masivos", icon: Send },
   { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
-  { href: "/bookings", label: "Calendario", icon: CalendarDays, agendaOnly: true },
+  /**
+   * «Citas», no «Calendario»: la pantalla es la lista de compromisos y su
+   * alta, no una rejilla de meses. «Calendario» sigue siendo el nombre de la
+   * pestaña de Ajustes, que es donde se configura el horario.
+   */
+  { href: "/bookings", label: "Citas", icon: CalendarDays, agendaOnly: true },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
   { href: "/inteligencia", label: "Inteligencia", icon: BarChart3 },
 ];

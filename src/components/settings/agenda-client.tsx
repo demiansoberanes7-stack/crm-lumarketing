@@ -58,9 +58,13 @@ export function AgendaClient() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  // La disponibilidad se lee aparte de la configuración: sin esta bandera, un
+  // 500 en /availability se pintaba como «Sin huecos: revisa el horario».
+  const [slotsFailed, setSlotsFailed] = useState(false);
 
   const load = useCallback(async () => {
     setLoadFailed(false);
+    setSlotsFailed(false);
     const [cfg, avail] = await Promise.all([
       fetch("/api/calendar/settings").catch(() => null),
       fetch("/api/calendar/availability").catch(() => null),
@@ -74,8 +78,10 @@ export function AgendaClient() {
     if (avail?.ok) {
       const data = (await avail.json()) as { slots: { label: string }[] };
       setSlots(data.slots.slice(0, 5));
+      setSlotsFailed(false);
     } else {
       setSlots([]);
+      setSlotsFailed(true);
     }
   }, []);
 
@@ -85,9 +91,14 @@ export function AgendaClient() {
 
   async function refreshPreview() {
     const res = await fetch("/api/calendar/availability").catch(() => null);
-    if (!res?.ok) return setSlots([]);
+    if (!res?.ok) {
+      setSlots([]);
+      setSlotsFailed(true);
+      return;
+    }
     const data = (await res.json()) as { slots: { label: string }[] };
     setSlots(data.slots.slice(0, 5));
+    setSlotsFailed(false);
   }
 
   function patch(next: Partial<Settings>) {
@@ -406,12 +417,25 @@ export function AgendaClient() {
         </CardHeader>
         <CardContent>
           {slots === null && <p className="text-sm text-text-3">Calculando…</p>}
-          {slots?.length === 0 && (
-            <p className="text-sm text-text-3">
-              Sin huecos: revisa el horario, el aviso mínimo o si ya está todo
-              ocupado.
-            </p>
-          )}
+          {slots?.length === 0 &&
+            (slotsFailed ? (
+              <p className="text-xs text-destructive">
+                No se pudieron calcular los huecos del calendario: «sin huecos» todavía no
+                es concluyente.{" "}
+                <button
+                  type="button"
+                  className="font-medium underline"
+                  onClick={() => void refreshPreview()}
+                >
+                  Reintentar
+                </button>
+              </p>
+            ) : (
+              <p className="text-sm text-text-3">
+                Sin huecos: revisa el horario, el aviso mínimo o si ya está todo
+                ocupado.
+              </p>
+            ))}
           {slots && slots.length > 0 && (
             <ul className="space-y-1 text-sm">
               {slots.map((s, i) => (
