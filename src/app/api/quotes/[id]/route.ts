@@ -22,6 +22,7 @@ const itemSchema = z.object({
 
 const patchSchema = z.object({
   contactId: z.string().nullable().optional(),
+  clientPhone: z.string().max(40).nullish(),
   items: z.array(itemSchema).min(1).optional(),
   discountType: z.enum(["fixed", "percentage"]).nullable().optional(),
   discountValue: z.number().int().min(0).nullable().optional(),
@@ -41,6 +42,7 @@ export const PATCH = withAuth(async (session, req: Request, { params }) => {
   try {
     const input: Record<string, unknown> = {};
     if (body.data.contactId !== undefined) input.contactId = body.data.contactId;
+    if (body.data.clientPhone !== undefined) input.clientPhone = body.data.clientPhone;
     if (body.data.items !== undefined)
       input.items = body.data.items.map((item) => ({
         productId: item.productId,

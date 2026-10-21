@@ -33,6 +33,7 @@ const itemSchema = z.object({
 
 const postSchema = z.object({
   contactId: z.string().nullable().optional(),
+  clientPhone: z.string().max(40).nullish(),
   items: z.array(itemSchema).min(1),
   discountType: z.enum(["fixed", "percentage"]).nullable().optional(),
   discountValue: z.number().int().min(0).nullable().optional(),
@@ -52,6 +53,7 @@ export const POST = withAuth(async (session, req: Request) => {
     session.organizationId,
     {
       contactId: body.data.contactId,
+      clientPhone: body.data.clientPhone,
       items: body.data.items.map((item) => ({
         productId: item.productId,
         name: item.name,

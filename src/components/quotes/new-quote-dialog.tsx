@@ -30,7 +30,7 @@ export function NewQuoteDialog({
 }: {
   onClose: () => void;
   onCreated: () => void;
-  initial?: { id: string; items: QuoteItem[]; contactId: string | null; discountType: string | null; discountValue: number | null; taxRate: number; validUntil: string | null; message: string | null; paymentMethod: Record<string, unknown> | null };
+  initial?: { id: string; items: QuoteItem[]; contactId: string | null; clientPhone?: string | null; contactPhone?: string | null; discountType: string | null; discountValue: number | null; taxRate: number; validUntil: string | null; message: string | null; paymentMethod: Record<string, unknown> | null };
 }) {
   const [items, setItems] = useState<QuoteItem[]>(initial ? initial.items.map((item) => ({ ...item, unitPrice: item.unitPrice / 100 })) : [{ ...EMPTY_ITEM }]);
   const [discountType, setDiscountType] = useState(initial?.discountType ?? "none");
@@ -44,6 +44,11 @@ export function NewQuoteDialog({
     return pm.conditions ? String(pm.conditions) : "";
   });
   const [contactId, setContactId] = useState<string | null>(initial?.contactId ?? null);
+  // El teléfono de la cotización arranca con el del contacto si ya lo hay: es
+  // el número que se imprime, y corregirlo aquí no toca la ficha del contacto.
+  const [clientPhone, setClientPhone] = useState(
+    initial?.clientPhone ?? initial?.contactPhone ?? ""
+  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
@@ -123,6 +128,7 @@ export function NewQuoteDialog({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         contactId,
+        clientPhone: clientPhone.trim() || null,
         items: validItems.map((item) => ({
           ...item,
           productId: item.productId ?? undefined,
@@ -160,6 +166,20 @@ export function NewQuoteDialog({
         <div className="space-y-4">
           {error && <p role="alert" className="text-destructive">{error}</p>}
           <ContactPicker value={contactId} onChange={setContactId} />
+          <div className="space-y-1.5">
+            <Label htmlFor="quote-client-phone">Teléfono del cliente</Label>
+            <Input
+              id="quote-client-phone"
+              value={clientPhone}
+              onChange={(e) => setClientPhone(e.target.value)}
+              placeholder="Ej: 55 1234 5678"
+              inputMode="tel"
+            />
+            <p className="text-xs text-muted-foreground">
+              Es el número que se imprime en la cotización. Vale aunque no
+              exista un contacto guardado.
+            </p>
+          </div>
           <div>
             <Label className="mb-2 block">Items</Label>
             <div className="space-y-3">
@@ -316,7 +336,10 @@ export function NewQuoteDialog({
               placeholder="Ej: 50% anticipo, 50% contra entrega. Pago por transferencia bancaria."
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
-            <p className="text-xs text-muted-foreground">Aparece en el PDF de la cotización.</p>
+            <p className="text-xs text-muted-foreground">
+              Se imprime dentro del apartado NOTAS del PDF, debajo de las notas
+              de arriba.
+            </p>
           </div>
 
           <div className="rounded-md bg-secondary p-3 text-sm">

@@ -28,6 +28,8 @@ export type QuoteStatus =
 
 export type QuoteInput = {
   contactId?: string | null;
+  /** Teléfono impreso en la cotización; si falta, se usa el del contacto. */
+  clientPhone?: string | null;
   items: Array<{
     productId?: string | null;
     name: string;
@@ -124,6 +126,17 @@ async function assertStockAvailable(
   }
 }
 
+/**
+ * El teléfono tal y como se escribió, pero sin basura: lo que entra del chat o
+ * del teclado del operador viene con paréntesis, guiones y espacios sueltos.
+ * Se aceptan dígitos, `+` inicial, `-`, `.` y espacios; el resto se descarta.
+ */
+export function normalizeClientPhone(raw: string | null | undefined): string | null {
+  const cleaned = (raw ?? "").replace(/[^\d+\-.\s]/g, "").replace(/\s+/g, " ").trim();
+  if (cleaned.replace(/\D/g, "").length < 6) return null;
+  return cleaned.slice(0, 32);
+}
+
 /** Crear una cotización nueva */
 export async function createQuote(
   organizationId: string,
@@ -175,6 +188,7 @@ export async function createQuote(
     organizationId,
     quoteNumber,
     contactId: input.contactId ?? null,
+    clientPhone: normalizeClientPhone(input.clientPhone),
     status: "draft",
     currency: "MXN",
     validUntil,
@@ -281,6 +295,8 @@ export async function updateQuote(
     .update(schema.quote)
     .set({
       contactId: input.contactId ?? null,
+      clientPhone:
+        input.clientPhone === undefined ? quote.clientPhone : normalizeClientPhone(input.clientPhone),
       subtotal: totals.subtotal,
       discountType: input.discountType ?? null,
       discountValue: input.discountValue ?? null,
@@ -575,7 +591,9 @@ export async function getQuote(organizationId: string, quoteId: string) {
       longDescription: longDescription ?? null,
     })),
     contactName: contact?.name ?? null,
-    contactPhone: contact?.phone ?? null,
+    // El de la cotización manda: es el número que el operador escribió para
+    // ESTE cliente; el del contacto es solo el respaldo.
+    contactPhone: quote.clientPhone ?? contact?.phone ?? null,
     contactEmail,
   };
 }

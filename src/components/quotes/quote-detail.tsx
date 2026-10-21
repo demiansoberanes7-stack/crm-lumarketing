@@ -98,6 +98,9 @@ interface QuoteData {
   createdAt: string;
   contactName: string | null;
   contactId: string | null;
+  /** Teléfono impreso en la cotización (el del contacto es solo el respaldo). */
+  clientPhone: string | null;
+  contactPhone: string | null;
   message: string | null;
   discountAmount: number;
   paymentMethod: Record<string, unknown> | null;
@@ -376,7 +379,8 @@ export function QuoteDetail({
         {editing && <NewQuoteDialog initial={quote} onClose={() => setEditing(false)} onCreated={() => { setEditing(false); setRevision((r) => r + 1); onUpdated(); }} />}
         {quote.message && <p className="mb-3 whitespace-pre-wrap text-sm">{quote.message}</p>}
         <div className="mb-3 text-sm text-muted-foreground">
-          {quote.contactName ?? "Sin contacto"} · {formatDate(quote.createdAt)}
+          {quote.contactName ?? "Sin contacto"}
+          {quote.clientPhone ? ` · ${quote.clientPhone}` : ""} · {formatDate(quote.createdAt)}
         </div>
 
         <div className="mb-4 overflow-x-auto">

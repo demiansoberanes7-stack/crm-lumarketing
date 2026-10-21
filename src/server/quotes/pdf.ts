@@ -136,7 +136,7 @@ export async function quotePdf(organizationId: string, id: string) {
   }
   y -= 24;
 
-  // ─── TWO COLUMN: COTIZADO PARA | CONDICIONES DE PAGO ───
+  // ─── TWO COLUMN: COTIZADO PARA | NOTAS ───
   const leftCol = MARGIN;
   const rightCol = MARGIN + CONTENT_W / 2 + 20;
   const colW = CONTENT_W / 2 - 20;
@@ -158,9 +158,21 @@ export async function quotePdf(organizationId: string, id: string) {
   if (quote.contactEmail) wrapInto(leftLines, quote.contactEmail, regular, 9, GRAY, 13);
   if (quote.contactPhone) wrapInto(leftLines, quote.contactPhone, regular, 9, GRAY, 13);
 
-  const rightLines: PdfLine[] = [{ text: "CONDICIONES DE PAGO", font: bold, size: 9, color: DARK, h: 17 }];
-  if (paymentText) wrapInto(rightLines, paymentText, regular, 9, GRAY, 13);
-  else rightLines.push({ text: "Sin condiciones especificadas", font: regular, size: 9, color: GRAY, h: 13 });
+  // Una sola caja de Notas: la que escribe el operador en el diálogo y, encima,
+  // las condiciones de pago que ya venían guardadas en una cotización vieja.
+  // Abajo del todo ya no se repite: era el mismo texto en dos sitios.
+  const rightLines: PdfLine[] = [{ text: "NOTAS", font: bold, size: 9, color: DARK, h: 17 }];
+  const notas = [quote.message?.trim(), paymentText?.trim()].filter(
+    (block): block is string => Boolean(block)
+  );
+  for (const block of notas) {
+    for (const paragraph of block.split(/\r?\n/)) {
+      if (paragraph.trim()) wrapInto(rightLines, paragraph, regular, 9, GRAY, 13);
+    }
+  }
+  if (notas.length === 0) {
+    rightLines.push({ text: "Sin notas", font: regular, size: 9, color: GRAY, h: 13 });
+  }
 
   // Las dos columnas comparten línea base: cada renglón baja `y` la altura
   // máxima de ambas y salta de página si no cabe. Antes el bloque no movía `y`
@@ -310,21 +322,6 @@ export async function quotePdf(organizationId: string, id: string) {
     HEADER_INK
   );
   y -= totalBoxH + 10;
-
-  // ─── NOTES AND TERMS ───
-  if (quote.message) {
-    checkPage(50);
-    y -= 10;
-    page.drawText("NOTAS Y TÉRMINOS", { x: MARGIN, y, size: 10, font: bold, color: DARK });
-    y -= 16;
-    // Renglón por renglón: un texto largo salta de página en vez de seguir
-    // imprimiéndose por debajo del pie.
-    for (const line of wrapText(clean(quote.message), regular, 9, CONTENT_W)) {
-      checkPage(13);
-      page.drawText(line, { x: MARGIN, y, size: 9, font: regular, color: GRAY });
-      y -= 13;
-    }
-  }
 
   // ─── FOOTER (business info + page number) ───
   const pages = doc.getPages();
