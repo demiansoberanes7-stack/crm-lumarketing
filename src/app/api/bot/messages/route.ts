@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { apiError, parseBody } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
+import { isChannelAiDisabledFor } from "@/server/ai/channel-policy";
 import { SendError, sendText } from "@/server/inbox/send";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
     .select({
       aiEnabled: schema.conversation.aiEnabled,
       handoffAt: schema.conversation.handoffAt,
+      channel: schema.conversation.channel,
     })
     .from(schema.conversation)
     .where(
@@ -52,8 +54,16 @@ export async function POST(req: Request) {
     .limit(1);
   const conv = convs[0];
   if (!conv) return apiError(404, "not_found", "Conversación no encontrada");
-  if (!conv.aiEnabled || conv.handoffAt) {
-    return apiError(409, "ai_paused", "La IA está en pausa en esta conversación");
+  if (
+    !conv.aiEnabled ||
+    conv.handoffAt ||
+    (await isChannelAiDisabledFor(organizationId, conv.channel))
+  ) {
+    return apiError(
+      409,
+      "ai_paused",
+      "La IA está en pausa en esta conversación o en su canal"
+    );
   }
 
   try {

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { publish } from "@/server/events/bus";
 import { serializeConversation, getConversation, updateConversation } from "@/server/inbox/queries";
+import { disabledChannelsFor } from "@/server/ai/channel-policy";
+import type { Channel } from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,14 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
 
   const row = await getConversation(session.organizationId, id);
   if (row) {
-    const dto = serializeConversation(row.conversation, row.contact);
+    const disabledChannels = await disabledChannelsFor(session.organizationId);
+    const dto = serializeConversation(
+      row.conversation,
+      row.contact,
+      null,
+      null,
+      !disabledChannels.includes(row.conversation.channel as Channel)
+    );
     publish(session.organizationId, {
       type: "conversation.updated",
       data: { conversation: dto },

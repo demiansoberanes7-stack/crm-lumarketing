@@ -10,6 +10,8 @@ export type ConversationDto = {
   contact: { id: string; name: string; phone: string | null };
   stageName: string | null;
   aiEnabled: boolean;
+  /** El canal está encendido para la IA en Ajustes → Agente. */
+  channelAiEnabled: boolean;
   handoffAt: string | null;
   handoffReason: string | null;
   lastInboundAt: string | null;
@@ -137,6 +139,34 @@ export type ContactDto = {
   waMarketingOptInAt?: string | null;
   /** Cómo se obtuvo ese consentimiento. */
   waMarketingOptInSource?: string | null;
+};
+
+/* ============================================================
+ * Prospectos (bandeja → dueño)
+ * ============================================================ */
+
+/**
+ * Fila de la pantalla de Prospectos: un contacto que escribió al menos un
+ * mensaje. Derivada de `contact` + `conversation` + `message`, no una tabla.
+ */
+export type ProspectDto = {
+  contactId: string;
+  name: string;
+  /** null mientras el cliente no deje su número en el chat. */
+  phone: string | null;
+  channel: string;
+  channelLabel: string;
+  /** Hilo real del contacto: enlaza la fila con Bandeja (`/inbox?contact=`). */
+  conversationId: string;
+  firstInboundAt: string | null;
+  lastInboundAt: string | null;
+  inboundCount: number;
+  /** Último mensaje entrante, para ver si ya dejó datos o solo pregunta. */
+  lastInboundText: string | null;
+  archivedAt: string | null;
+  stageName: string | null;
+  priority: PriorityValue | null;
+  amountCents: number | null;
 };
 
 /* ============================================================

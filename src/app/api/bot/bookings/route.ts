@@ -4,6 +4,7 @@ import { apiError, parseBody } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
+import { isChannelAiDisabledFor } from "@/server/ai/channel-policy";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
 import {
   createSessionBooking,
@@ -110,6 +111,7 @@ async function assertConversationActive(
     .select({
       aiEnabled: schema.conversation.aiEnabled,
       handoffAt: schema.conversation.handoffAt,
+      channel: schema.conversation.channel,
     })
     .from(schema.conversation)
     .where(
@@ -123,11 +125,15 @@ async function assertConversationActive(
   if (!conv) {
     return apiError(404, "not_found", "Conversación no encontrada");
   }
-  if (!conv.aiEnabled || conv.handoffAt) {
+  if (
+    !conv.aiEnabled ||
+    conv.handoffAt ||
+    (await isChannelAiDisabledFor(organizationId, conv.channel))
+  ) {
     return apiError(
       409,
       "handoff_active",
-      "La conversación está en manos de un humano; el agente no agenda"
+      "La conversación está en manos de un humano o su canal tiene la IA apagada; el agente no agenda"
     );
   }
   return null;

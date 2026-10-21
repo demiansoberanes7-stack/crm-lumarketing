@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { apiError, parseBody } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
+import { isChannelAiDisabledFor } from "@/server/ai/channel-policy";
 import { getCredentialsByOrg } from "@/server/whatsapp/credentials";
 import { graphRequest } from "@/lib/meta/client";
 
@@ -46,9 +47,13 @@ export async function POST(req: Request) {
     // Sandbox: jamás toca la API real (guardrail del Laboratorio).
     return Response.json({ ok: false, reason: "sandbox" });
   }
-  if (!conv.aiEnabled || conv.handoffAt) {
-    // Handoff/IA pausada: un humano atiende — "escribiendo…" aquí sería
-    // mentirle al cliente. Se omite sin tocar Meta.
+  if (
+    !conv.aiEnabled ||
+    conv.handoffAt ||
+    (await isChannelAiDisabledFor(organizationId, conv.channel))
+  ) {
+    // Handoff/IA pausada o canal apagado: un humano atiende — "escribiendo…"
+    // aquí sería mentirle al cliente. Se omite sin tocar Meta.
     return Response.json({ ok: false, reason: "ai_paused" });
   }
 

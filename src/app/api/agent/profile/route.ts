@@ -5,6 +5,10 @@ import { scoped } from "@/lib/db/tenant";
 import { isAiConfigured } from "@/lib/env";
 import { getAiDbToken } from "@/server/ai/credentials";
 import { normalizeAgentFichaFields, normalizeAgentRules, AGENT_FICHA_KEY_PATTERN } from "@/lib/agent-config";
+import { CHANNEL_ORDER, isAgentCapableChannel, isChannel } from "@/lib/channels";
+import { enabledChannels } from "@/server/channels/enabled";
+import { agendaEnabled } from "@/server/agenda/flag";
+import { normalizeDisabledChannels } from "@/server/ai/channel-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +39,20 @@ export const GET = withOwner(async (session) => {
       fallbackLanguage: p.fallbackLanguage,
       reactWithEmoji: p.reactWithEmoji,
       activeInNewConversations: p.activeInNewConversations,
+      disabledChannels: normalizeDisabledChannels(p.disabledChannels),
       businessIndustry: p.businessIndustry,
       businessLocation: p.businessLocation,
       businessDescription: p.businessDescription,
     },
+    // Canales donde la IA puede responder: los que esta instancia tiene
+    // encendidos Y tienen camino de agente. Listar comentarios o Google
+    // Business dejaba un interruptor que no apagaba nada.
+    channels: CHANNEL_ORDER.filter(
+      (channel) => enabledChannels().has(channel) && isAgentCapableChannel(channel)
+    ),
+    // Ajustes → Agente enlaza el horario de atención a la pantalla de Agenda,
+    // que no existe si la instancia no corre con AGENDA.
+    agenda: agendaEnabled(),
     // Clave de IA: variable de entorno O la guardada desde Configuración.
     aiConfigured: isAiConfigured((await getAiDbToken(session.organizationId)) ?? undefined),
   });
@@ -69,6 +83,10 @@ const putSchema = z.object({
   fallbackLanguage: z.enum(["es", "en", "pt", "fr"]).optional(),
   reactWithEmoji: z.boolean().optional(),
   activeInNewConversations: z.boolean().optional(),
+  disabledChannels: z
+    .array(z.string().refine(isChannel, "Canal desconocido"))
+    .max(CHANNEL_ORDER.length)
+    .optional(),
   businessIndustry: z.string().trim().max(100).nullable().optional(),
   businessLocation: z.string().trim().max(255).nullable().optional(),
   businessDescription: z.string().trim().max(2000).nullable().optional(),
@@ -88,7 +106,9 @@ export const PUT = withOwner(async (session, req: Request) => {
         ? normalizeAgentRules(val)
         : key === "fichaFields"
           ? normalizeAgentFichaFields(val)
-          : val;
+          : key === "disabledChannels"
+            ? normalizeDisabledChannels(val)
+            : val;
     }
   }
 

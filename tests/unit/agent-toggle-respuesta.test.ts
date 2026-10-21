@@ -67,11 +67,12 @@ function queueTurn(
   newestFirst: unknown[],
   atendidaPorHumano = false,
   /** La búsqueda de "¿ya respondió alguien?" que hace el turno cuando el modelo calla. */
-  yaAtendida: unknown[] = []
+  yaAtendida: unknown[] = [],
+  isTest = false
 ) {
   const gate = profilePatch.activeInNewConversations === false;
   selectQueue.push(
-    [{ id: "cv_1", organizationId: "org_1", contactId: "ct_1", channel: "whatsapp", isTest: false, aiEnabled: true, handoffAt: null, handoffReason: null, lastInboundAt: inboundAt }],
+    [{ id: "cv_1", organizationId: "org_1", contactId: "ct_1", channel: "whatsapp", isTest, aiEnabled: true, handoffAt: null, handoffReason: null, lastInboundAt: inboundAt }],
     [{
       id: "agp_1",
       organizationId: "org_1",
@@ -90,6 +91,7 @@ function queueTurn(
     [], // base de conocimiento
     [], // catálogo
     [], // etapas del pipeline
+    [], // datos de empresa (el nombre va ahora en el system prompt)
     yaAtendida
   );
 }
@@ -204,5 +206,42 @@ describe("reaccionar con emoji", () => {
     await runAgentTurn("cv_1");
 
     expect(mocks.reactToInbound).not.toHaveBeenCalled();
+  });
+});
+
+describe("IA por canal (Ajustes → Agente)", () => {
+  it("el canal apagado ni siquiera llama al modelo", async () => {
+    queueTurn({ disabledChannels: ["whatsapp"] }, [mensajeCliente]);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(mocks.sendText).not.toHaveBeenCalled();
+  });
+
+  it("apagar TikTok no amordaza WhatsApp", async () => {
+    queueTurn({ disabledChannels: ["tiktok"] }, [mensajeCliente]);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: "cv_1", aiGenerated: true })
+    );
+  });
+
+  it("un valor corrupto o un canal desconocido no apaga nada", async () => {
+    queueTurn({ disabledChannels: ["telegram", 7] }, [mensajeCliente]);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).toHaveBeenCalled();
+  });
+
+  it("el Laboratorio evalúa aunque su canal esté apagado", async () => {
+    queueTurn({ disabledChannels: ["whatsapp"] }, [mensajeCliente], false, [], true);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.chatJson).toHaveBeenCalled();
   });
 });

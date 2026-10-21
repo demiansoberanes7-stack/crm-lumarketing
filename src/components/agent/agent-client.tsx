@@ -15,6 +15,11 @@ import {
   type AgentFichaField,
   type AgentRules,
 } from "@/lib/agent-config";
+import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+
+function sameChannels(a: readonly Channel[], b: readonly Channel[]): boolean {
+  return a.length === b.length && a.every((channel) => b.includes(channel));
+}
 
 type Profile = {
   enabled: boolean;
@@ -31,6 +36,7 @@ type Profile = {
   fallbackLanguage: string;
   reactWithEmoji: boolean;
   activeInNewConversations: boolean;
+  disabledChannels: Channel[];
   businessIndustry: string | null;
   businessLocation: string | null;
   businessDescription: string | null;
@@ -46,6 +52,9 @@ type KbEntry = {
 
 export function AgentClient() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [availableChannels, setAvailableChannels] = useState<Channel[]>([]);
+  /** Si esta instancia trae agenda: manda el enlace de «Configurar horario». */
+  const [agenda, setAgenda] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(true);
   const [entries, setEntries] = useState<KbEntry[]>([]);
   const [kbSize, setKbSize] = useState<{ chars: number; warnAt: number; warning: boolean } | null>(null);
@@ -64,6 +73,8 @@ export function AgentClient() {
     ]).catch(() => [null, null, null, null]);
     if (p) {
       setProfile(p.profile);
+      setAvailableChannels(Array.isArray(p.channels) ? p.channels : []);
+      setAgenda(p.agenda === true);
       setAiConfigured(p.aiConfigured);
     } else {
       setLoadFailed(true);
@@ -151,11 +162,15 @@ export function AgentClient() {
         <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
           <div className="min-w-0 space-y-4 sm:space-y-6">
             <ProfileSection profile={profile} onSave={saveProfile} />
-            <ResponseSection profile={profile} onSave={saveProfile} />
+            <ResponseSection
+              profile={profile}
+              channels={availableChannels}
+              onSave={saveProfile}
+            />
             <AgentRulesSection rules={profile.rules} onSave={saveProfile} />
           </div>
           <div className="min-w-0 space-y-4 sm:space-y-6">
-            <BusinessInfoSection profile={profile} onSave={saveProfile} />
+            <BusinessInfoSection profile={profile} agenda={agenda} onSave={saveProfile} />
             <FichaFieldsSection fields={profile.fichaFields} onSave={saveProfile} />
             <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} strictKnowledgeBase={profile.rules.strictKnowledgeBase} onChanged={() => void refetch()} />
           </div>
@@ -251,9 +266,11 @@ function ProfileSection({
 
 function ResponseSection({
   profile,
+  channels,
   onSave,
 }: {
   profile: Profile;
+  channels: Channel[];
   onSave: (patch: Partial<Profile>) => Promise<void>;
 }) {
   const [wait, setWait] = useState(profile.maxResponseWaitSeconds);
@@ -261,12 +278,14 @@ function ResponseSection({
   const [fallback, setFallback] = useState(profile.fallbackLanguage);
   const [emoji, setEmoji] = useState(profile.reactWithEmoji);
   const [newConv, setNewConv] = useState(profile.activeInNewConversations);
+  const [disabled, setDisabled] = useState<Channel[]>(profile.disabledChannels);
   useEffect(() => {
     setWait(profile.maxResponseWaitSeconds);
     setLang(profile.responseLanguage);
     setFallback(profile.fallbackLanguage);
     setEmoji(profile.reactWithEmoji);
     setNewConv(profile.activeInNewConversations);
+    setDisabled(profile.disabledChannels);
   }, [profile]);
 
   const dirty =
@@ -274,7 +293,8 @@ function ResponseSection({
     lang !== profile.responseLanguage ||
     fallback !== profile.fallbackLanguage ||
     emoji !== profile.reactWithEmoji ||
-    newConv !== profile.activeInNewConversations;
+    newConv !== profile.activeInNewConversations ||
+    !sameChannels(disabled, profile.disabledChannels);
 
   return (
     <Card>
@@ -368,6 +388,46 @@ function ResponseSection({
             equipo responda y, desde ahí, se suma a esa conversación.
           </p>
         </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Canales donde responde la IA</p>
+          <p className="text-xs text-muted-foreground">
+            Apaga un canal para que la IA no conteste en ninguno de sus chats.
+            El interruptor de cada conversación sigue disponible en la Bandeja.
+          </p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {channels.map((channel) => {
+              const on = !disabled.includes(channel);
+              return (
+                <label
+                  key={channel}
+                  className="flex items-center justify-between rounded-md border p-3"
+                >
+                  <span className="text-sm font-medium">
+                    {CHANNEL_LABEL[channel]}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() =>
+                      setDisabled((prev) =>
+                        on
+                          ? [...prev, channel]
+                          : prev.filter((item) => item !== channel)
+                      )
+                    }
+                    className="h-5 w-5 accent-primary"
+                  />
+                </label>
+              );
+            })}
+          </div>
+          {channels.length > 0 && disabled.length >= channels.length && (
+            <p className="text-xs text-warning-text">
+              La IA queda apagada en todos los canales: no responderá ningún
+              chat de la Bandeja.
+            </p>
+          )}
+        </div>
         {dirty && (
           <Button
             className="min-h-11"
@@ -378,6 +438,7 @@ function ResponseSection({
                 fallbackLanguage: fallback,
                 reactWithEmoji: emoji,
                 activeInNewConversations: newConv,
+                disabledChannels: disabled,
               })
             }
           >
@@ -391,9 +452,12 @@ function ResponseSection({
 
 function BusinessInfoSection({
   profile,
+  agenda,
   onSave,
 }: {
   profile: Profile;
+  /** Sin AGENDA la pantalla de horario no existe: el enlace no se muestra. */
+  agenda: boolean;
   onSave: (patch: Partial<Profile>) => Promise<void>;
 }) {
   const [industry, setIndustry] = useState(profile.businessIndustry ?? "");
@@ -422,13 +486,18 @@ function BusinessInfoSection({
               El agente usa estos datos para contextualizar sus respuestas.
             </CardDescription>
           </div>
-          <a
-            href="/settings/agenda"
-            className="flex items-center gap-1 text-xs text-primary underline hover:no-underline"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Configurar horario
-          </a>
+          {/* El enlace vivía en /settings/agenda, una ruta que no existe: al
+              hacer clic salía el 404. La pantalla real es Ajustes → Calendario,
+              y solo existe si esta instancia corre con la agenda encendida. */}
+          {agenda && (
+            <a
+              href="/settings/calendar"
+              className="flex items-center gap-1 text-xs text-primary underline hover:no-underline"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              Configurar horario
+            </a>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

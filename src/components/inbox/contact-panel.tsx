@@ -9,6 +9,7 @@ import type {
   FichaValue,
   StageDto,
 } from "@/lib/types";
+import { CHANNEL_LABEL, isAgentCapableChannel, isChannel, type Channel } from "@/lib/channels";
 import { cn, formatPhone } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,18 @@ const HANDOFF_LABELS: Record<string, string> = {
   ventana: "Ventana de 24h cerrada",
   manual_reply: "Respondiste desde el teléfono — IA en pausa",
 };
+
+/**
+ * `null` = no se pudo leer el perfil (p. ej. el operador no es propietario):
+ * el estado del canal se toma del DTO, en modo sólo lectura.
+ */
+function readDisabledChannels(value: unknown): Channel[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.filter(
+    (channel): channel is Channel =>
+      typeof channel === "string" && isChannel(channel)
+  );
+}
 
 export function ContactPanel({
   conversation,
@@ -56,6 +69,11 @@ export function ContactPanel({
   // cuando el agente aún no se ha configurado/encendido.
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [aiConfigured, setAiConfigured] = useState(false);
+  // Política de canal (Ajustes → Agente). Sólo el propietario puede leerla y
+  // cambiarla; para el resto se usa el estado que ya viene en el DTO.
+  const [disabledChannels, setDisabledChannels] = useState<Channel[] | null>(null);
+  const [savingChannel, setSavingChannel] = useState(false);
+  const [channelSaveError, setChannelSaveError] = useState<string | null>(null);
 
   const contactId = conversation.contact.id;
 
@@ -64,6 +82,12 @@ export function ContactPanel({
   // y cualquier cerebro externo conectado por /api/bot/* respetan este flag,
   // así que el toggle opera siempre — `agentReady` solo matiza el texto.
   const aiActive = conversation.aiEnabled && !conversation.handoffAt;
+  /** Canales donde el turno del agente se dispara de verdad. */
+  const agentCapable = isAgentCapableChannel(conversation.channel);
+  // El canal manda sobre el chat: apagado el canal, ningún chat responde.
+  const channelAiActive = disabledChannels
+    ? !disabledChannels.includes(conversation.channel)
+    : conversation.channelAiEnabled;
 
   // Carga inicial (incluye notas e historial): se re-ejecuta al cambiar de contacto.
   const refetch = useCallback(async () => {
@@ -83,6 +107,9 @@ export function ContactPanel({
     setNoteHistory(historyRes?.notes ?? []);
     setAgentEnabled(Boolean(agentRes?.profile?.enabled));
     setAiConfigured(Boolean(agentRes?.aiConfigured));
+    setDisabledChannels(
+      readDisabledChannels(agentRes?.profile?.disabledChannels)
+    );
     setNotesLoaded(true);
   }, [contactId]);
 
@@ -104,6 +131,9 @@ export function ContactPanel({
     if (agentRes) {
       setAgentEnabled(Boolean(agentRes.profile?.enabled));
       setAiConfigured(Boolean(agentRes.aiConfigured));
+      setDisabledChannels(
+        readDisabledChannels(agentRes.profile?.disabledChannels)
+      );
     }
   }, [contactId]);
 
@@ -161,6 +191,28 @@ export function ContactPanel({
     setSavingNotes(false);
   }
 
+  /** Apaga/enciende la IA para TODOS los chats del canal de esta conversación. */
+  async function toggleChannelAi() {
+    if (!disabledChannels || savingChannel) return;
+    const previous = disabledChannels;
+    const next = channelAiActive
+      ? [...previous, conversation.channel]
+      : previous.filter((channel) => channel !== conversation.channel);
+    setDisabledChannels(next); // optimista
+    setSavingChannel(true);
+    setChannelSaveError(null);
+    const res = await fetch("/api/agent/profile", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ disabledChannels: next }),
+    }).catch(() => null);
+    setSavingChannel(false);
+    if (!res?.ok) {
+      setDisabledChannels(previous);
+      setChannelSaveError("No se pudo guardar. Revisa tu conexión o permisos.");
+    }
+  }
+
   const currentIndex = stages.findIndex((s) => s.id === currentStageId);
 
   return (
@@ -215,6 +267,13 @@ export function ContactPanel({
             </div>
           )}
 
+          {/* Los dos interruptores solo se muestran donde el agente incluido
+              tiene camino: la ingesta de WhatsApp, Instagram, Messenger y
+              TikTok llama al turno; comentarios, reseñas de Google y Mercado
+              Libre nunca lo invocan. Ponerles un switch era prometer algo
+              vacío. Un bot externo por /api/bot sí puede atenderlos. */}
+          {agentCapable ? (
+            <>
           <div className="mt-3 rounded-md border bg-subtle px-3 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -224,9 +283,11 @@ export function ContactPanel({
                     ? "En pausa · atención humana"
                     : !conversation.aiEnabled
                       ? "En pausa"
-                      : agentReady
-                        ? "Respondiendo"
-                        : "Activada"}
+                      : !channelAiActive
+                        ? "En pausa · canal apagado"
+                        : agentReady
+                          ? "Respondiendo"
+                          : "Activada"}
                 </p>
               </div>
               <button
@@ -272,6 +333,71 @@ export function ContactPanel({
               </div>
             )}
           </div>
+
+          {/* Canal: apaga la IA en todos sus chats, no sólo en este. */}
+          <div className="mt-2 rounded-md border bg-subtle px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium">
+                  IA en el canal · {CHANNEL_LABEL[conversation.channel]}
+                </p>
+                <p className="text-[11px] text-text-3">
+                  {channelAiActive
+                    ? "Encendida en todos sus chats"
+                    : "Apagada en todos sus chats"}
+                </p>
+              </div>
+              {disabledChannels ? (
+                <button
+                  role="switch"
+                  aria-checked={channelAiActive}
+                  aria-label={`IA en el canal ${CHANNEL_LABEL[conversation.channel]}`}
+                  disabled={savingChannel}
+                  onClick={() => void toggleChannelAi()}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] disabled:opacity-60",
+                    channelAiActive ? "bg-brand" : "bg-border-strong"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-4 w-4 rounded-full bg-knob shadow-sm transition-transform",
+                      channelAiActive ? "translate-x-4" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              ) : (
+                <span className="shrink-0 text-[11px] text-text-3">
+                  Ajuste del propietario
+                </span>
+              )}
+            </div>
+            {!channelAiActive && (
+              <p className="mt-2 text-[11px] leading-relaxed text-warning-text">
+                La IA no responde en ningún chat de{" "}
+                {CHANNEL_LABEL[conversation.channel]}, aunque el chat esté
+                encendido. Se cambia en Ajustes → Agente.
+              </p>
+            )}
+            {channelSaveError && (
+              <p role="alert" className="mt-2 text-[11px] text-danger-text">
+                {channelSaveError}
+              </p>
+            )}
+          </div>
+            </>
+          ) : (
+            <div className="mt-3 rounded-md border bg-subtle px-3 py-2.5">
+              <p className="text-[13px] font-medium">
+                IA en {CHANNEL_LABEL[conversation.channel]}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-text-3">
+                El agente incluido no responde en este canal, así que no hay
+                interruptor que cambiar. Contesta el equipo desde la Bandeja (o
+                tu propio bot por la API).
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Stepper de etapa */}

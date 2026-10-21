@@ -4,6 +4,7 @@ import { apiError } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
 import { serializeFicha } from "@/server/bot/ficha";
 import { getConversation } from "@/server/inbox/queries";
+import { isChannelAiDisabledFor } from "@/server/ai/channel-policy";
 import { capabilitiesFor } from "@/server/channels/capabilities";
 import type { Channel } from "@/lib/channels";
 import { isHumanAgentWindowOpen, isWindowOpenFor, windowRemainingMsFor } from "@/server/inbox/window";
@@ -101,6 +102,10 @@ export async function GET(req: Request) {
   // guardó el mensaje pero no alcanzó a actualizar last_inbound_at.
   const effectiveConversation = await getConversation(organizationId, conversation.id);
   if (effectiveConversation) conversation = effectiveConversation.conversation;
+  const channelAiEnabled = !(await isChannelAiDisabledFor(
+    organizationId,
+    conversation.channel
+  ));
   const caps = capabilitiesFor(conversation.channel as Channel);
   const withinChannelWindow = caps.windowMs === null
     ? true
@@ -141,9 +146,10 @@ export async function GET(req: Request) {
     },
     conversation: {
       id: conversation.id,
-      // Una sola verdad para el bot: si hay handoff, la IA está apagada
-      // aunque el flag siga en true.
-      aiEnabled: conversation.aiEnabled && !conversation.handoffAt,
+      // Una sola verdad para el bot: si hay handoff o el canal está apagado
+      // en Ajustes → Agente, la IA está apagada aunque el flag siga en true.
+      aiEnabled:
+        conversation.aiEnabled && !conversation.handoffAt && channelAiEnabled,
       handoffAt: conversation.handoffAt?.toISOString() ?? null,
       windowOpen: withinChannelWindow || humanAgentMode,
       windowRemainingMs: caps.windowMs === null ? 0 : windowRemainingMsFor(conversation.lastInboundAt, caps.windowMs),

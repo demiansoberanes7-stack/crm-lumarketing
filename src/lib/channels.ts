@@ -48,6 +48,29 @@ export const CHANNEL_ORDER: readonly Channel[] = [
   "mercado_libre",
 ];
 
+/**
+ * Canales donde el agente incluido puede contestar SOLO si la instancia los
+ * tiene encendidos. Es la verdad de runtime: `maybeRunAgentTurn` se llama
+ * desde la ingesta de WhatsApp (WAHA y Zernio), Instagram, Messenger y TikTok.
+ * En comentarios, reseñas de Google Business y Mercado Libre la bandeja abre
+ * el hilo con `aiEnabled = false` a propósito —el agente nunca debe publicar
+ * solo en un hilo público— y en Mercado Libre ni siquiera se invoca el turno.
+ *
+ * Se expone aquí, y no en `server/`, porque la interfaz también lo necesita:
+ * mientras el interruptor de "IA en el canal" apareciera en canales donde el
+ * agente no tiene camino, Ajustes → Agente mentía.
+ */
+export const AGENT_CAPABLE_CHANNELS: readonly Channel[] = [
+  "whatsapp",
+  "instagram",
+  "messenger",
+  "tiktok",
+];
+
+export function isAgentCapableChannel(channel: string): boolean {
+  return (AGENT_CAPABLE_CHANNELS as readonly string[]).includes(channel);
+}
+
 /** Nombre visible del canal, para la interfaz y para los errores del operador. */
 export const CHANNEL_LABEL: Record<Channel, string> = {
   whatsapp: "WhatsApp",

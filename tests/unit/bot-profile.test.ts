@@ -55,6 +55,7 @@ function profileRow(overrides: Partial<AgentProfile> = {}): AgentProfile {
     fallbackLanguage: "es",
     reactWithEmoji: false,
     activeInNewConversations: true,
+    disabledChannels: [],
     businessIndustry: null,
     businessLocation: null,
     businessDescription: null,
