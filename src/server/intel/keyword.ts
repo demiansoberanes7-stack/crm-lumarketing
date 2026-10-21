@@ -20,7 +20,7 @@ import {
   type Classification,
   type Descriptive,
 } from "@/server/intel/stats";
-import { matchTerm, resolveTerm } from "@/server/intel/terms";
+import { matchTerm, rankTerms, resolveTerm } from "@/server/intel/terms";
 
 /**
  * Analizador de palabras clave estilo SEMrush, con fuentes 100% EXTERNAS:
@@ -212,6 +212,18 @@ export type KeywordOverview = {
   market: KeywordMarket | null;
   /** Motivo legible cuando Google Trends no aportó datos. */
   marketNote: string | null;
+  /**
+   * Nichos del catálogo ordenados por parecido a la consulta (incluye los que
+   * NO cruzan el umbral). Es lo que hace que el ranking, la comparativa y el
+   * mapa de nichos se lean como contexto de ESTA búsqueda en vez de desaparecer.
+   */
+  catalogMatches: Array<{
+    termId: string;
+    name: string;
+    score: number;
+    via: string;
+    exact: boolean;
+  }>;
   sources: string[];
   generatedAt: string;
 };
@@ -360,6 +372,18 @@ export async function analyzeKeyword(
   /** Relacionada → nicho monitoreado, con la MISMA regla estricta que la consulta. */
   const matchesFor = (kw: string) => matchTerm(catalogForMatch, kw);
 
+  /**
+   * Nichos ordenados por parecido a la consulta, con los que no cruzan el
+   * umbral incluidos. Se calcula sobre el catálogo ya leído: coste cero de red.
+   */
+  const catalogMatches = rankTerms(catalogForMatch, q).map((t) => ({
+    termId: t.id,
+    name: t.name,
+    score: t.score,
+    via: t.via,
+    exact: t.exact,
+  }));
+
   const matchedIds = new Set<string>();
   for (const kw of relatedNonQuestions) {
     const t = matchesFor(kw);
@@ -466,6 +490,7 @@ export async function analyzeKeyword(
     tracked,
     market,
     marketNote,
+    catalogMatches,
     sources,
     generatedAt: new Date().toISOString(),
   };

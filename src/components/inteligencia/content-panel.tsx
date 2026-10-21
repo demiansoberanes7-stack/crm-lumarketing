@@ -32,6 +32,9 @@ type ContentInsights = {
   dayEnd: string;
   totalRows: number;
   uniqueVideos: number;
+  /** Consulta que acotó la muestra (null = muestra completa). */
+  query: string | null;
+  matchedVideos: number;
   top: ContentVideo[];
   durationStats: Array<{ bucket: string; label: string; count: number; medianViews: number; avgEngagementPct: number | null }>;
   patternStats: Array<{ pattern: string; label: string; count: number; medianViews: number }>;
@@ -43,29 +46,49 @@ const WINDOWS = [7, 30, 90] as const;
 
 const views = (n: number) => new Intl.NumberFormat("es-MX").format(n);
 
-export function ContentPanel({ reloadKey }: { reloadKey: number }) {
+export function ContentPanel({
+  reloadKey,
+  query = null,
+}: {
+  reloadKey: number;
+  /**
+   * Palabra buscada arriba: el panel se acota a los videos que hablan de ella
+   * en vez de ocultarse. Con `q` vacío se muestra la muestra completa.
+   */
+  query?: string | null;
+}) {
   const [days, setDays] = useState<number>(30);
   const [data, setData] = useState<ContentInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const scope = query?.trim() ?? "";
+
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const res = await fetch(`/api/intel/content?days=${days}`, { cache: "no-store" }).catch(() => null);
+    const params = new URLSearchParams({ days: String(days) });
+    if (scope) params.set("q", scope);
+    const res = await fetch(`/api/intel/content?${params.toString()}`, { cache: "no-store" }).catch(() => null);
     if (res?.ok) {
       setData((await res.json().catch(() => null)) as ContentInsights | null);
     } else {
       setError("No se pudo leer la muestra de YouTube.");
     }
     setLoading(false);
-  }, [days]);
+  }, [days, scope]);
 
   useEffect(() => {
     void load();
   }, [load, reloadKey]);
 
   const empty = !!data && data.uniqueVideos === 0;
+  /**
+   * La muestra SÍ llegó, pero ningún video habla de la consulta. Decirlo así,
+   * no como «no hay contenido»: el feed popular de MX simplemente no trata ese
+   * tema, y esa es información útil.
+   */
+  const outOfScope = !!data && !empty && scope.length > 0 && data.matchedVideos === 0;
 
   return (
     <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Contenido que funciona">
@@ -75,8 +98,18 @@ export function ContentPanel({ reloadKey }: { reloadKey: number }) {
             <Clapperboard className="h-4 w-4 text-brand-text" /> Contenido que funciona
           </h2>
           <p className="mt-1 text-xs text-text-3">
-            Muestra de {data?.uniqueVideos ?? 0} videos populares de {data?.windowDays ?? days} días
-            que coinciden con los nichos monitoreados (YouTube, mostPopular MX).
+            {scope ? (
+              <>
+                {data ? `${views(data.matchedVideos)} de ${views(data.uniqueVideos)} videos` : "Videos"}
+                {" "}populares de {data?.windowDays ?? days} días que hablan de «{scope}» (YouTube,
+                mostPopular MX).
+              </>
+            ) : (
+              <>
+                Muestra de {data?.uniqueVideos ?? 0} videos populares de {data?.windowDays ?? days} días
+                que coinciden con los nichos monitoreados (YouTube, mostPopular MX).
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -111,6 +144,14 @@ export function ContentPanel({ reloadKey }: { reloadKey: number }) {
           Inteligencia y pulsa «Actualizar datos»: esa corrida lee el feed popular de MX y lo
           contrae contra los nichos monitoreados. Sin key no hay de dónde leer — este panel no se
           rellena con datos de otra fuente.
+        </p>
+      ) : outOfScope ? (
+        <p className="mt-3 rounded-md bg-subtle p-3 text-xs text-text-2">
+          Ninguno de los {views(data.uniqueVideos)} videos del feed popular de{" "}
+          {data.windowDays} días menciona «{scope}». La muestra está sesgada a lo que ya es
+          popular en México, así que esto dice más de la muestra que del interés: para ver
+          contenido del tema, monitorealo (arriba, «+ Monitorear») y vuelve a leer, o abre el
+          panel sin la palabra buscada.
         </p>
       ) : data ? (
         <div className="mt-4 grid gap-4 md:grid-cols-3">

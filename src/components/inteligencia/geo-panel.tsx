@@ -52,7 +52,24 @@ function shareLabel(s: GeoStateCell): string {
   return s.sharePct === null ? "" : ` · ${s.sharePct.toFixed(0)}%`;
 }
 
-export function GeoPanel({ terms }: { terms: TermOption[] }) {
+export function GeoPanel({
+  terms,
+  relatedTermId = null,
+  nearest = null,
+  queryLabel = null,
+}: {
+  terms: TermOption[];
+  /**
+   * Nicho del catálogo que ES la búsqueda activa: el mapa arranca en él en vez
+   * de ocultarse. Un vecino solo parecido no llega aquí — el DENUE responde por
+   * término ya monitoreado (32 consultas), y mover el mapa por una coincidencia
+   * vaga diría «esto es lo que buscaste» cuando no lo es.
+   */
+  relatedTermId?: string | null;
+  /** Vecino más próximo a la consulta, aunque no cruce el umbral: solo para etiquetarlo. */
+  nearest?: { termId: string; name: string; score: number } | null;
+  queryLabel?: string | null;
+}) {
   const [termId, setTermId] = useState<string>("");
   const [report, setReport] = useState<GeoReportView | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +80,11 @@ export function GeoPanel({ terms }: { terms: TermOption[] }) {
   useEffect(() => {
     if (!termId && terms.length > 0) setTermId(terms[0]!.id);
   }, [terms, termId]);
+
+  useEffect(() => {
+    if (!relatedTermId) return;
+    if (terms.some((t) => t.id === relatedTermId)) setTermId(relatedTermId);
+  }, [relatedTermId, terms]);
 
   const load = useCallback(async (id: string) => {
     if (!id) return;
@@ -160,6 +182,22 @@ export function GeoPanel({ terms }: { terms: TermOption[] }) {
           </Button>
         </div>
       </div>
+
+      {queryLabel !== null && relatedTermId !== null && termId === relatedTermId && (
+        <p className="mt-2 text-xs text-text-3">
+          El mapa es del nicho monitoreado que corresponde a «{queryLabel}». DENUE solo responde
+          por término ya en el catálogo: si tu búsqueda no está, pulsa «+ Monitorear» arriba y
+          después «Calcular mapa» (32 consultas, una por estado).
+        </p>
+      )}
+
+      {queryLabel !== null && relatedTermId === null && nearest !== null && termId === nearest.termId && (
+        <p className="mt-2 text-xs text-text-3">
+          El mapa es de «{nearest.name}», el nicho de tu catálogo más parecido a «{queryLabel}» (
+          {Math.round(nearest.score * 100)} %). No es tu búsqueda: regístrala con «+ Monitorear» y
+          después calcula su mapa (32 consultas, una por estado).
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="mt-3 rounded-md border border-danger-soft bg-danger-tint p-3 text-sm text-danger-text">

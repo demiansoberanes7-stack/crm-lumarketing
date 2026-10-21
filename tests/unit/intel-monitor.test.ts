@@ -4,6 +4,8 @@ import {
   findTermByKeyword,
   matchTerm,
   matchTokens,
+  mentionsPhrase,
+  rankTerms,
   termSimilarity,
 } from "@/server/intel/terms";
 
@@ -93,5 +95,75 @@ describe("findTermByKeyword (dedupe al monitorear)", () => {
     expect(findTermByKeyword(terms, "impresora 3d")).toBeNull();
     expect(findTermByKeyword(terms, "")).toBeNull();
     expect(findTermByKeyword(terms, "de la")).toBeNull();
+  });
+});
+
+/**
+ * `rankTerms` es lo que permite que el ranking, la comparativa y el mapa de
+ * nichos SIGAN en pantalla con una búsqueda activa: en vez de ocultarlos, cada
+ * nicho se etiqueta con cuánto se parece a la consulta. Por eso no exige el
+ * umbral de `matchTerm`.
+ */
+describe("rankTerms (relaciona el catálogo con la búsqueda)", () => {
+  it("ordena por parecido y marca cuál SÍ cruza el umbral", () => {
+    const ranked = rankTerms(
+      [
+        { id: "t_phone", name: "Smartphones", keywords: ["celular", "samsung galaxy"] },
+        { id: "t_lap", name: "Laptops", keywords: ["laptop", "portatil"] },
+      ],
+      "samsung galaxy laptop"
+    );
+    expect(ranked.map((t) => t.id)).toEqual(["t_phone", "t_lap"]);
+    expect(ranked[0]).toMatchObject({ exact: true, via: "samsung galaxy" });
+    expect(ranked[0]!.score).toBeGreaterThanOrEqual(TERM_MATCH_MIN);
+    // El vecino por debajo del umbral se lista, pero no se vende como la búsqueda.
+    expect(ranked[1]).toMatchObject({ score: 0.33, exact: false });
+  });
+
+  it("un 0.4 de similitud aparece como vecino, nunca como nicho exacto", () => {
+    const ranked = rankTerms(catalog, "redes sociales");
+    const red = ranked.find((t) => t.id === "t_red");
+    expect(red).toBeDefined();
+    expect(red!.score).toBeLessThan(TERM_MATCH_MIN);
+    expect(red!.exact).toBe(false);
+  });
+
+  it("puntúa por nombre y por cada keyword, conservando la mejor vía", () => {
+    const ranked = rankTerms(terms, "videovigilancia");
+    expect(ranked[0]).toMatchObject({ id: "itr_1", name: "Cámaras de seguridad", via: "videovigilancia", exact: true });
+  });
+
+  it("sin tokens en la consulta no devuelve nada que etiquetar", () => {
+    expect(rankTerms(catalog, "")).toEqual([]);
+    expect(rankTerms(catalog, "de la")).toEqual([]);
+  });
+
+  it("limita y desempata por nombre para que la UI sea estable", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      id: `x${i}`,
+      name: `Nicho ${String(i).padStart(2, "0")}`,
+      keywords: ["starlink"],
+    }));
+    const ranked = rankTerms(many, "starlink", 4);
+    expect(ranked).toHaveLength(4);
+    expect(ranked.map((t) => t.name)).toEqual(["Nicho 00", "Nicho 01", "Nicho 02", "Nicho 03"]);
+  });
+});
+
+describe("mentionsPhrase (acota YouTube y el catálogo a la consulta)", () => {
+  it("exige todos los tokens significativos, con plural y acentos tolerantes", () => {
+    expect(mentionsPhrase("Las 5 CÁMARAS DE SEGURIDAD más baratas 2026", "camara de seguridad")).toBe(true);
+    expect(mentionsPhrase("cámaras de seguridad para exteriores", "camara seguridad")).toBe(true);
+  });
+
+  it("no casa por subcadena suelta", () => {
+    expect(mentionsPhrase("seguros de vida", "camara de seguridad")).toBe(false);
+    expect(mentionsPhrase("review del iphone 15", "celular samsung")).toBe(false);
+  });
+
+  it("frase o texto vacío no mencionan nada", () => {
+    expect(mentionsPhrase("cualquier cosa", "")).toBe(false);
+    expect(mentionsPhrase("", "camara")).toBe(false);
+    expect(mentionsPhrase("de la", "de la")).toBe(false);
   });
 });

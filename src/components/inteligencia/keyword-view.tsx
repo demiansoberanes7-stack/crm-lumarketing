@@ -54,6 +54,18 @@ export type KeywordOverviewView = {
     partial: boolean;
   } | null;
   marketNote: string | null;
+  /**
+   * Nichos del catálogo ordenados por parecido a la consulta (los que no cruzan
+   * el umbral también vienen, con su porcentaje). Alimenta el ranking, la
+   * comparativa y el mapa para que se lean como contexto de ESTA búsqueda.
+   */
+  catalogMatches: Array<{
+    termId: string;
+    name: string;
+    score: number;
+    via: string;
+    exact: boolean;
+  }>;
   sources: string[];
   generatedAt: string;
 };

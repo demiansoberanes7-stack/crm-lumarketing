@@ -143,3 +143,50 @@ export function keywordInterestTrend(
     tone: direction === "up" ? "success" : direction === "down" ? "danger" : "neutral",
   };
 }
+
+const QUERY_STOPWORDS = new Set([
+  "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas",
+  "y", "o", "a", "al", "en", "con", "por", "para", "que", "su", "se",
+  "lo", "es",
+]);
+
+/** Minúsculas y sin acentos: los títulos del feed de México vienen acentuados. */
+function foldText(value: string): string {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function foldWords(value: string): string[] {
+  return foldText(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 2 && !QUERY_STOPWORDS.has(token));
+}
+
+/** Misma tolerancia de plural que el servidor: «camaras» ≡ «camara». */
+function sameWord(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
+  if (!long.startsWith(short)) return false;
+  const extra = long.length - short.length;
+  if (extra === 1) return long.endsWith("s");
+  if (extra === 2) return long.endsWith("es");
+  return false;
+}
+
+/**
+ * ¿El título se relaciona con la consulta? Basta con que aparezca ALGUNA
+ * palabra significativa (sin acentos, sin vacías, plural tolerante): en una
+ * tabla de tendencias del país exigir la frase completa —la regla con la que el
+ * servidor acota YouTube— dejaba la fuente vacía delante de tendencias que sí
+ * hablan del tema. Búsqueda sin palabras = no filtrar nada. Se acepta también
+ * la subcadena plegada, para que teclear «camar» a medias siga sirviendo.
+ *
+ * Sin plegar acentos el filtro literal fallaba siempre: los títulos del feed de
+ * México vienen con acentos y «camaras de seguridad» no los iguala.
+ */
+export function mentionsQuery(title: string, phrase: string): boolean {
+  const needle = foldWords(phrase);
+  if (needle.length === 0) return true;
+  const haystack = foldWords(title);
+  if (needle.some((word) => haystack.some((token) => sameWord(word, token)))) return true;
+  return foldText(title).includes(foldText(phrase).trim());
+}

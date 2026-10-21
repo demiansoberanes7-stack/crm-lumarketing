@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { normalizeText } from "@/server/intel/stats";
 import { addDays, utcDay } from "@/server/intel/service";
+import { mentionsPhrase } from "@/server/intel/terms";
 
 /**
  * Contenidos orgánicos (Grupo D) — análisis de la muestra de videos
@@ -127,6 +128,14 @@ export type ContentInsights = {
   dayEnd: string;
   totalRows: number;
   uniqueVideos: number;
+  /**
+   * Consulta que acotó la muestra, o null (muestra completa). El contenido del
+   * feed popular NO se oculta bajo una búsqueda: se filtra por ella y se
+   * declaran cuántos videos casaron, para que «0 videos» no se lea como
+   * «no hay contenido» cuando en realidad la muestra popular no habla de eso.
+   */
+  query: string | null;
+  matchedVideos: number;
   top: ContentVideo[];
   durationStats: BucketStat[];
   patternStats: PatternStat[];
@@ -136,11 +145,13 @@ export type ContentInsights = {
 
 export async function getContentInsights(
   organizationId: string,
-  windowDays = 30
+  windowDays = 30,
+  query?: string | null
 ): Promise<ContentInsights> {
   const db = getDb();
   const dayEnd = utcDay();
   const dayStart = addDays(dayEnd, -(windowDays - 1));
+  const scope = (query ?? "").trim().slice(0, 200) || null;
 
   const rows = await db
     .select()
@@ -176,14 +187,20 @@ export async function getContentInsights(
     };
   };
 
-  const top = unique
+  // Acotado a la consulta: los KPIs se calculan sobre los videos que hablan de
+  // lo buscado. Sin consulta, la muestra completa (comportamiento de siempre).
+  const matched = scope
+    ? unique.filter((row) => mentionsPhrase(row.title ?? "", scope))
+    : unique;
+
+  const top = matched
     .map(toContentVideo)
     .sort((a, b) => b.views - a.views)
     .slice(0, 10);
 
   const durationStats: BucketStat[] = (["short", "medio", "largo", "sin_dato"] as const)
     .map((bucket) => {
-      const group = unique.filter((r) => durationBucket(r.durationSeconds) === bucket);
+      const group = matched.filter((r) => durationBucket(r.durationSeconds) === bucket);
       const engagements = group
         .map((r) => engagementPct(Number(r.views), Number(r.likes)))
         .filter((v): v is number => v !== null);
@@ -204,7 +221,7 @@ export async function getContentInsights(
     ["listicle", "pregunta", "tutorial", "comparativa", "resena", "otro"] as const
   )
     .map((pattern) => {
-      const group = unique.filter((r) => classifyTitlePattern(r.title ?? "") === pattern);
+      const group = matched.filter((r) => classifyTitlePattern(r.title ?? "") === pattern);
       return {
         pattern,
         label: PATTERN_LABEL[pattern],
@@ -215,9 +232,13 @@ export async function getContentInsights(
     .filter((s) => s.count > 0)
     .sort((a, b) => b.medianViews - a.medianViews);
 
-  // Por nicho: el video se cuenta en cada término con el que coincidió.
+  // Por nicho: el video se cuenta en cada término con el que coincidió. Con
+  // consulta, solo los videos que hablan de esa consulta.
+  const scopeRows = scope
+    ? rows.filter((row) => mentionsPhrase(row.title ?? "", scope))
+    : rows;
   const byTerm = new Map<string, { name: string; rows: typeof rows }>();
-  for (const row of rows) {
+  for (const row of scopeRows) {
     const entry = byTerm.get(row.termId) ?? { name: "", rows: [] as typeof rows };
     entry.rows.push(row);
     byTerm.set(row.termId, entry);
@@ -261,6 +282,8 @@ export async function getContentInsights(
     dayEnd,
     totalRows: rows.length,
     uniqueVideos: unique.length,
+    query: scope,
+    matchedVideos: matched.length,
     top,
     durationStats,
     patternStats,

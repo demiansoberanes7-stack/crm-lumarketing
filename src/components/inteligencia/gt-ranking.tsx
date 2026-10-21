@@ -129,16 +129,27 @@ export function buildRanking(trends: TrendSeries[]): RankedNiche[] {
  * Gráfica de líneas con TODOS los nichos normalizados a 0–100 (cada uno
  * contra su propio máximo de la ventana). Sirve para ver de un vistazo
  * cuáles están subiendo y cuáles bajando en las últimas 2 semanas.
+ *
+ * `focus` es la serie EN VIVO de la palabra buscada: se dibuja la primera, en
+ * color de marca y más gruesa, para que la comparativa se lea CONTRA la consulta
+ * en vez de desaparecer cuando hay una búsqueda activa.
  */
-export function GtCompareChart({ trends }: { trends: TrendSeries[] }) {
+export function GtCompareChart({
+  trends,
+  focus = null,
+}: {
+  trends: TrendSeries[];
+  focus?: TrendSeries | null;
+}) {
   const { data, series } = useMemo(() => {
+    const all = focus ? [focus, ...trends] : trends;
     // Unir todos los días únicos en orden.
     const allDays = new Set<string>();
-    for (const t of trends) for (const s of t.series) allDays.add(s.day);
+    for (const t of all) for (const s of t.series) allDays.add(s.day);
     const days = [...allDays].sort();
 
     // Normalizar cada serie a 0–100.
-    const normalized = trends.map((t) => {
+    const normalized = all.map((t) => {
       const values = t.series.map((s) => s.value);
       const max = values.length > 0 ? Math.max(...values, 1) : 1;
       const byDay = new Map<string, number>();
@@ -153,14 +164,14 @@ export function GtCompareChart({ trends }: { trends: TrendSeries[] }) {
       return row;
     });
 
-    const seriesCfg = normalized.slice(0, 6).map((n, i) => ({
+    const seriesCfg = normalized.slice(0, 7).map((n, i) => ({
       termId: n.termId,
       name: n.name,
-      color: SERIES_COLORS[i % SERIES_COLORS.length]!,
+      color: focus && i === 0 ? "var(--brand)" : SERIES_COLORS[i % SERIES_COLORS.length]!,
     }));
 
     return { data: rows, series: seriesCfg };
-  }, [trends]);
+  }, [trends, focus]);
 
   if (series.length === 0) return null;
 
@@ -206,13 +217,13 @@ export function GtCompareChart({ trends }: { trends: TrendSeries[] }) {
               );
             }}
           />
-          {series.map((s) => (
+          {series.map((s, i) => (
             <Line
               key={s.termId}
               dataKey={s.termId}
               type="monotone"
               stroke={s.color}
-              strokeWidth={1.5}
+              strokeWidth={focus && i === 0 ? 2.5 : 1.5}
               dot={false}
               activeDot={{ r: 3, strokeWidth: 0 }}
               connectNulls
@@ -239,10 +250,22 @@ const ARROW = { up: "↑", down: "↓", flat: "→" } as const;
  * Tabla de ranking: cada nicho con su índice, tendencia, clasificación y
  * recomendación accionable. Es la guía principal para elegir de qué hacer
  * contenido o pautar esta semana.
+ *
+ * Con una búsqueda activa, `related` (termId → similitud con la consulta)
+ * etiqueta cada nicho: el ranking NO se oculta, se lee en relación a lo buscado.
  */
-export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
+export function GtRanking({
+  ranking,
+  related = null,
+  queryLabel = null,
+}: {
+  ranking: RankedNiche[];
+  related?: Array<{ termId: string; score: number; exact: boolean }> | null;
+  queryLabel?: string | null;
+}) {
   if (ranking.length === 0) return null;
   const top = ranking.filter((r) => r.classification === "A" || r.classification === "B");
+  const scoreById = new Map((related ?? []).map((m) => [m.termId, m]));
 
   return (
     <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Ranking de nichos">
@@ -251,6 +274,9 @@ export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
         Según tus <strong>nichos monitoreados</strong>: z-score de los últimos 7 días
         contra los 21 previos · A = alza clara, B = estable, C = baja, D = sin datos
         suficientes.
+        {queryLabel
+          ? ` Etiquetados por cuánto se parecen a «${queryLabel}».`
+          : ""}
       </p>
 
       {top.length > 0 && (
@@ -279,10 +305,25 @@ export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
           <tbody>
             {ranking.map((r, i) => {
               const badge = CLS_BADGE[r.classification];
+              const hit = scoreById.get(r.termId);
               return (
                 <tr key={r.termId} className="border-b border-border/50 last:border-0">
                   <td className="py-2 pr-3 tabular-nums text-text-3">{i + 1}</td>
-                  <td className="py-2 pr-3 font-medium">{r.name}</td>
+                  <td className="py-2 pr-3 font-medium">
+                    {r.name}
+                    {hit && (
+                      <span
+                        className="ml-1.5 rounded-full border border-brand-soft bg-brand-tint px-1.5 py-0.5 text-[10px] font-medium text-brand-text"
+                        title={
+                          hit.exact
+                            ? `Tu búsqueda cae en este nicho (${Math.round(hit.score * 100)}% de similitud).`
+                            : `Nicho más vecino a tu búsqueda: ${Math.round(hit.score * 100)}% de similitud. No es lo mismo; sirve de contexto.`
+                        }
+                      >
+                        {hit.exact ? "es tu búsqueda" : `${Math.round(hit.score * 100)}% parecido`}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3 tabular-nums">{r.index}</td>
                   <td className="py-2 pr-3">
                     <span

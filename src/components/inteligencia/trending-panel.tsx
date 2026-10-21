@@ -5,6 +5,7 @@ import { Download, Flame, Plus, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { downloadCsv, formatVolume, relativeStart } from "@/components/inteligencia/intel-export";
+import { mentionsQuery } from "@/lib/intel-content";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
 
 /**
@@ -44,6 +45,11 @@ type Props = {
   /** Cambia cuando la ingesta global del encabezado termina, para releer. */
   reloadKey: number;
   onMonitored: () => void;
+  /**
+   * Palabra buscada arriba. Cuando viene, la tabla arranca filtrada por ella:
+   * la fuente del país sigue visible, pero leída en relación a la consulta.
+   */
+  relatedTo?: string | null;
 };
 
 const WINDOWS = [
@@ -68,7 +74,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 const selectCls = "rounded border bg-card p-1.5 text-xs";
 
-export function TrendingPanel({ reloadKey, onMonitored }: Props) {
+export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Props) {
   const [view, setView] = useState<TrendingView | null>(null);
   const [hours, setHours] = useState<number>(24);
   const [category, setCategory] = useState("");
@@ -106,12 +112,21 @@ export function TrendingPanel({ reloadKey, onMonitored }: Props) {
     void load();
   }, [load, reloadKey]);
 
+  // La búsqueda de arriba manda: la tabla arranca acotada a esa palabra, y quien
+  // quiera ver el país completo solo vacía el campo.
+  useEffect(() => {
+    setQuery(relatedTo?.trim() ?? "");
+    setPage(0);
+  }, [relatedTo]);
+
   // La búsqueda de texto es client-side: las filas ya están filtradas por
   // ventana y categoría en el servidor, y el título no debe gastar peticiones.
+  // `mentionsQuery` ignora acentos y plurales porque los títulos del feed de
+  // México vienen acentuados: con un `includes` literal, buscar «cámaras de
+  // seguridad» dejaba la tabla vacía delante de tendencias que sí lo son.
   const rows = useMemo(() => {
     const all = view?.rows ?? [];
-    const needle = query.trim().toLowerCase();
-    return needle ? all.filter((r) => r.title.toLowerCase().includes(needle)) : all;
+    return query.trim() ? all.filter((r) => mentionsQuery(r.title, query)) : all;
   }, [view, query]);
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -193,6 +208,9 @@ export function TrendingPanel({ reloadKey, onMonitored }: Props) {
             {windowLabel}
             {view?.lastIngestAt
               ? ` · leído ${new Date(view.lastIngestAt).toLocaleString("es-MX")}`
+              : ""}
+            {query.trim()
+              ? ` · solo las que mencionan alguna palabra de «${query.trim()}»`
               : ""}
           </p>
         </div>
@@ -409,7 +427,7 @@ export function TrendingPanel({ reloadKey, onMonitored }: Props) {
               <tr>
                 <td colSpan={6} className="py-4 text-center text-text-3">
                   {query.trim()
-                    ? `Ninguna tendencia ingerida en esta ventana contiene «${query.trim()}». «Actualizar» lee el feed completo, y el buscador de arriba analiza esa palabra clave en vivo.`
+                    ? `Ninguna tendencia ingerida en esta ventana menciona alguna palabra de «${query.trim()}» (sin acentos ni plurales). «Actualizar» lee el feed completo, vaciar el campo muestra el país entero, y el buscador de arriba analiza esa palabra clave en vivo.`
                     : "Sin tendencias en la ventana pedida. Pulsa «Actualizar» para leer el feed de Google Trends."}
                 </td>
               </tr>

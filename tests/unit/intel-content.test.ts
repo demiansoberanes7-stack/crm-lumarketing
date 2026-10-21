@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildKeywordIdeas,
   keywordInterestTrend,
+  mentionsQuery,
   type MarketIdea,
 } from "@/lib/intel-content";
-import { KeywordContentRanking } from "@/components/inteligencia/gt-ranking";
-import { showMonitoredExplorer } from "@/components/inteligencia/intel-client";
+import { KeywordContentRanking, GtRanking, buildRanking } from "@/components/inteligencia/gt-ranking";
+import { intelFocusSeries, intelNicheAnchors } from "@/components/inteligencia/intel-client";
 import type { KeywordOverviewView } from "@/components/inteligencia/keyword-view";
 
 function idea(label: string, overrides: Partial<MarketIdea> = {}): MarketIdea {
@@ -27,6 +28,45 @@ function series(values: number[]): Array<{ day: string; value: number }> {
     value,
   }));
 }
+
+/** Solo con lo que leen los helpers puros; el resto de la vista no se toca. */
+function overview(query: string, values: number[] | null): KeywordOverviewView {
+  return {
+    query,
+    market: values === null ? null : ({ series: series(values) } as KeywordOverviewView["market"]),
+  } as KeywordOverviewView;
+}
+
+describe("filtro de tendencias por la palabra buscada", () => {
+  it("ignora acentos y plurales: la búsqueda del analizador sí casa", () => {
+    expect(mentionsQuery("Nueva CÁMARA de vigilancia captó el robo", "camaras de seguridad")).toBe(true);
+    expect(mentionsQuery("¿Qué comprar en el Buen Fin?", "comprar")).toBe(true);
+  });
+
+  it("sin consulta no filtra (la tabla se ve completa)", () => {
+    expect(mentionsQuery("cualquier titulo", "")).toBe(true);
+    expect(mentionsQuery("cualquier titulo", "   ")).toBe(true);
+  });
+
+  it("no confunde «vida» con «seguridad»", () => {
+    expect(mentionsQuery("Rueda de prensa sobre el seguro de vida", "camara de seguridad")).toBe(false);
+  });
+
+  it("deja teclear a medias sin romper el filtro", () => {
+    expect(mentionsQuery("Lanzan nuevo celular plegable", "celu")).toBe(true);
+  });
+
+  it("basta UNA palabra de la consulta (a diferencia de YouTube, que exige todas)", () => {
+    // En la tabla del país pedir la frase completa vaciaba la fuente.
+    expect(mentionsQuery("Aumentan los robos con violencia en CDMX", "camaras de seguridad")).toBe(false);
+    expect(mentionsQuery("Estrenan cámara oculta en un restaurante", "camaras de seguridad")).toBe(true);
+  });
+
+  it("las vacías no cuentan como palabra buscada", () => {
+    expect(mentionsQuery("La casa de la comida", "de la")).toBe(true);
+    expect(mentionsQuery("Clima extremo en el país", "de la")).toBe(true);
+  });
+});
 
 describe("ideas de contenido de una búsqueda", () => {
   it("solo usa las consultas y temas de esa búsqueda, nunca los nichos monitoreados", () => {
@@ -182,14 +222,97 @@ describe("panel de contenido de la búsqueda", () => {
   });
 });
 
-describe("explorador del catálogo bajo una búsqueda", () => {
-  it("no se muestra mientras se analiza ni cuando hay resultado en pantalla", () => {
-    expect(showMonitoredExplorer(null, true)).toBe(false);
-    expect(showMonitoredExplorer({} as KeywordOverviewView, false)).toBe(false);
-    expect(showMonitoredExplorer({} as KeywordOverviewView, true)).toBe(false);
+describe("las fuentes del catálogo se relacionan con la búsqueda, no se ocultan", () => {
+  it("sin búsqueda no hay línea de referencia", () => {
+    expect(intelFocusSeries(null)).toBeNull();
   });
 
-  it("solo aparece cuando la persona no ha buscado nada", () => {
-    expect(showMonitoredExplorer(null, false)).toBe(true);
+  it("usa la serie EN VIVO de la consulta como línea de referencia", () => {
+    const focus = intelFocusSeries(overview("camara de seguridad", [12, 40, 96]));
+    expect(focus).toMatchObject({
+      termId: "query:camara de seguridad",
+      name: "camara de seguridad · tu búsqueda",
+      z: null,
+      lastValue: 96,
+    });
+    expect(focus?.series).toHaveLength(3);
+  });
+
+  it("sin mercado ni con un solo punto no dibuja una línea falsa", () => {
+    expect(intelFocusSeries(overview("wifi", null))).toBeNull();
+    expect(intelFocusSeries(overview("wifi", [50]))).toBeNull();
+  });
+
+  it("el ranking etiqueta cada nicho según su parecido con la consulta", () => {
+    const ranking = buildRanking([
+      { termId: "t_cam", name: "Cámaras de seguridad", z: 2, lastValue: 90, series: series([10, 20, 60, 90]) },
+      { termId: "t_phone", name: "Smartphones", z: null, lastValue: 30, series: series([40, 35, 32, 30]) },
+    ]);
+    const html = renderToStaticMarkup(
+      createElement(GtRanking, {
+        ranking,
+        related: [
+          { termId: "t_cam", score: 0.86, exact: true },
+          { termId: "t_phone", score: 0.33, exact: false },
+        ],
+        queryLabel: "camara de seguridad",
+      })
+    );
+    expect(html).toContain("¿De qué hacer contenido esta semana?");
+    expect(html).toContain("Etiquetados por cuánto se parecen a «camara de seguridad»");
+    expect(html).toContain("es tu búsqueda");
+    expect(html).toContain("33% parecido");
+    expect(html).toContain("No es lo mismo; sirve de contexto.");
+  });
+
+  it("sin búsqueda el ranking se comporta igual que antes", () => {
+    const html = renderToStaticMarkup(
+      createElement(GtRanking, {
+        ranking: buildRanking([
+          { termId: "t_cam", name: "Cámaras de seguridad", z: 2, lastValue: 90, series: series([10, 20, 60, 90]) },
+        ]),
+      })
+    );
+    expect(html).not.toContain("parecido");
+    expect(html).not.toContain("es tu búsqueda");
+  });
+
+  /** Búsqueda con ranking de nichos ya calculado por la API. */
+  function withMatches(
+    query: string,
+    matches: Array<{ termId: string; name: string; score: number; exact: boolean }>
+  ): KeywordOverviewView {
+    return {
+      query,
+      catalogMatches: matches.map((m) => ({ ...m, via: m.name })),
+    } as unknown as KeywordOverviewView;
+  }
+
+  it("solo un nicho que cruza el umbral mueve los paneles y el mapa", () => {
+    const anchors = intelNicheAnchors(
+      withMatches("camara de seguridad", [
+        { termId: "t_cam", name: "Cámaras de seguridad", score: 0.86, exact: true },
+        { termId: "t_phone", name: "Smartphones", score: 0.33, exact: false },
+      ])
+    );
+    expect(anchors.focus?.termId).toBe("t_cam");
+    expect(anchors.nearest?.termId).toBe("t_cam");
+  });
+
+  it("un vecino lejano no fuerza el nicho del mapa ni de los paneles", () => {
+    const anchors = intelNicheAnchors(
+      withMatches("cctv para exterior", [
+        { termId: "t_phone", name: "Smartphones", score: 0.28, exact: false },
+      ])
+    );
+    // Sin ancla, `activeTermId` queda donde el dueño lo dejó; el vecino solo se
+    // nombra en pantalla con su porcentaje.
+    expect(anchors.focus).toBeNull();
+    expect(anchors.nearest).toMatchObject({ termId: "t_phone", score: 0.28 });
+  });
+
+  it("sin catálogo coincidido no hay anclas que inventar", () => {
+    expect(intelNicheAnchors(null)).toEqual({ focus: null, nearest: null });
+    expect(intelNicheAnchors(withMatches("wifi", []))).toEqual({ focus: null, nearest: null });
   });
 });

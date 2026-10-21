@@ -23,6 +23,7 @@ import {
   GtRanking,
   KeywordContentRanking,
   buildRanking,
+  type TrendSeries,
 } from "@/components/inteligencia/gt-ranking";
 import { TrendingPanel } from "@/components/inteligencia/trending-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
@@ -73,16 +74,53 @@ function ingestSummary(result: unknown): string {
   return `Actualizado: ${partes.join(" · ")}.`;
 }
 
+export type IntelNicheAnchor = { termId: string; name: string; score: number };
+
 /**
- * El explorador de nichos monitoreados es del CATÁLOGO, no de la búsqueda.
- * Bajo una búsqueda activa se oculta entero: si sus paneles quedaran visibles,
- * el mapa/serie de otro nicho parecería el resultado de la palabra buscada.
+ * Anclas de la búsqueda sobre el catálogo propio:
+ * - `focus`: el nicho que CRUZA el umbral de similitud, o sea que es la consulta.
+ *   Es el único que puede mover los paneles GT y el mapa DENUE.
+ * - `nearest`: el primero del ranking aunque no cruce el umbral, para que la
+ *   pantalla lo nombre con su porcentaje en vez de hacerlo pasar por la búsqueda.
+ *
+ * Existe porque antes cualquiera de los dos se tomaba de `catalogMatches[0]`:
+ * un vecino al 40 % cambiaba a sus espaldas el nicho que el dueño había elegido.
  */
-export function showMonitoredExplorer(
-  overview: KeywordOverviewView | null,
-  searching: boolean
-): boolean {
-  return overview === null && !searching;
+export function intelNicheAnchors(
+  overview: KeywordOverviewView | null
+): { focus: IntelNicheAnchor | null; nearest: IntelNicheAnchor | null } {
+  const matches = overview?.catalogMatches ?? [];
+  const pick = (m: (typeof matches)[number] | undefined): IntelNicheAnchor | null =>
+    m ? { termId: m.termId, name: m.name, score: m.score } : null;
+  return { focus: pick(matches.find((m) => m.exact)), nearest: pick(matches[0]) };
+}
+
+/**
+ * Fuentes del catálogo (nichos, ranking, comparativa, YouTube, mapa) y del país
+ * (tendencias actuales) SIEMPRE disponibles. Con una búsqueda activa no se
+ * ocultan —como hacía esta pantalla hasta ahora—: se atan a la consulta, cada
+ * una con su etiqueta de cómo se relaciona:
+ * - Tendencias actuales: la tabla arranca filtrada por la palabra buscada.
+ * - Ranking y nichos: badga cada nicho por su similitud con la consulta.
+ * - Comparativa: la serie EN VIVO de la consulta es la línea de referencia.
+ * - Contenido: la muestra de YouTube se acota a los videos que la mencionan.
+ * - Mapa DENUE: abre en el nicho que coincide con la consulta (es lo único que
+ *   puede dar INEGI por término); si solo hay un vecino, se queda donde estaba
+ *   y la pantalla lo dice con su porcentaje.
+ */
+export function intelFocusSeries(
+  overview: KeywordOverviewView | null
+): TrendSeries | null {
+  const series = overview?.market?.series ?? [];
+  if (!overview || series.length < 2) return null;
+  return {
+    // ID sintético: no choca con los `termId` reales del catálogo.
+    termId: `query:${overview.query}`,
+    name: `${overview.query} · tu búsqueda`,
+    z: null,
+    lastValue: series[series.length - 1]!.value,
+    series,
+  };
 }
 
 /**
@@ -131,16 +169,30 @@ export function IntelClient() {
   }, []);
 
   useEffect(() => {
-    // Nada se carga solo: el explorador de nichos solo consulta cuando la
-    // persona lo abre. La vista principal es la búsqueda que ella escribe.
-    if (explore) void loadTrends();
-  }, [explore, loadTrends]);
+    // Sin búsqueda y con el explorador cerrado, nada se carga solo. En cuanto
+    // hay una consulta (o se abre el explorador), las fuentes del catálogo se
+    // leen: son el contexto con el que se relaciona la búsqueda.
+    if (explore || overview) void loadTrends();
+  }, [explore, overview, loadTrends]);
 
   useEffect(() => {
     if (!activeTermId && trends?.trends.length) {
       setActiveTermId(trends.trends[0]!.termId);
     }
   }, [trends, activeTermId]);
+
+  /**
+   * La búsqueda manda: los paneles de nicho (subregiones, temas, detalle) y el
+   * mapa abren en el nicho que ES la consulta, no en el primero del ranking.
+   */
+  const anchors = useMemo(() => intelNicheAnchors(overview), [overview]);
+
+  useEffect(() => {
+    if (!anchors.focus) return;
+    setActiveTermId(anchors.focus.termId);
+  }, [anchors]);
+
+  const focusSeries = useMemo(() => intelFocusSeries(overview), [overview]);
 
   const loadGt = useCallback(async (termId: string) => {
     if (!termId) return;
@@ -209,6 +261,10 @@ export function IntelClient() {
     [trends]
   );
 
+  /** Con búsqueda activa las fuentes del catálogo van abiertas: son su contexto. */
+  const panelsOpen = explore || overview !== null;
+  const relatedTermId = anchors.focus?.termId ?? null;
+
   function toggleSelect(termId: string) {
     setCompareItems(null);
     setSelected((prev) => {
@@ -270,9 +326,6 @@ export function IntelClient() {
     setError("");
     setOverview(null);
     setShowSuggest(false);
-    // Los paneles del explorador son de los nichos monitoreados: si quedaran
-    // abiertos bajo la búsqueda, parecerían datos de la palabra buscada.
-    setExplore(false);
     const res = await fetch(`/api/intel/keyword?q=${encodeURIComponent(term)}`, {
       cache: "no-store",
     }).catch(() => null);
@@ -489,26 +542,39 @@ export function IntelClient() {
         </section>
       )}
 
-      {/* Explorador opcional: no se consulta ni se dibuja hasta abrirlo, y
-          desaparece entero mientras hay una búsqueda activa. */}
-      {showMonitoredExplorer(overview, searching) && (
-      <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Explorador de nichos monitoreados">
+      {/* Fuentes del catálogo y del país. Con una búsqueda activa NO se ocultan:
+          se abren y cada panel declara cómo se relaciona con lo buscado. Sin
+          búsqueda, se consultan solo al abrir el explorador. */}
+      {panelsOpen && (
+      <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Fuentes del catálogo y del país">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="font-semibold">Explorar más</h2>
+            <h2 className="font-semibold">{overview ? "Contexto de tu búsqueda" : "Explorar más"}</h2>
             <p className="mt-1 max-w-xl text-xs text-text-3">
-              Tendencias actuales del país, nichos que ya monitoreas, comparativas, YouTube,
-              audiencia y competencia local. Estas consultas solo se ejecutan si abres esta
-              sección.
+              {overview ? (
+                <>
+                  Tendencias del país, ranking y comparativa de nichos, contenido de YouTube,
+                  audiencia y competencia local, leídos en relación a{" "}
+                  <strong>«{overview.query}»</strong>. Cada panel dice con qué fuente se armó y,
+                  cuando el dato es de un nicho parecido y no de tu consulta, está etiquetado.
+                </>
+              ) : (
+                <>
+                  Tendencias actuales del país, nichos que ya monitoreas, comparativas, YouTube,
+                  audiencia y competencia local. Estas consultas solo se ejecutan si abres esta
+                  sección.
+                </>
+              )}
             </p>
           </div>
-          <Button variant="outline" onClick={() => setExplore((v) => !v)}>
-            {explore ? "Ocultar explorador" : "Abrir explorador"}
-          </Button>
+          {!overview && (
+            <Button variant="outline" onClick={() => setExplore((v) => !v)}>
+              {explore ? "Ocultar explorador" : "Abrir explorador"}
+            </Button>
+          )}
         </div>
 
-        {explore && (
-          <div className="mt-4 space-y-5">
+        <div className="mt-4 space-y-5">
             <div className="flex flex-wrap items-center justify-end gap-3">
               {trends?.lastIngestAt && (
                 <span className="flex items-center gap-1 text-xs text-text-3">
@@ -522,15 +588,25 @@ export function IntelClient() {
               </Button>
             </div>
 
-            {/* Qué se busca ahora mismo en el país (Google Trends sin keyword propia). */}
-            <TrendingPanel reloadKey={reloadKey} onMonitored={() => void loadTrends()} />
+            {/* Qué se busca ahora mismo en el país. Con búsqueda activa la tabla
+                arranca filtrada por esa palabra: la fuente sigue ahí, relacionada. */}
+            <TrendingPanel
+              reloadKey={reloadKey}
+              onMonitored={() => void loadTrends()}
+              relatedTo={overview?.query ?? null}
+            />
 
-      {/* Ranking accionable de los nichos monitoreados. */}
+      {/* Ranking accionable de los nichos monitoreados, etiquetado por su
+          parecido con la búsqueda activa. */}
       {trends && trends.trends.length > 0 && (
-        <GtRanking ranking={buildRanking(trends.trends)} />
+        <GtRanking
+          ranking={buildRanking(trends.trends)}
+          related={overview?.catalogMatches ?? null}
+          queryLabel={overview?.query ?? null}
+        />
       )}
 
-      {/* Gráfica comparativa multi-nicho (todas las líneas normalizadas) */}
+      {/* Gráfica comparativa multi-nicho; la línea de marca es la búsqueda */}
       {trends && trends.trends.length > 0 && (
         <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
           <div className="flex items-center justify-between">
@@ -540,17 +616,26 @@ export function IntelClient() {
             </span>
           </div>
           <p className="mt-1 text-xs text-text-3">
-            Cada nicho normalizado a su propio máximo (0–100). Fuente: Google Trends (MX).
+            Cada serie normalizada a su propio máximo (0–100). Fuente: Google Trends (MX).{" "}
+            {focusSeries
+              ? "La línea gruesa es tu búsqueda en vivo; las demás son tus nichos monitoreados, para comparar contra ella."
+              : "Son nichos de tu catálogo: al buscar arriba, la línea de tu búsqueda se dibuja aquí."}
           </p>
           <div className="mt-3">
-            <GtCompareChart trends={trends.trends} />
+            <GtCompareChart trends={trends.trends} focus={focusSeries} />
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
+            {focusSeries && (
+              <span className="flex items-center gap-1 text-[11px] font-medium text-brand-text">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--brand)" }} />
+                {overview?.query}
+              </span>
+            )}
             {trends.trends.slice(0, 6).map((t, i) => (
               <span key={t.termId} className="flex items-center gap-1 text-[11px] text-text-2">
                 <span
                   className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"][i % 6] }}
+                  style={{ background: ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"][(focusSeries ? i + 1 : i) % 6] }}
                 />
                 {t.name}
               </span>
@@ -562,22 +647,35 @@ export function IntelClient() {
       {/* Selector de nicho para los paneles GT */}
       {trends && trends.trends.length > 0 && gtReport && (gtReport.regionsSource !== "none" || gtReport.topics.length > 0 || gtReport.queries.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-text-2">Ver detalle de:</span>
+          <span className="text-xs font-medium text-text-2">
+            {relatedTermId && activeTermId === relatedTermId
+              ? "Subregiones, temas y consultas del nicho de tu búsqueda:"
+              : "Ver detalle de:"}
+          </span>
           <div className="flex flex-wrap gap-1.5">
-            {trends.trends.map((t) => (
-              <button
-                key={t.termId}
-                type="button"
-                onClick={() => setActiveTermId(t.termId)}
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  activeTermId === t.termId
-                    ? "border-brand-text bg-brand-tint text-brand-text"
-                    : "border-border bg-card text-text-2 hover:border-border/80"
-                }`}
-              >
-                {t.name}
-              </button>
-            ))}
+            {trends.trends.map((t) => {
+              const hit = overview?.catalogMatches?.find((m) => m.termId === t.termId);
+              return (
+                <button
+                  key={t.termId}
+                  type="button"
+                  onClick={() => setActiveTermId(t.termId)}
+                  title={
+                    hit
+                      ? `${Math.round(hit.score * 100)}% parecido a «${overview?.query}» (${hit.via})`
+                      : "Nicho de tu catálogo"
+                  }
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    activeTermId === t.termId
+                      ? "border-brand-text bg-brand-tint text-brand-text"
+                      : "border-border bg-card text-text-2 hover:border-border/80"
+                  }`}
+                >
+                  {t.name}
+                  {hit ? ` · ${Math.round(hit.score * 100)}%` : ""}
+                </button>
+              );
+            })}
           </div>
           <Button
             type="button"
@@ -658,16 +756,20 @@ export function IntelClient() {
         </div>
       )}
 
-      {/* Contenido que ya funciona en el feed (YouTube de los nichos monitoreados) */}
-      <ContentPanel reloadKey={reloadKey} />
+      {/* Contenido que ya funciona en el feed (YouTube acotado a la búsqueda) */}
+      <ContentPanel reloadKey={reloadKey} query={overview?.query ?? null} />
 
       {/* Contexto demográfico externo (ENDUTIH, no es dato del CRM) */}
       <AudiencePanel />
 
       {/* Competencia local DENUE (fuente externa INEGI) */}
-      <GeoPanel terms={geoTerms} />
-          </div>
-        )}
+      <GeoPanel
+        terms={geoTerms}
+        relatedTermId={relatedTermId}
+        nearest={anchors.nearest}
+        queryLabel={overview?.query ?? null}
+      />
+        </div>
       </section>
       )}
       </div>

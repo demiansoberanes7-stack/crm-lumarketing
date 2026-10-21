@@ -176,6 +176,20 @@ export function termSimilarity(a: string, b: string): number {
  */
 export const TERM_MATCH_MIN = 0.6;
 
+/**
+ * ¿El texto menciona la frase? Exige TODOS los tokens significativos de
+ * `phrase` (con plural tolerante), no una subcadena: «camara de seguridad» casa
+ * con «CÁMARAS DE SEGURIDAD baratas 2026» y descarta «seguros de vida».
+ * Se usa para acotar a la consulta los paneles que nacen del catálogo o del
+ * feed de YouTube, en vez de ocultarlos cuando hay una búsqueda activa.
+ */
+export function mentionsPhrase(text: string, phrase: string): boolean {
+  const haystack = matchTokens(text);
+  const needle = matchTokens(phrase);
+  if (needle.length === 0 || haystack.length === 0) return false;
+  return needle.every((token) => haystack.some((found) => sameWord(token, found)));
+}
+
 export type TermMatch = {
   id: string;
   name: string;
@@ -222,4 +236,49 @@ export function findTermByKeyword(
   const hit = matchTerm(terms, keyword);
   if (!hit) return null;
   return { id: hit.id, name: hit.name };
+}
+
+export type TermRanking = {
+  id: string;
+  name: string;
+  score: number;
+  via: string;
+  /** true si el score cruza `TERM_MATCH_MIN`: ES el nicho, no apenas vecino. */
+  exact: boolean;
+};
+
+/**
+ * Todos los nichos ordenados por cuánto se parecen a la consulta, SIN exigir el
+ * umbral. Es lo que permite que el ranking, la comparativa y el mapa de nichos
+ * se relacionen con la palabra buscada en vez de ocultarse cuando hay una
+ * búsqueda activa: un 0.4 no es «este nicho», pero sí es el vecino más próximo
+ * y se etiqueta con su porcentaje.
+ */
+export function rankTerms(
+  terms: Array<{ id: string; name: string; keywords: string[] }>,
+  keyword: string,
+  limit = 6
+): TermRanking[] {
+  if (matchTokens(keyword).length === 0) return [];
+  const best = new Map<string, TermRanking>();
+  for (const term of terms) {
+    for (const candidate of [term.name, ...term.keywords]) {
+      if (!candidate.trim()) continue;
+      const score = termSimilarity(keyword, candidate);
+      if (score <= 0) continue;
+      const current = best.get(term.id);
+      if (!current || score > current.score) {
+        best.set(term.id, {
+          id: term.id,
+          name: term.name,
+          score: Math.round(score * 100) / 100,
+          via: candidate,
+          exact: score >= TERM_MATCH_MIN,
+        });
+      }
+    }
+  }
+  return [...best.values()]
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    .slice(0, limit);
 }
