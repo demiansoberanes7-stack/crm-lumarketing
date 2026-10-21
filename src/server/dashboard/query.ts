@@ -139,6 +139,21 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         select id, source, created_at from contact where ${scope(schema.contact)}
           and archived_at is null and created_at <= ${to}
       ),
+      -- La tarjeta "Contactos" cuenta la cartera del módulo Contactos, no a
+      -- cada remitente que la bandeja dio de alta: mismo filtro que la pantalla
+      -- (leads en una etapa ganadora). ct se conserva para el embudo, que sí
+      -- cuenta prospectos.
+      clients as (
+        select contact.id, contact.source, contact.created_at from contact
+        where ${scope(schema.contact)} and contact.archived_at is null
+          and contact.created_at <= ${to}
+          and exists (
+            select 1 from lead
+            join pipeline_stage on pipeline_stage.id = lead.stage_id
+            where lead.contact_id = contact.id and ${scope(schema.lead)}
+              and pipeline_stage.kind = 'won'
+          )
+      ),
       months as (select to_char(m, 'YYYY-MM') as month from generate_series(date_trunc('month', ${from}), ${to}, interval '1 month') m),
       weeks as (select to_char(w, 'YYYY-MM-DD') as week from generate_series(date_trunc('week', ${from}), ${to}, interval '1 week') w),
       income_month as (select to_char(fecha, 'YYYY-MM') as month, sum(monto) as amount from income group by 1),
@@ -222,8 +237,8 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
           'total', count(*), 'active', count(*) filter (where id in (select contact_id from active_p)),
           'newThisPeriod', count(*) filter (where created_at >= ${from}),
           'activityRate', 100.0 * count(*) filter (where id in (select contact_id from active_p)) / nullif(count(*), 0),
-          'bySource', ${list(sql`select coalesce(source, 'directo') as name, count(*) as count from ct group by 1 order by count desc, name`)}
-        ) from ct),
+          'bySource', ${list(sql`select coalesce(source, 'directo') as name, count(*) as count from clients group by 1 order by count desc, name`)}
+        ) from clients),
         'gantt', jsonb_build_object(
           'projects', ${list(sql`
             select id, name, avance as progress,
