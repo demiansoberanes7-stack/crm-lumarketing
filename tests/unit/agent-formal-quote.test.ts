@@ -304,3 +304,90 @@ describe("búsqueda de inventario del agente", () => {
     expect(mocks.createQuote).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Fichas de producto (`send_quote`).
+ *
+ * El quejido del dueño fue «solo hace una ficha»: la acción aceptaba UN
+ * `item_id` obligatorio, así que un mensaje que pedía dos productos recibía una
+ * sola respuesta y el resto quedaba ignorado. Ahora admite `item_ids`.
+ */
+describe("fichas de producto en el chat", () => {
+  const ramo = {
+    ...baseProduct,
+    id: "cat_2",
+    name: "Ramo primavera",
+    price: 35000,
+    stock: 5,
+    shortDescription: "Rosas y tulipanes",
+  };
+
+  async function run(action: Record<string, unknown>) {
+    mocks.chatJson.mockResolvedValueOnce({ ok: true, data: action });
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+    return mocks.sendText.mock.calls.map((call) => String(call[0].text));
+  }
+
+  it("manda una ficha por producto, en el orden en que el cliente los pidió", async () => {
+    // La BD devuelve [Servicio, Ramo]; el pedido fue [cat_2, cat_1], así que el
+    // orden del texto solo se conserva si se recorre la lista del cliente.
+    queueTurn(false, { quoteProducts: [baseProduct, ramo] });
+    const texts = await run({
+      action: "send_quote",
+      item_ids: ["cat_2", "cat_1"],
+      reply: "Esto es lo que me pides:",
+    });
+
+    expect(texts).toHaveLength(3);
+    expect(texts[0]).toContain("Esto es lo que me pides:");
+    expect(texts[1]).toContain("*Ramo primavera*");
+    expect(texts[2]).toContain("*Servicio premium*");
+    for (const call of mocks.sendText.mock.calls) {
+      expect(call[0]).toMatchObject({ conversationId: "cv_1", aiGenerated: true });
+    }
+  });
+
+  it("no repite la ficha de un producto pedido dos veces", async () => {
+    queueTurn(false, { quoteProducts: [baseProduct] });
+    const texts = await run({ action: "send_quote", item_ids: ["cat_1", "cat_1"] });
+
+    expect(texts.filter((t) => t.includes("*Servicio premium*"))).toHaveLength(1);
+  });
+
+  it("con una sola ficha el saludo sigue viajando pegado a ella", async () => {
+    queueTurn(false, { quoteProducts: [baseProduct] });
+    const texts = await run({
+      action: "send_quote",
+      item_id: "cat_1",
+      reply: "Con gusto:",
+    });
+
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain("Con gusto:");
+    expect(texts[0]).toContain("*Servicio premium*");
+  });
+
+  it("avisa lo que no encontró sin dejar de mandar la ficha que sí está", async () => {
+    queueTurn(false, { quoteProducts: [baseProduct] });
+    const texts = await run({ action: "send_quote", item_ids: ["cat_1", "cat_fuera"] });
+
+    expect(texts).toHaveLength(2);
+    expect(texts[0]).toContain("*Servicio premium*");
+    expect(texts[1]).toContain("hay un producto que no encuentro");
+  });
+
+  it("si ningún ID está en el catálogo lo dice en una sola pieza", async () => {
+    queueTurn(false, { quoteProducts: [] });
+    const texts = await run({ action: "send_quote", item_ids: ["cat_fuera"] });
+
+    expect(texts).toEqual(["No pude encontrar ese producto en el catálogo."]);
+  });
+
+  it("sin IDs no manda ficha vacía: pregunta qué producto", async () => {
+    queueTurn(false, { quoteProducts: [baseProduct] });
+    const texts = await run({ action: "send_quote" });
+
+    expect(texts).toEqual(["Dime qué producto te interesa y te paso su ficha."]);
+  });
+});

@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { apiError } from "@/lib/api";
 import { scoped } from "@/lib/db/tenant";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
+import { isChannelAiDisabledFor } from "@/server/ai/channel-policy";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
 import { computeAvailability } from "@/server/agenda/availability";
 import { getSettings } from "@/server/agenda/settings";
@@ -57,7 +58,12 @@ export async function GET(req: Request) {
 
   const db = getDb();
   const rows = await db
-    .select({ id: schema.conversation.id })
+    .select({
+      id: schema.conversation.id,
+      channel: schema.conversation.channel,
+      aiEnabled: schema.conversation.aiEnabled,
+      handoffAt: schema.conversation.handoffAt,
+    })
     .from(schema.conversation)
     .where(
       scoped(
@@ -68,6 +74,21 @@ export async function GET(req: Request) {
     )
     .limit(1);
   if (!rows[0]) return apiError(404, "not_found", "Conversación no encontrada");
+
+  // Misma guarda que `POST /api/bot/messages`: este endpoint ESCRIBE (registra
+  // la oferta vigente), así que un canal apagado no debe dejar huecos reservados
+  // para una conversación que nunca va a poder agendar.
+  if (
+    !rows[0].aiEnabled ||
+    rows[0].handoffAt ||
+    (await isChannelAiDisabledFor(organizationId, rows[0].channel))
+  ) {
+    return apiError(
+      409,
+      "ai_paused",
+      "La IA está en pausa en esta conversación o en su canal"
+    );
+  }
 
   const limit = clamp(url.searchParams.get("limit"), LIMITS.limit);
   const perDay = clamp(url.searchParams.get("perDay"), LIMITS.perDay);

@@ -26,7 +26,15 @@ const baseActions = [
   }),
   z.object({
     action: z.literal("send_quote"),
-    item_id: z.string().min(1),
+    /**
+     * Una ficha o varias. `item_id` sigue siendo válido porque el modelo ya lo
+     * usa y el historial del Laboratorio está lleno de esa forma; `item_ids`
+     * existe para el turno en que el cliente pregunta por varios productos de
+     * una vez. Sin ella, el agente solo podía mandar UNA ficha por turno y el
+     * resto de la pregunta quedaba sin respuesta.
+     */
+    item_id: z.string().min(1).optional(),
+    item_ids: z.array(z.string().min(1)).min(1).max(5).optional(),
     reply: z.string().optional(),
   }),
   z.object({

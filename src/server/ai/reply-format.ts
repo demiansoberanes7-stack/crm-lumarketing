@@ -1,4 +1,5 @@
 import type { Channel } from "@/lib/channels";
+import { capabilitiesFor } from "@/server/channels/capabilities";
 
 /**
  * Formato de las respuestas del agente para que se lean ordenadas en el móvil.
@@ -28,7 +29,9 @@ function cleanWhitespace(text: string): string {
   const lines = text
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => line.replace(/[ \t]+$/g, ""));
+    // Los espacios dobles que deja el modelo (o el quite de marcadores) rompen
+    // la sangría pareja que se pidió en el móvil.
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+$/g, ""));
   const out: string[] = [];
   for (const line of lines) {
     if (line === "" && out[out.length - 1] === "") continue; // nunca dos líneas en blanco seguidas
@@ -53,8 +56,12 @@ function stripEmphasis(line: string): string {
   return line
     .replace(/\*\*\s*([^*]+?)\s*\*\*/g, "$1")
     .replace(/^\*([^*]+)\*$/g, "$1")
-    .replace(/(?:^|\s)\*([^*\n]+)\*(?=\s|$)/g, " $1")
-    .replace(/_([^_\n]+)_/g, "$1")
+    // El espacio NO se consume: al reponerlo con " $1" un `*x*` precedido de
+    // dos espacios dejaba uno de más y la lista perdía la sangría pareja.
+    .replace(/(?:^|(?<=\s))\*([^*\n]+)\*(?=\s|$)/g, "$1")
+    // `_texto_` solo cuando es de verdad un énfasis: sin esto,
+    // `https://tienda.com/a_b_c_x` se convertía en `https://tienda.com/abc_x`.
+    .replace(/(?<![\w/])_([^_\n]+)_(?![\w/])/g, "$1")
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1: $2")
     .replace(/`([^`]+)`/g, "$1");
 }
@@ -109,6 +116,42 @@ function breakLongLine(line: string): string[] {
   const sentences = line.split(/(?<=[.!?])\s+/u).filter(Boolean);
   if (sentences.length < 2) return [line];
   return sentences;
+}
+
+const bytes = (s: string) => Buffer.byteLength(s, "utf8");
+
+/**
+ * Ajusta el texto al tope real del canal. `sendText` RECHAZA un texto largo
+ * antes de persistir nada, así que sin esto el cliente no recibía mensaje
+ * alguno. Primero se sacrifica el aire que añadió el formateador; solo si aún
+ * no cabe se corta por renglón — un mensaje incompleto supera a ninguno.
+ */
+export function fitsChannel(text: string, channel: Channel): string {
+  const budget = capabilitiesFor(channel).maxTextBytes;
+  if (!budget || bytes(text) <= budget) return text;
+
+  const collapsed = text.replace(/\n{2,}/g, "\n");
+  if (bytes(collapsed) <= budget) return collapsed;
+
+  const ellipsis = "…";
+  const reserve = bytes(ellipsis) + 1;
+  const kept: string[] = [];
+  let used = 0;
+  for (const line of collapsed.split("\n")) {
+    const cost = bytes(line) + (kept.length ? 1 : 0);
+    if (used + cost + reserve > budget) break;
+    kept.push(line);
+    used += cost;
+  }
+  if (kept.length > 0) return `${kept.join("\n")}\n${ellipsis}`;
+
+  // Ni el primer renglón cabe: se corta por bytes sin partir un caracter.
+  let out = "";
+  for (const char of collapsed) {
+    if (bytes(out + char) + reserve > budget) break;
+    out += char;
+  }
+  return `${out}${ellipsis}`;
 }
 
 export function formatAgentReply(

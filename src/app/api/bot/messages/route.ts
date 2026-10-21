@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { apiError, parseBody } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
+import type { Channel } from "@/lib/channels";
+import { formatAgentReply, fitsChannel } from "@/server/ai/reply-format";
 import { isChannelAiDisabledFor } from "@/server/ai/channel-policy";
 import { SendError, sendText } from "@/server/inbox/send";
 
@@ -67,10 +69,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    // El mismo embudo que el agente incluido: un cerebro externo que manda el
+    // párrafo amontonado produce el mismo problema en el móvil del dueño, y un
+    // texto de 4096 caracteres reventaba contra el tope del canal sin entregar
+    // nada. Formatear y ajustar aquí, antes de `sendText`.
+    const channel = conv.channel as Channel;
     const result = await sendText({
       conversationId: body.data.conversationId,
       organizationId,
-      text: body.data.text,
+      text: fitsChannel(formatAgentReply(body.data.text, channel).trim(), channel).trim(),
       aiGenerated: true,
     });
     return Response.json({ messageId: result.messageId });

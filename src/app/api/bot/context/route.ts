@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { descNullsLast } from "@/lib/db/order";
 import { apiError } from "@/lib/api";
 import { requireBotKey, resolveInstanceOrg } from "@/server/bot/auth";
 import { serializeFicha } from "@/server/bot/ficha";
@@ -129,7 +130,7 @@ export async function GET(req: Request) {
         eq(schema.lead.contactId, contact.id)
       )
     )
-    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
+    .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
     .limit(1);
 
   return Response.json({

@@ -144,6 +144,20 @@ describe("prompt del agente según la configuración guardada", () => {
     );
   });
 
+  it("«Español» fijado en Ajustes no cae en el automático", () => {
+    // Antes el switch no tenía caso `es`: la opción del dueño se leía como
+    // "Automático" y un cliente que escribía en inglés recibía inglés.
+    const text = built(profile({ responseLanguage: "es", fallbackLanguage: "en" }));
+    expect(text).toContain("Respondes SIEMPRE en español neutro");
+    expect(text).not.toContain("Respondes en el idioma en que te escribe el cliente");
+  });
+
+  it("el contrato del handoff exige la despedida para el cliente", () => {
+    const text = built(profile());
+    expect(text).toContain('"action":"handoff"');
+    expect(text).toContain("Escribe SIEMPRE el `farewell`");
+  });
+
   it("manda el contrato de formato del mensaje, con negrita solo en WhatsApp", () => {
     const wa = built(profile(), { channel: "whatsapp" });
     expect(wa).toContain("FORMATO DEL MENSAJE");

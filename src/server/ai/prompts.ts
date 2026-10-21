@@ -161,6 +161,7 @@ export function buildAgentSystemPrompt(input: {
       ? [
           '- {"action":"search_inventory","query":"..."} — buscar en el inventario por nombre o descripción. El sistema te devuelve productos con su ID exacto, precio y existencias; úsalo antes de cotizar algo que no aparezca en el catálogo.',
           '- {"action":"send_quote","item_id":"<ID del producto>","reply":"..."} — enviar la ficha oficial de un producto del catálogo.',
+          '- {"action":"send_quote","item_ids":["<ID>","<ID>"],"reply":"..."} — enviar VARIAS fichas oficiales en un solo turno (máximo 5) cuando el cliente pregunta por varios productos a la vez; el sistema manda una ficha por mensaje.',
         ]
       : []),
     ...(rules.sendProductQuotes
@@ -173,7 +174,7 @@ export function buildAgentSystemPrompt(input: {
     ...(rules.moveStageOnIntent
       ? ['- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).']
       : []),
-    '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano según las reglas del negocio.',
+    '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano según las reglas del negocio. Escribe SIEMPRE el `farewell`: es el mensaje con el que el cliente se entera de que lo atiende una persona.',
     ...agendaLines,
   ];
 
@@ -184,6 +185,7 @@ export function buildAgentSystemPrompt(input: {
     ...(rules.sendProductQuotes
       ? [
           "- Si el cliente pide precio, disponibilidad o información de un producto, usa send_quote para compartir su ficha oficial (el sistema arma el mensaje con precio, inventario, descripción, ficha técnica y sitio).",
+          "- Si el cliente pide información de VARIOS productos en el mismo mensaje, manda UNA SOLA send_quote con `item_ids` con todos los IDs que ya conoces. No respondas solo por uno y dejes los demás sin ficha.",
           "- Si el producto que pide el cliente no está en el catálogo mostrado o no estás seguro de su ID, usa PRIMERO search_inventory con las palabras del cliente. Usa después el ID exacto que te devuelva el sistema; nunca inventes IDs, precios ni existencias.",
           "- Si el cliente solicita explícitamente una cotización, presupuesto formal o propuesta de compra, usa create_quote con productos disponibles del catálogo y la cantidad indicada (por defecto 1). Para varios productos usa items; no inventes descuentos ni cantidades mayores al inventario reportado.",
           "- Si el cliente pide la cotización SIN IVA o sin impuestos, manda create_quote con \"iva\": false y dile en el reply que la cotización va sin impuestos. Nunca le quites el IVA por tu cuenta si no lo pidió.",
@@ -208,6 +210,11 @@ export function buildAgentSystemPrompt(input: {
         return "Você responde SEMPRE em português, com mensagens curtas e naturais para chat.";
       case "fr":
         return "Vous répondez TOUJOURS en français, avec des messages courts et naturels pour le chat.";
+      case "es":
+        // Sin este caso, "Español" elegido en Ajustes caía en la rama de
+        // "Automático" y un cliente que escribiera en inglés recibía inglés,
+        // aunque el dueño hubiera fijado el idioma.
+        return "Respondes SIEMPRE en español neutro, con mensajes cortos y naturales para chat, sin importar el idioma en que te escriba el cliente. Nunca mezcles idiomas dentro del mismo mensaje.";
       case "auto":
       default: {
         // "Automático" tenía un bug: con el respaldo en español (el default) la

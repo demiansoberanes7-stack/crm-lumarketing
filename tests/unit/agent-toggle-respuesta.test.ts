@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_AGENT_FICHA_FIELDS, DEFAULT_AGENT_RULES } from "@/lib/agent-config";
+import { schema } from "@/lib/db";
 
 /**
  * Los dos interruptores de Ajustes → Agente → Respuesta que no hacían nada.
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const selectQueue: unknown[][] = [];
+const updates: { table: unknown; values: unknown }[] = [];
 
 function thenableChain(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
@@ -35,7 +37,12 @@ function thenableChain(rows: unknown[]) {
 const db = {
   select: () => thenableChain(selectQueue.shift() ?? []),
   insert: () => ({ values: () => Promise.resolve(undefined) }),
-  update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
+  update: (table: unknown) => ({
+    set: (values: unknown) => {
+      updates.push({ table, values });
+      return { where: () => Promise.resolve([]) };
+    },
+  }),
 };
 
 vi.mock("@/lib/db", async (importOriginal) => ({
@@ -58,22 +65,25 @@ vi.mock("@/server/agenda/flag", () => ({ agendaEnabled: () => false }));
 const inboundAt = new Date();
 
 /**
+ * @param profilePatch qué cambia en el perfil; `null` = el negocio no tiene perfil.
  * @param newestFirst las filas de `message` en el orden que devuelve la BD (reciente primero).
  * @param atendidaPorHumano qué responde la búsqueda de "¿ya habló alguien de carne y hueso
  *        esta conversación?". Solo se consulta con el interruptor apagado.
+ * @param conversationPatch estado de la conversación (traspaso, IA del chat).
  */
 function queueTurn(
-  profilePatch: Record<string, unknown>,
+  profilePatch: Record<string, unknown> | null,
   newestFirst: unknown[],
   atendidaPorHumano = false,
   /** La búsqueda de "¿ya respondió alguien?" que hace el turno cuando el modelo calla. */
   yaAtendida: unknown[] = [],
-  isTest = false
+  isTest = false,
+  conversationPatch: Record<string, unknown> = {}
 ) {
-  const gate = profilePatch.activeInNewConversations === false;
+  const gate = profilePatch?.activeInNewConversations === false;
   selectQueue.push(
-    [{ id: "cv_1", organizationId: "org_1", contactId: "ct_1", channel: "whatsapp", isTest, aiEnabled: true, handoffAt: null, handoffReason: null, lastInboundAt: inboundAt }],
-    [{
+    [{ id: "cv_1", organizationId: "org_1", contactId: "ct_1", channel: "whatsapp", isTest, aiEnabled: true, handoffAt: null, handoffReason: null, lastInboundAt: inboundAt, ...conversationPatch }],
+    profilePatch === null ? [] : [{
       id: "agp_1",
       organizationId: "org_1",
       enabled: true,
@@ -101,6 +111,7 @@ const mensajeCliente = { id: "msg_1", direction: "in", text: "Hola, ¿tienen esp
 beforeEach(() => {
   vi.resetAllMocks();
   selectQueue.length = 0;
+  updates.length = 0;
   mocks.getDb.mockReturnValue(db);
   mocks.resolveAiConfig.mockResolvedValue({ token: "test-token", model: "test-model" });
   mocks.isAiConfigured.mockReturnValue(true);
@@ -243,5 +254,110 @@ describe("IA por canal (Ajustes → Agente)", () => {
     await runAgentTurn("cv_1");
 
     expect(mocks.chatJson).toHaveBeenCalled();
+  });
+});
+
+/**
+ * El orden de las puertas también es comportamiento. Reabrir el traspaso por
+ * ventana estaba antes que el perfil, el canal y el interruptor global, así que
+ * un canal apagado dejaba la conversación sin respuesta Y sin la marca de que
+ * la atiende un humano: la bandeja mostraba "bot activo" donde nadie hablaba.
+ */
+describe("el traspaso por ventana solo se reabre si alguien va a responder", () => {
+  const traspasadaPorVentana = {
+    handoffAt: new Date(Date.now() - 60_000),
+    handoffReason: "ventana",
+  };
+
+  it("con el canal apagado no borra el traspaso ni llama al modelo", async () => {
+    queueTurn({ disabledChannels: ["whatsapp"] }, [mensajeCliente], false, [], false, traspasadaPorVentana);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(mocks.sendText).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+  });
+
+  it("con el agente global apagado no borra el traspaso", async () => {
+    queueTurn({ enabled: false }, [mensajeCliente], false, [], false, traspasadaPorVentana);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+  });
+
+  it("sin perfil de agente tampoco se limpia el traspaso", async () => {
+    queueTurn(null, [mensajeCliente], false, [], false, traspasadaPorVentana);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+  });
+
+  it("con todo encendido, la ventana reabierta devuelve la conversación al agente", async () => {
+    queueTurn({}, [mensajeCliente], false, [], false, traspasadaPorVentana);
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(updates).toContainEqual({
+      table: schema.conversation,
+      values: expect.objectContaining({ handoffAt: null, handoffReason: null }),
+    });
+    expect(mocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: "cv_1", aiGenerated: true })
+    );
+  });
+
+  it("un traspaso pedido por el cliente NO se reabre aunque la ventana esté abierta", async () => {
+    queueTurn({}, [mensajeCliente], false, [], false, {
+      handoffAt: new Date(Date.now() - 60_000),
+      handoffReason: "cliente",
+    });
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.chatJson).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+  });
+});
+
+describe("el handoff del modelo siempre le avisa al cliente", () => {
+  it("sin `farewell` usa un respaldo legible en vez de dejarlo mudo", async () => {
+    queueTurn({}, [mensajeCliente]);
+    mocks.chatJson.mockResolvedValue({
+      ok: true,
+      data: { action: "handoff", reason: "El cliente pidió hablar con una persona" },
+    });
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "cv_1",
+        aiGenerated: true,
+        text: expect.stringContaining("Te paso con una persona"),
+      })
+    );
+    expect(updates).toContainEqual({
+      table: schema.conversation,
+      values: expect.objectContaining({ handoffReason: "modelo" }),
+    });
+  });
+
+  it("con `farewell` se manda la despedida que escribió el modelo", async () => {
+    queueTurn({}, [mensajeCliente]);
+    mocks.chatJson.mockResolvedValue({
+      ok: true,
+      data: { action: "handoff", reason: "duda de garantía", farewell: "Te atiende mi compañera 🙌" },
+    });
+    const { runAgentTurn } = await import("@/server/ai/pipeline");
+    await runAgentTurn("cv_1");
+
+    expect(mocks.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Te atiende mi compañera 🙌" })
+    );
   });
 });

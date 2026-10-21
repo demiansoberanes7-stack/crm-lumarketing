@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Channel } from "@/lib/channels";
 import { newId } from "@/lib/db/ids";
+import { descNullsLast } from "@/lib/db/order";
 import { scoped } from "@/lib/db/tenant";
 import { filterAgentFichaToConfiguredFields, normalizeAgentRules } from "@/lib/agent-config";
 import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-history";
@@ -18,7 +19,7 @@ import {
   type AgentActionType,
 } from "@/server/ai/actions";
 import { isChannelAiDisabled } from "@/server/ai/channel-policy";
-import { formatAgentReply } from "@/server/ai/reply-format";
+import { formatAgentReply, fitsChannel } from "@/server/ai/reply-format";
 import { matchesHandoffIntent, matchesPipelineKeyword } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { renderInventoryResults, searchInventory } from "@/server/ai/inventory";
@@ -136,6 +137,42 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     return;
   }
 
+  const profileRows = await db
+    .select()
+    .from(schema.agentProfile)
+    .where(eq(schema.agentProfile.organizationId, organizationId))
+    .limit(1);
+  const profile = profileRows[0];
+  if (!profile) {
+    silentTurn(conversationId, organizationId, "sin_perfil_de_agente");
+    return;
+  }
+  const agentRules = normalizeAgentRules(profile.rules);
+  // Ajustes → Agente → Respuesta: canales apagados de raíz. Manda sobre el
+  // interruptor del chat: si el canal está apagado, ningún chat responde.
+  // Se evalúa ANTES de reactivar el handoff por ventana: si el canal está
+  // apagado, limpiar el traspaso dejaba la conversación viéndose "atendida por
+  // el bot" cuando en realidad nadie respondía.
+  if (
+    !conversation.isTest &&
+    isChannelAiDisabled(profile.disabledChannels, conversation.channel)
+  ) {
+    silentTurn(
+      conversationId,
+      organizationId,
+      `canal_apagado:${conversation.channel}`
+    );
+    return;
+  }
+  // El toggle global aplica a conversaciones reales; el Laboratorio evalúa el
+  // comportamiento configurado aunque el agente aún no esté encendido.
+  if (!conversation.isTest && !profile.enabled) {
+    console.warn(
+      `[agente] el agente está APAGADO en Ajustes → Agente: la conversación ${conversationId} queda sin respuesta (org ${organizationId})`
+    );
+    return;
+  }
+
   // Un handoff por 'ventana' no debe dejar la conversación muda para siempre:
   // cuando el cliente vuelve a escribir (ventana reabierta) el agente se
   // reactiva solo, en cualquier canal.
@@ -161,39 +198,6 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       conversation.handoffAt
         ? `handoff:${conversation.handoffReason ?? "activo"}`
         : "ia_apagada_en_conversacion"
-    );
-    return;
-  }
-
-  const profileRows = await db
-    .select()
-    .from(schema.agentProfile)
-    .where(eq(schema.agentProfile.organizationId, organizationId))
-    .limit(1);
-  const profile = profileRows[0];
-  if (!profile) {
-    silentTurn(conversationId, organizationId, "sin_perfil_de_agente");
-    return;
-  }
-  const agentRules = normalizeAgentRules(profile.rules);
-  // Ajustes → Agente → Respuesta: canales apagados de raíz. Manda sobre el
-  // interruptor del chat: si el canal está apagado, ningún chat responde.
-  if (
-    !conversation.isTest &&
-    isChannelAiDisabled(profile.disabledChannels, conversation.channel)
-  ) {
-    silentTurn(
-      conversationId,
-      organizationId,
-      `canal_apagado:${conversation.channel}`
-    );
-    return;
-  }
-  // El toggle global aplica a conversaciones reales; el Laboratorio evalúa el
-  // comportamiento configurado aunque el agente aún no esté encendido.
-  if (!conversation.isTest && !profile.enabled) {
-    console.warn(
-      `[agente] el agente está APAGADO en Ajustes → Agente: la conversación ${conversationId} queda sin respuesta (org ${organizationId})`
     );
     return;
   }
@@ -558,30 +562,63 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       return;
     }
     case "send_quote": {
-      const db = getDb();
-      const rows = await db
+      // El cliente puede preguntar por varios productos en el mismo mensaje.
+      // Cada ficha sale como MENSAJE APARTE: el tope de bytes es por mensaje
+      // (`capabilities.ts`) y dos fichas juntas caben mal en Instagram.
+      const requested = action.item_ids?.length
+        ? action.item_ids
+        : action.item_id
+          ? [action.item_id]
+          : [];
+      // IDs repetidos no duplican fichas, y el ORDER de `inArray` no es el del
+      // cliente: se recorre `ids`, no `rows`, para que la ficha siga el orden
+      // en que se pidió.
+      const ids = [...new Set(requested.map((id) => id.trim()).filter(Boolean))];
+      if (ids.length === 0) {
+        await deliverReply(
+          conversation,
+          action.reply ?? "Dime qué producto te interesa y te paso su ficha."
+        );
+        return;
+      }
+
+      const products = await getDb()
         .select()
         .from(schema.catalogProduct)
         .where(
           scoped(
             schema.catalogProduct.organizationId,
             organizationId,
-            eq(schema.catalogProduct.id, action.item_id),
+            inArray(schema.catalogProduct.id, ids),
             eq(schema.catalogProduct.available, true)
           )
-        )
-        .limit(1);
-      const product = rows[0];
+        );
+      const byId = new Map(products.map((product) => [product.id, product]));
+      const { renderProductCard } = await import("@/server/ai/product-card");
 
-      let text = action.reply ? `${action.reply}\n\n` : "";
-      if (product) {
-        const { renderProductCard } = await import("@/server/ai/product-card");
-        text += renderProductCard(product);
-      } else {
-        text += "No pude encontrar ese producto en el catálogo.";
-      }
+      const missing = ids.length - byId.size;
+      const fichas = [
+        ...ids
+          .map((id) => byId.get(id))
+          .filter((product): product is (typeof products)[number] => product !== undefined)
+          .map((product) => renderProductCard(product)),
+        ...(missing > 0
+          ? [
+              byId.size > 0
+                ? `De lo que me pides, ${missing === 1 ? "hay un producto que no encuentro" : "hay varios productos que no encuentro"} en el catálogo. ¿Me confirmas el nombre?`
+                : "No pude encontrar ese producto en el catálogo.",
+            ]
+          : []),
+      ];
 
-      await deliverReply(conversation, text.trim());
+      // Con una sola ficha, `reply` viaja pegada a ella: así siempre se envió y
+      // el chat no se parte en bocados. Con varias, cada una es su mensaje.
+      const texts =
+        fichas.length === 1 && action.reply
+          ? [`${action.reply}\n\n${fichas[0]}`]
+          : [...(action.reply ? [action.reply] : []), ...fichas];
+
+      for (const text of texts) await deliverReply(conversation, text);
       return;
     }
     case "create_quote": {
@@ -726,9 +763,13 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       // `handoffOnRequest` off no le quita al cliente el derecho a un humano:
       // apaga el atajo por patrón y su línea en el prompt, pero si el modelo
       // decide escalar porque el cliente lo pidió, aquí se acata.
-      if (action.farewell) {
-        await deliverReply(conversation, action.farewell);
-      }
+      // `farewell` es opcional en el esquema del modelo; sin respaldo el cliente
+      // se quedaba mudo mientras la conversación pasaba a un humano.
+      await deliverReply(
+        conversation,
+        action.farewell?.trim() ||
+          "Te paso con una persona de nuestro equipo para continuar tu atención por aquí."
+      );
       await applyHandoff(conversationId, organizationId, "modelo");
       return;
     }
@@ -772,9 +813,10 @@ async function deliverReply(
 ): Promise<void> {
   // Un solo embudo de formato: el prompt pide renglones, aquí se cumple. Se
   // aplica también al sandbox para que el Laboratorio vea el texto real.
-  const formatted = formatAgentReply(
-    text,
-    conversation.channel as Channel
+  const channel = conversation.channel as Channel;
+  const formatted = fitsChannel(
+    formatAgentReply(text, channel).trim(),
+    channel
   ).trim();
   if (!formatted) {
     silentTurn(conversation.id, conversation.organizationId, "respuesta_vacia");
@@ -857,7 +899,7 @@ async function moveLeadToStage(
         eq(schema.lead.contactId, contactId)
       )
     )
-    .orderBy(desc(schema.lead.isPrimary), desc(schema.lead.lastActivityAt))
+    .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
     .limit(1);
   const leadId = rows[0]?.id;
   if (!leadId) return;
