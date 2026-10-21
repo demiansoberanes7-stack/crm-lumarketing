@@ -661,6 +661,8 @@ export const agentProfile = pgTable(
     fallbackLanguage: varchar("fallback_language", { length: 20 }).notNull().default("es"),
     reactWithEmoji: boolean("react_with_emoji").notNull().default(false),
     activeInNewConversations: boolean("active_in_new_conversations").notNull().default(true),
+    /** Canales donde la IA no responde; vacío = todos encendidos. */
+    disabledChannels: jsonb("disabled_channels").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     businessIndustry: varchar("business_industry", { length: 100 }),
     businessLocation: varchar("business_location", { length: 255 }),
     businessDescription: text("business_description"),
@@ -1366,6 +1368,13 @@ export const quote = pgTable(
       () => contact.id,
       { onDelete: "set null" }
     ),
+    /**
+     * Teléfono del cliente tal y como lo quiere la cotización. Es de la
+     * cotización, no del contacto: el contacto puede no existir (cotización a
+     * mano) o tener otro número, y el PDF necesita imprimir el que el operador
+     * escribió. `getQuote` usa este y, si está vacío, el del contacto.
+     */
+    clientPhone: varchar("client_phone", { length: 32 }),
     status: varchar("status", { length: 20 })
       .notNull()
       .default("draft"),
