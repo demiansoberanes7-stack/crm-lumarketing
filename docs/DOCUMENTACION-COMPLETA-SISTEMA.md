@@ -2,8 +2,8 @@
 
 ---
 
-**Version:** 1.7.0  
-**Fecha:** 20 de Octubre de 2026  
+**Version:** 1.8.0  
+**Fecha:** 21 de Octubre de 2026  
 **Licencia:** MIT  
 **Repositorio:** Zorro Tech (monolito Next.js)  
 **Autor:** Zorro Tech / Ghostbreakfast  
@@ -49,7 +49,9 @@ Zorro Tech es un sistema de gestion de relaciones con clientes (CRM) open source
 - **Pipeline Kanban**: Gestion de leads con etapas, arrastre, y historial de eventos
 - **Cotizaciones**: Creacion, envio por WhatsApp/Messenger (PDF), Instagram (resumen) o respondiendo un hilo de correo, PDF con IVA, aceptacion/rechazo
 - **Proyectos**: Procesos personalizables por negocio (pasos y campos propios), tareas y reportes; cada proyecto conserva la definicion con la que nacio
-- **Agenda**: Programacion de citas con conectores Zoom y Google Calendar
+- **Agenda**: Citas con motor de disponibilidad propio y conectores Zoom, Google Calendar o enlace fijo; las ofrece el agente o las da de alta el operador
+- **Prospectos**: Proyeccion de quien escribio al negocio (chat y correo), con extraccion append-only del telefono que el cliente teclea
+- **Inteligencia de mercado** (flag `INTEL`): tendencias de Google Trends, videos populares de YouTube, desglose INEGI y tendencias actuales del pais
 - **Finanzas**: Cuentas por cobrar, pagos, gastos, balance mensual
 - **Email**: Integracion IMAP/SMTP para envio y recepcion
 - **Branding**: White-label con color de acento personalizable. Se resuelve por
@@ -62,15 +64,15 @@ Zorro Tech es un sistema de gestion de relaciones con clientes (CRM) open source
 
 ## Metricas del Sistema
 
-Contado sobre el repo el 19 de octubre de 2026 (`find`/`grep`/`vitest`, no estimado):
+Contado sobre el repo el 21 de octubre de 2026 (`find`/`grep`/`vitest`, no estimado):
 
 | Metrica | Valor |
 |---------|-------|
-| Tablas en `schema.ts` (`pgTable`) | 102 (106 en produccion: 4 las crea una migracion) |
-| Entradas del journal de migraciones | 77 |
-| Rutas API (`src/app/**/route.ts`) | 202 |
-| Componentes UI (`src/components/**/*.tsx`) | 135 |
-| Unit tests | 1086 en 124 archivos (`pnpm test`, 15.5 s) |
+| Tablas en `schema.ts` (`pgTable`) | 104 (106 en produccion: 4 las crea una migracion) |
+| Entradas del journal de migraciones | 82 |
+| Rutas API (`src/app/**/route.ts`) | 207 |
+| Componentes UI (`src/components/**/*.tsx`) | 140 |
+| Unit tests | 1471 en 155 archivos (`pnpm test`, 142 s) |
 | Scripts E2E | 21 |
 | Canales soportados | 4 |
 | Conectores de agenda | 3 |
@@ -518,7 +520,7 @@ llega a escuchar y el contenedor entra en crash loop con 502 publico. `next buil
                             +-------------------+
 ```
 
-## Tablas por Dominio (102 en el modelo)
+## Tablas por Dominio (104 en el modelo)
 
 **Deriva de esquema conocida**: la BD de produccion tiene **106** tablas. Las 4 extra
 (`diagnostic_event`, `whatsapp_settings`, `integration_secret`, `whatsapp_address`) las crea
@@ -629,6 +631,22 @@ y cotiza. Guia: [copiloto-agente.md](copiloto-agente.md).
 | `ad_attribution` | Atribucion de anuncios | organizationId, conversationId, ctwaClid |
 | `capi_settings` | Configuracion CAPI | organizationId, datasetId, tokenCipher/iv/tag |
 | `conversion_event` | Eventos de conversion | organizationId, attributionId, type (QualifiedLead/Purchase), status |
+
+### Inteligencia de mercado (flag `INTEL`)
+
+| Tabla | Descripcion | Columnas clave |
+|-------|-------------|----------------|
+| `intel_credentials` | Secretos por fuente | organizationId (UNIQUE), `*Cipher/Iv/Tag` de youtube/denue/serpapi/apify, `apifyActorId`, `status` general, `*Status` + `*LastTestAt` + `*LastSyncAt` por fuente, `serpapiQueriesUsed`, `apifyQueriesUsed`, `gtEnabled`, `lastIngestAt` |
+| `intel_term` | Nichos monitoreados | organizationId, name, keywords (JSONB), geo (MX), active |
+| `intel_snapshot` | Proxy de interes por dia | termId, day (UNIQUE con termId), value (suma de vistas, bigint), videoCount, source (`youtube_mostpopular`) |
+| `intel_video` | Muestra cruda del snapshot | termId, videoId, title, views, likes, durationSeconds, publishedAt, channelTitle, day (UNIQUE termId+videoId+day) |
+| `intel_search_log` | Historial de busquedas del motor | organizationId, query, termId (set null), createdAt |
+| `intel_geo_snapshot` | Unidades economicas INEGI por entidad | termId, state ("01"…"32"), count, censored, day (UNIQUE termId+state+day) |
+| `intel_gt_snapshot` | Serie de Google Trends (indice 0-100) | termId, day (UNIQUE), value |
+| `intel_gt_region` | Interes por subregion de Google Trends | termId, state, value (0-100), day |
+| `intel_gt_related` | Temas y consultas relacionados | termId, kind (topic/query), list (top/rising), label, value, pct, isBreakout, day |
+| `intel_gt_trending` | Tendencias actuales del pais | geo, day, title, volume, increasePct, startedAt, active, category, trendType, breakdown (JSONB), source (serpapi/rss) |
+| `intel_job` | Ingestas asincronas | organizationId, kind (`gt_all`/`gt_term`/`geo`/`trending`), termId, geo, status (running/done/error), total/completed, result, error, finishedAt; indice unico parcial `intel_job_active_uq` |
 
 ### Otros
 
@@ -1029,6 +1047,59 @@ formatMoneyCents(45050, "MXN") // "$450.50 MXN"
 - Limite de tokens (configurable)
 - Rendered into agent system prompt
 
+## Prospectos (`/prospects`)
+
+Prospeccion: quien escribio al negocio y todavia no es cartera. **Es una proyeccion, no una
+tabla**: no duplica el modelo de identidad ni pide migracion.
+
+- **Dos fuentes mergeadas** (`src/server/prospects/query.ts`): mensajes de chat con
+  `message.direction = 'in'` en conversacion real (`is_test = false`) **y** remitentes de
+  `email_message` con `direction = 'inbound'`, agrupados por `from_email`. El criterio del
+  dueno es «todos los que me escribieron», no «los que dejaron telefono»: antes del merge los
+  16 correos entrantes de 10 remitentes eran **invisibles** porque la ingesta de correo deja
+  `contact_id NULL` a proposito.
+- **DTO nullable**: un prospecto de correo trae `contactId: null`, `conversationId: null` y
+  `email` poblado, y enlaza a `/email`; el de chat enlaza a `/inbox?contact=`. El telefono se
+  muestra como `mailto:` cuando no hay numero y la fila liga a `/email`.
+- Reordenado por `lastInboundAt`, limite fijo 200, busqueda tolerante (con y sin acentos,
+  digitos sueltos, `%` y `_` escapados) que tambien busca por correo.
+- **Filtros** de `/api/prospects`: `q`, `channel`, `phone=falta|tiene`, `archived`.
+- **Telefono desde el chat** (`src/server/inbox/phone-capture.ts`): escritura **append-only**
+  (`WHERE phone IS NULL`) para que una reentrega de Meta o una edicion del operador nunca pise
+  un numero existente. Descarta fechas (incluida `15-10-2026`), precios, lo que empieza por 0.
+- `dialHref()` (`src/lib/utils.ts`) en lugar de `tel:+…` a pelo: un numero nacional de Mexico
+  son 10 digitos; con `+` el movil entendia «marca otro pais».
+- **Falla ≠ vacio**: si `/api/prospects` no responde 200 se pinta `LoadError` con Reintentar;
+  el estado vacio solo aparece si la lista llego y venia vacia.
+- Las fechas se normalizan en el DTO (`isoDate()`): los agregados `MIN/MAX(COALESCE(...))`
+  viajan como `sql` sin decodificador y su tipo runtime depende del driver. Llamaba
+  `.toISOString()` sobre un string y era un 500 real en produccion.
+
+## Inteligencia de mercado (`/inteligencia`, flag `INTEL`)
+
+Investigacion de mercado: que se busca, donde, en que formato y contra quien. Solo lee, guarda
+y muestra; no toca el pipeline ni envia nada. Ver §33 de `docs/SISTEMA-COMPLETO.md`.
+
+- **Existencia por bandera** (ADR-001): el codigo viaja siempre en `main`; sin `INTEL`,
+  `/inteligencia` da `notFound()` y las 12 rutas de `/api/intel/*` responden **404, no 403**.
+- **Una sola pantalla, sin pestanas**: paneles apilados en un scroll, de la senal mas externa
+  (que se busca hoy) a la mas propia (nichos, contenido, audiencia, competencia local).
+- **Cadena de respaldo de Google Trends**: SerpApi (principal) → Apify (Actor configurable) →
+  conector web no oficial (ultimo recurso, **UNPROBADO**) → `null`. Cada respuesta declara su
+  `provider`; nunca se consultan dos proveedores por peticion.
+- **Cinco fuentes independientes** (`youtube`, `denue`, `serpapi`, `apify`, `gt`) con secretos
+  AES-256-GCM, estado de prueba en vivo y contador de uso reservado antes de llamar.
+- **11 tablas `intel_*`** y **jobs asincronos**: POST crea el job y responde **202 con su id**,
+  el indice unico parcial `intel_job_active_uq` impide dos jobs activos (segundo clic → 409),
+  la UI sondea `GET /api/intel/jobs/[id]`, y un job hueso se libera solo a los 10 minutos.
+- **Regla de anclaje de la busqueda**: una busqueda tiene que **relacionar** todas las fuentes
+  con el texto, no taparlas. `content.ts` tipifica `query: string | null` y declara cuantos
+  videos casaron. La alternativa (ocultar el explorador bajo una busqueda) se revirtio.
+- **CSV en el navegador** (`intel-export.ts`, con BOM para Excel): exporta lo que esta en
+  pantalla, no el catalogo completo.
+- El catalogo de terminos **se siembra solo** con 16 nichos de tecnologia en Mexico
+  (`SEED_TERMS` en `src/server/intel/terms.ts`); el cruce de videos es por keyword.
+
 ---
 
 # 11. AGENDA Y PROGRAMACION
@@ -1084,6 +1155,57 @@ Configuracion semanal (weeklyHours)
 - OAuth2 con scope `calendar.events`
 - **Polling asincrono**: Google crea Meet links de forma asincrona. El conector hace polling (3 intentos, 400ms delay) antes de rendirse
 - Refresh token expira despues de 7 dias en modo test
+- **OAuth por redirect** (`google-oauth.ts`): el CRM abre el consentimiento de Google y lo
+  canjea por el refresh token; el `state` de un solo uso vive en `google_oauth_state` 10
+  minutos y ata la vuelta de Google a la organizacion que inicio el flujo, con el client
+  secret cifrado. Sin SDK nuevo (Constitucion).
+- **Tareas → Google Calendar** (`tasks-sync.ts`): **opt-in** (`google_credentials.sync_tasks`,
+  apagado por defecto) y **nunca bloquea**: corre despues de guardar la tarea, en un `try/catch`
+  que solo deja un diagnostico.
+
+## Nombre en la interfaz
+
+**«Citas», no «Calendario»** (`src/config/nav.ts:54-59`): la pantalla es la lista de
+compromisos y su alta, no una rejilla de meses. «Calendario» sigue siendo la pestana de
+Ajustes, donde se configura el horario. El enlace es `agendaOnly` y se filtra en
+`navItemsFor({ agenda })` en un solo sitio para que barra, breadcrumbs y ⌘K no discrepen; sin
+bandera `/bookings` da 404 y el enlace seria una puerta a la nada.
+
+## Alta manual por el operador
+
+`POST /api/bookings` es un `z.discriminatedUnion("kind")`: `session` (contacto, hora, nota,
+conversation opcional) o `block` (hora, 5-600 minutos, nota). **Responde 201**, como la
+superficie del bot. A diferencia del agente, el operador **no pasa por `offered_slot`**: elige
+de la disponibilidad que ve en pantalla; la re-validacion y el candado anti doble-booking
+aplican igual (`requireOffer: false` es una opcion del dominio, no una puerta abierta).
+
+`citaStartUtc()` (`src/components/bookings/bookings-client.tsx:43`) existe porque un
+`datetime-local` llega **sin zona**: mandado crudo, el servidor lo leia como UTC y la cita
+quedaba corrida por el offset del operador.
+
+## El contrato HTTP vive en un modulo
+
+`src/server/agenda/http.ts` esta fuera de los `route.ts` porque Next solo admite handlers como
+exports de una ruta (no serian testeables) y porque los codigos y la **forma** del error son
+contrato observable. Dos lecciones que costaron caro en produccion:
+
+- Crear responde **201, no 200**. Un cliente que validaba `=== 200` dejo a todos los leads sin
+  agendar durante horas, y los mocks no lo vieron porque respondian 200.
+- El error va **anidado** (`{"error":{"code":…}}`) con `slots` como **hermano**. Un mock plano
+  escondio el camino de re-oferta semanas: todo 409 se leia como conflicto generico.
+
+## Regla de honestidad de la entrega
+
+El conector corre **despues** de escribir la verdad del CRM y es best-effort. Si el proveedor
+esta caido, la cita se crea igual con `linkPending`: un tercero no puede costarnos la
+conversion ni hacernos prometer un enlace que no existe.
+
+## Reparto entre dias (`spread.ts`)
+
+Los N huecos mas proximos casi siempre caen todos **hoy**, y entonces quien conduce la
+conversacion no tiene nada que ofrecer cuando el lead dice «¿y el jueves?». Se toman `perDay`
+por dia hasta completar `limit`. Ademas **el catalogo reservable es mas ancho que el menu que
+se muestra**: se ofrecen y registran hasta `limit` aunque el agente ensene tres.
 
 ---
 
@@ -1199,6 +1321,29 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | `/api/contacts` | GET/POST | Listar/crear contactos |
 | `/api/contacts/[id]` | GET/PUT | Obtener/actualizar contacto |
 | `/api/contacts/[id]/start-conversation` | POST | Iniciar conversacion |
+
+## Prospectos
+
+| Ruta | Metodo | Descripcion |
+|------|--------|-------------|
+| `/api/prospects` | GET | Proyeccion de quien escribio al negocio. Filtros `q`, `channel`, `phone=falta\|tiene`, `archived`. Mergea chat (`message.direction='in'`) y correo (`email_message.direction='inbound'`), limite fijo 200 |
+
+## Inteligencia de mercado (flag `INTEL`, 404 sin bandera)
+
+| Ruta | Metodo | Descripcion |
+|------|--------|-------------|
+| `/api/intel/trends` | GET | Serie de los terminos monitoreados (orquestador de proveedores) |
+| `/api/intel/gt` | GET | Reporte completo de un termino (`termId`): serie, regiones, relacionados |
+| `/api/intel/gt/ingest` | POST | Ingesta de un solo termino |
+| `/api/intel/ingest` | POST | Lanza el job `gt_all` (202 + id; 409 si ya hay uno activo) |
+| `/api/intel/jobs/[id]` | GET | Avance de un job asincrono |
+| `/api/intel/geo` | GET/POST | Lectura del desglose por estado / guardar credenciales e ingestarlo |
+| `/api/intel/trending` | GET/POST | Tendencias actuales (`geo`, `hours`, `category`, `type`, `q`, `sort`) / lanzar el job |
+| `/api/intel/content` | GET | Videos que casan con el nicho (`days` default 30, `q`) |
+| `/api/intel/keyword` | GET | Intencion y dificultad proxy de una palabra (`q`) |
+| `/api/intel/suggest` | GET | Autocompletado de Google/YouTube (`q`) |
+| `/api/intel/compare` | GET | Comparar terminos (`ids`) |
+| `/api/intel/monitor` | POST | Alta/edicion de terminos del catalogo |
 
 ## Pipeline
 
@@ -1906,13 +2051,85 @@ y el logo real responde 200 con `nosniff`.
 
 **Commit**: `1436d95`
 
+## Bug 13: 500 en `/api/prospects` por `.toISOString()` sobre un string
+
+**Fecha del hallazgo**: 21 de Octubre de 2026  
+**Severidad**: Alta (dejo la pestana de Prospectos sin datos en produccion)  
+**Simptomas**: la pantalla mostraba «0 / Aún no hay prospectos». En realidad la API lanzaba 500 y
+la interfaz confundia el fallo con la ausencia de datos: eran dos bugs distintos, y los dos se
+arreglaron.
+
+**Causa raiz**: los agregados `MIN/MAX(COALESCE(created_at, …))` viajan como fragmentos `sql` sin
+decodificador de columna, asi que **su tipo runtime depende del driver**. `serializeProspect`
+llamaba `.toISOString()` sobre lo que hubiere.
+
+**Solucion**: `isoDate()` en `src/server/prospects/query.ts` acepta `Date`, string ISO o vacio y
+devuelve `string | null`. No se puso `.mapWith()` en esas proyecciones: en modo string es un
+no-op y en modo date intentaria decodificar valores que ya llegan como `Date`.
+
+## Bug 14: un fallo de lectura pintaba estado vacio (barrido de toda la app)
+
+**Fecha**: 21 de Octubre de 2026 · **Severidad**: Alta · **Clase**: la misma en 12 superficies
+
+**Simptomas**: cualquier 5xx o red caida se renderizaba como «no hay datos». El dueno lo leyo
+literalmente: «Aún no hay prospectos» con 11 filas existentes.
+
+**Solucion**: panel reutilizable `src/components/load-error.tsx` con Reintentar, y la regla
+**el panel sustituye al estado vacio, nunca a una lista ya cargada**, aplicada en Bandeja,
+Contactos, Cotizaciones, Proyectos, Citas, Pipeline, Catalogo, Proveedores, Correo, Campanas,
+Prospectos y los listados de Ajustes. Cada lista tiene un estado `…Failed` separado de `…Empty`.
+
+**Leccion de la familia**: en el mismo barrido salieron limites `NaN` que daban 500 en 4 rutas
+(`z.coerce.number()` sin `int().min()`), fechas UTC que cortaban el dia del negocio, y un
+descuento huerfano al editar una cotizacion. **Un «sigue» del dueno obliga a barrer todas las
+superficies de la clase, no la que esta en la captura.**
+
+## Bug 15: el globo del rail se pintaba detras de la cabecera
+
+**Fecha**: 21 de Octubre de 2026  
+**Severidad**: Media (el nombre del modulo era ilegible en escritorio)  
+**Simptomas**: al pasar el cursor por un icono del rail lateral, la etiqueta salia recortada
+(«Cont…») y **por debajo** de la barra superior.
+
+**Causa raiz**: no era recorte, era **contexto de apilamiento**. La version movil del rail es un
+cajon que se desliza con `-translate-x-full`, y el estado abierto conserva `lg:translate-x-0`.
+Un `transform` —aunque sea identidad— crea bloque contenedor **y contexto de apilamiento**, asi
+que el `z-50` del globo quedaba encerrado dentro del `<aside>` y competia como si no tuviera
+capa. La cabecera (`sticky top-0 z-30`, `app-header.tsx:38`) es hermana del rail en el shell
+(`flex h-dvh overflow-hidden`), y al no tener el rail capa propia en escritorio, el `z-index`
+efectivo del globo era `auto`: la cabecera ganaba por orden de pintura.
+
+**Solucion**: una clase en `src/components/app-nav.tsx:157` — `lg:relative lg:z-40` (y **no**
+`lg:z-auto`). El rail queda por encima de la cabecera (30) y de las sub-cabeceras `sticky z-10`,
+y por debajo de los dialogos de pagina (`z-50`, 27 componentes) y de la paleta ⌘K (`z-[70]`). No
+se saco el globo por un portal ni se rompio la transicion del cajon; el `z-50` base del cajon
+movil sigue intacto.
+
+**Regla practica que deja**: cualquier capa flotante del rail va **entre `z-30` y `z-50`**, y el
+`z` que compite es el del contenedor, no el del hijo.
+
+**Trampa de medicion**: `elementFromPoint` **nunca** devuelve un elemento con
+`pointer-events-none` — el globo lo es — asi que la sonda respondia `cabecera` en las dos
+variantes y estuvo a punto de reportarse el arreglo como ineficaz. La prueba correcta es
+habilitar `pointerEvents` un instante o leer `getComputedStyle().zIndex`. Ademas el viewport de
+la app es 491x593 y el branch `lg:` (1024 px) nunca corre ahi: se midio con el CSS **compilado**
+de la propia app y las media queries aplanadas.
+
+**Verificacion**: `tests/unit/rail-stacking.test.ts` (4 pruebas) parsea las **cadenas de clase**
+del `<aside>` y del `<header>` y exige capa propia del rail, `rail > cabecera`, `rail < 50`, y
+que el globo conserve `role="tooltip"` + `z-50` montado dentro del `<aside>`.
+
+**Leccion inversa**: la primera version tenia `expect(nav).not.toContain("lg:z-auto")` y fallaba
+porque **el comentario del propio componente explica que se quito**. Un aserto negativo sobre un
+archivo fuente se vuelve contra ti: de ahi que se extraigan las clases antes de comparar.
+
 ---
 
 # 17. TESTING Y VERIFICACION
 
 ## Unit Tests (Vitest)
 
-1086 tests en 124 archivos (medido el 2026-10-19, `pnpm test` en 15.5 s) cubriendo:
+1471 tests en 155 archivos (medido el 2026-10-21, `pnpm test` en 142 s) cubriendo:
 
 | Modulo | Tests |
 |--------|-------|
@@ -1933,6 +2150,14 @@ y el logo real responde 200 con `nosniff`.
 | Media path | `media-path.test.ts` (traversal, symlink escape, cabeceras de media) |
 | Webhooks | `webhook.test.ts` (firma de Zernio con y sin secreto, enrutado WAHA) |
 | Window | `window.test.ts` |
+| Prospectos | `prospects-query.test.ts`, `prospect-phone-capture.test.ts`, `phone-dial-link.test.ts` |
+| Inteligencia | `intel-trends-orchestrator.test.ts`, `intel-serpapi.test.ts`, `intel-apify.test.ts`, `intel-youtube-ingest.test.ts`, `intel-geo-veracity.test.ts`, `intel-jobs.test.ts`, `intel-content.test.ts`, `intel-content-scope.test.ts`, `intel-keyword.test.ts`, `intel-keyword-anchor.test.ts`, `intel-trending.test.ts`, `intel-monitor.test.ts`, `intel-stats.test.ts`, `intel-credential-tests.test.ts` |
+| Citas (alta manual y contrato) | `cita-alta-manual.test.ts`, `agenda-contract.test.ts`, `agenda-flag.test.ts`, `agenda-huecos-modelo.test.ts`, `agenda-sandbox.test.ts`, `booking-race.test.ts`, `booking-tenant.test.ts`, `connectors.test.ts`, `google-oauth.test.ts`, `google-tasks-sync.test.ts` |
+| Shell y capas | `rail-stacking.test.ts`, `nav-tooltip-top.test.ts`, `version.test.ts` |
+| Parametros de API (NaN, periodos) | `api-int-params.test.ts`, `finance-period.test.ts` |
+| Cotizaciones | `quote-partial-update.test.ts`, `quote-client-phone.test.ts`, `quote-send-email.test.ts`, `quote-pdf-filename.test.ts`, `quote-tenant.test.ts`, `messenger-pdf-filename.test.ts` |
+| Comentarios y correo | `comment-thread.test.ts`, `comments-format.test.ts`, `zernio-comments.test.ts`, `zernio-comment-routing.test.ts`, `email-threading.test.ts`, `email-format.test.ts`, `email-account-toggle.test.ts` |
+| Guardas de rutas del bot | `bot-routes-guards.test.ts`, `agent-channel-policy.test.ts`, `agent-profile-channels-route.test.ts` |
 
 ## Scripts E2E (Playwright)
 
@@ -1954,15 +2179,24 @@ y el logo real responde 200 con `nosniff`.
 | `e2e-ficha-lead.mjs` | Ficha de lead |
 | `e2e-prioridad.mjs` | Prioridad de leads |
 | `e2e-responsive.mjs` | Diseno responsivo |
-| `e2e-diseno-atlas.mjs` | Diseno atlas white-label |
+| `e2e-automation-queue.mjs` | Automatizaciones: reglas, seguimientos, ejecuciones y metricas |
+| `e2e-caltodo-isolation.mjs` | Aislamiento multi-negocio en Pendientes |
+| `e2e-critical-audit.mjs` | Auditoria critica de datos y rutas |
+| `e2e-frontend-audit.mjs` | Auditoria de superficies del front |
+| `e2e-instagram-disconnect.mjs` | Desconexion de Instagram |
+| `e2e-outbound-webhooks.mjs` | Webhooks salientes y sus reintentos |
+| `e2e-settings-connections.mjs` | Panel de Conexiones de Ajustes |
 
 ## Gate de Verificacion
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm build && pnpm test
+pnpm db:guard && pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
-Todo esto debe pasar antes de considerar una feature "completada".
+Todo esto debe pasar antes de considerar una feature "completada". `db:guard`
+(`scripts/check-migrations.mjs`) es el primero: verifica que el journal de migraciones sea
+legible y coherente con `drizzle/*.sql`, y es el portero de la Constitucion II (una migracion
+huerfana se despliega y revienta en produccion, no en CI).
 
 ## Mocks del Entorno
 

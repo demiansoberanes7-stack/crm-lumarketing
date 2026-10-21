@@ -69,10 +69,15 @@ cuando detecta intención de compra.
 ### 🌱 Prospectos
 
 Quien escribió y todavía no es cartera, en una pantalla: canal, cuándo escribió por
-última vez, cuántos mensajes y qué dijo. Si el cliente deja su número en el chat, se
-guarda solo en su ficha (nunca pisa un número que ya estaba) y el prospecto pasa de
-«Sin teléfono» a marcable. Instagram, Messenger, TikTok y Mercado Libre no traen el
-teléfono en el webhook, así que el chat es la única fuente.
+última vez, cuántos mensajes y qué dijo. **Son dos fuentes**: los mensajes entrantes del
+chat y **los remitentes del correo** — si alguien te escribió un email, aparece aquí, con
+enlace directo a su hilo de Correo. Si el cliente deja su número en el chat, se guarda solo
+en su ficha (nunca pisa un número que ya estaba) y el prospecto pasa de «Sin teléfono» a
+marcable. Instagram, Messenger, TikTok y Mercado Libre no traen el teléfono en el webhook,
+así que el chat es la única fuente ahí.
+
+Y si la lista no carga, la pantalla lo dice con un Reintentar: **un fallo de la API nunca
+se muestra como «aún no hay prospectos»**.
 
 ### 🤖 Agente de IA con TU conocimiento
 
@@ -107,15 +112,20 @@ está en [`tests/e2e/us-bot-api.md`](tests/e2e/us-bot-api.md).
 
 Agente de referencia: [nea-agent](https://github.com/kevinrivm/nea-agent), MIT.
 
-### 📅 Agenda con huecos reales (opcional, apagada por defecto)
+### 📅 Citas con huecos reales (opcional, apagada por defecto)
 
 Enciéndela con `AGENDA=on` y el CRM sabe cuándo estás libre: defines tu horario
-en Ajustes → Agenda y tu agente ofrece huecos concretos, reserva el que el
-cliente elige y lo deja registrado junto a su conversación. Dos garantías que
-no se negocian: **solo se reserva un horario que se ofreció** (nada de que el
+en Ajustes → Calendario y tu agente ofrece huecos concretos, reserva el que el
+cliente elige y lo deja registrado junto a su conversación. La pantalla se llama
+**Citas** porque es la lista de compromisos y su alta, no una rejilla de meses:
+**el operador también agenda y bloquea de ahí mismo**, sin pasar por el bot. Dos
+garantías que no se negocian: **solo se reserva un horario que se ofreció** (nada de que el
 modelo invente un martes a las 10) y **nunca se confirma una cita que no se
 creó** — si el hueco se ocupó a media conversación, la respuesta trae
-alternativas frescas en vez de una promesa falsa.
+alternativas frescas en vez de una promesa falsa. El alta manual elige de la
+disponibilidad que ve en pantalla; el candado anti doble-booking es un índice
+único parcial de la base, así que aplica igual aunque dos operadores confirmen
+a la vez.
 
 Cómo se entrega la reunión lo eliges tú, con un **conector**:
 
@@ -149,6 +159,24 @@ así que reporta igual si arrastras la tarjeta tú, el agente incluido o tu prop
 bot. Si Meta se cae, el lead se mueve igual: una conversión jamás vale un
 movimiento bloqueado. Los gotchas de Meta que cuesta descubrir solo están en
 [`docs/atribucion-capi.md`](docs/atribucion-capi.md).
+
+### 🔎 Inteligencia de mercado (opcional, apagada por defecto)
+
+Enciéndela con `INTEL=on` y el CRM te dice **qué se está buscando en tu país, dónde y en qué
+formato**: series de Google Trends por nicho, desglose por estado, temas y consultas
+relacionados, tendencias actuales, los videos populares de YouTube que casan con tus
+términos y directorio económico del INEGI. Dieciséis nichos de tecnología mexicana vienen
+sembrados; los tuyos se editan en la pantalla.
+
+Nada de esto es una API oficial y el CRM lo declara: **cada dato dice de qué proveedor
+viene**, la cadena de respaldo es SerpApi → Apify → conector web → sin datos, y cuando no
+hay datos **la pantalla lo dice** en vez de inventar una curva. Las ingestas pesadas corren
+como trabajos asíncronos (`202` + avance real, imposible lanzar dos a la vez) para no quemar
+los créditos ni reventar timeouts. Se exportan a CSV desde el navegador, lo que está en
+pantalla.
+
+Sin la bandera, `/inteligencia` y sus doce rutas responden 404 y no se le pide una sola
+credencial a nadie.
 
 ### 👥 Multi-usuario · 🔐 Self-hosted
 
@@ -456,13 +484,13 @@ míralos con `SELECT email FROM "user";`.
 
 ## Versiones
 
-La versión que está corriendo se ve **abajo en la barra lateral** (`v1.3.0 ·
+La versión que está corriendo se ve **abajo en la barra lateral** (`v1.8.0 ·
 <commit>`) y en el healthcheck, para poder confirmar un despliegue con un
 `curl` sin abrir la app:
 
 ```bash
 curl -s https://crm.tudominio.com/api/health
-# {"ok":true,"version":"1.3.0","commit":"abc1234"}
+# {"ok":true,"version":"1.8.0","commit":"abc1234"}
 ```
 
 Los dos valores se congelan al **construir**, así que no pueden mentir en

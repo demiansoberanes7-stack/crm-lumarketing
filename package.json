@@ -1,6 +1,6 @@
 {
   "name": "zorro-tech-crm",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Gestor de comunicación y proyectos: CRM multicanal con agente de IA",
   "license": "MIT",
   "type": "module",

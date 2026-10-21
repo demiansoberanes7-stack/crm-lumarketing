@@ -337,3 +337,545 @@ Queda abierto, declarado:
 - **`iva:false` es la única excepción de impuesto que entiende el agente**; el MCP y el
   cotizador siguen tomando el tipo de la organización, así que "sin IVA" por otra vía exige
   pedirlo en el cotizador.
+
+### 6.8 Pase de auditoría del lote v1.7.0 (21-10-2026) — 15 hallazgos, 13 corregidos
+
+Cuatro subagentes auditaron lo desplegado el 20-10. Cada hallazgo se **verificó por
+lectura o ejecución antes de tocar nada** (dos resultaron falsos, abajo). Los 13 corregidos
+quedan fijados con prueba en verde; tres —F5, F9 y F13— se comprobaron además **por retorno**
+(se revirtió el arreglo en el árbol de trabajo, la prueba falló, se restauró). Gates del lote
+de correcciones: `typecheck`, `lint`, `db:guard` y `next build` en verde; `pnpm test`
+**149 archivos / 1404 pruebas** (antes: 145/1352).
+
+**Este lote está en el working tree y NO está commiteado ni desplegado**: la autorización
+del dueño («Sí, desplegar todo el lote») cubrió v1.7.0, no estas correcciones.
+
+| # | Hallazgo | Severidad | Estado |
+|---|----------|-----------|--------|
+| F1 | `updateQuote` trataba `undefined` como orden de borrar: una edición desde MCP reimponía el 16 % a una cotización «sin IVA» y mandaba contacto, descuento y partidas a `null` | P1 · Confirmado mediante pruebas | Corregido — filtro del parche en `quotes/service.ts:286`; `quote-partial-update.test.ts` |
+| F2 | `listQuotes` no devolvía nombre de contacto: el listado decía «Sin contacto» en todas las tarjetas | P2 · Confirmado mediante pruebas | Corregido — segunda consulta acotada al tenant, `quotes/service.ts:790`; mismo archivo de prueba |
+| F3 | `prompts.ts` no tenía `case "es"`: elegir «Español» en Ajustes caía en la rama Automático y el cliente que escribía en inglés recibía inglés | P1 · Confirmado mediante pruebas | Corregido — `ai/prompts.ts:211`; `agent-prompt-config.test.ts` |
+| F4 | `stripEmphasis` rompía URLs y SKUs (`…/a_b_c` → `…/abc`), además de dejar sangría impar en las listas | P2 · Confirmado mediante pruebas | Corregido — lookbehind en `reply-format.ts` + colapso de espacios dobles; `agent-reply-format.test.ts` |
+| F5 | «te lo entrego el 15-10-2026» se grababa como **teléfono del cliente** en Prospectos | P1 · Confirmado mediante pruebas | Corregido — `AS_DATE_WRITTEN` en `inbox/phone-capture.ts:70`, mirada sobre el texto crudo del candidato; `prospect-phone-capture.test.ts` |
+| F6 | `href={"tel:+" + phone}` con 10 dígitos nacionales: el móvil lee prefijo extranjero (462… → Suecia) y la llamada no sale | P1 · Confirmado mediante pruebas | Corregido — `dialHref()` / `formatPhone()` en `lib/utils.ts:73`, regla `>10 dígitos = trae código de país`; `phone-dial-link.test.ts` |
+| F7 | Handoff del modelo sin `farewell` (clave opcional del esquema) pasaba la conversación a un humano con el cliente **mudo** | P1 · Confirmado mediante pruebas | Corregido — respaldo obligatorio en `ai/pipeline.ts:738`; `agent-toggle-respuesta.test.ts` |
+| F8 | `GET /api/bot/availability` no tenía guarda de canal/IA y **escribe**: dejaba oferta vigente registrada para una conversación que nunca puede agendar | P2 · Confirmado mediante pruebas | Corregido — 409 `ai_paused` igual que `/messages`; `bot-routes-guards.test.ts` |
+| F9 | `POST /api/bot/messages` mandaba el texto crudo del cerebro externo: sin formato y, si pasaba del tope del canal, `sendText` lo rechazaba y no llegaba nada | P2 · Confirmado mediante pruebas | Corregido — pasa por `formatAgentReply` + `fitsChannel`; `bot-routes-guards.test.ts` |
+| F10 | El guard del canal apagado corría **después** de limpiar el handoff por ventana: la ficha de Bandeja mostraba «atendido por el bot» cuando nadie respondía | P2 · Confirmado mediante inspección y pruebas | Corregido — orden invertido en `runAgentTurn`; el traspaso solo se reabre si alguien va a responder |
+| F11 | Diálogo de nueva cotización: `Number("")` → 0 (borrar el campo dejaba «sin IVA» sin querer), un `16.5` rebotaba contra `z.int()` con 422 mudo, y vaciar Notas no las vaciaba (`|| undefined`) | P2 · Confirmado mediante pruebas | Corregido — tope 0-100 y envío tal cual en `new-quote-dialog.tsx`; `paymentConditions` solo se toca si la clave viene |
+| F12 | PDF: una palabra más ancha que la columna (token, URL, código) salía sobresaliendo del margen; «COTIZADO PARA» quedaba como etiqueta sola | P2 · Confirmado mediante pruebas | Corregido — corte por ancho de caracter en `documents/pdf.ts:34` y línea «Sin contacto asignado» en `quotes/pdf.ts:163`; `pdf-fit.test.ts` |
+| F13 | `markRead: false` ejecutaba el abanico del hilo plegado: reescribía `updatedAt` de **todas** las conversaciones de la persona sin limpiar nada | P2 · Confirmado mediante pruebas | Corregido — la guarda es `patch.markRead === true` (`inbox/queries.ts:294`); `conversation-mark-read.test.ts` |
+| F14 | Buscar `%` o `_` en Prospectos no devuelve nada | **Descartado** | No es bug: el patrón ya se escapa (`prospects/query.ts:76` y, igual, `api/contacts/route.ts:59-74`) y viaja como parámetro ligado, donde `LIKE` ya usa `\` de escape. Se dejó prueba de regresión (`%100\%%`, `%a\_b%`) para que nadie lo rompa al tocar la búsqueda |
+| F15 | Orden del lead con `last_activity_at` NULL: en Postgres `DESC` pone los NULL **adelante**, así que `limit(1)` elegía el lead sin fecha y ocultaba la etapa real | P1 · Confirmado mediante pruebas | Corregido — `descNullsLast()` en `lib/db/order.ts`, aplicado en 9 lecturas (8 archivos: `contacts`, `agenda/service` ×2, `automation-events`, `bot/reset`, `bot/context`, `prospects/query`, `ai/pipeline`, `lead-activity`) |
+
+Hallazgos cercanos que tampoco resultaron serlo, con su motivo (regla del dueño: toda
+superficie que se deja de tocar se declara):
+
+- **`ads/query.ts` ordena `campaignInsight.dateStart` (nullable) con `desc` sin `nulls
+  last`.** No se cambió: esas lecturas van filtradas con `gte(dateStart, …)`, y `gte`
+  excluye NULL, así que el caso que rompe F15 no puede aparecer ahí.
+- **`suppliers-client.tsx:457` arma `tel:${value}` con el teléfono libre de proveedor.** Se
+  dejó igual a propósito: ese campo es texto libre del operador y suele traer extensiones
+  (`+52 443 111 2233 ext 4`); normalizarlo a 10/12 dígitos perdería información visible
+  para ganar un enlace que el dueño no reportó roto. Prospectos y Contactos sí muestran
+  números canónicos de cliente, y ahí estaba el bug.
+
+Qué sigue abierto después de este pase:
+
+- **Nada verificado en vivo.** Las 13 correcciones están probadas como función y como SQL
+  generado; el IVA respetado sobre una cotización real, la llamada que sale del teléfono
+  del dueño, y el PDF sin texto fuera de margen siguen siendo verificación humana pendiente.
+- **F5 no repara datos ya escritos**: los teléfonos-fecha que entraron entre el despliegue
+  de v1.7.0 y este arreglo siguen en `contact.phone`. Es una limpieza con criterio (10
+  dígitos que además casan `AS_DATE_WRITTEN`), no un bug de código, y toca datos reales:
+  requiere autorización del dueño.
+- **`hasCountryCode` es una regla de longitud, no un catálogo de países**: un número
+  extranjero de 10 dígitos se pinta sin `+`. Aceptable mientras el negocio sea mexicano
+  (`normalizeMx` ya canonaliza 521→52); si algún día entran clientes de otro país, la
+  solución es guardar `phone_country` o el E.164 completo, no adivinar por longitud.
+- **Los dos `farewell` del handoff** (respaldo y texto del modo humano) son cadenas fijas en
+  español dentro del pipeline. Si el negocio responde en otro idioma, el respaldo no se
+  traduce; hoy solo se siente si el modelo omite el `farewell`.
+
+### 6.9 Bug report del dueño: «no agendo el prospecto» y «solo hace una ficha» (21-10-2026)
+
+Reporte con captura de Prospectos (negocio Honeycat MX, contador en 0, estado vacío). Dos
+causas distintas, ambas confirmadas antes de tocar código.
+
+**Causa 1 — Prospectos devolvía 500 y la pantalla lo contaba como «no hay prospectos».**
+Confirmado mediante pruebas en producción: 8 eventos `api_failed` con
+`TypeError: b.firstInboundAt?.toISOString is not a function`, 7 de ellos del tenant
+`org_q5s3` entre 06:54:11 y 07:05:44Z del 21-10, contenedor `eeb9443`. Los datos están
+bien: el mismo SQL devuelto a mano trae 4 filas de Honeycat y 1 del principal.
+- Arreglo: `isoDate()` en `server/prospects/query.ts` normaliza en el borde del DTO lo que
+  trae el driver (`Date`, string ISO, vacío, basura) en lugar de asumir una forma. Los
+  fragmentos `sql` de `MIN/MAX(COALESCE(…))` no llevan decodificador de columna, así que el
+  tipo runtime depende del driver y `.toISOString()` sobre ellos no es seguro.
+- **No** se añadió `.mapWith(schema.message.createdAt)` a esas proyecciones, declarado a
+  propósito: en modo string es un no-op y en modo date intentaría decodificar valores que ya
+  llegan como `Date`. La normalización en el DTO es el borde correcto.
+- El mecanismo exacto por el que el driver devolvió ese valor sigue **Hipótesis pendiente**;
+  el arreglo es agnóstico de la forma.
+
+**Causa 2 — el agente no podía mandar más de una ficha por turno.**
+`send_quote` aceptaba un único `item_id` obligatorio (mientras `create_quote` ya admitía
+hasta 10 partidas), así que un cliente que pregunta por varios productos recibía una sola
+ficha. Confirmado mediante inspección y pruebas.
+- Arreglo: `item_ids` (array de hasta 5) en `ai/actions.ts`, un `send_quote` recorre los IDs
+  **en el orden pedido** (no en el del `inArray`), deduplica, y emite **un mensaje por ficha**
+  porque el tope de bytes del canal es por mensaje (`channels/capabilities.ts`). Con una sola
+  ficha, el `reply` viaja pegado a ella; con varias, cada una es su mensaje.
+- El prompt (`ai/prompts.ts`) ahora obliga a una sola `send_quote` con todos los IDs ya
+  conocidos cuando el cliente pide varios productos.
+
+**Barrido de la clase «fallo de lista leído como lista vacía»** (regla del dueño: «sigue»,
+todas las superficies). Patrón corregido: `fetch().catch(() => null)` + `if (!res?.ok) return`
+dejaba el estado vacío como único render. Ahora todas estas pantallas distinguen
+«no se pudo leer» de «no hay datos» con el componente compartido `components/load-error.tsx`,
+y el panel de error **solo sustituye al estado vacío, nunca a una lista ya cargada**
+(`failed = Boolean(error) && items.length === 0`):
+
+| Superficie | Qué muestra hoy si la API falla |
+|---|---|
+| `prospects/prospects-client.tsx` | Cabecera «— / Lista no disponible» + panel con Reintentar |
+| `inbox/inbox-client.tsx` + `inbox/conversation-list.tsx` | «No se pudo leer la bandeja.» en vez de bandeja vacía |
+| `contacts/contacts-client.tsx` | Panel antes de «Aún no hay clientes» |
+| `quotes/quotes-client.tsx` | Panel antes de «Sin cotizaciones» |
+| `projects/projects-client.tsx` | Bandera separada por pestaña (activas / archivadas) |
+| `bookings/bookings-client.tsx` | Panel con Reintentar sobre «Todavía no hay nada agendado» |
+| `pipeline/pipeline-client.tsx` | Tablero: error real vs «sin etapas configuradas» |
+| `catalog/catalog-client.tsx` | Panel antes de «Sin productos» |
+| `suppliers/suppliers-client.tsx` | Panel antes de «Sin proveedores» |
+| `email/email-client.tsx` | Cuentas y mensajes con banderas independientes, cada uno con Reintentar |
+| `broadcasts/broadcasts-client.tsx` | Los tres `fetch` ya no se arrastran entre sí (`.catch` individual) + aviso de no duplicar el envío |
+| `settings/client-businesses-card.tsx`, `settings/team-client.tsx` | Usan la línea de error que ya existía en el formulario |
+
+Superficies dejadas a propósito, con su motivo (nada se omite en silencio):
+
+- **`copilot-client.tsx`, `lab-client`, `analytics-client`, `automations-client`,
+  `inteligencia/*`, `settings/ads-client`, `settings/agenda-client`, `inbox/contact-panel`,
+  `pipeline/lead-drawer`, `agent-client` (base de conocimiento)** — su fallo es diagnóstico o
+  de un panel secundario: no afirman «no hay datos» ante un 500, o el texto que muestran es
+  una invitación a configurar, no una afirmación de vacío.
+- **`use-unread-count.ts`** — lo que se pone a 0 es un badge; no redacta una lista vacía.
+- **`quote-detail.tsx`** — los selectores vacíos son un `<select>` sin opciones, sin texto que
+  engañe.
+- **`inbox-client.tsx` → `refetchMessages`** — los mensajes del hilo abierto se reemplazan por
+  lo que devuelve la API y no existe texto de «sin resultados» que atribuir al fallo.
+
+Gates de este lote: `db:guard` (0 avisos, sin migraciones), `typecheck`, `lint`,
+`pnpm test` **149 archivos / 1416 pruebas** (antes 149/1404) y `next build`, todos en verde.
+Pruebas nuevas: `prospects-query.test.ts` (formas de fecha del driver),
+`agent-formal-quote.test.ts` (orden, deduplicado, ficha única, faltantes) y
+`agent-actions.test.ts` (`item_ids` vacío / >5 rechazados).
+
+**Este lote está en el working tree y NO está commiteado ni desplegado**: la autorización
+anterior cubrió v1.7.0; el push a `main` despliega y necesita autorización nueva.
+
+### 6.10 Inteligencia: las fuentes se relacionan con la búsqueda, no se ocultan (21-10-2026)
+
+Queja del dueño: *«en inteligencia quitaste todas las demas fuentes de info cuando lo que
+tenias que hacer era relacionar la informacion con la busqueda de google trends para que
+todas las apis de inteligencia dieran informacion relacional a la consulta»*.
+
+**Antes** (arreglo de la tarea #92, Detectado mediante inspección): la sección
+«Explorar más» —nichos monitoreados, tendencias del país, comparativa, YouTube, audiencia y
+mapa DENUE— se cerraba en cuanto había una búsqueda activa, para no mezclar datos de otro
+nicho con la consulta. El efecto real era el que se quejó: **una búsqueda dejaba la pantalla
+con una sola fuente**. La causa del mezclar no era la visibilidad, era que los paneles se
+leían sin declarar a qué término pertenecían.
+
+**Ahora**: las fuentes nunca se cierran por buscar. Con búsqueda activa la sección se llama
+«Contexto de tu búsqueda» y cada panel declara con qué se relaciona:
+
+| Fuente | Cómo se ata a la consulta | Mecanismo |
+|---|---|---|
+| Tendencias actuales (país) | la tabla arranca filtrada por la palabra; vaciar el campo devuelve el país completo | `TrendingPanel relatedTo` → estado `query` → `mentionsQuery()` |
+| Ranking de nichos | cada nicho lleva etiqueta `es tu búsqueda` (cruza el umbral) o `N% parecido`, con tooltip que distingue vecino de idéntico | `GtRanking related/queryLabel` sobre `catalogMatches` |
+| Comparativa multi-nicho | la serie **en vivo** de la consulta es la línea gruesa de color de marca; las demás son los nichos, para comparar contra ella | `intelFocusSeries()` → `GtCompareChart focus` |
+| Subregiones / temas / consultas GT | el selector abre en el nicho más parecido y cada chip muestra su % | `catalogMatches[0]` → `setActiveTermId` |
+| Contenido que funciona (YouTube) | la muestra popular se acota a los videos que mencionan la consulta y dice «N de M»; si ninguno la menciona, lo explica en vez de mostrar la muestra completa | `getContentInsights(org, days, q)` con `mentionsPhrase` |
+| Mapa de competencia (DENUE) | abre en el nicho monitoreado más parecido, con nota que lo declara | `GeoPanel relatedTermId/queryLabel` |
+
+Soporte nuevo (todo calculado sobre datos ya leídos, **sin peticiones extra**):
+`rankTerms()` y `mentionsPhrase()` en `server/intel/terms.ts`, y el campo `catalogMatches`
+que `analyzeKeyword()` añade a la respuesta de `/api/intel/keyword` — reutiliza el catálogo
+que la propia función ya había consultado. `rankTerms` no exige el umbral `TERM_MATCH_MIN`:
+un 0.4 no es «este nicho», pero es el vecino más próximo y se muestra como contexto con su
+porcentaje. `intelFocusSeries()` solo dibuja línea si la consulta trajo ≥2 puntos; con un
+dato o sin mercado devuelve `null` y la comparativa se queda como estaba.
+
+Dos reglas de texto, cada una en su pantalla y las dos declaradas en ella:
+`mentionsPhrase()` (servidor) exige **todas** las palabras y acota la muestra de YouTube —son
+títulos de producto del nicho—; `mentionsQuery()` (`lib/intel-content.ts`, en el navegador)
+basta con **una** palabra para la tabla de tendencias del país, porque exigir la frase completa
+la dejaba vacía delante de tendencias que sí van del tema. Las dos ignoran acentos, vacías
+(«de», «la»…) y plurales; el `includes` literal que había antes fallaba siempre contra los
+títulos acentuados del feed de México. `mentionsQuery` vive en `lib` y no importa `terms.ts` a
+propósito: el módulo del servidor arrastra `@/lib/db` al bundle del navegador.
+
+Ni se tocó ni se puede relacionar, declarado:
+
+- **`AudiencePanel`** — es demografía del país (ENDUTIH 2024), no tiene dimensión de palabra.
+- **Búsqueda en vivo de YouTube para la consulta** (`searchVideos`) — cobra 100 unidades de
+  cuota por llamada; se mantiene la muestra popular ya ingerida y el panel explica cómo
+  conseguirla. Si el dueño quiere el buscador real de YouTube, es una decisión de cuota.
+- **Mapa DENUE en vivo para una frase que no está en el catálogo** — son 32 consultas por
+  término; por eso el mapa se queda en el nicho que sí coincide y, si solo hay un vecino, la
+  pantalla lo nombra con su porcentaje en vez de hacerlo pasar por la búsqueda.
+- **El nicho solo se fuerza si la coincidencia es real**: `intelNicheAnchors` separa `focus`
+  (el nicho que cruza `TERM_MATCH_MIN`, y por tanto es el único que mueve los paneles GT y el
+  mapa) de `nearest` (el primero del ranking, que solo se etiqueta). Con `catalogMatches`
+  vacío —o con un vecino al 40 %— el selector y el mapa conservan el término que el dueño
+  tenía puesto; nunca se afirma parentesco donde no lo hay.
+
+Gates: `db:guard` (0 avisos, sin migraciones), `typecheck`, `lint`, `pnpm test`
+**150 archivos / 1436 pruebas** (antes 149/1416) y `next build`, todos en verde. Pruebas
+nuevas: `rankTerms` (orden, umbral, vía, límite y desempate), `mentionsPhrase` (plural,
+acentos, no subcadena), `mentionsQuery` (una palabra basta, vacías, acentos, tecleo a medias),
+`intelFocusSeries` (línea de referencia, sin mercado, un solo punto),
+etiquetas del `GtRanking` renderizado y `tests/unit/intel-content-scope.test.ts`
+(acotado, recorte de la consulta, «1 de 2» y muestra vacía honesta). Se borró la prueba de
+`showMonitoredExplorer`, la función que ocultaba las fuentes.
+
+**Tampoco este lote está commiteado ni desplegado.** Deshacer: devolver `intel-client.tsx` a
+la sección con `explore` como puerta, quitar `related/relatedTo/query/focus` de los paneles y
+dejar `catalogMatches`/`rankTerms`/`mentionsPhrase` sin uso — el API sigue respondiendo con
+ese campo de más sin que nada se rompa.
+
+Deuda documental dejada en evidencia al escribir esta sección: `docs/SISTEMA-COMPLETO.md` no
+tiene capítulo del módulo de Inteligencia (sus 27 secciones cubren bandeja, agente, contactos,
+cotizaciones, proyectos… y saltan de «Configuración del Sistema» a «Variables de Entorno»). El
+contrato de esta pantalla quedó aquí y en el entregable de Desktop; abrir el capítulo propio es
+tarea aparte, no un parche de este lote.
+
+> **Cerrada el 21-10-2026** con el lote del push: `docs/SISTEMA-COMPLETO.md` tiene ahora **§33
+> Inteligencia de mercado** (bandera y 404, doce rutas, once tablas, cadena de respaldo SerpApi →
+> Apify → conector web → sin datos, jobs `202`/409 con índice único parcial, la regla de anclaje
+> de la búsqueda y su estado de verificación) y **§34 Agenda y Citas**. El índice general se
+> actualizó; `docs/DOCUMENTACION-COMPLETA-SISTEMA.md` recibió el bloque de tablas `intel_*`, las
+> rutas `/api/intel/*` y las secciones de Prospectos e Inteligencia.
+
+### 6.11 Auditoría de las cuatro clases de bug (21-10-2026) — límites, lecturas caídas, fechas y descuento
+
+Petición del dueño: «audita todo y arregla los bugs» sobre el árbol de trabajo sin commitear
+(82 archivos, +2 658/−411). Cuatro frentes, cada uno barrido en todas las superficies donde
+aparece, no solo donde se vio el síntoma.
+
+**B1 — `?limit=abc` devolvía 500 y la pantalla lo leía como «no hay datos» (P2, corregido).**
+Cuatro rutas hacían `parseInt(url.searchParams.get("limit") ?? "50")` sin respaldo: `NaN`
+viajaba hasta Postgres como `LIMIT NaN`, la consulta reventaba y el 500 se pintaba vacío. Ahora
+existe `intParam(url, name, { fallback, min, max })` en `src/lib/api.ts` (ausente, vacío, basura
+→ respaldo; negativo o desbordado → se acota al rango) y lo usan `/api/projects`, `/api/expenses`,
+`/api/catalog` y `/api/email/messages`, con `min: 1` en todos los límites. Pruebas:
+`tests/unit/api-int-params.test.ts` (7). Las demás rutas ya validaban por zod o por `clamp`.
+
+**B2 — la lectura caída se seguía pintando como vacío (P2, barrido hasta 13 superficies).**
+Con `LoadError` ya existían Bandeja, Prospectos y listas mayores, pero quedaban los sitios que
+mandan decisiones del dueño. Añadidos: Mercado Libre (para que un 500 no invite a re-pegar el
+Client ID), credenciales de conectores (`connector-credentials.tsx`: ahora avisa de que los
+campos están vacíos porque falló la lectura, no porque falten secretos), cotización (chats +
+hilos de correo), diálogo de enviar producto, etapas del alta de contacto, mensajes del hilo de
+Bandeja, Copiloto (lista e hilo, y el hilo se limpia antes de leer para no dejar publicado el
+anterior), agenda (`/availability`), actividad de CAPI, Laboratorio (historial, reporte y la
+barra `width: NaN%`), correo (cuentas e hilos por separado) y **el contador de no leídos**:
+`useUnreadCount` devuelve `null` —no `0`— cuando no se pudo leer, y `null` no pinta badge; un `0`
+afirmaba «nadie espera» con la Bandeja llena. También el panel de Análisis, que tras un 500 se
+quedaba mudo. Dos avisos del propio barrido corregidos al revisar el diff: `quote-detail`
+aseguraba «no se pudieron leer los hilos» cuando las dos lecturas habían ido bien y no había
+destinos (ahora `sendTargetsError` es `null` sin lectura caída), y `email-chat` reutilizaba el
+`error` del compositor, que pintaba «no se pudieron cargar los correos» tras un envío fallido
+(ahora `threadsFailed` propio). Queda deliberadamente como está `automations-client`: sus lecturas
+caídas muestran `—` o los presets declarados en pantalla, que no es una afirmación de vacío.
+
+**B3 — scoping multi-tenant: seis sospechas, cero fugas (verificado, sin cambios).**
+Cada sospecha de un subagente se comprobó a mano y se descartó con la reason: `lab/runs/[id]`
+valida la corrida con `scoped()` antes de leer sus casos; `bot/context` filtra la conversación
+por organización en el `WHERE`; los `assetId` de `channels/send.ts` los genera `newId()` la misma
+llamada y se insertan con la organización del invocante; `persistDelivery(booking.id)` parte de un
+booking ya acotado; `hasClientRepliedSince` lee mensajes de una sola conversación; y sirviendo
+media, `/api/media/[assetId]` vuelve a comprobar organización con `scoped()` + `readMediaFile`.
+El posible abanico del `LEFT JOIN conversation` en `/api/pipeline/board` está cerrado por el
+`uniqueIndex("conversation_org_contact_real_idx")` (`schema.ts:411-414`): una conversación real
+por (organización, contacto). Medido en producción dentro de la VM, sin escribir nada:
+`filas_kanban=2 / leads_distintos=2` y `contactos_con_mas_de_una_conv=0 / max_conv=0`. Queda como
+riesgo latente, no como fuga confirmada.
+
+**B4 — fechas en UTC y descuento huérfano (P2 y P3, corregidos).**
+El contenedor corre en UTC y el negocio es `America/Mexico_City` (UTC−6): entre las 00:00 y las
+06:00 locales cualquier `new Date().toISOString().slice(0,10)` era *ayer*. Nace `src/lib/dates.ts`
+(`zonedDateInput`, `zonedMonthBounds`) y se aplica en `reportPeriod` (Finanzas), `currentMonthRange`
+del servicio (antes usaba `setMonth(-1)` sobre la fecha local del proceso: en el arranque del mes
+devolvía el mes anterior), el rango por defecto de Balance, las fechas iniciales de los diálogos de
+pago y gasto, y el `today` de `dashboard/metrics.ts` que marcaba vencida una factura el mismo día de
+su plazo. Pruebas: `tests/unit/finance-period.test.ts` (6), incluida la frontera del 1 de
+noviembre 01:00 UTC → 31 de octubre y febrero bisiesto. En cotizaciones, `discountPair()` garantiza
+que `discountValue` no se guarda sin `discountType` (crear y actualizar): antes, quitar solo el
+tipo dejaba un importe que el editor volvía a rellenar y el dueño aplicaba un descuento que no
+pidió. Se probó en `quote-partial-update.test.ts`. Descartado con motivo: el `NaN` de precio en
+`catalog-client.tsx:106` es inalcanzable (`type="number"` con `min="0"`), y el truncado de
+`money.ts:91` y la vista previa flotante de `new-quote-dialog` siguen siendo deuda cosmética.
+
+Gates de este frente: `db:guard` (0 avisos, sin migraciones nuevas), `typecheck`, `lint`,
+`pnpm test` **152 archivos / 1453 pruebas** (antes 150/1436) y `next build`, todos en verde.
+Nada de esto está commiteado ni desplegado. Deshacer por bloque: quitar `intParam` de las cuatro
+rutas y borrar `lib/api.ts` y su prueba; devolver `src/lib/dates.ts` a los llamadores y volver a
+`toISOString().slice(0,10)` / `setMonth(-1)`; quitar `...discountPair(input)` de los dos puntos de
+escritura; y en las 13 superficies de B2 eliminar la bandera `*Failed` y su aviso (el componente
+`LoadError` sigue siendo usado por los listados de v1.7.0, no borrarlo).
+
+### 6.12 Prospectos con todo mensaje entrante y «Citas» creada a mano (21-10-2026)
+
+Segundo reporte del dueño sobre la misma pantalla: *«resuelve el apartado Prospectos, si tengo»* y
+*«prospectos: no solo agenda número, sino todo mensaje entrante»*. Captura con el contador en 0
+habiendo un hilo de Messenger abierto. Dos cosas distintas, y había que separarlas.
+
+**Causa 1 — la de la captura: el 500 de §6.9 sigue en producción.** No es un bug nuevo: el arreglo
+(`isoDate()` + el aviso de «lista no disponible») está en el árbol desde §6.9 y §6.11 pero **no
+desplegado**; `eeb9443` todavía hace `row.firstInboundAt?.toISOString()` y su cliente todavía pinta
+`Aún no hay prospectos` cuando la llamada falla. Medido en la VM: 21 mensajes `in`, 5 hilos reales,
+y el SQL de la pantalla devuelve filas — o sea los datos están bien y lo que falta es la versión.
+
+**Causa 2 — la de fondo, y sí era nueva: el correo entrante no existía para Prospectos.** Medido
+en producción: 16 `email_message` con `direction = 'inbound'` de **10 remitentes distintos**, con
+`contact_id` en NULL en los 16 (la ingesta de `server/email/service.ts:191` lo deja fijo en `null`
+a propósito). Como la pantalla se derivaba solo de `message`, esas 10 personas eran invisibles: no
+estaban en Prospectos porque nunca escribieron por chat y no estaban en Contactos porque no tienen
+ficha. Eso es exactamente lo que el dueño pidió ver aquí.
+
+- **Arreglo**: `listProspects` ahora fusiona dos lecturas —`listChatProspects` (igual que antes) y
+  `listEmailProspects` (`email_message` agrupado por `from_email`)— ordenadas por el último mensaje
+  entrante, con el mismo corte de 200. El correo **no** se metió en el catálogo `Channel` (no tiene
+  hilo en Bandeja ni agente) sino que trae su etiqueta de pantalla, `Correo`.
+- `ProspectDto.contactId` y `.conversationId` pasan a ser nullables y se agrega `.email`. No es un
+  adorno del tipo: un remitente de correo **no es un contacto** hasta que el dueño lo da de alta, y
+  fingir un `contactId` sintético habría enlazado la fila con una Bandeja que no existe.
+- La tarjeta enlaza con `/email` y muestra la dirección cuando no hay ficha; con `/inbox?contact=`
+  cuando sí. El filtro «Con teléfono» y «Ver archivados» se saltan entera la lectura de correo (un
+  remitente no puede cumplirlos) y un canal de chat también la salta.
+- **Se deja a propósito sin dedup**: alguien que escribió por chat y por correo sale dos veces, una
+  por canal. El contacto no guarda correo, así que fundirlos sería adivinar, y borrar una fila real
+  es la misma clase de error que §6.10.
+- **No se tocó**: `email_message.contact_id` sigue en NULL. Dar de alta contactos en la ingesta
+  cambiaría Contactos, que desde §6.7 cuenta **solo la cartera** — mezclar las dos cosas era peor
+  bug del que se salía.
+
+**Y «Calendario» pasa a llamarse «Citas»**, con alta manual. La API ya la soportaba desde 015
+(`kind: "session"`, `source: "manual"`, `requireOffer: false`); lo que faltaba era la pantalla, que
+solo ofrecía «Bloquear un rango». Ahora hay sección **Nueva cita**: contacto (`ContactPicker`, que
+lee `/api/contacts` sin `won=1` para poder elegir a un prospecto), hueco de la disponibilidad o
+hora impuesta, y nota. El renombrado vive en `config/nav.ts` —de ahí se pintan la barra lateral, el
+breadcrumb y el ⌘K a la vez— más el `h2` de la página. La pestaña de Ajustes sigue siendo
+«Calendario», que es donde se configura el horario, y el aviso de citas vacías lo dice.
+
+- **El servidor sigue mandando**: una hora impuesta fuera de jornada o ya ocupada vuelve
+  `slot_taken` y se muestra tal cual. No se aflojó la REGLA 2 ni se inventó un hueco para que el
+  botón siempre funcionara.
+- `citaStartUtc()` existe porque el `datetime-local` del navegador escribe la hora **sin zona**: si
+  ese texto viajara crudo, el servidor la leería como UTC y la cita caería 6 horas antes en
+  Ciudad de México. Está probado contra el constructor de hora local, no contra una cadena fija,
+  para que la prueba valga igual en el CI (UTC).
+- La disponibilidad ya no se recorta a 12 en el estado: se guardan todos los huecos (el selector de
+  alta los necesita) y el de reprogramar sigue mostrando 12.
+
+Gates: `db:guard` (0 avisos, **sin migraciones nuevas**), `typecheck`, `lint`, `pnpm test`
+**153 archivos / 1464 pruebas** (antes 152/1453) y `next build`, todos en verde. Pruebas nuevas en
+`tests/unit/prospects-query.test.ts` (7 del correo: fusión, orden por fuente, tenant + `inbound`,
+los tres saltos de filtro y el `%` escapado en la dirección) y `tests/unit/cita-alta-manual.test.ts`
+(4 del instante). La prueba que decía «sin prospectos no consulta las oportunidades» ahora cuenta
+dos lecturas y exige que la que NO se haga sea la de `lead`.
+
+Verificado contra datos reales (SQL de solo lectura en el contenedor, tenant `org_q5s3`): la
+pantalla pasaría de 0 a **11 filas** —1 de Messenger (Axel, 6 entrantes) y 10 remitentes de correo
+con su último asunto—, y Honeycat conserva sus prospectos de chat (0 de correo).
+
+Nada de esto está commiteado ni desplegado. Deshacer: borrar `listEmailProspects` y
+`serializeEmailProspect` y devolver `listProspects` a ser la consulta de chat; quitar `.email` y
+volver a no-nullable `contactId`/`conversationId` en `ProspectDto` (el cliente vuelve a su `key` y
+`href` de siempre); y en Citas, quitar la sección «Nueva cita» y el `import { ContactPicker }`,
+devolver `label: "Calendario"` en `config/nav.ts` y el `h2` de la página.
+
+### 6.13 El rail lateral recortaba la última pestaña y ocultaba el avatar (21-10-2026)
+
+**Síntoma visto por el dueño:** en Ajustes → Conexiones el ícono de abajo de la
+barra se ve «entrecortado» y el avatar (gato/perro/león/zorro o las iniciales)
+no aparece.
+
+**Causa, medida y no suposición.** El `<aside>` de `src/components/app-nav.tsx` es
+`lg:overflow-visible` y vive dentro de un shell con `h-dvh overflow-hidden`. Su
+contenido mide ~938 px: 17 renglones de 44 px + 2 de separación (780), el logo con
+sus márgenes (66), el bloque de cuenta (56), la insignia de versión (22) y el
+`padding-bottom` (14). En una ventana de 801 px de alto, nada de eso cabe y como el
+aside no recorta, recorta el shell: la última pestaña (Ajustes) termina 24 px más
+abajo del borde y el avatar y la versión quedan **enteros** fuera de la pantalla.
+Reproducido en un arquetipo con la misma geometría: sin scroll, `gearBottom` 825 y
+`avatarBottom` 873 contra un borde en 801 → al avatar le quedaban **0 px visibles**.
+
+**Arreglo.** El `nav` es ahora la única región con scroll del rail
+(`min-h-0 flex-1 overflow-y-auto`, sin barra visible porque el rail mide 72 px) y
+se quitó el `<div className="flex-1" />` que hacía de separador: el propio `nav`
+crece. Logo, avatar y versión quedan anclados y siempre a la vista; medido en el
+mismo arquetipo: avatar en 760 y versión en 787, dentro de los 801.
+
+**Por qué el tooltip cambió de dueño.** Un contenedor de scroll recorta todo lo que
+asoma de su caja, incluidos los globos que salen a la derecha del rail, que es
+justo donde el menú necesita desplazarse. El globo dejó de ser hijo del enlace y
+pasó a ser hijo del `<aside>` (de `lg:static` a `lg:relative`), posicionado con
+`tooltipTop()` sobre el centro del renglón. Verificado con hit-test en el
+arquetipo, no por apariencia: dentro del nav `elementFromPoint` respondía el fondo
+(`pintado: false`); como hijo del aside respondió el propio globo (`pintado: true`).
+Misma razón por la que el bloque de cuenta usa el mismo mecanismo.
+
+**Hallazgo colateral, arreglado.** `tests/unit/version.test.ts` anclaba con
+`nav.indexOf("versionLabel()")`, una cadena que **no existe** en el archivo: el
+`indexOf` devolvía −1 y el `slice` terminaba siendo «la cola del archivo». Pasaba
+porque la insignia era lo último del fichero; cualquier cosa añadida después lo
+rompía. El anclaje ahora busca `versionLabel(sha)` y el test exige que el anclaje
+exista, para que no vuelva a pasar desapercibido.
+
+**Barrido de la misma clase (Regla del «sigue»).** `grep overflow-visible` sobre
+`src/` deja un solo candidato más: el sub-nav de Ajustes
+(`settings/settings-nav.tsx:76`), con `sm:overflow-visible` en columna. **No se
+tocó, y este es el porqué:** 9 pestañas + 2 etiquetas de grupo dan ~480 px contra
+~735 px disponibles en la misma ventana; cabe con 255 px de margen. Es el mismo
+patrón y volverá a recortar si Ajustes crece ~6 pestañas más, así que queda
+anotado aquí en lugar de «por si acaso».
+
+**Pruebas.** Gates completos: `db:guard` (0 avisos, sin migración nueva),
+`typecheck`, `lint`, `build` en verde y **154 ficheros / 1467 tests** (3 nuevos de
+`tooltipTop`). **No** hay verificación en la app real: sin BD local ni sesión, y la
+producción aún no tiene este cambio. Lo afirmado arriba es geometría medida en el
+arquetipo más inspección del CSS emitido (`scrollbar-width:none` y
+`::-webkit-scrollbar{display:none}` sí salen en el bundle).
+
+**Deshacer.** Devolver el `nav` a `flex flex-col gap-0.5 lg:items-center`,
+restaurar `<div className="flex-1" />`, regresar el aside a `lg:static`, y volver a
+montar `NavTooltip` dentro de cada enlace y del bloque de cuenta. Borrar
+`tests/unit/nav-tooltip-top.test.ts` y devolver el anclaje de `version.test.ts`.
+
+### 6.14 El globo del rail se pintaba detrás de la cabecera (21-10-2026)
+
+**Síntoma visto por el dueño:** al pasar el cursor por el ícono de Contactos, la
+píldora con el nombre del módulo sale «por detrás» de la cabecera; pide que siempre
+se vea encima. Es la segunda ronda sobre el mismo globito: §6.13 lo sacó del `nav`
+(recorte) pero no de la cabecera (apilamiento).
+
+**Causa, y por qué el `z-50` del globo no alcanzaba.** El `<aside>` del rail lleva
+`lg:translate-x-0`. Un `transform` convierte al elemento en **contexto de
+apilamiento**, así que el `z-50` del globo solo ordena *dentro* del rail: afuera, el
+rail competía con `lg:z-auto` (efectivamente 0). La cabecera es `sticky top-0 z-30`
+y vive en el hermano que viene **después** en el DOM, dentro de una columna estática
+que no crea contexto propio. Consecuencia exacta: 30 > 0, la cabecera pima. Y no era
+solo la cabecera — `dashboard-client.tsx:178` tiene una barra `sticky z-10`, también
+por encima del rail.
+
+**Medido, no deducido.** Se montó el shell real (rail + columna con cabecera) sobre
+la hoja de estilos **ya compilada de la app** (`.next/static/css/*.css`) y se hizo hit
+test sobre el centro del globo. El truco del puntero importa: el globo lleva
+`pointer-events-none`, así que `elementFromPoint` lo ignora siempre; se reactiva solo
+durante la medición, porque el hit test sigue el orden de pintado y por eso responde
+lo que realmente está encima.
+
+| capa del rail en escritorio | `z-index` calculado | qué responde el hit test | globo visible |
+|---|---|---|---|
+| `lg:z-auto` (antes) | rail `auto`, cabecera `30` | `cabeca` | **no** |
+| `lg:z-40` (ahora) | rail `40`, cabecera `30` | `globo` | **sí** |
+| `lg:z-40` + diálogo `z-50` abierto | diálogo `50` | `dialogo` | no, y es lo correcto |
+
+La hoja copiada tiene los `@media (min-width:…)` planos a `1px` porque el navegador
+de prueba mide 491×593 y sin eso no entra la rama de escritorio. Tailwind emite los
+bloques sm < md < lg < xl < 2xl en orden ascendente, así que el ganador por propiedad
+es el mismo que en una ventana de 1536 px para las clases que se ejercitan aquí
+(`lg:relative`, `lg:z-40`, `lg:overflow-visible`, `lg:translate-x-0`, `lg:w-[72px]`).
+`getComputedStyle` confirmó además que el rail queda `position: relative` con
+`transform: matrix(1,0,0,1,0,0)`, o sea que el contexto de apilamiento existe de
+verdad y el `z-50` interno no puede salir de él.
+
+**Arreglo.** El `<aside>` pasa de `lg:z-auto` a `lg:z-40`: arriba de la cabecera
+(30) y de cualquier barra pegajosa de página, abajo de los diálogos de página
+(`z-50`, repartidos en 27 ficheros de `src/`) y del ⌘K (`z-[70]`). Se eligió 40 y no
+50 para no tapar un diálogo abierto, y se dejó el `z-50` base del drawer móvil
+intacto (ahí el rail sí tiene que quedar sobre el velo `z-40` de
+`app-shell.tsx:101`).
+
+**Barrido de la misma clase (Regla del «sigue»).** Todo lo que desborda el rail de
+72 px y está atrapado en su contexto se arregla con la misma línea, y se confirmó
+superficie por superficie: el **selector de avatar** (`app-nav.tsx:260`, `absolute
+bottom-full left-0 z-50 w-60`) asomaba 168 px hacia la columna de contenido y se
+pintaba debajo de la cabecera igual que el globo; su **velo** (`fixed inset-0 z-40`)
+no oscurecía ni la cabecera ni `main` por la misma razón. Ambos quedan bien con el
+rail en 40. El otro rail con `overflow-visible` (`settings/settings-nav.tsx:76`) **no
+tiene globos**: sus etiquetas son texto en flujo, así que no comparte el fallo. La
+cabecera tampoco aporta candidatos: `app-header.tsx` solo monta migas, el botón de
+búsqueda, la campana y `ThemeToggle`, y este es un botón que alterna el tema sin
+capa flotante (`theme-toggle.tsx:26`). En Bandeja, el panel de contacto usa
+`max-xl:z-40` (empata con el rail y gana el orden del DOM) pero está anclado a
+`right-0` con 320 px de ancho, lejos de la columna x<72: sin solape, sin cambio de
+comportamiento.
+
+**Prueba nueva.** `tests/unit/rail-stacking.test.ts` (4 casos) fija la invariante
+leyendo las dos fuentes: el rail declara `lg:z-<n>` numérico (nunca `auto`), `n` es
+mayor que el `z` real de la cabecera y menor que 50; el globo sigue siendo hijo del
+`<aside>` con `lg:relative` y `lg:overflow-visible`. Los anclajes se verifican con
+`expect(...).not.toBeNull()` para que un cambio de forma en el JSX **falle** en lugar
+de quedarse probando nada (el error de `version.test.ts` en §6.13). La lógica de la
+guarda se comprobó contra las tres cadenas: `z-auto` → FALLA, `z-40` → PASA, `z-60`
+→ FALLA. No se re-introdujo el bug en el código para probarlo.
+
+**Gates.** `db:guard` 0 avisos (ninguna migración), `typecheck`, `lint`, `build` en
+verde y **155 ficheros / 1471 tests**. Evidencia del CSS emitido:
+`.next/static/css/4c64605614be8220.css` contiene `lg\:z-40{z-index:40}` junto a
+`.z-30{z-index:30}`, o sea que Tailwind sí generó la utilidad nueva (el `lg:z-auto`
+mencionado en el comentario del componente también se emite, inofensivo: ninguna
+etiqueta lo usa). **Sigue sin haber verificación en la app real** — sin BD local ni
+sesión, y nada de esto está desplegado.
+
+**Deshacer.** Una clase: devolver `lg:z-40` a `lg:z-auto` en
+`src/components/app-nav.tsx:157` y borrar `tests/unit/rail-stacking.test.ts`. El
+código sigue funcionando; el globo vuelve a esconderse detrás de la cabecera.
+
+### 6.15 Entrega v1.8.0 (21-10-2026) — los §6.8 a §6.14 pasan a producción
+
+Instrucción del dueño: «haz el push, git y actualiza todo el código y la documentación». Todo lo
+que estaba **LOCAL ONLY** desde el pase de auditoría se commitea y se sube a `main` (el push
+despliega solo, vía GitHub Actions → Docker Hub → `pull` en la VM).
+
+Qué trae esta versión, en orden de las secciones:
+
+| § | Contenido | Migración |
+|---|---|---|
+| 6.8 | 13 de 15 hallazgos del audit (agente, cotizaciones, bandeja, PDF, handoff) | No |
+| 6.9 | Alta manual de prospectos por el agente y fichas múltiples por turno | No |
+| 6.10 | Inteligencia: las fuentes se **relacionan** con la búsqueda en vez de ocultarse | No |
+| 6.11 | Cuatro clases barridas en todo el árbol: límites `NaN`, lectura-caída-estado-vacío, fechas UTC, descuento huérfano | No |
+| 6.12 | Prospectos mergean el correo entrante; «Calendario» → **«Citas»** con alta manual | No |
+| 6.13 | Rail lateral con scroll solo en el `nav`: avatar y versión siempre visibles | No |
+| 6.14 | El globo del rail por encima de la cabecera (`lg:relative lg:z-40`) | No |
+
+**Ninguna migración nueva**: el guard de migraciones sigue en 0 avisos y el journal en 82
+entradas. SemVer **1.7.0 → 1.8.0** (menor: hay capacidad nueva para el usuario — correo como
+fuente de prospectos, citas de alta manual, rail legible).
+
+Documentación actualizada en la misma pasada: `docs/SISTEMA-COMPLETO.md` (capítulos nuevos **§33
+Inteligencia de mercado**, **§34 Agenda y Citas**, **§35 Capas del shell**, índice, y el barrido
+de «Calendario» → «Citas»), `docs/DOCUMENTACION-COMPLETA-SISTEMA.md` (versión, métricas reales
+recuento por `find`/`grep`, tablas `intel_*`, rutas `/api/intel/*` y `/api/prospects`, bugs 13-15,
+tabla de tests y gate con `db:guard`), `README.md` (secciones Prospectos/Citas/Inteligencia y
+ejemplos de versión) y esta sección.
+
+**Correcciones de exactitud al documentar** (no eran código, eran docs): las métricas del repo
+estaban heladas del 19-10 (102 tablas → **104**, 77 migraciones → **82**, 202 rutas → **207**,
+135 componentes → **140**, 1086 tests/124 archivos → **1471/155**, y el `pnpm test` no dura
+15.5 s sino 142 s); el listado de scripts E2E mencionaba `e2e-diseno-atlas.mjs`, **que no
+existe**, y faltaban los siete reales. Lección: una métrica contada a mano caduca en cuanto
+alguien añade un archivo; hay que volver a contarla, no actualizarla «a ojo».
+
+**Qué sigue sin probarse tras el despliegue** (Regla 3):
+- El recuento real de Prospectos con sesión autenticada (~11 filas en
+  `org_q5s3lc9e6cpq70k8gk4d`) y que la pantalla ya no diga «0» — requiere la sesión del dueño.
+- La geometría del rail y el globo en la app real — el viewport de la app de escritorio es
+  491×593 y el branch `lg:` (1024 px) nunca corre ahí; se midió con CSS compilado.
+- Envío real con plantilla, reconexión de Google Calendar (token aún revocado, app OAuth sin
+  publicar) y las llamadas vivas a SerpApi/Apify/YouTube/DENUE.
+- Revocación del PAT de GitHub pegado en el chat (**P0, sigue siendo acción del dueño**).
+

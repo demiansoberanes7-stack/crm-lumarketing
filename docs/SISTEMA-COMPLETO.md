@@ -45,6 +45,9 @@
 30. [Guía de Configuración por Canal](#30-guía-de-configuración-por-canal)
 31. [Troubleshooting](#31-troubleshooting)
 32. [Glosario](#32-glosario)
+33. [Inteligencia de mercado](#33-inteligencia-de-mercado)
+34. [Agenda y Citas](#34-agenda-y-citas)
+35. [Capas del shell: rail, cabecera y tooltips](#35-capas-del-shell-rail-cabecera-y-tooltips)
 
 ---
 
@@ -483,9 +486,27 @@ La bandeja de entrada es el sistema central. TODOS los canales convergen aquí a
 4. **Inserción de mensaje**: Con idempotencia (`ON CONFLICT ON wa_message_id DO NOTHING`)
 5. **Adjuntos multimedia**: Crea registro `media_asset` si está presente
 6. **Actualización de conversación**: `lastInboundAt`, `lastMessageAt`, incrementa `unreadCount`
-7. **Actividad de lead**: `onLeadActivity()` crea o actualiza el lead
-8. **Eventos SSE**: Publica `message.new` + `conversation.updated`
-9. **Agente IA**: `maybeRunAgentTurn()` activa el agente
+7. **Captura de teléfono**: `phone-capture.ts` intenta grabar el número que el cliente
+   tecleó (append-only, nunca pisa uno existente)
+8. **Actividad de lead**: `onLeadActivity()` crea o actualiza el lead
+9. **Eventos SSE**: Publica `message.new` + `conversation.updated`
+10. **Agente IA**: `maybeRunAgentTurn()` activa el agente
+
+### Un hilo por persona en comentarios (`src/lib/comment-thread.ts`)
+
+Un comentario de Instagram/Messenger/TikTok abre conversación **por publicación**, así que
+la misma persona aparece en varias filas. La bandeja se pliega **al consultar**
+(`foldCommentThreads`): una fila por identidad de persona (`igc:<autor>`), heredando el
+total de no leídos y abriendo la más reciente; las identidades viejas que llevaban la
+publicación incrustada (`igc:<post>:<autor>`) caen en la misma llave. El hilo pinta una
+tarjeta por publicación (`groupCommentsByPost`) y el saliente cuelga de la publicación del
+último comentario visto.
+
+Por eso `PATCH /api/conversations` tiene una regla escrita a propósito
+(`src/server/inbox/queries.ts:294`): el abanico del `markRead` a las conversaciones
+plegadas **solo** corre cuando `markRead === true`. Con `markRead: false` —lo que manda
+cualquier cliente del API o la acción MCP— se escribía el `updatedAt` de toda la hilera de
+una persona sin limpiar nada, tocando filas que nadie pidió tocar.
 
 ### Sistema de Identidad (`src/server/inbox/identity.ts`)
 
@@ -506,6 +527,8 @@ const TT_PREFIX = "tt:"       // TikTok
 
 #### `sendText()`
 - Pre-válida: existencia de conversación, match de tenant, guard de sandbox
+- Rechaza (`SendError`) el texto que pasa de `maxTextBytes` del canal **antes de
+  persistir nada**: por eso la capa del agente llama a `fitsChannel` antes de llegar aquí
 - Rutea a WAHA, Instagram, TikTok, Messenger o Meta Graph según canal y proveedor
 - Pre-genera ID de mensaje para envíos idempotentes de Zernio
 
@@ -595,7 +618,12 @@ Tipos de acción disponibles (discriminated union Zod):
 - `handoff`: Transferir a humano
 - `offer_slots`: Ofrecer slots de cita
 - `book_slot`: Reservar cita
-- `send_quote`: Enviar la ficha oficial de un producto del catálogo
+- `send_quote`: Enviar la ficha oficial de **uno o varios** productos del catálogo: `item_id`
+  o `item_ids` (hasta 5). El pipeline recorre los IDs en el orden en que el cliente los pidió
+  (el `ORDER` de `inArray` no lo garantiza), deduplica, y manda **un mensaje por ficha** porque
+  el tope de bytes del canal es por mensaje (`src/server/channels/capabilities.ts`): dos fichas
+  juntas caben mal en Instagram. Con una sola ficha el `reply` viaja pegado a ella. Los
+  productos que no están disponibles se devuelven como aviso aparte, no como ficha vacía.
 - `search_inventory`: Buscar en el inventario por nombre o descripción; el servidor devuelve ID, precio y existencias reales antes de cotizar
 - `create_quote`: Crear y enviar una cotización formal, de uno (`item_id`) o varios productos (`items[]`, máx. 10); idempotente por mensaje, valida disponibilidad, moneda y existencias (gate `sendProductQuotes`)
 
@@ -636,30 +664,58 @@ personales redactados. Guía completa: [docs/copiloto-agente.md](copiloto-agente
 El prompt *pide* el formato; esta capa lo **garantiza** sobre lo que el modelo
 devuelva, justo antes de enviar (`deliverReply`):
 
-- Colapsa espacios y nunca deja dos líneas en blanco seguidas.
+- Colapsa espacios y nunca deja dos líneas en blanco seguidas. Los espacios dobles
+  —los que deja el modelo o el quite de marcadores— se reducen a uno para que la
+  sangría de una lista quede pareja en el móvil.
 - Renglones de más de 220 caracteres se parten por oraciones, no por palabras.
 - Enumeraciones de tres o más elementos separados se convierten en lista.
 - `*negrita*` sólo sobrevive en los canales que la renderizan (`supportsWhatsAppMarkdown`:
   WhatsApp). En Instagram y Messenger los asteriscos se quitan porque se imprimen tal cual.
+- El quite de énfasis **no toca URLs ni identificadores**: `_texto_` sólo se quita
+  cuando lo que rodea al guion bajo no es letra, dígito ni `/`. Sin esa guarda,
+  `https://tienda.com/promo/a_b_c` y un SKU tipo `sku_12_34` salían corruptos.
+
+#### Tope de bytes (`fitsChannel`)
+
+`sendText` **rechaza** un texto que pasa de `maxTextBytes` del canal antes de
+persistir nada: sin esta capa el cliente simplemente no recibía mensaje.
+`fitsChannel` corre después de formatear, en el mismo embudo —en `deliverReply`
+del agente incluido y en `POST /api/bot/messages`— y cede en este orden: primero
+sacrifica el aire que añadió el formateador, luego corta por renglón y cierra con
+`…`; si ni el primer renglón cabe, recorta por bytes sin partir un caracter.
+
+#### Idioma de respuesta
+
+`responseLanguage` se traduce a una línea dura del prompt por idioma (`es`, `en`,
+`pt`, `fr`). `es` faltaba, así que "Español" elegido en Ajustes caía en la rama de
+"Automático" y un cliente que escribiera en inglés recibía inglés.
 
 ### Reglas de Ajustes → Agente: dónde se cumplen
 
 Las cinco reglas se aplican **en el servidor**, no sólo en el texto del prompt. Si el
 modelo devuelve una acción desactivada, el turno la degrada
-(`pipeline.ts:435-443`: `send_quote`/`create_quote`, `move_stage`, la `ficha` de
+(`pipeline.ts:437-447`: `send_quote`/`create_quote`, `move_stage`, la `ficha` de
 `update_lead`), y `sendProductQuotes` apagado ni siquiera ofrece `search_inventory`.
 `handoffOnRequest` apagada quita el atajo por patrón y su línea del prompt, pero si el
 cliente pide un humano y el modelo escala, se acata: apagar la regla no le quita al
-cliente ese derecho (`pipeline.ts:725`).
+cliente ese derecho (`pipeline.ts:729`). El `farewell` del handoff es opcional en el
+esquema del modelo; cuando lo omite se manda un respaldo ("Te paso con una persona de
+nuestro equipo…"), porque sin él la conversación pasaba a un humano con el cliente
+mudo.
 
 ### IA por canal (`src/server/ai/channel-policy.ts`)
 
 `agent_profile.disabled_channels` (lista negra, migración 0081) apaga al agente en un
 canal entero sin tocar conversación por conversación; el interruptor de la ficha de
-Bandeja sigue mandando dentro del canal. Lo consultan el turno interno y las cuatro
-rutas del cerebro externo (`/api/bot/context`, `/messages`, `/typing`, `/bookings`).
-El Laboratorio (`isTest`) está exento. Un miembro que no es owner ve el estado en modo
-sólo lectura desde el DTO `channelAiEnabled`.
+Bandeja sigue mandando dentro del canal. Lo consultan el turno interno y las cinco
+rutas del cerebro externo (`/api/bot/context`, `/messages`, `/typing`, `/bookings`,
+`/availability`). El Laboratorio (`isTest`) está exento. Un miembro que no es owner ve
+el estado en modo sólo lectura desde el DTO `channelAiEnabled`.
+
+El orden dentro del turno también importa: el guard del canal corre **antes** de
+reactivar el handoff por ventana. Al revés, un canal apagado limpiaba el traspaso y la
+ficha de Bandeja mostraba "atendido por el bot" cuando en realidad nadie respondía;
+además, si el canal está apagado el traspaso ni se reabre (nadie lo va a atender).
 
 ### Agenda en el turno
 
@@ -740,20 +796,61 @@ Join con `lead` → `pipeline_stage` para info de etapa actual.
 
 Prospección del menú: quién escribió al negocio y todavía no es cartera.
 
-- **Es una proyección, no una tabla.** Prospecto = contacto con al menos un mensaje
-  entrante en una conversación real (`is_test = false`). No duplica el modelo de
-  identidad ni exige migración; la etapa viene del lead que `onLeadActivity` ya da de
-  alta al primer mensaje.
+- **Es una proyección, no una tabla.** Prospecto = quien dejó un **mensaje entrante** al
+  negocio y todavía no es cartera. No duplica el modelo de identidad ni exige migración; la
+  etapa viene del lead que `onLeadActivity` ya da de alta al primer mensaje.
+- **Dos fuentes, no una.** `listProspects()` une el chat (`message.direction = 'in'`) con el
+  **correo entrante** (`listEmailProspects()` sobre `email_message.direction = 'inbound'`,
+  agrupado por `from_email` con su asunto más reciente) y reordena la mezcla por
+  `lastInboundAt` descendente, corte en 200. Sin la segunda rama, los 16 correos entrantes de
+  10 remitentes del negocio del dueño eran invisibles: el módulo solo miraba chat y el correo
+  **no** produce `contact_id` (es diseño, no un bug — ver tarea «Contactos cuenta solo la
+  cartera»), así que nunca podría aparecer por la vía del contacto.
+- **El DTO del remitente de correo es nullable a propósito** (`src/lib/types.ts`):
+  `contactId: string | null`, `conversationId: string | null` y `email` con valor. El cliente
+  elige con eso la `key`, el `seed` del avatar y el enlace: chat → `/inbox?contact=`, correo →
+  `/email`. En la tarjeta, la cadena es teléfono → `mailto:` → «Sin teléfono» punteado, para
+  que un correo conocido sea siempre una vía de contacto aunque no haya número.
 - **Consulta** (`listProspects`): agrupa por contacto, devuelve primer/último entrante,
   cuántos mensajes, el último texto y la etapa del lead preferido. El join de
   `pipeline_stage` repite la condición de organización (Constitución III) y el límite es
-  fijo (200). El texto tolerante busca con y sin acentos y también por dígitos sueltos.
+  fijo (200). El texto tolerante busca con y sin acentos, por dígitos sueltos **y por correo**;
+  los `%` y `_` que teclea el usuario se escapan, así que buscar "100%" no devuelve
+  media base.
+- **La oportunidad que se muestra** es la principal y, entre iguales, la de última
+  actividad más reciente — con `nulls last` explícito (`src/lib/db/order.ts`): en
+  Postgres `DESC` pone los NULL **adelante**, y `lead.last_activity_at` es nulo hasta que
+  llega el primer refresco, así que un `limit(1)` sin esa cláusula elegía el lead sin
+  fecha y ocultaba la etapa real. Son nueve lecturas (en ocho archivos) las que comparten
+  la regla, incluidas las del cerebro externo y `leadPreferenceOrder()`.
 - **Filtros** (`/api/prospects`): `q`, `channel`, `phone=falta|tiene`, `archived`.
 - **Teléfono desde el chat** (`src/server/inbox/phone-capture.ts`): extrae el número que
   el cliente teclea y lo guarda en la ficha. La escritura es **append-only** — el `UPDATE`
   lleva `phone IS NULL` en el `WHERE`—, así que una reentrega de Meta o una edición del
   operador nunca pisan un número existente. Descarta fechas, precios, lo que empieza por
   0 y prefijos sueltos; prefiere el número con `+` y el más largo.
+  Rechaza también la fecha **escrita como la escribe cualquiera** (`15-10-2026`,
+  `15/10/2026`, `15.10.2026`): ocho dígitos con dos separadores caen justo en el rango
+  que acepta la regla de separadores, y "te lo entrego el 15-10-2026" se grababa como
+  teléfono del cliente. El filtro mira el candidato tal como viene en el texto, no solo
+  sus dígitos, y valida los dos órdenes (DD/MM y MM/DD) para no perder un número real.
+- **Marcar desde la pantalla** usa `dialHref()` (`src/lib/utils.ts`), no `tel:+…` a pelo:
+  un número nacional de México son 10 dígitos y el internacional 12 (`52` + 10). Con la
+  `+` delante, el móvil entendía "marca otro país" y la llamada no salía. La misma regla
+  decide cómo se **pinta** el número, así que etiqueta y enlace coinciden.
+- **Las fechas se normalizan en el DTO** (`isoDate()` en `prospects/query.ts`): los
+  agregados `MIN/MAX(COALESCE(created_at, …))` viajan como fragmentos `sql` sin
+  decodificador de columna, así que su tipo runtime depende del driver. `serializeProspect`
+  acepta `Date`, string ISO o vacío y devuelve `string | null`, en lugar de llamar
+  `.toISOString()` sobre lo que hubiere (fue un 500 real en producción). No se puso
+  `.mapWith()` en esas proyecciones: en modo string es un no-op y en modo date intentaría
+  decodificar valores que ya llegan como `Date`.
+- **Un fallo de la API no se cuenta como «no hay prospectos».** `/api/prospects` que no
+  responde 200 pinta el panel `LoadError` (`src/components/load-error.tsx`) con Reintentar y
+  la cabecera en «— / Lista no disponible»; el estado vacío solo se muestra si la lista
+  llegó y venía vacía. La misma regla —el panel sustituye al estado vacío, nunca a una
+  lista ya cargada— está aplicada en Bandeja, Contactos, Cotizaciones, Proyectos, Citas,
+  Pipeline, Catálogo, Proveedores, Correo, Campañas y los listados de Ajustes.
 - **Superficies que capturan:** las siete que pasan por `ingestInboundMessage` (WhatsApp
   propio y Zernio, Instagram, Messenger, TikTok, correo) más el chat de Mercado Libre.
   **No capturan** los comentarios públicos ni las reseñas de Google Business: ahí un
@@ -816,6 +913,18 @@ type QuoteStatus = "draft" | "unsaved" | "saved" | "sent" | "viewed"
 - Solo en estado `draft`
 - Reemplaza todos los items
 - Row-level locking
+- **Es un parche parcial de verdad**: las claves que llegan como `undefined` se filtran
+  antes de mezclar con lo guardado. El handler de MCP construye el
+  `Partial<QuoteInput>` completo aunque el llamador solo cambie las notas, y sin ese
+  filtro `taxRate: undefined` volvía a imponer el 16 % sobre una cotización pedida «sin
+  IVA» —y contacto, descuento y partidas se iban a `null`—. `null` explícito **sí** borra
+  (es la única forma de vaciar notas o condiciones de pago desde esta función).
+
+#### `listQuotes()`
+Devuelve el nombre del contacto en cada fila con una segunda consulta acotada al tenant
+(`inArray` sobre los ids de la página), no un join: las tarjetas del listado decían
+«Sin contacto» en todas porque la fila no traía nombre. La forma del DTO la consumen
+también las acciones MCP.
 
 #### `sendQuote()`
 Firma: `sendQuote(organizationId, quoteId, target)`; `target` es
@@ -842,7 +951,22 @@ Utiliza `reportPdf()` de `@/server/documents/pdf`:
 - **Columna derecha NOTAS**: un solo bloque; antes había `CONDICIONES DE PAGO` arriba y
   `NOTAS Y TÉRMINOS` repetido abajo, y el nombre no describía lo que el dueño escribe ahí
 - **«COTIZADO PARA» muestra el teléfono** de `client_phone` o el de la ficha si el
-  operador no lo escribió
+  operador no lo escribió. La pantalla de detalle imprime el mismo respaldo
+  (`clientPhone ?? contactPhone`) para que una cotización vieja no se vea sin número aquí
+  y con número en el archivo.
+- **«Sin contacto asignado»**: si la cotización no tiene contacto, el bloque no queda
+  vacío — una etiqueta sola era el reporte del dueño en COT-0004. Igual que NOTAS con
+  «Sin notas».
+- **`wrapText()` parte lo que no cabe** (`src/server/documents/pdf.ts`): cuando una sola
+  palabra es más ancha que la columna (un token kilométrico, un código de modelo, una URL)
+  se rompe por ancho de caracter en vez de viajar entera y sobresalir del margen derecho.
+
+#### Diálogo de nueva cotización (`src/components/quotes/new-quote-dialog.tsx`)
+
+El IVA se manda `Math.max(0, Math.min(100, Math.round(Number(taxRate) || 0)))`:
+`Number("")` es `0`, así que borrar el campo dejaba la cotización «sin IVA» sin querer, y
+un `16.5` rebotaba contra el `z.int()` de la API con un 422 sin explicación. Notas y
+condiciones de pago viajan tal cual (no `|| undefined`) para que vaciarlas las borre.
 
 ---
 
@@ -1964,6 +2088,308 @@ es un fallo de permisos ni de `MEDIA_DIR`.
 | **WAHA** | WhatsApp HTTP API |
 | **WABA** | WhatsApp Business Account |
 | **Zernio** | API unificada para múltiples plataformas |
+
+---
+
+## 33. Inteligencia de mercado (`/inteligencia`)
+
+Módulo opt-in de investigación: qué se busca en el país, dónde, en qué formato y
+contra quién. No toca el pipeline ni envía nada: solo lee, guarda y muestra.
+
+### Existencia: la bandera `INTEL`
+
+- Mismo criterio que `AGENDA` y `GOOGLE_BUSINESS` (ADR-001): **el código viaja siempre en
+  `main`** y lo que decide si EXISTE para el usuario es una variable de despliegue
+  (`src/server/intel/flag.ts`). Sin bandera, `/inteligencia` responde `notFound()` y las
+  doce rutas de `/api/intel/*` devuelven **404, no 403**: si el módulo no está encendido,
+  ese endpoint no existe en esta instancia, y tampoco se le piden credenciales a nadie.
+- `parseIntelFlag()` acepta `on`, `1`, `true`, `si`, `sí`, `yes` (recortado y a minúsculas);
+  cualquier otro valor, apagado. Se lee de `process.env` directo, igual que `agendaEnabled()`.
+- La migración de las once tablas se aplica **siempre**: tablas vacías son inertes, y a
+  cambio todas las instancias comparten la misma estructura.
+
+### Superficie
+
+- **Entrada**: un solo renglón del menú (`{ href: "/inteligencia", label: "Inteligencia" }`
+  en `src/config/nav.ts:61`) y **sin pestañas** dentro de la pantalla: los paneles se apilan
+  en una sola columna que se filtra con una búsqueda común. La página es visible para todos
+  los roles (`src/app/(app)/inteligencia/page.tsx`).
+- **Rutas** (`src/app/api/intel/`, doce): `trends` (serie de los términos monitoreados),
+  `gt?termId=` (reporte de un nicho), `gt/ingest`, `ingest` (lanza el job `gt_all`),
+  `geo?termId=` y su POST (credenciales + ingesta DENUE), `trending` (GET con `geo`,
+  `hours`, `category`, `type`, `q`, `sort`; POST lanza el job con `hours` y `geo` que
+  por defecto es `MX`), `content?days=&q=` (videos), `keyword?q=` (intención + dificultad),
+  `compare?ids=`, `monitor` (alta/edición de términos), `suggest?q=` y `jobs/[id]`.
+- **Toda ruta** hace lo mismo en las dos primeras líneas: `if (!intelEnabled()) return
+  intelDisabledResponse();` y luego scopea por `session.organizationId` (Constitución III
+  — en `monitor` con `scoped(schema.intelTerm.organizationId, …)` explícito porque el filtro
+  no cae del lado de la proyección).
+
+### Fuentes y cadena de respaldo
+
+Cinco proveedores, guardados y probados **de forma independiente** (`SourceKey` en
+`src/server/intel/credentials.ts`: `youtube`, `denue`, `serpapi`, `apify`, `gt`); no se exige
+YouTube para configurar SerpApi. Los secretos van cifrados AES-256-GCM (triple
+`cipher/iv/tag`), cada fuente tiene estado de última prueba en vivo (`ok`/`error` + fecha,
+para el badge de la UI) y contador de uso (SerpApi y Apify reservan antes de llamar).
+
+Google Trends se resuelve en cadena (`src/server/intel/trends-orchestrator.ts`):
+
+1. **SerpApi** — principal, acceso estructurado; cada `data_type` es una consulta aparte
+   (`TIMESERIES`, `GEO_MAP_0`, …).
+2. **Apify** — respaldo con un Actor configurable desde el panel; el adaptador normaliza la
+   salida al mismo formato que SerpApi.
+3. **Conector web** (`sources/google-trends.ts`) — endpoints no oficiales de
+   `trends.google.com/trends/api/*` (los mismos que pytrends). **UNPROBADO y puede cambiar
+   cuando Google lo decida**: por eso es el último eslabón.
+4. `null` — sin datos. La UI lo dice; nunca inventa una serie.
+
+- Cada respuesta **declara su `provider`** y la interfaz lo etiqueta (`sourceLabel`).
+- **No se consultan dos proveedores para la misma petición** — desperdiciaría créditos. El
+  fallback solo se activa ante errores reales del principal, no ante una keyword inválida.
+- Otras dos fuentes, independientes de esa cadena: **`suggest`** (autocompletado público,
+  sin API key, degradación obligatoria si falla, cacheado por sesión en memoria) y
+  **`trending-now`** (qué se está buscando *ahora* en el país, con volumen y hora de inicio
+  — otra superficie distinta del explorador de nichos).
+- **YouTube Data API v3** lee los videos más populares de la región (MX) y los contrae
+  contra los términos monitoreados. `part=statistics` cuesta 1 unidad de cuota por llamada;
+  con `maxResults=50` la ingesta diaria ronda **1 unidad de las 10 000 gratuitas**.
+- **DENUE (INEGI)** es el respaldo geográfico: directorio público de unidades económicas,
+  token gratis por email. Da el desglose por estado cuando Google Trends no lo aporta.
+
+### Datos y trabajos asíncronos
+
+- **Once tablas** `intel_*` en `src/lib/db/schema.ts`: `intel_credentials`, `intel_term`,
+  `intel_snapshot`, `intel_video`, `intel_search_log`, `intel_geo_snapshot`,
+  `intel_gt_snapshot`, `intel_gt_region`, `intel_gt_related`, `intel_gt_trending`,
+  `intel_job`.
+- **El catálogo de términos se siembra solo** en el primer uso de la organización con
+  **16 nichos** de tecnología en México (los giros de Zorro Tech + retail tech,
+  `SEED_TERMS` en `src/server/intel/terms.ts`), editable después. El cruce de videos es por
+  **keyword**, no por nombre exacto.
+- **Las ingestas pesadas no corren dentro de la petición HTTP** (15+ nichos con ~60 llamadas
+  externas, 32 estados DENUE): podían rebasar timeouts y duplicarse entre clics. `jobs.ts`
+  las convierte en trabajos: el POST crea el job `running` y responde **202 con su id**; el
+  índice único parcial `intel_job_active_uq` impide dos jobs activos por (org, kind, término)
+  — el segundo clic recibe `null` y **409**; la UI sondea `GET /api/intel/jobs/[id]` y muestra
+  avance real; un job que quedó `running` tras un reinicio del proceso se libera solo
+  (se marca `error`) antes de crear el siguiente. `IntelJobKind` es `gt_all`, `gt_term`,
+  `geo`, `trending`.
+
+### La regla de anclaje de la búsqueda
+
+**Una búsqueda tiene que relacionar todas las fuentes con el texto escrito, no taparlas.**
+`src/server/intel/content.ts:137` tipifica `query: string | null` y decide los dos caminos:
+sin texto se muestra el feed popular completo; con texto **se filtra** y **se declara cuántos
+videos casaron**. La alternativa (ocultar el explorador bajo una búsqueda) se implementó, se
+desplegó y se revirtió dentro del mismo lote: dejó la pantalla con un solo panel y la sensación
+de que «la Inteligencia ya no tiene datos». Es la misma familia que el hallazgo de
+«un fallo de la API no es un listado vacío» de Prospectos (§11): la interfaz debe decir *qué*
+le falta, no fingir que no hay nada.
+
+### Exportación
+
+Los paneles exportan **en el navegador**, sin ruta nueva (`src/components/inteligencia/intel-export.ts`):
+se descarga lo que está en pantalla, no el catálogo completo. El CSV lleva BOM para que Excel
+lo abra en UTF-8 y comilla doble escapada en cualquier campo con `,` `"` `;` o salto de línea.
+
+### Estado de verificación (Regla 3)
+
+- **Confirmado mediante pruebas:** las guardas de bandera y de organización, la cadena de
+  fallback y la maquinaria de jobs tienen tests unitarios (`tests/unit/api-int-params.test.ts`
+  cubre los parámetros de `content`/`trending`).
+- **Detectado mediante inspección:** la degradación de `suggest` y del conector web; dependen
+  de endpoints no oficiales.
+- **Pendiente de acceso:** las llamadas reales a SerpApi, Apify, YouTube y DENUE con las
+  credenciales de producción. Su contrato está escrito, pero **ninguna fuente externa se ha
+  validado desde este entorno**.
+
+---
+
+## 34. Agenda y Citas (`/bookings`)
+
+### Existencia: la bandera `AGENDA`
+
+`src/server/agenda/flag.ts` documenta la decisión completa (ADR-001, mismo criterio que
+`INTEL`): el motor viaja siempre en `main` y `AGENDA` decide si **existe**. Sin bandera no hay
+pantalla de Citas, ni pestaña de Ajustes, ni rutas, ni instrucciones de agendar en el prompt
+del agente, y no se piden credenciales de nadie. No se hizo con una rama porque una rama tiene
+que mantenerse compatible con `main` **y** con las demás features opcionales, y su cadena de
+migraciones diverge sin arreglo posible — la prueba está en el propio repo: la rama
+`004-motor-agenda` quedó irrescatable en 26 días. La migración se aplica siempre.
+
+**Se llama «Citas», no «Calendario»** (`src/config/nav.ts:54-59`): la pantalla es la lista de
+compromisos y su alta, no una rejilla de meses. «Calendario» sigue siendo el nombre de la
+pestaña de Ajustes, que es donde se configura el horario. El filtrado se hace en
+`navItemsFor({ agenda })` y en un solo sitio para que la barra, los breadcrumbs y el ⌘K nunca
+discrepen; el enlace es `agendaOnly` porque sin bandera `/bookings` da 404.
+
+### Motor de disponibilidad
+
+`src/server/agenda/availability.ts`: **horario semanal del negocio − citas activas − bloqueos
+manuales**. La expansión del horario a slots UTC es una **función pura** (sin BD), igual que
+el reparto por días.
+
+- **Limitación v1 documentada (Constitución VII): no lee calendarios externos.** Es una
+  decisión, no un olvido: meter al proveedor en este camino acoplaría su latencia y sus caídas
+  a la pantalla que más se usa. Los compromisos de fuera se reflejan con bloqueos manuales.
+- **Zona horaria del negocio**, no del navegador: `DEFAULT_TIMEZONE = America/Mexico_City` y
+  `DEFAULT_WEEKLY_HOURS` L-V 09:00-18:00 (`settings.ts`), con utilidades en
+  `src/lib/time/slots.ts` (`zonedWallClockToUtc`, `labelInTz`, `overlaps`, `weekdayKeyOf`).
+- **Reparto entre días** (`spread.ts`): los N huecos más próximos casi siempre caen todos
+  *hoy*, y entonces quien conduce la conversación no tiene nada que ofrecer cuando el lead
+  dice «¿y el jueves?». `perDay` por día hasta completar `limit`. Además **el catálogo
+  reservable es más ancho que el menú que se muestra**: se ofrecen y se registran hasta
+  `limit` aunque el agente enseñe tres; guardar solo lo enseñado dejaba al agente sin
+  alternativas legítimas que aceptar.
+
+### Las dos reglas innegociables
+
+`src/server/agenda/service.ts` las enuncia arriba del módulo:
+
+1. **Quien conduce la conversación** (agente in-process o cerebro externo) **solo puede
+   reservar un instante que ya se ofreció a ESA conversación**: la tabla `offered_slot`
+   (`offers.ts`) guarda la memoria de lo ofrecido y la comparación es por **epoch exacto**.
+   Sin fila aquí no hay reserva — es lo que impide que un modelo alucine un horario que nunca
+   se le ofreció al cliente. La oferta se reemplaza completa en cada ronda (la vigente es la
+   última) y se limpia al reservar.
+2. **Al confirmar se re-valida el hueco** y la base lo cierra con su **índice único parcial**
+   anti doble-booking. Si se ocupó, se responde `slot_taken` con alternativas frescas
+   (`FRESH_ALTERNATIVES = 3`) **ya registradas como la nueva oferta** y **no se crea nada**.
+   Nunca se confirma una reserva que no se creó.
+
+Y la regla de honestidad: **la entrega de la reunión corre después de escribir la verdad del
+CRM y es best-effort**. Si el proveedor está caído, la cita se crea igual con `linkPending` —
+un tercero no puede costarnos la conversión, ni hacernos prometer un enlace que no existe.
+
+- `BookingErrorCode`: `slot_taken`, `slot_not_offered`, `not_found`, `invalid`.
+- **Conectores** (`src/server/agenda/connectors/`): `google` (con Meet), `zoom`, `enlace-fijo`.
+  El alta puede nacer con cualquiera de ellos y `queries.ts` expone `connector` y
+  `linkPending` en cada fila.
+- **OAuth de Google por redirect** (`google-oauth.ts`): antes el dueño tenía que pescar el
+  refresh token a mano. Ahora el CRM abre el consentimiento y lo canjea; el `state` de un solo
+  uso vive en `google_oauth_state` **10 minutos** y ata la vuelta de Google a la organización
+  que inició el flujo, con el client secret **cifrado**. Sin SDK nuevo: la Constitución no
+  admite dependencias para esto.
+- **Tareas → Google Calendar** (`tasks-sync.ts`): la otra mitad de la conexión de Google. Es
+  **opt-in** (`google_credentials.sync_tasks`, apagado por defecto) y **nunca bloquea**: corre
+  después de que la tarea ya está guardada, dentro de un `try/catch` que solo deja un
+  diagnóstico. Si Google cae, la tarea queda perfecta y el evento se reintenta en la edición
+  siguiente.
+
+### Alta manual desde la pantalla
+
+`POST /api/bookings` es un `z.discriminatedUnion("kind")`: `session` (contacto, hora, nota
+opcional, conversación opcional) o `block` (hora, 5-600 minutos, nota). **Responde 201**, como
+la superficie del bot. A diferencia del agente, **el operador no pasa por `offered_slot`**:
+elige de la disponibilidad que está viendo en pantalla; la re-validación y el candado anti
+doble-booking aplican igual, y el servidor sigue validando el hueco (`requireOffer: false` es
+una opción del dominio, no una puerta abierta).
+
+`citaStartUtc()` (`src/components/bookings/bookings-client.tsx:43`) existe porque un
+`datetime-local` llega **sin zona**: si la hora impuesta a mano se mandara cruda, el servidor
+la leería como UTC y la cita quedaría corrida por el offset del operador. El hueco elegido de
+la lista ya viene en UTC y se manda tal cual.
+
+### El contrato HTTP, fijado en un módulo
+
+`src/server/agenda/http.ts` vive fuera de los `route.ts` por dos razones: Next solo admite
+handlers como exports de una ruta (así que no serían testeables), y los códigos y la **forma**
+del error son contrato observable. Las dos lecciones que costaron caro en producción y que
+este módulo blinda:
+
+- Crear responde **201, no 200**. Un cliente que validaba `=== 200` dejó a todos los leads sin
+  agendar durante horas, y los mocks no lo vieron porque respondían 200.
+- El error va **anidado** (`{"error":{"code":…}}`) con `slots` como **hermano**. Un mock con la
+  forma plana escondió el camino de re-oferta durante semanas: todo 409 se leía como conflicto
+  genérico y las alternativas nunca se ofrecían.
+
+### Agenda en el turno del agente
+
+Con `AGENDA` encendida el prompt recibe el horario real del negocio (días, horas, duración,
+zona, buffer) y los huecos que efectivamente se pueden ofrecer. `offer_slots` y `book_slot`
+delegan en `src/server/agenda/agent.ts`; `availability.ts` descarta solapamientos, así que
+**dos citas encima es imposible**. Las rutas del cerebro externo son `/api/bot/availability` y
+`/api/bot/bookings`, con las mismas guardas. **Las citas de prueba nunca llegan a los
+conectores** (lo mismo que los mensajes de prueba de los canales).
+
+### Estado de verificación (Regla 3)
+
+- **Confirmado mediante pruebas:** el motor puro de slots, el reparto por días, las guardas
+  `requireOffer` / `slot_taken`, el `201` y la forma anidada del error (`tests/unit/
+  cita-alta-manual.test.ts`, más las guardas de `/api/bot/availability` y `/api/bot/messages`).
+- **Pendiente de acceso:** la creación real de eventos en Google Calendar y Zoom en producción
+  — en esta instancia **el token de Google sigue revocado** hasta que el dueño publique la app
+  OAuth y reconecte (ver entregable de v1.7.0).
+
+---
+
+## 35. Capas del shell: rail, cabecera y tooltips
+
+El shell (`src/components/app-shell.tsx`) es una fila `flex h-dvh overflow-hidden`. Ese par de
+clases es el que decide qué se corta: un hijo que desborde verticalmente **no puede asomar por
+encima de un padre con `overflow-hidden`**, y ese padre tampoco puede crecer porque la ventana
+ya está agotada. Por eso el rail no puede resolverse con `pt`/`pb` ni con `scale`.
+
+### Mapa de capas (verificado en el CSS compilado de la app)
+
+| Capa | Dónde | `z` |
+|---|---|---|
+| Fondo del cajón móvil | `app-shell.tsx:101`, `lg:hidden` | `z-40` |
+| Cabecera superior | `app-header.tsx:38` (`sticky top-0`) | `z-30` |
+| Sub-cabecera del dashboard | `dashboard-client.tsx:178` (`sticky top-0`) | `z-10` |
+| **Rail lateral, escritorio** | `app-nav.tsx:157` (`lg:relative lg:z-40`) | `z-40` |
+| Cajón lateral, móvil | `app-nav.tsx:156` (`fixed … z-50`) | `z-50` |
+| Menú del avatar y globo del tooltip | dentro del `<aside>` | `z-50` |
+| Diálogos de página | 27 componentes | `z-50` |
+| Paleta de comandos ⌘K | `command-palette.tsx:65` | `z-[70]` |
+
+**Regla práctica: cualquier capa flotante del rail va entre `z-30` y `z-50`.** El globo del
+tooltip vive *dentro* del `<aside>`, así que el `z` que compite con la cabecera es el del
+contenedor, no el del globo.
+
+### El botón de la trampa: `transform` crea contexto de apilamiento
+
+`lg:translate-x-0` no es un adorno: la versión móvil del rail es un cajón que se desliza con
+`-translate-x-full`, y la transición necesita que el estado abierto también declare
+`translate-x-0`. **Un `transform` (aunque sea identidad) crea un bloque contenedor y un
+contexto de apilamiento**, así que el `z-50` del globo quedaba encerrado y la cabecera `z-30`
+del hermano lo pintaba por encima: el nombre del módulo salía recortado («Cont…») y detrás de
+la barra superior. La solución no fue sacarlo con un portal ni romper la transición, sino
+**darle al rail una capa propia por encima de la cabecera y por debajo de los diálogos**
+(`lg:z-40`, nunca `lg:z-auto`), manteniendo el `lg:relative` que hace falta para que ese
+`z-index` tenga efecto.
+
+### Geometría: quién hace scroll
+
+El contenido del rail medía ~938 px contra ~801 px de ventana. Ahora **solo el `<nav>` tiene
+scroll**: el logo arriba, y el avatar y la versión abajo, quedan anclados y visibles. El globo
+del tooltip tuvo que **mudarse del renglón al `<aside>`**: un contenedor con scroll recorta lo
+que asoma por su derecha, y por eso el estado `tip` vive en el componente padre y su centro
+vertical se calcula con `tooltipTop()` (`app-nav.tsx:39`), una función pura exported.
+
+### Cómo se midió (y dos trampas)
+
+- **`elementFromPoint` nunca devuelve un elemento con `pointer-events-none`.** El globo lo es,
+  así que el sonda respondía `cabecera` en las dos variantes y a punto estuvo de reportarse el
+  arreglo como ineficaz. La prueba correcta es habilitar `pointerEvents` un instante o leer
+  `getComputedStyle().zIndex`.
+- **En el viewport de la app (491×593) el branch `lg:` nunca corre**, y `take_screenshot` no
+  está disponible. Se midió con el CSS **compilado** de la propia app y las media queries
+  `@media (min-width:1024px)` aplanadas, y el recorte se probó con `elementFromPoint`.
+
+### Guardia
+
+`tests/unit/rail-stacking.test.ts` (4 pruebas) parsea el `<aside>` de `app-nav.tsx` y el
+`<header>` de `app-header.tsx` y asserts sobre **las cadenas de clase**, no sobre el archivo
+entero: el rail declara `lg:z-<dígito>`, está por encima del `z` de la cabecera y por debajo de
+50, conserva `lg:relative` / `lg:overflow-visible` / `lg:translate-x-0`, y el globo sigue con
+`role="tooltip"` + `z-50` montado dentro del `<aside>`.
+
+> **Lección inversa:** la primera versión tenía `expect(nav).not.toContain("lg:z-auto")` y
+> falló porque **el comentario del propio componente explica qué se quitó** (Tailwind llegó a
+> emitir la regla por mencionarse en prosa). Un aserto negativo sobre un archivo fuente se
+> vuelve contra ti; de ahí que se extraigan las clases antes de comparar.
 
 ---
 
