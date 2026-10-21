@@ -64,6 +64,26 @@ describe("extractPhoneFromText: formatos reales de chat", () => {
     expect(phoneOf(null)).toBeNull();
   });
 
+  /**
+   * Ocho dígitos con separadores caen justo en la regla `separado`, así que la
+   * fecha de entrega se guardaba como el teléfono del prospecto.
+   */
+  it("no captura la fecha escrita en el chat", () => {
+    expect(phoneOf("te lo entrego el 15-10-2026")).toBeNull();
+    expect(phoneOf("mi pedido es del 15/10/2026, gracias")).toBeNull();
+    expect(phoneOf("agenda 15.10.2026")).toBeNull();
+    expect(phoneOf("lo separo el 29/11/2026")).toBeNull();
+    // MM/DD (orden estadounidense) también, porque solo se protege la captura.
+    expect(phoneOf("lo quiero para el 10/15/2026")).toBeNull();
+  });
+
+  it("un teléfono con separadores NO es una fecha", () => {
+    expect(phoneOf("mi numero 462-134-56-78")).toBe("4621345678");
+    expect(phoneOf("escríbanme al 33 1234 5678")).toBe("3312345678");
+    // Ocho dígitos en bloques 2-4-2: la fecha exige bloques de 1-2 dígitos.
+    expect(phoneOf("mi lada 33-2345-67")).toBe("33234567");
+  });
+
   it("no parte una cifra larga: toma el bloque completo, nunca un sufijo", () => {
     // "0012345678" sería la lectura falsa (sufijo de 10 dígitos que arranca en 0).
     expect(phoneOf("mi folio 50012345678")).toBe("50012345678");

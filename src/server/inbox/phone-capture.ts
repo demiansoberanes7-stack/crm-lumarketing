@@ -61,13 +61,29 @@ const PHONE_CUES = [
 /** YYYYMMDD: ocho dígitos que son una fecha, no un número. */
 const AS_DATED = /^20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
 
-function looksLikeDate(digits: string): boolean {
+/**
+ * La fecha escrita como la escribe cualquiera: "15-10-2026", "15/10/2026",
+ * "15.10.2026". Ocho dígitos con dos separadores cae justo en el rango que
+ * acepta la regla `separado`, así que sin este filtro «te lo entrego el
+ * 15-10-2026» quedaba grabado como el teléfono del cliente.
+ */
+const AS_DATE_WRITTEN = /^(\d{1,2})([-./])(\d{1,2})\2\d{4}$/;
+
+function looksLikeDate(digits: string, raw: string): boolean {
   if (AS_DATED.test(digits)) return true;
   // Fecha con hora (20261015143000): empieza por siglo y trae mes y día.
-  return (
+  if (
     (digits.length === 14 || digits.length === 17) &&
     /^20\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])/.test(digits)
-  );
+  ) return true;
+
+  const parts = AS_DATE_WRITTEN.exec(raw);
+  if (!parts) return false;
+  const a = Number(parts[1]);
+  const b = Number(parts[3]);
+  // Sirve en ambos órdenes (DD/MM y MM/DD): aquí ser flexible solo evita
+  // grabar basura, nunca pierde un número real.
+  return (a <= 31 && b <= 12) || (a <= 12 && b <= 31);
 }
 
 /**
@@ -142,7 +158,7 @@ export function extractPhoneFromText(
     seen.add(candidate.raw);
     if (candidate.digits.length < 8 || candidate.digits.length > 15) continue;
     if (candidate.digits.startsWith("0")) continue;
-    if (looksLikeDate(candidate.digits)) continue;
+    if (looksLikeDate(candidate.digits, candidate.raw)) continue;
     if (isPrice(text, candidate.from, candidate.to)) continue;
 
     const phone = normalizeMx(candidate.digits);

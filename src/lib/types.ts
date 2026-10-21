@@ -146,18 +146,28 @@ export type ContactDto = {
  * ============================================================ */
 
 /**
- * Fila de la pantalla de Prospectos: un contacto que escribió al menos un
- * mensaje. Derivada de `contact` + `conversation` + `message`, no una tabla.
+ * Fila de la pantalla de Prospectos: todo el que escribió al menos un mensaje
+ * entrante, por chat o por correo.
+ *
+ * Las de chat se derivan de `contact` + `conversation` + `message`; las de
+ * correo, de `email_message` agrupadas por remitente. Un remitente de correo
+ * NO es un contacto hasta que el dueño lo dé de alta (`email_message.contact_id`
+ * se queda en NULL en la ingesta), así que `contactId` y `conversationId` son
+ * nullables a propósito: la pantalla muestra a la persona aunque el CRM aún no
+ * tenga ficha de ella.
  */
 export type ProspectDto = {
-  contactId: string;
+  /** null cuando el prospecto solo existe como remitente de correo. */
+  contactId: string | null;
   name: string;
   /** null mientras el cliente no deje su número en el chat. */
   phone: string | null;
   channel: string;
   channelLabel: string;
   /** Hilo real del contacto: enlaza la fila con Bandeja (`/inbox?contact=`). */
-  conversationId: string;
+  conversationId: string | null;
+  /** Dirección de la persona cuando el prospecto vino del correo. */
+  email: string | null;
   firstInboundAt: string | null;
   lastInboundAt: string | null;
   inboundCount: number;

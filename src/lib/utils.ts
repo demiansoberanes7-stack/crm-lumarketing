@@ -49,7 +49,28 @@ export function randomUuid(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+/**
+ * ¿Estos dígitos traen código de país? En México el nacional son 10 cifras y
+ * el internacional 12 (`52` + 10). Poner `+` a un número de 10 le manda al móvil
+ * "marca otro país" y la llamada no sale.
+ */
+function hasCountryCode(digits: string): boolean {
+  return digits.length > 10;
+}
+
 export function formatPhone(phone: string | null | undefined): string {
   // 003: contactos BSUID pueden no tener teléfono.
-  return phone ? `+${phone}` : "Sin teléfono";
+  if (!phone) return "Sin teléfono";
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return phone;
+  return hasCountryCode(digits) ? `+${digits}` : digits;
+}
+
+/**
+ * Enlace para marcar. La misma regla que la etiqueta: `+` solo con código de
+ * país, para que el teléfono del prospecto capturado del chat discale de verdad.
+ */
+export function dialHref(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return `tel:${hasCountryCode(digits) ? `+${digits}` : digits}`;
 }
