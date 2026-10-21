@@ -297,3 +297,43 @@ Abierto a propósito:
 - **Lo multipart de Zernio no está verificado contra el proveedor**: el arreglo está
   cubierto por prueba unitaria del cuerpo de la petición, no por un envío real. Hay que
   mandarle un PDF a un chat de Messenger en producción para confirmarlo.
+
+### 6.7 Entrega v1.7.0 (20-10-2026) — Prospectos, Calendario accesible y el lote del dueño
+
+Cerrado en código, con pruebas (`pnpm test`: 145 archivos / 1352 pruebas; `typecheck`,
+`lint`, `db:guard` y `next build` en verde; espejo de las migraciones 0081 y 0082 sobre un
+`pg_dump` de la base real en la VM, rc 0 y re-ejecutables):
+
+- **IA por canal** (0081, `disabled_channels`): un interruptor apaga al agente en todo el
+  canal; lo respetan el turno interno y las cuatro rutas del cerebro externo.
+- **Prospectos** (`/prospects`): módulo nuevo sin tabla ni migración propia — proyección de
+  los contactos con mensaje entrante en hilo real.
+- **Teléfono desde el chat** (`inbox/phone-capture.ts`): escritura append-only en los siete
+  canales de `ingestInboundMessage` + chat de Mercado Libre.
+- **Cotización**: bloque único NOTAS, `client_phone` en el PDF (0082) e IVA a 0 cuando el
+  cliente lo pidió explícitamente.
+- **Formato del agente** (`ai/reply-format.ts`): normalización por canal antes de enviar.
+- **Calendario**: el módulo estaba encendido (`AGENDA=on` en la VM) y aun así era
+  inalcanzable — no había entrada en el menú ni pestaña en Ajustes. Ahora el menú, el ⌘K y
+  Ajustes se filtran con el flag resuelto en el servidor.
+
+Queda abierto, declarado:
+
+- **Nada de esto se ha visto renderizado en el teléfono del dueño.** El formateador está
+  probado como función; cómo cae la lista en WhatsApp real, y si el PDF con NOTAS y teléfono
+  se lee bien, es verificación en vivo pendiente.
+- **Prospectos no tiene historial**: los mensajes anteriores a este despliegue sí aparecen
+  (la consulta se deriva de los mensajes), pero el teléfono de quien lo escribió antes y se
+  queda sin número nunca se va a recuperar solo.
+- **La captura ignora comentarios públicos y reseñas de Google Business** a propósito (un
+  número ahí suele ser el del propio negocio). Si el dueño pide lo contrario, es una línea
+  por superficie, no un rediseño.
+- **El plegado de comentarios por persona ocurre al consultar**, no con una migración que
+  reescriba `conversation`. Con volumen alto de comentarios habrá que materializarlo; hoy es
+  más seguro no tocar mensajes ya recibidos.
+- **Calendario sin horario configurado no agenda**: si Ajustes → Calendario no tiene días
+  habilitados, el motor ofrece cero huecos y el agente responde sin agendar. No es un fallo,
+  pero se siente como uno.
+- **`iva:false` es la única excepción de impuesto que entiende el agente**; el MCP y el
+  cotizador siguen tomando el tipo de la organización, así que "sin IVA" por otra vía exige
+  pedirlo en el cotizador.

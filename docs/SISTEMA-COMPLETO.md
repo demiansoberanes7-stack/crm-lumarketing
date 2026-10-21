@@ -1,6 +1,6 @@
 # Zorro Tech — Documentación Completa del Sistema
 
-**Versión**: 1.6.0  
+**Versión**: 1.7.0  
 **Fecha de actualización**: 20 de octubre de 2026  
 **Propietario**: Zorro Tech / Demian Soberanes  
 **Repositorio**: `demiansoberanes7-stack/crm-lumarketing` (GitHub **PÚBLICO** — verificado con `gh repo view`)  
@@ -198,6 +198,10 @@ Funcionalidades que no son core van detrás de banderas de despliegue:
 - `AGENDA=true/false`
 - `ATRIBUCION=true/false`
 - Módulos deshabilitados retornan 404 (indistinguibles de inexistentes)
+- Las banderas también gobiernan la **superficie**: `navItemsFor({agenda})` filtra barra
+  lateral, ⌘K y las pestañas de Ajustes desde el flag resuelto en el servidor
+  (`agendaEnabled()` en el layout). Sin ese filtrado pasa lo que pasó con Calendario:
+  `AGENDA=on` en el `.env`, la pantalla existiendo, y ni un enlace que llevara a ella.
 
 ---
 
@@ -627,6 +631,44 @@ configuración (fuentes de datos habilitadas) vive en Ajustes → Copiloto,
 solo para el owner, y el contexto se construye acotado al tenant con datos
 personales redactados. Guía completa: [docs/copiloto-agente.md](copiloto-agente.md).
 
+### Formato de la respuesta (`src/server/ai/reply-format.ts`)
+
+El prompt *pide* el formato; esta capa lo **garantiza** sobre lo que el modelo
+devuelva, justo antes de enviar (`deliverReply`):
+
+- Colapsa espacios y nunca deja dos líneas en blanco seguidas.
+- Renglones de más de 220 caracteres se parten por oraciones, no por palabras.
+- Enumeraciones de tres o más elementos separados se convierten en lista.
+- `*negrita*` sólo sobrevive en los canales que la renderizan (`supportsWhatsAppMarkdown`:
+  WhatsApp). En Instagram y Messenger los asteriscos se quitan porque se imprimen tal cual.
+
+### Reglas de Ajustes → Agente: dónde se cumplen
+
+Las cinco reglas se aplican **en el servidor**, no sólo en el texto del prompt. Si el
+modelo devuelve una acción desactivada, el turno la degrada
+(`pipeline.ts:435-443`: `send_quote`/`create_quote`, `move_stage`, la `ficha` de
+`update_lead`), y `sendProductQuotes` apagado ni siquiera ofrece `search_inventory`.
+`handoffOnRequest` apagada quita el atajo por patrón y su línea del prompt, pero si el
+cliente pide un humano y el modelo escala, se acata: apagar la regla no le quita al
+cliente ese derecho (`pipeline.ts:725`).
+
+### IA por canal (`src/server/ai/channel-policy.ts`)
+
+`agent_profile.disabled_channels` (lista negra, migración 0081) apaga al agente en un
+canal entero sin tocar conversación por conversación; el interruptor de la ficha de
+Bandeja sigue mandando dentro del canal. Lo consultan el turno interno y las cuatro
+rutas del cerebro externo (`/api/bot/context`, `/messages`, `/typing`, `/bookings`).
+El Laboratorio (`isTest`) está exento. Un miembro que no es owner ve el estado en modo
+sólo lectura desde el DTO `channelAiEnabled`.
+
+### Agenda en el turno
+
+Con `AGENDA` encendida, el prompt recibe el horario real del negocio (días, horas,
+buffer, aviso mínimo, tope de días) y la orden de no forzar un hueco que el motor no
+ofreció. `offer_slots` y `book_slot` delegan en `src/server/agenda/agent.ts`, y
+`availability.ts` descarta los solapamientos: dos citas encima es imposible aunque el
+modelo insista. Un fallo del motor degrada el turno a `reply`, nunca lo tumba.
+
 ---
 
 ## 10. Laboratorio de Auto-evaluación
@@ -694,6 +736,29 @@ Join con `lead` → `pipeline_stage` para info de etapa actual.
 - Si tiene teléfono, retorna "whatsapp"
 - Default: "directo"
 
+### Prospectos (`src/server/prospects/query.ts`, pantalla `/prospects`)
+
+Prospección del menú: quién escribió al negocio y todavía no es cartera.
+
+- **Es una proyección, no una tabla.** Prospecto = contacto con al menos un mensaje
+  entrante en una conversación real (`is_test = false`). No duplica el modelo de
+  identidad ni exige migración; la etapa viene del lead que `onLeadActivity` ya da de
+  alta al primer mensaje.
+- **Consulta** (`listProspects`): agrupa por contacto, devuelve primer/último entrante,
+  cuántos mensajes, el último texto y la etapa del lead preferido. El join de
+  `pipeline_stage` repite la condición de organización (Constitución III) y el límite es
+  fijo (200). El texto tolerante busca con y sin acentos y también por dígitos sueltos.
+- **Filtros** (`/api/prospects`): `q`, `channel`, `phone=falta|tiene`, `archived`.
+- **Teléfono desde el chat** (`src/server/inbox/phone-capture.ts`): extrae el número que
+  el cliente teclea y lo guarda en la ficha. La escritura es **append-only** — el `UPDATE`
+  lleva `phone IS NULL` en el `WHERE`—, así que una reentrega de Meta o una edición del
+  operador nunca pisan un número existente. Descarta fechas, precios, lo que empieza por
+  0 y prefijos sueltos; prefiere el número con `+` y el más largo.
+- **Superficies que capturan:** las siete que pasan por `ingestInboundMessage` (WhatsApp
+  propio y Zernio, Instagram, Messenger, TikTok, correo) más el chat de Mercado Libre.
+  **No capturan** los comentarios públicos ni las reseñas de Google Business: ahí un
+  número suele ser ruido o el del propio negocio.
+
 ---
 
 ## 12. Pipeline Comercial y Leads
@@ -740,6 +805,11 @@ type QuoteStatus = "draft" | "unsaved" | "saved" | "sent" | "viewed"
 #### `createQuote()`
 - Advisory lock para número secuencial (`COT-XXXX`)
 - Calcula: subtotal, descuento (fijo/porcentaje), IVA (default 16%), total
+- `taxRate: 0` cuando el cliente pidió expresamente la cotización **sin IVA**: el agente
+  manda `iva:false` en `create_quote` y el impuesto se respeta, no se reinfla al 16%
+- `clientPhone` (migración 0082) es el número que se imprime en «COTIZADO PARA»; vive en
+  la cotización y no sólo en la ficha porque se cotiza también a clientes sin ficha o con
+  otro número. Se normaliza y limita a 32 caracteres; vacío = la línea no aparece
 - Crea items y evento `created`
 
 #### `updateQuote()`
@@ -769,6 +839,10 @@ Utiliza `reportPdf()` de `@/server/documents/pdf`:
 - **Fuente**: Helvetica
 - **Branding**: naranja de la marca por defecto (#E87722), configurable en Configuración → Marca
 - **Formato**: Paginado con encabezado y pie
+- **Columna derecha NOTAS**: un solo bloque; antes había `CONDICIONES DE PAGO` arriba y
+  `NOTAS Y TÉRMINOS` repetido abajo, y el nombre no describía lo que el dueño escribe ahí
+- **«COTIZADO PARA» muestra el teléfono** de `client_phone` o el de la ficha si el
+  operador no lo escribió
 
 ---
 

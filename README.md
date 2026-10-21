@@ -66,6 +66,14 @@ Cada persona que escribe queda registrada sola y entra al pipeline
 tarjetas, busca, agrega notas, archiva. El agente puede mover leads de etapa
 cuando detecta intención de compra.
 
+### 🌱 Prospectos
+
+Quien escribió y todavía no es cartera, en una pantalla: canal, cuándo escribió por
+última vez, cuántos mensajes y qué dijo. Si el cliente deja su número en el chat, se
+guarda solo en su ficha (nunca pisa un número que ya estaba) y el prospecto pasa de
+«Sin teléfono» a marcable. Instagram, Messenger, TikTok y Mercado Libre no traen el
+teléfono en el webhook, así que el chat es la única fuente.
+
 ### 🤖 Agente de IA con TU conocimiento
 
 Configura nombre, tono, instrucciones y reglas de escalado; dale conocimiento
