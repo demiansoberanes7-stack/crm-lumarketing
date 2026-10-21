@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, Package, Pencil, Plus, Send, Trash2, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +51,7 @@ function stockLabel(stock: number | null): { text: string; variant: "success" | 
 
 export function CatalogClient({ compact = false, onClose }: { compact?: boolean; onClose?: () => void }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [listFailed, setListFailed] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,9 +62,13 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/catalog").catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      setListFailed(true);
+      return;
+    }
     const data = (await res.json()) as { products: Product[] };
     setProducts(data.products);
+    setListFailed(false);
   }, []);
 
   useEffect(() => { void refetch(); }, [refetch]);
@@ -144,7 +150,13 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {products.length === 0 ? (
+        {listFailed && products.length === 0 ? (
+          <LoadError
+            message="No se pudo leer el inventario."
+            detail="«Sin productos» sería otra cosa: la lista no llegó y el bot sí puede tener catálogo. Reintenta."
+            onRetry={() => void refetch()}
+          />
+        ) : products.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <Package className="h-10 w-10 text-muted-foreground/40" />
             <p className="text-sm font-medium">Sin productos</p>

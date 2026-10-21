@@ -19,6 +19,7 @@ import { formatMoneyCents, sumable } from "@/lib/money";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { cn } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
+import { LoadError } from "@/components/load-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ const CHANNEL_FILTERS = [
 
 export function PipelineClient() {
   const [stages, setStages] = useState<StageDto[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [currency, setCurrency] = useState("MXN");
   const [leads, setLeads] = useState<BoardLead[]>([]);
   const [activeLead, setActiveLead] = useState<BoardLead | null>(null);
@@ -92,7 +94,11 @@ export function PipelineClient() {
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/pipeline/board").catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      // Sin esto el tablero se quedaba en blanco puro: ni columnas ni aviso.
+      setLoadFailed(true);
+      return;
+    }
     const data = (await res.json()) as {
       stages: StageDto[];
       leads: BoardLead[];
@@ -101,6 +107,7 @@ export function PipelineClient() {
     if (data.currency) setCurrency(data.currency);
     setStages(data.stages);
     setLeads(data.leads);
+    setLoadFailed(false);
   }, []);
 
   useEffect(() => {
@@ -262,7 +269,19 @@ export function PipelineClient() {
           onDragEnd={(e) => void onDragEnd(e)}
         >
           <div className="flex h-full gap-3">
-            {stages.map((stage) => (
+            {stages.length === 0 ? (
+              loadFailed ? (
+                <LoadError
+                  message="No se pudo leer el pipeline."
+                  detail="El tablero no está vacío: no se pudo leer. Reintenta y, si sigue, avisa."
+                  onRetry={() => void refetch()}
+                />
+              ) : (
+                <p className="p-6 text-xs text-text-3">
+                  Esta organización aún no tiene etapas configuradas.
+                </p>
+              )
+            ) : stages.map((stage) => (
               <StageColumn
                 key={stage.id}
                 stage={stage}

@@ -30,9 +30,14 @@ export function TeamClient() {
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/settings/team").catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      // Un 500 aquí dejaba «Miembros» vacío y parecía que no había equipo.
+      setError("No se pudo leer la lista del equipo.");
+      return;
+    }
     const data = (await res.json()) as { members: Member[] };
     setMembers(data.members);
+    setError(null);
   }, []);
 
   useEffect(() => {

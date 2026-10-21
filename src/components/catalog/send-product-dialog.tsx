@@ -22,19 +22,29 @@ export function SendProductDialog({
   onClose: () => void;
 }) {
   const [conversations, setConversations] = useState<ConversationDto[]>([]);
+  const [chatsFailed, setChatsFailed] = useState(false);
   const [chatId, setChatId] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/conversations")
-      .then((r) => (r.ok ? r.json() : { conversations: [] }))
-      .then((d: { conversations?: ConversationDto[] }) =>
-        setConversations(Array.isArray(d.conversations) ? d.conversations : [])
-      )
-      .catch(() => setConversations([]));
+  const reloadChats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/conversations");
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { conversations?: ConversationDto[] };
+      setConversations(Array.isArray(data.conversations) ? data.conversations : []);
+      setChatsFailed(false);
+    } catch {
+      // Sin bandera, un 500 se pintaba como «No hay chats en canales conectados»
+      // y el producto se daba por no enviable cuando el chat sí existía.
+      setChatsFailed(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void reloadChats();
+  }, [reloadChats]);
 
   const chatsByChannel = useMemo(() => {
     const map = new Map<string, ConversationDto[]>();
@@ -92,7 +102,19 @@ export function SendProductDialog({
           </div>
         ) : (
           <>
-            {chatsByChannel.size === 0 ? (
+            {chatsFailed && chatsByChannel.size === 0 ? (
+              <p className="text-xs text-destructive">
+                No se pudieron leer los chats: «no hay canales conectados» todavía no es
+                concluyente.{" "}
+                <button
+                  type="button"
+                  className="font-medium underline"
+                  onClick={() => void reloadChats()}
+                >
+                  Reintentar
+                </button>
+              </p>
+            ) : chatsByChannel.size === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No hay chats en canales conectados para enviar este producto.
               </p>

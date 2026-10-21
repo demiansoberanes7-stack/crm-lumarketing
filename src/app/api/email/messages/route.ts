@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, parseBody, withAuth } from "@/lib/api";
+import { apiError, intParam, parseBody, withAuth } from "@/lib/api";
 import { listMessages, sendEmail } from "@/server/email/service";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { safeDiagnosticText } from "@/server/diagnostics/redact";
@@ -12,8 +12,8 @@ export const GET = withAuth(async (session, req: Request) => {
   const accountId = url.searchParams.get("accountId");
   if (!accountId) return apiError(400, "missing_param", "accountId es requerido");
 
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
-  const offset = parseInt(url.searchParams.get("offset") ?? "0");
+  const limit = intParam(url, "limit", { fallback: 50, min: 1, max: 200 });
+  const offset = intParam(url, "offset", { fallback: 0 });
   const direction = url.searchParams.get("direction") ?? undefined;
 
   const messages = await listMessages(session.organizationId, accountId, {

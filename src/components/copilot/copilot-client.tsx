@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, Plus, Trash2, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LoadError } from "@/components/load-error";
 import { cn } from "@/lib/utils";
 
 interface Conversation {
@@ -34,13 +35,23 @@ export function CopilotClient() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [mobileList, setMobileList] = useState(true);
+  const [conversationsFailed, setConversationsFailed] = useState(false);
+  const [messagesFailed, setMessagesFailed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/copilot/conversations").catch(() => null);
-    if (!res?.ok) return;
-    const data = (await res.json()) as { conversations: Conversation[] };
+    const data = res?.ok
+      ? ((await res.json().catch(() => null)) as { conversations?: Conversation[] } | null)
+      : null;
+    if (!data || !Array.isArray(data.conversations)) {
+      // Un 500 se pintaba como «Aún no tienes conversaciones»: el historial del
+      // copiloto seguía intacto, lo que no llegó fue la lista.
+      setConversationsFailed(true);
+      return;
+    }
     setConversations(data.conversations);
+    setConversationsFailed(false);
   }, []);
 
   useEffect(() => {
@@ -54,15 +65,25 @@ export function CopilotClient() {
   async function loadMessages(id: string) {
     setActiveId(id);
     setMobileList(false);
+    // Se limpia antes de leer: si la lectura falla, el hilo de la conversación
+    // anterior no debe quedarse publicado como si fuera el nuevo.
+    setMessages([]);
+    setMessagesFailed(false);
     const res = await fetch(`/api/copilot/conversations/${id}`).catch(() => null);
-    if (!res?.ok) return;
-    const data = (await res.json()) as { messages: Message[] };
+    const data = res?.ok
+      ? ((await res.json().catch(() => null)) as { messages?: Message[] } | null)
+      : null;
+    if (!data || !Array.isArray(data.messages)) {
+      setMessagesFailed(true);
+      return;
+    }
     setMessages(data.messages);
   }
 
   async function newConversation() {
     setActiveId(null);
     setMessages([]);
+    setMessagesFailed(false);
     setMobileList(false);
   }
 
@@ -73,6 +94,7 @@ export function CopilotClient() {
     if (activeId === id) {
       setActiveId(null);
       setMessages([]);
+      setMessagesFailed(false);
     }
   }
 
@@ -125,9 +147,22 @@ export function CopilotClient() {
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {conversations.length === 0 ? (
-            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              Aún no tienes conversaciones.
-            </p>
+            conversationsFailed ? (
+              <p className="px-3 py-4 text-center text-xs text-destructive">
+                No se pudieron leer tus conversaciones del Copiloto.{" "}
+                <button
+                  type="button"
+                  className="font-medium underline"
+                  onClick={() => void loadConversations()}
+                >
+                  Reintentar
+                </button>
+              </p>
+            ) : (
+              <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                Aún no tienes conversaciones.
+              </p>
+            )
           ) : (
             <ul className="space-y-1">
               {conversations.map((c) => (
@@ -177,7 +212,13 @@ export function CopilotClient() {
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
-          {messages.length === 0 ? (
+          {activeId && messagesFailed ? (
+            <LoadError
+              message="No se pudo cargar esta conversación."
+              detail="Ver la bienvenida no significa que el historial esté vacío: la lectura falló. Reintenta antes de volver a preguntar lo mismo."
+              onRetry={() => void loadMessages(activeId)}
+            />
+          ) : messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-full border">
                 <Sparkles className="h-6 w-6 text-muted-foreground" />

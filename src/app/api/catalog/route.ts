@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseBody, withAuth } from "@/lib/api";
+import { intParam, parseBody, withAuth } from "@/lib/api";
 import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
 import {
   createCatalogProduct,
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /** GET — listar catálogo de productos */
 export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+  const limit = intParam(url, "limit", { fallback: 100, min: 1, max: 500 });
 
   const products = await listCatalogProducts(session.organizationId, { limit });
 

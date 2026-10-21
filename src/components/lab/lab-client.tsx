@@ -65,20 +65,47 @@ export function LabClient() {
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"evaluacion" | "chat">("evaluacion");
+  const [runsFailed, setRunsFailed] = useState(false);
+  const [detailFailed, setDetailFailed] = useState(false);
 
   const refetchRuns = useCallback(async () => {
     const res = await fetch("/api/lab/runs").catch(() => null);
-    if (!res?.ok) return;
-    const data = (await res.json()) as { runs: Run[]; aiConfigured: boolean };
+    if (!res?.ok) {
+      // «Sin corridas todavía» salía también con un 500: borraba de la pantalla
+      // evaluaciones que sí existen y ofrece lanzar una duplicada.
+      setRunsFailed(true);
+      return;
+    }
+    const data = (await res.json().catch(() => null)) as {
+      runs?: Run[];
+      aiConfigured?: boolean;
+    } | null;
+    if (!data || !Array.isArray(data.runs)) {
+      setRunsFailed(true);
+      return;
+    }
     setRuns(data.runs);
-    setAiConfigured(data.aiConfigured);
+    setAiConfigured(data.aiConfigured === true);
+    setRunsFailed(false);
     if (!selectedRunId && data.runs[0]) setSelectedRunId(data.runs[0].id);
   }, [selectedRunId]);
 
   const refetchDetail = useCallback(async (runId: string) => {
     const res = await fetch(`/api/lab/runs/${runId}`).catch(() => null);
-    if (!res?.ok) return;
-    setDetail((await res.json()) as { run: Run; cases: Case[] });
+    if (!res?.ok) {
+      setDetailFailed(true);
+      return;
+    }
+    const data = (await res.json().catch(() => null)) as {
+      run?: Run;
+      cases?: Case[];
+    } | null;
+    if (!data?.run || !Array.isArray(data.cases)) {
+      setDetailFailed(true);
+      return;
+    }
+    setDetail(data as { run: Run; cases: Case[] });
+    setDetailFailed(false);
   }, []);
 
   useEffect(() => {
@@ -167,7 +194,11 @@ export function LabClient() {
               <div className="h-2 overflow-hidden rounded-full bg-secondary">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                  // Con total 0 la división daba NaN y el navegador descartaba
+                  // el estilo: la barra se quedaba vacía sin decir nada.
+                  style={{
+                    width: `${progress.total > 0 ? (progress.done / progress.total) * 100 : 0}%`,
+                  }}
                 />
               </div>
             </div>
@@ -176,11 +207,27 @@ export function LabClient() {
           <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-[280px_1fr]">
             <HistoryList
               runs={runs}
+              loadFailed={runsFailed}
+              onRetry={() => void refetchRuns()}
               selectedRunId={selectedRunId}
               onSelect={setSelectedRunId}
             />
             {detail ? (
               <Report detail={detail} onApplied={() => void refetchDetail(detail.run.id)} />
+            ) : detailFailed && selectedRunId ? (
+              <div className="h-fit rounded-lg border border-dashed p-10 text-center text-sm">
+                <p className="text-destructive">
+                  No se pudo leer el reporte de esta corrida. El historial sí la lista, así
+                  que la evaluación existe: no la lances de nuevo.
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 font-medium underline"
+                  onClick={() => void refetchDetail(selectedRunId)}
+                >
+                  Reintentar
+                </button>
+              </div>
             ) : (
               <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
                 {runs.length === 0
@@ -258,10 +305,14 @@ function Header({
 
 function HistoryList({
   runs,
+  loadFailed,
+  onRetry,
   selectedRunId,
   onSelect,
 }: {
   runs: Run[];
+  loadFailed: boolean;
+  onRetry: () => void;
   selectedRunId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -270,9 +321,17 @@ function HistoryList({
       <p className="kicker">
         Historial
       </p>
-      {runs.length === 0 && (
-        <p className="text-xs text-muted-foreground">Sin corridas todavía.</p>
-      )}
+      {runs.length === 0 &&
+        (loadFailed ? (
+          <p className="text-xs text-destructive">
+            No se pudo leer el historial de corridas.{" "}
+            <button type="button" className="font-medium underline" onClick={onRetry}>
+              Reintentar
+            </button>
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Sin corridas todavía.</p>
+        ))}
       {runs.map((run) => (
         <button
           key={run.id}

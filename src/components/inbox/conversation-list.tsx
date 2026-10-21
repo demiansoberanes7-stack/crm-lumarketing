@@ -10,6 +10,7 @@ import { ChannelBadge } from "@/components/channel-badge";
 import { matchesQuery } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
+import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { formatTime, previewText } from "./helpers";
 
@@ -63,12 +64,17 @@ function EmptyState({ onSeeded }: { onSeeded: () => void }) {
 
 export function ConversationList({
   conversations: conversationsProp,
+  loadFailed = false,
+  onRetry,
   channels,
   selectedId,
   onSelect,
   onSeeded,
 }: {
   conversations: ConversationDto[] | null;
+  /** La última lectura de la lista falló: no es lo mismo que «no hay chats». */
+  loadFailed?: boolean;
+  onRetry?: () => void;
   /** Canales encendidos en esta instancia (ADR-001). */
   channels: readonly Channel[];
   selectedId: string | null;
@@ -280,6 +286,12 @@ export function ConversationList({
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {loading ? (
           <p className="p-6 text-center text-xs text-text-3">Cargando…</p>
+        ) : loadFailed && conversations.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la bandeja."
+            detail="«Sin conversaciones» sería que nadie escribió; esto es otra cosa: la lista no llegó. Reintenta y, si sigue, avisa."
+            onRetry={onRetry}
+          />
         ) : conversations.length === 0 ? (
           <EmptyState onSeeded={onSeeded} />
         ) : visible.length === 0 ? (

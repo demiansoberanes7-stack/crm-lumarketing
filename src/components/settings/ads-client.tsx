@@ -71,12 +71,20 @@ export function AdsClient() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activityFailed, setActivityFailed] = useState(false);
 
   const loadActivity = useCallback(async () => {
     const res = await fetch("/api/settings/capi/events").catch(() => null);
-    if (!res?.ok) return setActivity([]);
+    if (!res?.ok) {
+      // Vaciar la tabla era el problema: «Todavía no hay conversiones» se leía
+      // igual con un 500 que con un CAPI que efectivamente no reportó nada.
+      setActivity([]);
+      setActivityFailed(true);
+      return;
+    }
     const data = (await res.json()) as { events: ActivityRow[] };
     setActivity(data.events);
+    setActivityFailed(false);
   }, []);
 
   useEffect(() => {
@@ -251,6 +259,18 @@ export function AdsClient() {
           </Button>
           {activity === null ? (
             <p className="text-sm text-muted-foreground">Cargando…</p>
+          ) : activityFailed && activity.length === 0 ? (
+            <p className="text-xs text-destructive">
+              No se pudo leer la actividad de conversiones reportadas a Meta: «todavía no
+              hay conversiones» todavía no es concluyente.{" "}
+              <button
+                type="button"
+                className="font-medium underline"
+                onClick={() => void loadActivity()}
+              >
+                Reintentar
+              </button>
+            </p>
           ) : activity.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Todavía no hay conversiones. Aparecerán cuando un lead que llegó

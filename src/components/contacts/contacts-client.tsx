@@ -21,6 +21,7 @@ import { formatPhone } from "@/lib/utils";
 import { formatMoneyCents, parseMoneyToCents } from "@/lib/money";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ContactAvatar } from "@/components/avatar";
+import { LoadError } from "@/components/load-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,7 @@ function stageTone(name: string | null): string {
 export function ContactsClient() {
   const router = useRouter();
   const [contacts, setContacts] = useState<ContactDto[]>([]);
+  const [listFailed, setListFailed] = useState(false);
   /**
    * Contactos es la cartera de clientes: solo se listan los tratos ganados.
    * El embudo (prospectos en cualquier etapa) vive en el Pipeline, que es la
@@ -73,8 +75,12 @@ export function ContactsClient() {
     params.set("won", "1");
     if (showArchived) params.set("archived", "true");
     const res = await fetch(`/api/contacts?${params}`).catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      setListFailed(true);
+      return;
+    }
     const data = (await res.json()) as { contacts: ContactDto[] };
+    setListFailed(false);
     setContacts(
       [...data.contacts].sort(
         (a, b) => priorityRank(a.priority ?? null) - priorityRank(b.priority ?? null)
@@ -163,7 +169,13 @@ export function ContactsClient() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {contacts.length === 0 ? (
+        {listFailed && contacts.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la cartera."
+            detail="«Aún no hay clientes» sería otra cosa: la lista no llegó. Reintenta y, si sigue, avisa."
+            onRetry={() => void refetch()}
+          />
+        ) : contacts.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             {query.trim() ? (
               <>

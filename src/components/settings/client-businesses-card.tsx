@@ -88,10 +88,16 @@ export function ClientBusinessesCard() {
 
   const refetch = useCallback(async () => {
     const res = await fetch("/api/settings/clients").catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      // Sin esto el listado quedaba vacío y se leía como «no hay negocios»,
+      // cuando en realidad la API falló.
+      setError("No se pudo leer la lista de negocios.");
+      return;
+    }
     const data = (await res.json()) as ClientsResponse;
     setBusinesses(data.organizations);
     setViewerUserId(data.viewerUserId);
+    setError(null);
   }, []);
 
   useEffect(() => {

@@ -20,6 +20,7 @@ import { matchesQuery } from "@/lib/search";
 import { ContactAvatar } from "@/components/avatar";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
+import { LoadError } from "@/components/load-error";
 import { formatTime } from "@/components/inbox/helpers";
 import type { EmailChatThread } from "@/app/api/email/threads/route";
 import { bufferToBase64 } from "@/lib/base64";
@@ -177,6 +178,11 @@ export function EmailChatClient({ channels }: { channels: readonly Channel[] }) 
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accountsFailed, setAccountsFailed] = useState(false);
+  // La lista de hilos se lee aparte de las cuentas: reutilizar `error` del
+  // compositor pintaría «no se pudieron cargar los correos» cuando lo que falló
+  // fue un envío.
+  const [threadsFailed, setThreadsFailed] = useState(false);
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
@@ -194,16 +200,26 @@ export function EmailChatClient({ channels }: { channels: readonly Channel[] }) 
     if (typed) setQuery(typed);
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      const res = await fetch("/api/email/accounts").catch(() => null);
-      if (!res?.ok) return;
-      const data = await res.json().catch(() => ({ accounts: [] }));
-      const list: EmailAccount[] = data.accounts ?? [];
-      setAccounts(list);
-      setAccountId((prev) => prev ?? list.find((a) => a.enabled)?.id ?? list[0]?.id ?? null);
-    })();
+  const loadAccounts = useCallback(async () => {
+    const res = await fetch("/api/email/accounts").catch(() => null);
+    const data = res?.ok
+      ? await res.json().catch(() => null)
+      : null;
+    if (!data || !Array.isArray(data.accounts)) {
+      // Sin cuentas tampoco hay accountId y /threads nunca se pide: el 500
+      // terminaba pintando «Sin correos todavía» en un buzón que sí tiene.
+      setAccountsFailed(true);
+      return;
+    }
+    const found: EmailAccount[] = data.accounts ?? [];
+    setAccountsFailed(false);
+    setAccounts(found);
+    setAccountId((prev) => prev ?? found.find((a) => a.enabled)?.id ?? found[0]?.id ?? null);
   }, []);
+
+  useEffect(() => {
+    void loadAccounts();
+  }, [loadAccounts]);
 
   const refetch = useCallback(async (opts?: { silent?: boolean }) => {
     if (!accountId) return;
@@ -213,7 +229,9 @@ export function EmailChatClient({ channels }: { channels: readonly Channel[] }) 
     if (res?.ok) {
       const data = await res.json().catch(() => ({ threads: [] }));
       setThreads(data.threads ?? []);
+      setThreadsFailed(false);
     } else {
+      setThreadsFailed(true);
       setError("No se pudieron cargar los correos.");
     }
     setLoading(false);
@@ -487,6 +505,19 @@ export function EmailChatClient({ channels }: { channels: readonly Channel[] }) 
         <div className="flex-1 overflow-y-auto overscroll-contain">
           {firstLoad && loading ? (
             <p className="p-6 text-center text-xs text-text-3">Cargando…</p>
+          ) : list.length === 0 && (accountsFailed || threadsFailed) ? (
+            <LoadError
+              message={
+                accountsFailed
+                  ? "No se pudo leer tu buzón de correo."
+                  : "No se pudieron cargar los correos."
+              }
+              detail="«Sin correos todavía» solo lo diría una lectura correcta. Aquí la lectura falló, así que los mensajes sí pueden estar esperando: reintenta antes de dar el buzón por vacío."
+              onRetry={() => {
+                if (accountsFailed) void loadAccounts();
+                else void refetch();
+              }}
+            />
           ) : list.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <p className="font-serif text-[21px] italic leading-tight text-foreground">

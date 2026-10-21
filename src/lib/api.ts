@@ -73,3 +73,24 @@ export async function parseBody<T>(
   }
   return { ok: true, data: parsed.data };
 }
+
+/**
+ * Entero de un query param, siempre acotado.
+ *
+ * Existe porque varias rutas hacían `parseInt(url.searchParams.get("limit") ??
+ * "50")` y se quedaban sin respaldo: `?limit=abc` produce `NaN`, Drizzle lo
+ * manda como `LIMIT NaN`, Postgres rechaza la consulta y la ruta responde 500 —
+ * que las pantallas leían como «no hay datos». Ausente, vacío o basura vuelven
+ * al respaldo; lo negativo o desbordado se acota al rango permitido.
+ */
+export function intParam(
+  url: URL,
+  name: string,
+  { fallback, min = 0, max }: { fallback: number; min?: number; max?: number }
+): number {
+  const raw = url.searchParams.get(name);
+  const parsed = raw === null || raw.trim() === "" ? fallback : Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  const floored = Math.max(parsed, min);
+  return max === undefined ? floored : Math.min(floored, max);
+}

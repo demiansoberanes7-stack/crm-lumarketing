@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -101,14 +101,22 @@ export function AnalyticsClient() {
   const [pipeData, setPipeData] = useState<PipelineMetric | null>(null);
   const [pipeState, setPipeState] = useState<"loading" | "ready" | "error">("loading");
   const [loadingDash, setLoadingDash] = useState(true);
+  // Un 500 en /dashboard no debía dejar la pantalla en silencio: sin métricas
+  // y sin aviso, «Análisis» parece un negocio que todavía no mide nada.
+  const [dashFailed, setDashFailed] = useState(false);
+
+  const loadDash = useCallback(async () => {
+    setLoadingDash(true);
+    const res = await fetch("/api/analytics/dashboard").catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => null) : null;
+    if (data) setDashData(data as DashboardData);
+    setDashFailed(!data);
+    setLoadingDash(false);
+  }, []);
 
   useEffect(() => {
-    fetch("/api/analytics/dashboard")
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setDashData(d as DashboardData); })
-      .catch(() => null)
-      .finally(() => setLoadingDash(false));
-  }, []);
+    void loadDash();
+  }, [loadDash]);
 
   useEffect(() => {
     fetch("/api/pipeline/stats")
@@ -187,6 +195,26 @@ export function AnalyticsClient() {
           {loadingDash && (
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-6">
               <RefreshCw className="h-4 w-4 animate-spin" /> Cargando métricas…
+            </div>
+          )}
+
+          {!loadingDash && dashFailed && (
+            <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+              <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-destructive" />
+              <div>
+                <p className="text-sm font-semibold">No se pudieron leer las métricas de marketing</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  El vacío de esta pantalla no dice que no haya datos: la lectura falló.
+                  Reintenta y, si sigue, revisa las credenciales de GA4/Ads.
+                </p>
+                <button
+                  type="button"
+                  className="mt-1.5 text-xs font-medium underline"
+                  onClick={() => void loadDash()}
+                >
+                  Reintentar
+                </button>
+              </div>
             </div>
           )}
 

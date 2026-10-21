@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PdfActions } from "@/components/pdf-actions";
+import { LoadError } from "@/components/load-error";
 import { ProjectTypePicker } from "./project-type-picker";
 import { ProjectWizard } from "./project-wizard";
 import { ProjectDetail } from "./project-detail";
@@ -41,6 +42,7 @@ export function ProjectsClient() {
   const [wizardProject, setWizardProject] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState(0);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState({ active: false, archived: false });
 
   const refetch = useCallback(async () => {
     const [activeRes, archivedRes] = await Promise.all([
@@ -55,6 +57,9 @@ export function ProjectsClient() {
       const data = (await archivedRes.json()) as { projects: Project[] };
       setArchivedProjects(data.projects);
     }
+    // Cada pestaña se queja solo de su propia lectura: «Sin proyectos» y «Sin
+    // proyectos archivados» siguen siendo estados vacíos reales, no un 500.
+    setLoadFailed({ active: !activeRes?.ok, archived: !archivedRes?.ok });
   }, []);
 
   useEffect(() => {
@@ -134,7 +139,14 @@ export function ProjectsClient() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {displayedProjects.length === 0 ? (
+        {loadFailed[showArchived ? "archived" : "active"] &&
+        displayedProjects.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la lista de proyectos."
+            detail="No es que no haya proyectos: la lista no llegó. Reintenta y, si sigue, avisa."
+            onRetry={() => void refetch()}
+          />
+        ) : displayedProjects.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <p className="text-sm font-medium">
               {showArchived ? "Sin proyectos archivados" : "Sin proyectos"}

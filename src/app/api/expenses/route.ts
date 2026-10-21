@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseBody, withAuth } from "@/lib/api";
+import { intParam, parseBody, withAuth } from "@/lib/api";
 import { createExpense, getRecentExpenses } from "@/server/finances/service";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /** GET — gastos recientes */
 export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+  const limit = intParam(url, "limit", { fallback: 50, min: 1, max: 200 });
   const expenses = await getRecentExpenses(session.organizationId, limit);
   return Response.json({ expenses });
 });

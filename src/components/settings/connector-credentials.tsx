@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -110,30 +110,42 @@ export function ConnectorCredentials({
   const [busy, setBusy] = useState(false);
   const [syncTasks, setSyncTasks] = useState(false);
   const [redirectUri, setRedirectUri] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [message, setMessage] = useState<{
     kind: "ok" | "error";
     text: string;
   } | null>(null);
+
+  const reload = useCallback(async () => {
+    const res = await fetch(`/api/settings/${connector}`).catch(() => null);
+    const data = res?.ok
+      ? ((await res.json().catch(() => null)) as {
+          connection?: Connection | null;
+          syncTasks?: boolean;
+          redirectUri?: string;
+        } | null)
+      : null;
+    if (!data) {
+      // Connection=false y "no se pudo leer" se pintaban idéntico: el dueño
+      // veía los campos vacíos y re-pegaba secretos que ya estaban guardados.
+      setLoadFailed(true);
+      return;
+    }
+    setLoadFailed(false);
+    setConnection(data.connection ?? null);
+    setSyncTasks(Boolean(data.syncTasks));
+    setRedirectUri(data.redirectUri ?? null);
+    if (data.connection) setValues({ ...data.connection.fields });
+  }, [connector]);
 
   useEffect(() => {
     setConnection(null);
     setValues({});
     setMessage(null);
     setSyncTasks(false);
-    void (async () => {
-      const res = await fetch(`/api/settings/${connector}`).catch(() => null);
-      if (!res?.ok) return;
-      const data = (await res.json()) as {
-        connection: Connection | null;
-        syncTasks?: boolean;
-        redirectUri?: string;
-      };
-      setConnection(data.connection);
-      setSyncTasks(Boolean(data.syncTasks));
-      setRedirectUri(data.redirectUri ?? null);
-      if (data.connection) setValues({ ...data.connection.fields });
-    })();
-  }, [connector]);
+    setLoadFailed(false);
+    void reload();
+  }, [connector, reload]);
 
   /**
    * Resultado del vuelco OAuth (Google redirige aquí). Se lee del historial y
@@ -302,6 +314,22 @@ export function ConnectorCredentials({
               Pégala en Google Cloud → Credenciales OAuth → URIs de redirección autorizadas.
             </p>
           </div>
+        )}
+
+        {loadFailed && (
+          <p className="rounded-sm border border-warning-soft bg-warning-tint px-3 py-2 text-sm text-warning-text">
+            No se pudo leer la conexión de {meta.label}. Los campos aparecen vacíos
+            porque la lectura falló, NO porque falten credenciales: reintenta antes de
+            volver a pegar un secreto encima.
+            {" "}
+            <button
+              type="button"
+              className="font-medium underline"
+              onClick={() => void reload()}
+            >
+              Reintentar
+            </button>
+          </p>
         )}
 
         {connection?.status === "error" && (

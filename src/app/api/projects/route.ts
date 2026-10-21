@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseBody, withAuth } from "@/lib/api";
+import { intParam, parseBody, withAuth } from "@/lib/api";
 import { listProjects, createProject } from "@/server/projects/service";
 import { projectErrorResponse } from "@/server/projects/errors";
 
@@ -11,8 +11,8 @@ export const GET = withAuth(async (session, req: Request) => {
   const estado = url.searchParams.get("estado") ?? undefined;
   const archivedParam = url.searchParams.get("archived");
   const archived = archivedParam === "true" ? true : archivedParam === "false" ? false : undefined;
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 100);
-  const offset = parseInt(url.searchParams.get("offset") ?? "0");
+  const limit = intParam(url, "limit", { fallback: 50, min: 1, max: 100 });
+  const offset = intParam(url, "offset", { fallback: 0 });
 
   const projects = await listProjects(session.organizationId, { estado, archived, limit, offset });
   return Response.json({ projects });

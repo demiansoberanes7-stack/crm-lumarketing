@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SourceValue, StageDto } from "@/lib/types";
 import { normalizeMedium } from "@/lib/contact-medium";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ export function NewContactDialog({
   const [mediumDetail, setMediumDetail] = useState("");
   const [notes, setNotes] = useState("");
   const [stages, setStages] = useState<StageDto[]>([]);
+  const [stagesFailed, setStagesFailed] = useState(false);
   const [stageId, setStageId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,16 +47,26 @@ export function NewContactDialog({
     null
   );
 
-  useEffect(() => {
-    void (async () => {
-      const res = await fetch("/api/pipeline/stages").catch(() => null);
-      if (!res?.ok) return;
-      const data = (await res.json()) as { stages: StageDto[] };
-      const abiertas = data.stages.filter((s) => s.kind === "open");
-      setStages(abiertas);
-      setStageId(abiertas[0]?.id ?? "");
-    })();
+  const loadStages = useCallback(async () => {
+    const res = await fetch("/api/pipeline/stages").catch(() => null);
+    const data = res?.ok
+      ? ((await res.json().catch(() => null)) as { stages?: StageDto[] } | null)
+      : null;
+    if (!data || !Array.isArray(data.stages)) {
+      // El 500 se leía como «tu embudo no tiene etapas abiertas» y el alta
+      // quedaba bloqueada por un pipeline que sí estaba intacto.
+      setStagesFailed(true);
+      return;
+    }
+    const abiertas = data.stages.filter((s) => s.kind === "open");
+    setStages(abiertas);
+    setStageId(abiertas[0]?.id ?? "");
+    setStagesFailed(false);
   }, []);
+
+  useEffect(() => {
+    void loadStages();
+  }, [loadStages]);
 
   async function guardar() {
     setSaving(true);
@@ -230,12 +241,25 @@ export function NewContactDialog({
           </div>
         )}
         {error && <p className="mt-3 text-xs text-danger-text">{error}</p>}
-        {stages.length === 0 && (
-          <p className="mt-3 text-xs text-warning-text">
-            Tu embudo no tiene etapas abiertas. Crea una en el Pipeline antes de
-            capturar contactos.
-          </p>
-        )}
+        {stages.length === 0 &&
+          (stagesFailed ? (
+            <p className="mt-3 text-xs text-destructive">
+              No se pudieron leer las etapas del embudo: «sin etapas abiertas» todavía no
+              es concluyente.{" "}
+              <button
+                type="button"
+                className="font-medium underline"
+                onClick={() => void loadStages()}
+              >
+                Reintentar
+              </button>
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-warning-text">
+              Tu embudo no tiene etapas abiertas. Crea una en el Pipeline antes de
+              capturar contactos.
+            </p>
+          ))}
 
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>

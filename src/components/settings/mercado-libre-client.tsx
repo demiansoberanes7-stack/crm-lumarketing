@@ -5,6 +5,7 @@ import { Plug, Save, Trash2, CheckCircle2, CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadError } from "@/components/load-error";
 
 type Connection = {
   status: "connected" | "reconnect_required" | "error";
@@ -25,13 +26,21 @@ export function MercadoLibreClient() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/settings/mercado-libre", { cache: "no-store" }).catch(() => null);
-    if (res?.ok) {
-      const data = await res.json().catch(() => null) as { connection: Connection } | null;
+    const data = res?.ok
+      ? (await res.json().catch(() => null)) as { connection: Connection } | null
+      : null;
+    if (data) {
       setConnection(data?.connection ?? null);
-      if (data?.connection) setClientId(data.connection.clientId);
+      if (data.connection) setClientId(data.connection.clientId);
+      setLoadFailed(false);
+    } else {
+      // Sin esta bandera la pantalla caía en «Sin cuenta conectada. Pega el
+      // Client ID…» tras un 500, y el dueño re-pegaba credenciales que sí están.
+      setLoadFailed(true);
     }
     setLoading(false);
   }, []);
@@ -71,6 +80,10 @@ export function MercadoLibreClient() {
     setMessage({ ok: true, text: "Cuenta desconectada" });
   };
 
+  // El panel de error solo cubre el estado vacío: si la cuenta ya se leyó y
+  // falla un refresco, es mejor dejar sus datos en pantalla.
+  const failed = loadFailed && !connection;
+
   return (
     <section aria-label="Mercado Libre" className="space-y-5">
       <header className="flex items-start gap-3">
@@ -90,6 +103,12 @@ export function MercadoLibreClient() {
       <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
         {loading ? (
           <p className="text-sm text-text-2">Consultando…</p>
+        ) : failed ? (
+          <LoadError
+            message="No se pudo leer la conexión de Mercado Libre."
+            detail="«Sin cuenta conectada» solo lo diría una lectura correcta: aquí la lectura falló, así que NO re-pegues el Client ID ni los tokens todavía. Reintenta y, si sigue, avisa."
+            onRetry={() => void refresh()}
+          />
         ) : connection ? (
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm">

@@ -8,6 +8,7 @@ import { ContactAvatar } from "@/components/avatar";
 import type { ConversationDto, MessageDto } from "@/lib/types";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
+import { LoadError } from "@/components/load-error";
 import { useEvents } from "@/components/use-events";
 import { ConversationList } from "./conversation-list";
 import { CommentsThread } from "./comments-thread";
@@ -42,7 +43,9 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
     null
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [listFailed, setListFailed] = useState(false);
   const [messages, setMessages] = useState<MessageDto[]>([]);
+  const [messagesFailed, setMessagesFailed] = useState(false);
   const [pending, setPending] = useState<PendingOut[]>([]);
   // Arranca cerrado: en pantallas angostas el panel de detalles es un cajón
   // ENCIMA del hilo, así que abrirlo por defecto taparía la conversación. El
@@ -75,9 +78,16 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
 
   const refetchConversations = useCallback(async () => {
     const res = await fetch("/api/conversations").catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      // Lista que no llegó ≠ bandeja vacía. Sin esta bandera, un 500 se pinta
+      // como «Sin conversaciones todavía» y el dueño cree que no le escribió
+      // nadie cuando el chat sí está en la base.
+      setListFailed(true);
+      return;
+    }
     const data = (await res.json()) as { conversations: ConversationDto[] };
     setConversations(data.conversations);
+    setListFailed(false);
     lastFetchRef.current = new Date().toISOString();
   }, []);
 
@@ -85,9 +95,17 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
     const res = await fetch(
       `/api/conversations/${conversationId}/messages`
     ).catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      // Hilo vacío por lectura fallida ≠ cliente que no ha escrito: sin esta
+      // bandera el operador respondía «no hay historial» con todo guardado.
+      setMessagesFailed(true);
+      return;
+    }
     const data = (await res.json()) as { messages: MessageDto[] };
-    if (selectedIdRef.current === conversationId) setMessages(data.messages);
+    if (selectedIdRef.current === conversationId) {
+      setMessages(data.messages);
+      setMessagesFailed(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -98,6 +116,8 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
     (id: string) => {
       setSelectedId(id);
       setMessages([]);
+      // El error del hilo anterior no debe seguir colgado en el nuevo.
+      setMessagesFailed(false);
       void refetchMessages(id);
       void fetch(`/api/conversations/${id}`, {
         method: "PATCH",
@@ -284,6 +304,8 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
       >
         <ConversationList
           conversations={conversations}
+          loadFailed={listFailed}
+          onRetry={() => void refetchConversations()}
           channels={channels}
           selectedId={selectedId}
           onSelect={select}
@@ -349,7 +371,18 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
                 </button>
               )}
             </header>
-            {selected.channel === "comments" ? (
+            {messagesFailed && thread.length === 0 ? (
+              <div className="thread-bg flex flex-1 flex-col">
+                <LoadError
+                  message="No se pudo cargar este hilo."
+                  detail="El hilo en blanco es la lectura que no llegó, no un cliente que no escribió: los mensajes sí están guardados en la bandeja."
+                  onRetry={() => {
+                    if (selectedIdRef.current)
+                      void refetchMessages(selectedIdRef.current);
+                  }}
+                />
+              </div>
+            ) : selected.channel === "comments" ? (
               <CommentsThread
                 messages={thread}
                 contactName={selected.contact.name}

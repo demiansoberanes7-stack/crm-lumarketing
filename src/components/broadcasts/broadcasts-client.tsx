@@ -15,6 +15,7 @@ import {
 } from "@/components/whatsapp/template-picker";
 import { MEDIUM_LABELS, SOCIAL_LABELS } from "@/lib/contact-medium";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import { LoadError } from "@/components/load-error";
 
 type Stage = { id: string; name: string; kind: string };
 type Campaign = {
@@ -90,6 +91,7 @@ function makeFilters(input: {
 export function BroadcastsClient() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [listFailed, setListFailed] = useState(false);
   const [channelOptions, setChannelOptions] = useState<ChannelOption[]>([]);
   const [channel, setChannel] = useState<string>("whatsapp");
   const [name, setName] = useState("");
@@ -131,14 +133,22 @@ export function BroadcastsClient() {
   }
 
   const refresh = useCallback(async () => {
+    // El `.catch` vuelve las tres lecturas independientes: si una tumba, las
+    // otras dos siguen pintando y la que falló lo dice en pantalla en vez de
+    // dejar la lista de campañas vacía.
     const [campaignResponse, stageResponse, channelResponse] = await Promise.all([
-      fetch("/api/broadcasts", { cache: "no-store" }),
-      fetch("/api/pipeline/stages", { cache: "no-store" }),
-      fetch("/api/automations/channels", { cache: "no-store" }),
+      fetch("/api/broadcasts", { cache: "no-store" }).catch(() => null),
+      fetch("/api/pipeline/stages", { cache: "no-store" }).catch(() => null),
+      fetch("/api/automations/channels", { cache: "no-store" }).catch(() => null),
     ]);
-    if (campaignResponse.ok) setCampaigns((await campaignResponse.json()).campaigns ?? []);
-    if (stageResponse.ok) setStages((await stageResponse.json()).stages ?? []);
-    if (channelResponse.ok) {
+    if (campaignResponse?.ok) {
+      setCampaigns((await campaignResponse.json()).campaigns ?? []);
+      setListFailed(false);
+    } else {
+      setListFailed(true);
+    }
+    if (stageResponse?.ok) setStages((await stageResponse.json()).stages ?? []);
+    if (channelResponse?.ok) {
       const options = ((await channelResponse.json()).channels ?? []) as ChannelOption[];
       const chat = options.filter((option) =>
         (CAMPAIGN_CHANNELS as readonly string[]).includes(option.id)
@@ -452,7 +462,13 @@ export function BroadcastsClient() {
           <h2 className="text-lg font-semibold">Campañas guardadas</h2>
           <span className="text-xs text-muted-foreground">La lista de destinatarios queda como instantánea.</span>
         </div>
-        {campaigns.length === 0 ? (
+        {listFailed && campaigns.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la lista de campañas."
+            detail="«Todavía no hay campañas» sería otra cosa: la lista no llegó. Reintenta antes de crear una de nuevo, para no duplicar el envío."
+            onRetry={() => void refresh()}
+          />
+        ) : campaigns.length === 0 ? (
           <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Todavía no hay campañas.</div>
         ) : campaigns.map((campaign) => (
           <article key={campaign.id} className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">

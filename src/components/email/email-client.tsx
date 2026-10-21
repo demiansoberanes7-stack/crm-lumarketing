@@ -100,6 +100,7 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
   const [editing, setEditing] = useState<EmailAccount | undefined>();
   const [testing, setTesting] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [loadFailed, setLoadFailed] = useState({ accounts: false, messages: false });
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [messages, setMessages] = useState<EmailMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
@@ -136,16 +137,24 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
 
   const refetchAccounts = useCallback(async () => {
     const res = await fetch("/api/email/accounts").catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      setLoadFailed((current) => ({ ...current, accounts: true }));
+      return;
+    }
     const data = (await res.json()) as { accounts: EmailAccount[] };
     setAccounts(data.accounts);
+    setLoadFailed((current) => ({ ...current, accounts: false }));
   }, []);
 
   const refetchMessages = useCallback(async (accountId: string) => {
     const res = await fetch(`/api/email/messages?accountId=${accountId}`).catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      setLoadFailed((current) => ({ ...current, messages: true }));
+      return;
+    }
     const data = (await res.json()) as { messages: EmailMessage[] };
     setMessages(data.messages);
+    setLoadFailed((current) => ({ ...current, messages: false }));
   }, []);
 
   useEffect(() => { void refetchAccounts(); }, [refetchAccounts]);
@@ -380,7 +389,24 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
               </Button>
             </div>
 
-            {accounts.length === 0 && (
+            {accounts.length === 0 && loadFailed.accounts && (
+              <div className="px-3 py-4 text-center">
+                <p className="text-xs text-muted-foreground">
+                  No se pudieron leer las cuentas de correo: la lista no llegó,
+                  no es que no tengas ninguna.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 rounded-full text-xs"
+                  onClick={() => { void refetchAccounts(); }}
+                >
+                  Reintentar
+                </Button>
+              </div>
+            )}
+
+            {accounts.length === 0 && !loadFailed.accounts && (
               <div className="px-3 py-4 text-center">
                 <p className="text-xs text-muted-foreground">
                   Sin cuentas configuradas
@@ -494,13 +520,29 @@ export function EmailClient({ settingsOnly = false }: { settingsOnly?: boolean }
                       <Mail className="h-10 w-10 text-muted-foreground/50" />
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">
-                      {messages.length === 0 ? "No hay mensajes" : "Sin resultados"}
+                      {messages.length === 0
+                        ? loadFailed.messages
+                          ? "No se pudo leer la bandeja"
+                          : "No hay mensajes"
+                        : "Sin resultados"}
                     </p>
                     <p className="max-w-xs text-xs text-muted-foreground/70">
                       {messages.length === 0
-                        ? "Presiona sincronizar para obtener correos de tu bandeja."
+                        ? loadFailed.messages
+                          ? "Los correos no llegaron a la pantalla; puede que sí estén. Reintenta o presiona sincronizar."
+                          : "Presiona sincronizar para obtener correos de tu bandeja."
                         : "No hay correos que coincidan con tu busqueda."}
                     </p>
+                    {messages.length === 0 && loadFailed.messages && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full text-xs"
+                        onClick={() => { if (selectedAccount) void refetchMessages(selectedAccount); }}
+                      >
+                        Reintentar
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   filteredThreads.map((thread) => {

@@ -16,6 +16,7 @@ import { SUPPLIER_CATEGORIES } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LoadError } from "@/components/load-error";
 
 const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   SUPPLIER_CATEGORIES.map((c) => [c.value, c.label])
@@ -222,6 +223,7 @@ function SupplierDialog({
 
 export function SuppliersClient() {
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
+  const [listFailed, setListFailed] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -236,9 +238,13 @@ export function SuppliersClient() {
     if (category) params.set("category", category);
     if (showArchived) params.set("archived", "1");
     const res = await fetch(`/api/suppliers?${params}`).catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      setListFailed(true);
+      return;
+    }
     const data = (await res.json()) as { suppliers: SupplierDto[] };
     setSuppliers(data.suppliers);
+    setListFailed(false);
   }, [query, category, showArchived]);
 
   useEffect(() => {
@@ -300,7 +306,13 @@ export function SuppliersClient() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        {suppliers.length === 0 ? (
+        {listFailed && suppliers.length === 0 ? (
+          <LoadError
+            message="No se pudo leer la lista de proveedores."
+            detail="No es que no estén dados de alta: la lista no llegó. Reintenta."
+            onRetry={() => void refetch()}
+          />
+        ) : suppliers.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <p className="text-sm font-medium">Sin proveedores</p>
             <p className="max-w-sm text-xs text-muted-foreground">

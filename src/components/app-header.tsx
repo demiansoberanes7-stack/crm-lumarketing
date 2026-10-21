@@ -26,7 +26,7 @@ export function AppHeader({
   branding: Branding;
   logoUrl?: string | null;
   theme: ThemePreference;
-  unread: number;
+  unread: number | null;
   /** Abre el cajón en móvil. */
   onOpenDrawer: () => void;
   onOpenSearch: () => void;
@@ -89,11 +89,11 @@ export function AppHeader({
         </button>
         <Link
           href="/inbox"
-          aria-label={unread > 0 ? `Bandeja: ${unread} sin leer` : "Bandeja"}
+          aria-label={unread ? `Bandeja: ${unread} sin leer` : "Bandeja"}
           className="relative flex min-h-9 min-w-9 items-center justify-center rounded-lg text-text-2 hover:bg-accent hover:text-foreground"
         >
           <Bell className="h-[18px] w-[18px]" strokeWidth={1.8} />
-          {unread > 0 && (
+          {unread ? (
             <span
               className={cn(
                 "absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-brand-fg"
@@ -101,7 +101,7 @@ export function AppHeader({
             >
               {unread > 9 ? "9+" : unread}
             </span>
-          )}
+          ) : null}
         </Link>
         <ThemeToggle initial={theme} className="min-h-9 min-w-9 rounded-lg hover:bg-accent" />
       </div>
