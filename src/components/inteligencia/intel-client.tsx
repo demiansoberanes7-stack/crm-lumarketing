@@ -18,7 +18,12 @@ import { GeoPanel } from "@/components/inteligencia/geo-panel";
 import { CompareView, type CompareItem } from "@/components/inteligencia/compare-view";
 import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
 import { GtRelatedPanel, type RelatedItem } from "@/components/inteligencia/gt-related-panel";
-import { GtCompareChart, GtRanking, buildRanking } from "@/components/inteligencia/gt-ranking";
+import {
+  GtCompareChart,
+  GtRanking,
+  KeywordContentRanking,
+  buildRanking,
+} from "@/components/inteligencia/gt-ranking";
 import { TrendingPanel } from "@/components/inteligencia/trending-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
@@ -253,6 +258,9 @@ export function IntelClient() {
     setError("");
     setOverview(null);
     setShowSuggest(false);
+    // Los paneles del explorador son de los nichos monitoreados: si quedaran
+    // abiertos bajo la búsqueda, parecerían datos de la palabra buscada.
+    setExplore(false);
     const res = await fetch(`/api/intel/keyword?q=${encodeURIComponent(term)}`, {
       cache: "no-store",
     }).catch(() => null);
@@ -439,9 +447,16 @@ export function IntelClient() {
       )}
 
       {overview && (
-        <section aria-label="Análisis de palabra clave">
-          <KeywordView data={overview} onMonitored={() => void loadTrends()} />
-        </section>
+        <>
+          <section aria-label="Análisis de palabra clave">
+            <KeywordView data={overview} onMonitored={() => void loadTrends()} />
+          </section>
+          <KeywordContentRanking
+            query={overview.query}
+            market={overview.market}
+            marketNote={overview.marketNote}
+          />
+        </>
       )}
 
       {!overview && !searching && (
@@ -480,6 +495,12 @@ export function IntelClient() {
 
         {explore && (
           <div className="mt-4 space-y-5">
+            {overview && (
+              <p className="rounded-md border border-warning-soft bg-warning-tint px-3 py-2 text-xs text-warning-text">
+                Este explorador muestra tus nichos monitoreados, no «{overview.query}».
+                El análisis de tu búsqueda está arriba.
+              </p>
+            )}
             <div className="flex flex-wrap items-center justify-end gap-3">
               {trends?.lastIngestAt && (
                 <span className="flex items-center gap-1 text-xs text-text-3">
@@ -496,13 +517,14 @@ export function IntelClient() {
             {/* Qué se busca ahora mismo en el país (Google Trends sin keyword propia). */}
             <TrendingPanel reloadKey={reloadKey} onMonitored={() => void loadTrends()} />
 
-      {/* Ranking accionable: qué nichos conviene atacar */}
-      {trends && trends.trends.length > 0 && (
+      {/* Ranking accionable de los nichos monitoreados. Con una búsqueda
+          activa manda KeywordContentRanking, que sí es de esa palabra. */}
+      {!overview && trends && trends.trends.length > 0 && (
         <GtRanking ranking={buildRanking(trends.trends)} />
       )}
 
       {/* Gráfica comparativa multi-nicho (todas las líneas normalizadas) */}
-      {trends && trends.trends.length > 0 && (
+      {!overview && trends && trends.trends.length > 0 && (
         <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Comparativa multi-nicho">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Interés comparado · últimos 30 días</h2>

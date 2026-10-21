@@ -11,6 +11,11 @@ import {
   YAxis,
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
+import {
+  buildKeywordIdeas,
+  keywordInterestTrend,
+  type MarketIdea,
+} from "@/lib/intel-content";
 
 /* ── Paleta de líneas (tokens chart) ─────────────────────────────────────── */
 
@@ -243,8 +248,9 @@ export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
     <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Ranking de nichos">
       <h2 className="font-semibold">¿De qué hacer contenido esta semana?</h2>
       <p className="mt-1 text-xs text-text-3">
-        Ranking por z-score (últimos 7 días vs 21 previos) · A = alza clara, B = estable,
-        C = baja, D = sin datos suficientes.
+        Según tus <strong>nichos monitoreados</strong>: z-score de los últimos 7 días
+        contra los 21 previos · A = alza clara, B = estable, C = baja, D = sin datos
+        suficientes.
       </p>
 
       {top.length > 0 && (
@@ -306,6 +312,128 @@ export function GtRanking({ ranking }: { ranking: RankedNiche[] }) {
         Índice: interés de búsqueda relativo al máximo de la ventana (0–100).
         Tendencia: z-score de la ventana reciente contra el histórico. Fuente:
         Google Trends (MX, endpoint no oficial), 100 % externa.
+      </p>
+    </section>
+  );
+}
+
+/* ── Ideas de contenido para la palabra buscada ──────────────────────────── */
+
+/**
+ * Panel semanal de la búsqueda: usa la serie, las consultas y los temas que
+ * Google Trends devolvió PARA ESA palabra. No toca el catálogo de nichos
+ * monitoreados, así que no puede mostrar datos de una búsqueda anterior.
+ */
+export function KeywordContentRanking({
+  query,
+  market,
+  marketNote,
+}: {
+  query: string;
+  market: {
+    series: Array<{ day: string; value: number }>;
+    topics: MarketIdea[];
+    queries: MarketIdea[];
+  } | null;
+  marketNote: string | null;
+}) {
+  const trend = keywordInterestTrend(market?.series ?? []);
+  const ideas = market
+    ? buildKeywordIdeas({ queries: market.queries, topics: market.topics })
+    : [];
+  const rising = ideas.filter((idea) => idea.rising).slice(0, 3);
+  const focus = rising.length > 0 ? rising : ideas.slice(0, 3);
+  const trendArrow = trend ? ARROW[trend.direction] : "→";
+  const toneClass =
+    trend?.tone === "success"
+      ? "border-success-soft bg-success-tint text-success-text"
+      : trend?.tone === "danger"
+        ? "border-danger-soft bg-danger-tint text-danger-text"
+        : "border-border bg-subtle text-text-2";
+
+  return (
+    <section
+      className="rounded-xl border bg-card p-5 shadow-sm"
+      aria-label={`Ideas de contenido para ${query}`}
+    >
+      <h2 className="font-semibold">¿De qué hacer contenido sobre «{query}» esta semana?</h2>
+      <p className="mt-1 text-xs text-text-3">
+        Ideas tomadas de las consultas y temas relacionados que Google Trends
+        devolvió para esta búsqueda. No usa tus nichos monitoreados.
+      </p>
+
+      {trend && (
+        <div className={`mt-3 rounded-md border p-3 text-sm ${toneClass}`}>
+          <p className="font-medium">
+            «{query}» · interés {trend.index}/100 {trendArrow}
+            {trend.changePct !== null ? ` ${trend.changePct > 0 ? "+" : ""}${trend.changePct}%` : ""}
+          </p>
+          <p className="mt-0.5 text-xs opacity-80">{trend.recommendation}</p>
+        </div>
+      )}
+
+      {focus.length > 0 && (
+        <div className="mt-3 rounded-md border border-success-soft bg-success-tint p-3 text-sm">
+          <p className="font-medium text-success-text">
+            Enfócate en: {focus.map((idea) => idea.name).join(", ")}
+          </p>
+          <p className="mt-0.5 text-xs text-success-text opacity-80">
+            {rising.length > 0
+              ? "Consultas relacionadas en alza para esta búsqueda."
+              : "Lo más buscado junto a esta palabra en los últimos 30 días."}
+          </p>
+        </div>
+      )}
+
+      {ideas.length > 0 ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b text-text-3">
+                <th className="pb-2 pr-3 font-medium">#</th>
+                <th className="pb-2 pr-3 font-medium">Idea de contenido</th>
+                <th className="pb-2 pr-3 font-medium">Tipo</th>
+                <th className="pb-2 pr-3 font-medium">Interés</th>
+                <th className="pb-2 pr-3 font-medium">Tendencia</th>
+                <th className="pb-2 font-medium">Recomendación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ideas.map((idea, i) => (
+                <tr key={idea.key} className="border-b border-border/50 last:border-0">
+                  <td className="py-2 pr-3 tabular-nums text-text-3">{i + 1}</td>
+                  <td className="py-2 pr-3 font-medium">{idea.name}</td>
+                  <td className="py-2 pr-3 capitalize text-text-2">{idea.kind}</td>
+                  <td className="py-2 pr-3 tabular-nums">
+                    {idea.value > 0 ? idea.value : "—"}
+                  </td>
+                  <td className="py-2 pr-3">
+                    <span
+                      className={
+                        idea.rising ? "font-medium text-success-text" : "text-text-3"
+                      }
+                    >
+                      {idea.rising ? "↑" : "→"}
+                      {idea.rising && idea.pct !== null ? ` +${idea.pct}%` : ""}
+                    </span>
+                  </td>
+                  <td className="py-2 text-text-2">{idea.recommendation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border bg-subtle px-3 py-2 text-xs text-text-2">
+          Google Trends no devolvió consultas ni temas relacionados para «{query}»
+          {marketNote ? `: ${marketNote}` : "."}
+        </p>
+      )}
+
+      <p className="mt-3 border-t pt-2 text-[11px] leading-snug text-text-3">
+        Interés: índice relativo 0–100 de Google Trends para la consulta. Las
+        ideas en alza son las que Google marca como «rising» o «breakout» en la
+        misma ventana. Fuente externa; no se rellena con datos inventados.
       </p>
     </section>
   );
