@@ -166,7 +166,7 @@ export function BookingsClient() {
         {bookings.length === 0 && (
           <p className="text-sm text-text-3">
             Todavía no hay nada agendado. Configura tu horario en Ajustes →
-            Agenda para empezar a recibir citas.
+            Calendario para empezar a recibir citas.
           </p>
         )}
         <ul className="divide-y rounded-md border">

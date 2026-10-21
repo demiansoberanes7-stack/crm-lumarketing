@@ -5,6 +5,7 @@ import { getSessionOrNull, getOrphanSession } from "@/lib/auth/session";
 import { normalizeThemePreference, THEME_COOKIE } from "@/lib/theme";
 import { getBranding } from "@/server/branding";
 import { getBusinessSettings } from "@/server/business-settings";
+import { agendaEnabled } from "@/server/agenda/flag";
 import { AppShell } from "@/components/app-shell";
 import { resolveBuildCommit } from "@/lib/version";
 
@@ -40,6 +41,7 @@ export default async function AppLayout({
       role={session.role}
       theme={theme}
       commit={resolveBuildCommit()}
+      agenda={agendaEnabled()}
     >
       {children}
     </AppShell>

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import { cn, initials } from "@/lib/utils";
 import { signOut } from "@/lib/auth/client";
-import { NAV, NAV_FOOTER, isNavActive } from "@/config/nav";
+import { NAV_FOOTER, isNavActive, navItemsFor } from "@/config/nav";
 import { useUnreadCount } from "@/components/use-unread-count";
 import { BrandLogo } from "@/components/brand-mark";
 import { PhotoLogo } from "@/components/photo-logo";
@@ -61,6 +61,7 @@ export function AppNav({
   avatar: initialAvatar,
   role,
   commit,
+  agenda,
   open = false,
   onClose,
 }: {
@@ -76,6 +77,8 @@ export function AppNav({
    * plataforma cuando quien construyó no lo pasó como build-arg.
    */
   commit?: string;
+  /** Si `/bookings` existe en esta instancia. Sin bandera, el enlace daría 404. */
+  agenda: boolean;
   /** Solo aplica por debajo de `lg`: en escritorio el lateral es fijo. */
   open?: boolean;
   onClose?: () => void;
@@ -110,6 +113,9 @@ export function AppNav({
   }
 
   const sha = commit || BUILD_COMMIT;
+  // El menú de ESTA instancia: «Calendario» solo existe donde la agenda está
+  // encendida; sin la bandera, /bookings responde 404.
+  const renderedNav = useMemo(() => [...navItemsFor({ agenda }), ...NAV_FOOTER], [agenda]);
 
   return (
     <aside
@@ -149,7 +155,7 @@ export function AppNav({
 
       {/* Nav: en escritorio solo iconos con tooltip; en móvil drawer, con label. */}
       <nav className="flex flex-col gap-0.5 lg:items-center">
-        {[...NAV, ...NAV_FOOTER].map((item) => {
+        {renderedNav.map((item) => {
           const active = isNavActive(pathname, item.href);
           return (
             <Link

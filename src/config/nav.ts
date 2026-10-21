@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  CalendarDays,
   DollarSign,
   FileText,
   FlaskConical,
@@ -13,6 +14,7 @@ import {
   Settings,
   Sparkles,
   Truck,
+  UserPlus,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +30,12 @@ export type NavItem = {
   icon: LucideIcon;
   /** Muestra el contador de mensajes sin leer (solo Bandeja). */
   badge?: boolean;
+  /**
+   * 015 — Solo se muestra si esta instancia corre con `AGENDA`. No es un
+   * adorno: sin la bandera, `/bookings` responde 404, así que el enlace sería
+   * una puerta a la nada. La capa de servidor decide con `agendaEnabled()`.
+   */
+  agendaOnly?: boolean;
 };
 
 export const NAV: NavItem[] = [
@@ -35,6 +43,7 @@ export const NAV: NavItem[] = [
   { href: "/inbox", label: "Bandeja", icon: Inbox, badge: true },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/contacts", label: "Contactos", icon: Users },
+  { href: "/prospects", label: "Prospectos", icon: UserPlus },
   { href: "/balance", label: "Balance", icon: DollarSign },
   { href: "/quotes", label: "Cotizador", icon: FileText },
   { href: "/catalog", label: "Inventario", icon: Package },
@@ -42,6 +51,7 @@ export const NAV: NavItem[] = [
   { href: "/broadcasts", label: "Envíos masivos", icon: Send },
   { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
+  { href: "/bookings", label: "Calendario", icon: CalendarDays, agendaOnly: true },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
   { href: "/inteligencia", label: "Inteligencia", icon: BarChart3 },
 ];
@@ -51,6 +61,15 @@ export const NAV_FOOTER: NavItem[] = [
   { href: "/copiloto", label: "Copiloto", icon: Sparkles },
   { href: "/settings", label: "Ajustes", icon: Settings },
 ];
+
+/**
+ * El menú que le toca a ESTA instancia: las entradas de agenda solo existen
+ * donde la agenda está encendida. Se filtra aquí y no en cada componente para
+ * que la barra, los breadcrumbs y el ⌘K no discrepen nunca.
+ */
+export function navItemsFor(features: { agenda: boolean }): NavItem[] {
+  return NAV.filter((item) => !item.agendaOnly || features.agenda);
+}
 
 /** Ruta activa: exacta o hija (`/settings/whatsapp` cuenta como `/settings`). */
 export function isNavActive(pathname: string, href: string): boolean {

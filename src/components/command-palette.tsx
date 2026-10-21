@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { NAV, NAV_FOOTER } from "@/config/nav";
+import { NAV_FOOTER, navItemsFor } from "@/config/nav";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,14 +11,14 @@ import { cn } from "@/lib/utils";
  * y navega con Enter o clic. `onOpenChange` deja que la cabecera pinte el
  * botón que la invoca.
  */
-export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function CommandPalette({ open, agenda, onOpenChange }: { open: boolean; agenda: boolean; onOpenChange: (open: boolean) => void }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const items = useMemo(() => [...NAV, ...NAV_FOOTER], []);
+  const items = useMemo(() => [...navItemsFor({ agenda }), ...NAV_FOOTER], [agenda]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;

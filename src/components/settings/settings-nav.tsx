@@ -26,11 +26,19 @@ const AI_TABS: Tab[] = [
 // y /settings/email). El nav solo enseña el destino, no cada integración.
 const CONNECTIONS_TAB: Tab = { href: "/settings/connections", label: "Conexiones" };
 
+/**
+ * El horario de atención vive en `/settings/calendar`, no en Conexiones: no es
+ * una credencial, es una decisión del negocio. `bad4369` lo sacó del menú y
+ * desde entonces la pantalla existía pero nadie podía abrirla. Solo con
+ * `AGENDA`, porque sin la bandera la ruta responde 404.
+ */
+const CALENDAR_TAB: Tab = { href: "/settings/calendar", label: "Calendario" };
+
 const WEBHOOKS_TAB: Tab = { href: "/settings/webhooks", label: "Webhooks" };
 const DIAGNOSTICS_TAB: Tab = { href: "/settings/diagnostics", label: "Diagnóstico" };
 const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
 
-export function SettingsNav({ owner = false }: { owner?: boolean }) {
+export function SettingsNav({ owner = false, agenda = false }: { owner?: boolean; agenda?: boolean }) {
   const pathname = usePathname();
   const activeTabRef = useRef<HTMLAnchorElement | null>(null);
 
@@ -44,7 +52,14 @@ export function SettingsNav({ owner = false }: { owner?: boolean }) {
         },
         {
           label: "Ajustes",
-          tabs: [...AI_TABS, ...CORE_TABS, WEBHOOKS_TAB, DIAGNOSTICS_TAB, DATA_CLEANUP_TAB],
+          tabs: [
+            ...AI_TABS,
+            ...CORE_TABS,
+            ...(agenda ? [CALENDAR_TAB] : []),
+            WEBHOOKS_TAB,
+            DIAGNOSTICS_TAB,
+            DATA_CLEANUP_TAB,
+          ],
         },
       ]
     : [{ label: "Ajustes", tabs: CORE_TABS }];

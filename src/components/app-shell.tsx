@@ -28,6 +28,7 @@ export function AppShell({
   role,
   theme,
   commit,
+  agenda,
   children,
 }: {
   branding: Branding;
@@ -40,6 +41,8 @@ export function AppShell({
   theme: ThemePreference;
   /** Commit resuelto en el servidor (build-arg o variable de la plataforma). */
   commit?: string;
+  /** Decidido en el servidor con `agendaEnabled()`: gobierna el menú. */
+  agenda: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -103,6 +106,7 @@ export function AppShell({
         branding={branding}
         logoUrl={logoUrl}
         commit={commit}
+        agenda={agenda}
         userName={userName}
         avatar={avatar}
         role={role}
@@ -123,7 +127,7 @@ export function AppShell({
         <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
       </div>
 
-      <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
+      <CommandPalette open={searchOpen} agenda={agenda} onOpenChange={setSearchOpen} />
     </div>
   );
 }
