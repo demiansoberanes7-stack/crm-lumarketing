@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { getOrCreateContactByIdentity } from "@/server/inbox/identity";
 import { getOrCreateConversation } from "@/server/inbox/ingest";
+import { captureContactPhoneFromText } from "@/server/inbox/phone-capture";
 import { publish } from "@/server/events/bus";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import {
@@ -138,6 +139,20 @@ async function ingestPackMessages(input: {
         type: "conversation.updated",
         data: { conversation: { id: conversation.id } },
       });
+      // Mercado Libre enmascara el teléfono del comprador en la orden, así que
+      // el único número recuperable es el que él mismo escribe en el chat. Es
+      // un hilo 1:1 como los demas canales, y la captura también le aplica.
+      try {
+        const capturado = await captureContactPhoneFromText({
+          organizationId,
+          contactId: contact.id,
+          existingPhone: contact.phone,
+          text: mlMessageText(msg),
+        });
+        if (capturado) contact.phone = capturado;
+      } catch (err) {
+        console.error(`[prospectos] no se pudo capturar el teléfono del contacto ${contact.id}:`, err);
+      }
     }
   }
 

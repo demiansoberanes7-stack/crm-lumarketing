@@ -23,6 +23,7 @@ import { atribucionEnabled } from "@/server/attribution/flag";
 import { recordAttribution } from "@/server/attribution/store";
 import { recordReferralTouch } from "@/server/attribution/touch";
 import { onLeadActivity } from "@/server/inbox/lead-activity";
+import { captureContactPhoneFromText } from "@/server/inbox/phone-capture";
 import { requeueWaitingBroadcasts } from "@/server/broadcasts/requeue";
 import { maybeRunAgentTurn } from "@/server/ai/trigger";
 import type { MessageCommentDto, MessageDto, MessageMediaDto } from "@/lib/types";
@@ -535,6 +536,22 @@ export async function ingestInboundMessage(input: {
       ...(!isDuplicate ? { unreadCount: sql`${schema.conversation.unreadCount} + 1` } : {}),
     })
     .where(eq(schema.conversation.id, conversation.id));
+
+  // El número que el cliente escribe en el chat es lo único que hace
+  // contactable a un prospecto de Instagram, Messenger o TikTok (sus webhooks
+  // no traen teléfono) y a los de WhatsApp que entran por BSUID. Se guarda solo
+  // si el contacto todavía no tiene ninguno. Tampoco puede frenar la ingesta.
+  try {
+    const capturado = await captureContactPhoneFromText({
+      organizationId,
+      contactId: contact.id,
+      existingPhone: contact.phone,
+      text: input.text,
+    });
+    if (capturado) contact.phone = capturado;
+  } catch (err) {
+    console.error(`[prospectos] no se pudo capturar el teléfono del contacto ${contact.id}:`, err);
+  }
 
   // Si el pipeline tiene un problema, el mensaje entrante debe seguir hasta el
   // agente y la bandeja: no se pierde la respuesta del CRM por una side effect.
