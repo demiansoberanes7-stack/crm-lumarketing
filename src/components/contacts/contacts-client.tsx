@@ -391,6 +391,9 @@ function ContactDetailDialog({
 }) {
   const [detail, setDetail] = useState<ContactDetailResponse | null>(null);
   const [error, setError] = useState("");
+  const [optInAt, setOptInAt] = useState<string | null>(initial.waMarketingOptInAt ?? null);
+  const [optInBusy, setOptInBusy] = useState(false);
+  const [optInError, setOptInError] = useState("");
   useEffect(() => {
     let active = true;
     fetch(`/api/contacts/${initial.id}`)
@@ -402,8 +405,28 @@ function ContactDetailDialog({
       .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Error de conexión."); });
     return () => { active = false; };
   }, [initial.id]);
+  useEffect(() => {
+    if (detail) setOptInAt(detail.contact.waMarketingOptInAt ?? null);
+  }, [detail]);
 
   const contact = detail?.contact ?? initial;
+
+  async function toggleOptIn(next: boolean) {
+    setOptInBusy(true);
+    setOptInError("");
+    const response = await fetch(`/api/contacts/${contact.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ waMarketingOptIn: next }),
+    }).catch(() => null);
+    setOptInBusy(false);
+    if (!response?.ok) {
+      const data = await response?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setOptInError(data?.error?.message ?? "No se pudo actualizar el consentimiento.");
+      return;
+    }
+    setOptInAt(next ? new Date().toISOString() : null);
+  }
   const ficha = contact.ficha ?? {};
   const fichaEntries = Object.entries(ficha).filter(([key]) => key !== "email");
   const email = typeof ficha.email === "string" ? ficha.email : null;
@@ -464,6 +487,34 @@ function ContactDetailDialog({
           <DetailField label="Prioridad" value={contact.priority ?? null} />
           <DetailField label="Estado" value={contact.archivedAt ? "Archivado" : "Activo"} />
         </dl>
+
+        <div className="mt-4 rounded-lg border p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+                Consentimiento de WhatsApp
+              </h3>
+              <p className="mt-1 text-sm">
+                {optInAt
+                  ? `Autorizó promociones por WhatsApp el ${new Date(optInAt).toLocaleDateString("es-MX")}${contact.waMarketingOptInSource ? ` · ${contact.waMarketingOptInSource}` : ""}.`
+                  : "Sin autorización para promociones por WhatsApp."}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                Se exige para plantillas de marketing fuera de la ventana de
+                24 h. Regístralo solo si el contacto lo autorizó.
+              </p>
+            </div>
+            <Button
+              variant={optInAt ? "outline" : "secondary"}
+              size="sm"
+              disabled={optInBusy}
+              onClick={() => void toggleOptIn(!optInAt)}
+            >
+              {optInBusy ? "Guardando…" : optInAt ? "Revocar" : "Registrar autorización"}
+            </Button>
+          </div>
+          {optInError && <p role="alert" className="mt-2 text-xs text-destructive">{optInError}</p>}
+        </div>
 
         {contact.notes && (
           <div className="mt-4 rounded-lg border p-3">

@@ -28,7 +28,10 @@ export const POST = withAuth(async (session, req: Request, { params }) => {
   if (!body.ok) return body.response;
 
   try {
-    const result = await sendQuote(session.organizationId, id, body.data);
+    const result = await sendQuote(session.organizationId, id, body.data, {
+      // Envío iniciado por el operador desde el cotizador.
+      humanAgentTagAllowed: true,
+    });
     return Response.json({ ok: true, ...result });
   } catch (err) {
     const raw = String(err);

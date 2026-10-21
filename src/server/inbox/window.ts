@@ -44,6 +44,33 @@ export function isHumanAgentWindowOpen(
   return age >= 0 && age < HUMAN_AGENT_WINDOW_MS;
 }
 
+export type ReplyWindowState = "open" | "human_agent" | "closed";
+
+/**
+ * Estado de la ventana según la política de quien envía. `human_agent` solo
+ * se devuelve cuando el llamador declara un envío manual: Meta reserva esa
+ * etiqueta para respuestas de una persona, nunca para automatizaciones ni
+ * campañas. Un envío automático fuera de la ventana estándar queda `closed`
+ * aunque los 7 días sigan corriendo.
+ */
+export function replyWindowState(
+  lastInboundAt: Date | null,
+  caps: { windowMs: number | null; outsideWindow: "none" | "human_agent_tag" },
+  options: { allowHumanAgentTag: boolean },
+  now: Date = new Date()
+): ReplyWindowState {
+  if (caps.windowMs === null) return "open";
+  if (isWindowOpenFor(lastInboundAt, caps.windowMs, now)) return "open";
+  if (
+    caps.outsideWindow === "human_agent_tag" &&
+    options.allowHumanAgentTag &&
+    isHumanAgentWindowOpen(lastInboundAt, now)
+  ) {
+    return "human_agent";
+  }
+  return "closed";
+}
+
 /** Milisegundos restantes de ventana (0 si está cerrada). */
 export function windowRemainingMs(
   lastInboundAt: Date | null,

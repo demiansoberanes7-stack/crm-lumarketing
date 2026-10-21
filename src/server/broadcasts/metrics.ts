@@ -22,7 +22,11 @@ export async function refreshBroadcastCampaign(organizationId: string, campaignI
   const readCount = totals.get("read") ?? 0;
   const failedCount = totals.get("failed") ?? 0;
   const skippedCount = totals.get("skipped") ?? 0;
-  const pendingCount = (totals.get("queued") ?? 0) + (totals.get("sending") ?? 0);
+  const pendingCount =
+    (totals.get("queued") ?? 0) +
+    (totals.get("sending") ?? 0) +
+    // waiting_window sigue pendiente: no es un omitido ni un fallo.
+    (totals.get("waiting_window") ?? 0);
   const [campaign] = await db
     .select({ status: schema.broadcastCampaign.status })
     .from(schema.broadcastCampaign)

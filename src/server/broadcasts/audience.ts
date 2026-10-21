@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { MEDIUM_VALUES, SOCIAL_NETWORKS } from "@/lib/contact-medium";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -15,13 +15,20 @@ export type BroadcastFilters = {
   noteDays?: number;
   /** Contactos específicos (programación individual). */
   contactIds?: string[];
+  /** Solo contactos con opt-in de marketing por WhatsApp registrado. */
+  optInOnly?: boolean;
 };
 
 export type BroadcastAudienceRecipient = {
   contactId: string;
   conversationId: string | null;
   channel: BroadcastChannel;
-  status: "queued" | "skipped";
+  /**
+   * `waiting_window` no es terminal: la cola reintenta y se reencola en
+   * cuanto el cliente vuelve a escribir (ahí la ventana se abre y el envío
+   * libre es legal). Las plantillas de WhatsApp no esperan: salen ya.
+   */
+  status: "queued" | "waiting_window" | "skipped";
   skipReason: string | null;
 };
 
@@ -60,7 +67,15 @@ export function classifyBroadcastConversation(
     isTest: boolean;
     lastInboundAt: Date | null;
   } | null,
-  options: { channel: BroadcastChannel; provider: "meta" | "waha" | "zernio" },
+  options: {
+    channel: BroadcastChannel;
+    provider: "meta" | "waha" | "zernio";
+    /**
+     * La campaña usa una plantilla aprobada: en WhatsApp eso habilita el
+     * envío aunque la ventana esté cerrada (vía legal de Meta).
+     */
+    hasTemplate?: boolean;
+  },
   now: Date = new Date()
 ): Pick<BroadcastAudienceRecipient, "conversationId" | "status" | "skipReason"> {
   if (!conversation || conversation.channel !== options.channel || conversation.isTest) {
@@ -70,17 +85,27 @@ export function classifyBroadcastConversation(
       skipReason: noConversationReason(options.channel),
     };
   }
+  if (options.hasTemplate && options.channel === "whatsapp") {
+    return { conversationId: conversation.id, status: "queued", skipReason: null };
+  }
   if (!broadcastWindowOpen(options.channel, conversation.lastInboundAt, options.provider, now)) {
-    return { conversationId: conversation.id, status: "skipped", skipReason: "window_closed" };
+    // La ventana se reabre cuando el cliente escribe; guardar la fila (en vez
+    // de omitirla) es lo que hace que el envío programado sea funcional.
+    return {
+      conversationId: conversation.id,
+      status: "waiting_window",
+      skipReason: "waiting_window",
+    };
   }
   return { conversationId: conversation.id, status: "queued", skipReason: null };
 }
 
-/** A distinct-and-scoped audience snapshot; it never sends or mutates contacts. */
+/** Resuelve la audiencia; `options.hasTemplate` relaja la ventana de WhatsApp. */
 export async function resolveBroadcastAudience(
   organizationId: string,
   filters: BroadcastFilters,
-  channel: BroadcastChannel = "whatsapp"
+  channel: BroadcastChannel = "whatsapp",
+  options: { hasTemplate?: boolean } = {}
 ): Promise<BroadcastAudienceRecipient[]> {
   const db = getDb();
   let stageContactIds: string[] | undefined;
@@ -133,6 +158,7 @@ export async function resolveBroadcastAudience(
     stageContactIds ? inArray(schema.contact.id, stageContactIds) : undefined,
     noteContactIds ? inArray(schema.contact.id, noteContactIds) : undefined,
     filters.contactIds?.length ? inArray(schema.contact.id, filters.contactIds) : undefined,
+    filters.optInOnly ? isNotNull(schema.contact.waMarketingOptInAt) : undefined,
   ];
   const contacts = await db
     .select({ id: schema.contact.id })
@@ -174,7 +200,11 @@ export async function resolveBroadcastAudience(
     return {
       contactId,
       channel,
-      ...classifyBroadcastConversation(conversation ?? null, { channel, provider }, now),
+      ...classifyBroadcastConversation(
+        conversation ?? null,
+        { channel, provider, hasTemplate: options.hasTemplate },
+        now
+      ),
     };
   });
 }

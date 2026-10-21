@@ -59,6 +59,8 @@ const patchSchema = z.object({
       message: "Fecha de compra inválida",
     }),
   purchaseAmountCents: z.number().int().nullable().optional(),
+  /** Opt-in para plantillas de WhatsApp de marketing (requisito de Meta). */
+  waMarketingOptIn: z.boolean().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {

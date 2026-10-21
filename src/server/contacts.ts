@@ -41,6 +41,8 @@ export function serializeContact(
     // Viaja siempre, aunque esté vacía: la pantalla necesita distinguir "aún
     // no la han llenado" de "este contacto no la trae".
     ficha: (c.ficha as FichaDto | null) ?? {},
+    waMarketingOptInAt: c.waMarketingOptInAt?.toISOString() ?? null,
+    waMarketingOptInSource: c.waMarketingOptInSource,
   };
 }
 
@@ -236,6 +238,8 @@ export type UpdateContactInput = {
   purchaseProduct?: string | null;
   purchaseDate?: string | null;
   purchaseAmountCents?: number | null;
+  /** Registra o revoca el consentimiento para plantillas de marketing. */
+  waMarketingOptIn?: boolean;
 };
 
 export type UpdateContactResult =
@@ -313,6 +317,10 @@ export async function updateContact(
     set.purchaseProduct = null;
     set.purchaseDate = null;
     set.purchaseAmountCents = null;
+  }
+  if (input.waMarketingOptIn !== undefined) {
+    set.waMarketingOptInAt = input.waMarketingOptIn ? new Date() : null;
+    set.waMarketingOptInSource = input.waMarketingOptIn ? "operador" : null;
   }
 
   const db = getDb();

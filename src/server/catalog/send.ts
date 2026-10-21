@@ -47,6 +47,12 @@ export async function sendProductToConversation(
 
   const text = renderProductShare(product);
   const { sendText } = await import("@/server/inbox/send");
-  const result = await sendText({ organizationId, conversationId, text });
+  // Ficha enviada manualmente desde el catálogo.
+  const result = await sendText({
+    organizationId,
+    conversationId,
+    text,
+    humanAgentTagAllowed: true,
+  });
   return { messageId: result.messageId };
 }

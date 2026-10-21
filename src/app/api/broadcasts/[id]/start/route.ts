@@ -26,13 +26,25 @@ export const POST = withAuth(async (session, _req: Request, ctx: Params) => {
     .where(
       and(
         scoped(schema.broadcastRecipient.organizationId, session.organizationId, eq(schema.broadcastRecipient.campaignId, id)),
-        eq(schema.broadcastRecipient.status, "queued")
+        inArray(schema.broadcastRecipient.status, ["queued", "waiting_window"])
       )
     )
     .limit(1);
   if (!pending) return apiError(409, "campaign_empty", "La campaña no tiene destinatarios elegibles pendientes");
 
   const now = new Date();
+  // Al reactivar una campaña, los envíos que esperaban ventana se intentan
+  // de inmediato; el worker los devolverá a espera si sigue cerrada.
+  await db
+    .update(schema.broadcastRecipient)
+    .set({ scheduledAt: now, updatedAt: now })
+    .where(
+      and(
+        scoped(schema.broadcastRecipient.organizationId, session.organizationId, eq(schema.broadcastRecipient.campaignId, id)),
+        eq(schema.broadcastRecipient.status, "waiting_window")
+      )
+    );
+
   const [started] = await db
     .update(schema.broadcastCampaign)
     .set({ status: "sending", startedAt: now, updatedAt: now })

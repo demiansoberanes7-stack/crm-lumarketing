@@ -20,7 +20,7 @@ import {
 import {
   isHumanAgentWindowOpen,
   isWindowOpenFor,
-  WINDOW_MS,
+  replyWindowState,
 } from "@/server/inbox/window";
 import { IG_PREFIX, TT_PREFIX } from "@/server/inbox/identity";
 import {
@@ -64,6 +64,12 @@ import {
   uploadGraphMedia,
   validateOutgoing,
 } from "@/server/whatsapp/media";
+import {
+  buildTemplateComponents,
+  personalizeTemplateParams,
+  renderTemplateText,
+  templateRequiresOptIn,
+} from "@/server/whatsapp/templates";
 
 /** Error tipado del envío; `code` mapea a HTTP en la capa de API. */
 export class SendError extends Error {
@@ -128,7 +134,14 @@ type SendTarget = {
  */
 async function prepareSend(
   conversationId: string,
-  organizationId: string
+  organizationId: string,
+  options?: {
+    /**
+     * Las plantillas aprobadas son la vía LEGAL de WhatsApp fuera de la
+     * ventana: el chequeo de texto libre no aplica a ese camino.
+     */
+    skipWhatsappWindow?: boolean;
+  }
 ): Promise<SendTarget> {
   const db = getDb();
   const rows = await db
@@ -504,6 +517,7 @@ async function prepareSend(
   const provider = await whatsappProvider(organizationId);
   const caps = capabilitiesFor(row.conversation.channel as Channel);
   if (
+    !options?.skipWhatsappWindow &&
     provider !== "waha" && caps.windowMs !== null &&
     caps.outsideWindow === "none" &&
     !isWindowOpenFor(row.conversation.lastInboundAt, caps.windowMs)
@@ -638,6 +652,12 @@ export async function sendText(input: {
   organizationId: string;
   text: string;
   aiGenerated?: boolean;
+  /**
+   * Solo una respuesta manual uno a uno puede usar HUMAN_AGENT. Los envíos
+   * automáticos y las campañas lo dejan apagado: Meta no permite esa etiqueta
+   * fuera de una respuesta humana.
+   */
+  humanAgentTagAllowed?: boolean;
 }): Promise<SendResult> {
   const target = await prepareSend(input.conversationId, input.organizationId);
   const { credentials } = target;
@@ -662,11 +682,20 @@ export async function sendText(input: {
     : target.waha
     ? (await wahaText(target.waha.baseUrl, target.waha.apiKey, target.waha.sessionName, target.recipient, input.text)).key.id
     : target.instagram
-    ? await callInstagramSend(target, input.text, preGenId)
+    ? await callInstagramSend(
+        target,
+        input.text,
+        preGenId,
+        input.humanAgentTagAllowed === true
+      )
     : target.tiktok
       ? await callTikTokSend(target, input.text, preGenId)
       : target.messenger
-        ? await callMessengerSend(target, input.text)
+        ? await callMessengerSend(
+            target,
+            input.text,
+            input.humanAgentTagAllowed === true
+          )
         : await callGraphSend(credentials!, {
             messaging_product: "whatsapp",
             ...target.destinatario,
@@ -684,6 +713,120 @@ export async function sendText(input: {
     // avanza despues por webhook. Sin esta distincion el mensaje se queda
     // con el reloj puesto para siempre.
     status: capabilitiesFor(target.conversation.channel as Channel).deliveryReceipts
+      ? "pending"
+      : "sent",
+    aiGenerated: input.aiGenerated,
+    origin: input.aiGenerated ? "ai" : "operator",
+    preGeneratedId: preGenId,
+  });
+
+  return { messageId };
+}
+
+/**
+ * Envía una plantilla aprobada de WhatsApp. Es la ÚNICA vía legal para
+ * iniciar conversación fuera de la ventana de 24 h. Las plantillas MARKETING
+ * exigen opt-in registrado; la comprobación vive aquí además de en la cola
+ * para que ningún llamador pueda saltársela.
+ */
+export async function sendTemplate(input: {
+  conversationId: string;
+  organizationId: string;
+  templateName: string;
+  templateLanguage: string;
+  templateParams: string[];
+  templateCategory?: string | null;
+  /** IMAGE | VIDEO | DOCUMENT cuando la plantilla exige encabezado. */
+  templateHeaderFormat?: string | null;
+  /** URL pública https del encabezado multimedia. */
+  templateHeaderMediaUrl?: string | null;
+  /** Cuerpo aprobado, solo para guardar el texto legible en la bandeja. */
+  templateBody?: string | null;
+  aiGenerated?: boolean;
+}): Promise<SendResult> {
+  const target = await prepareSend(input.conversationId, input.organizationId, {
+    skipWhatsappWindow: true,
+  });
+  if (target.conversation.channel !== "whatsapp") {
+    throw new SendError(
+      "meta_error",
+      "Las plantillas solo se envían por WhatsApp"
+    );
+  }
+
+  const db = getDb();
+  const [contact] = await db
+    .select({
+      name: schema.contact.name,
+      optInAt: schema.contact.waMarketingOptInAt,
+    })
+    .from(schema.contact)
+    .where(eq(schema.contact.id, target.conversation.contactId))
+    .limit(1);
+  if (templateRequiresOptIn(input.templateCategory) && !contact?.optInAt) {
+    throw new SendError(
+      "meta_error",
+      "El contacto no autorizó mensajes de marketing por WhatsApp: registra su opt-in antes de usar esta plantilla"
+    );
+  }
+
+  const params = personalizeTemplateParams(input.templateParams, contact?.name);
+  const headerMedia = input.templateHeaderMediaUrl
+    ? {
+        format: input.templateHeaderFormat ?? "IMAGE",
+        url: input.templateHeaderMediaUrl,
+      }
+    : null;
+  const components = buildTemplateComponents(params, headerMedia);
+  const rendered = renderTemplateText(input.templateBody ?? "", params);
+  const storedText = rendered.trim() || params.join(" · ") || input.templateName;
+  const preGenId = target.zernio ? newId("message") : undefined;
+
+  const waMessageId = target.zernio
+    ? await callWhatsappZernio(
+        target,
+        {
+          template: {
+            elements: [
+              {
+                name: input.templateName,
+                language: input.templateLanguage,
+                components,
+              },
+            ],
+          },
+        },
+        preGenId!
+      )
+    : target.waha
+      ? (
+          await wahaText(
+            target.waha.baseUrl,
+            target.waha.apiKey,
+            target.waha.sessionName,
+            target.recipient,
+            storedText
+          )
+        ).key.id
+      : await callGraphSend(target.credentials!, {
+          messaging_product: "whatsapp",
+          ...target.destinatario,
+          type: "template",
+          template: {
+            name: input.templateName,
+            language: { code: input.templateLanguage },
+            components,
+          },
+        });
+
+  const messageId = await persistOutbound({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    waMessageId,
+    type: "template",
+    text: storedText,
+    status: capabilitiesFor(target.conversation.channel as Channel)
+      .deliveryReceipts
       ? "pending"
       : "sent",
     aiGenerated: input.aiGenerated,
@@ -738,6 +881,8 @@ export async function sendMediaMessage(input: {
   organizationId: string;
   file: { data: Buffer; mimeType: string; fileName?: string };
   caption?: string;
+  /** Mismo criterio que sendText: HUMAN_AGENT solo en envíos manuales. */
+  humanAgentTagAllowed?: boolean;
 }): Promise<SendResult> {
   // Validación previa (FR-007): tipo y tamaño antes de tocar disco o red.
   const kind = validateOutgoing(input.file.mimeType, input.file.data.byteLength);
@@ -788,6 +933,7 @@ export async function sendMediaMessage(input: {
         fileName: input.file.fileName,
         kind,
         idempotencyKey: preGeneratedId,
+        humanAgentTagAllowed: input.humanAgentTagAllowed === true,
       });
     } catch (err) {
       const sendErr = err instanceof SendError
@@ -824,7 +970,11 @@ export async function sendMediaMessage(input: {
 
     if (input.caption?.trim()) {
       try {
-        const captionPlatformId = await callMessengerSend(target, input.caption.trim());
+        const captionPlatformId = await callMessengerSend(
+          target,
+          input.caption.trim(),
+          input.humanAgentTagAllowed === true
+        );
         await persistOutbound({
           organizationId: input.organizationId,
           conversationId: input.conversationId,
@@ -1073,7 +1223,8 @@ export async function callGraphSend(
 async function callInstagramSend(
   target: SendTarget,
   text: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  humanAgentTagAllowed = false
 ): Promise<string> {
   const creds = target.instagram!;
 
@@ -1086,8 +1237,12 @@ async function callInstagramSend(
   }
 
   // Instagram: fuera de la ventana de 24 h la única vía es la etiqueta de
-  // agente humano (hasta 7 días).
-  const humanAgentTag = requireReplyWindow("instagram", target.conversation.lastInboundAt);
+  // agente humano (hasta 7 días), y solo para una respuesta manual.
+  const humanAgentTag = requireReplyWindow(
+    "instagram",
+    target.conversation.lastInboundAt,
+    humanAgentTagAllowed
+  );
 
   try {
     const res = await sendInstagramText({
@@ -1126,7 +1281,8 @@ async function callInstagramSend(
  */
 async function callMessengerSend(
   target: SendTarget,
-  text: string
+  text: string,
+  humanAgentTagAllowed = false
 ): Promise<string> {
   const creds = target.messenger!;
 
@@ -1139,8 +1295,12 @@ async function callMessengerSend(
   }
 
   // Messenger: fuera de la ventana de 24 h la única vía es la etiqueta de
-  // agente humano (hasta 7 días).
-  const humanAgentTag = requireReplyWindow("messenger", target.conversation.lastInboundAt);
+  // agente humano (hasta 7 días), y solo para una respuesta manual.
+  const humanAgentTag = requireReplyWindow(
+    "messenger",
+    target.conversation.lastInboundAt,
+    humanAgentTagAllowed
+  );
 
   try {
     const res = await sendMessengerText({
@@ -1182,6 +1342,7 @@ async function callMessengerMedia(
     fileName?: string;
     kind: "image" | "video" | "audio" | "document";
     idempotencyKey?: string;
+    humanAgentTagAllowed?: boolean;
   }
 ): Promise<string> {
   const creds = target.messenger!;
@@ -1195,7 +1356,11 @@ async function callMessengerMedia(
       mimeType: input.mimeType,
       fileName: input.fileName,
       attachmentType,
-      humanAgentTag: requireReplyWindow("messenger", target.conversation.lastInboundAt),
+      humanAgentTag: requireReplyWindow(
+        "messenger",
+        target.conversation.lastInboundAt,
+        input.humanAgentTagAllowed === true
+      ),
       idempotencyKey: input.idempotencyKey,
     });
     return result.platformMessageId;
@@ -1233,7 +1398,12 @@ async function callTikTokSend(
     );
   }
 
-  const humanAgentTag = requireReplyWindow("tiktok", target.conversation.lastInboundAt);
+  // TikTok no tiene etiqueta de agente humano: la ventana se exige siempre.
+  const humanAgentTag = requireReplyWindow(
+    "tiktok",
+    target.conversation.lastInboundAt,
+    false
+  );
   await enforceTikTokReplyLimit(target.conversation.id, target.conversation.lastInboundAt);
 
   try {
@@ -1292,26 +1462,32 @@ async function enforceTikTokReplyLimit(
   }
 }
 
-/** Enforce the platform's real reply window; HUMAN_AGENT extends IG/Messenger only. */
+/**
+ * Enforce the platform's real reply window. HUMAN_AGENT extends IG/Messenger
+ * only, and only when the caller marks a manual one-to-one reply: Meta forbids
+ * automated or bulk messages under that tag.
+ */
 function requireReplyWindow(
   channel: "instagram" | "messenger" | "tiktok",
-  lastInboundAt: Date | null
+  lastInboundAt: Date | null,
+  humanAgentTagAllowed: boolean
 ): boolean {
   const caps = capabilitiesFor(channel);
-  const windowMs = caps.windowMs ?? WINDOW_MS;
-  if (isWindowOpenFor(lastInboundAt, windowMs)) return false;
+  const state = replyWindowState(lastInboundAt, caps, {
+    allowHumanAgentTag: humanAgentTagAllowed,
+  });
+  if (state === "open") return false;
+  if (state === "human_agent") return true;
 
-  if (
+  const humanAgentStillOpen =
     caps.outsideWindow === "human_agent_tag" &&
-    isHumanAgentWindowOpen(lastInboundAt)
-  ) {
-    return true;
-  }
-
+    isHumanAgentWindowOpen(lastInboundAt);
   const message =
     channel === "tiktok"
       ? "La ventana de respuesta de TikTok dura 48 horas; espera a que el cliente vuelva a escribir"
-      : `Pasaron 7 días desde el último mensaje: ${caps.label} ya no permite responder con la etiqueta de agente humano`;
+      : humanAgentStillOpen
+        ? `La ventana de 24 h de ${caps.label} está cerrada: la etiqueta de agente humano solo se permite en respuestas manuales, así que los envíos automáticos y las campañas deben esperar a que el cliente escriba`
+        : `Pasaron 7 días desde el último mensaje: ${caps.label} ya no permite responder con la etiqueta de agente humano`;
   throw new SendError("window_closed", message);
 }
 

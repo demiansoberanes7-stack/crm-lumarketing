@@ -256,6 +256,14 @@ export const contact = pgTable(
       () => acquisitionChannel.id,
       { onDelete: "set null" }
     ),
+    /**
+     * Consentimiento explícito para plantillas de WhatsApp de marketing. Meta
+     * exige opt-in previo para los mensajes iniciados por el negocio; sin esta
+     * marca el worker no manda plantillas MARKETING. NULL = nunca lo otorgó.
+     */
+    waMarketingOptInAt: timestamp("wa_marketing_opt_in_at"),
+    /** Cómo se obtuvo: operador, campaña, importación, formulario… */
+    waMarketingOptInSource: varchar("wa_marketing_opt_in_source", { length: 40 }),
     archivedAt: timestamp("archived_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2478,6 +2486,11 @@ export const broadcastCampaign = pgTable(
     templateName: varchar("template_name", { length: 255 }),
     templateLanguage: varchar("template_language", { length: 20 }),
     templateParams: jsonb("template_params"),
+    /** MARKETING | UTILITY | AUTHENTICATION (decide si exige opt-in). */
+    templateCategory: varchar("template_category", { length: 20 }),
+    /** IMAGE | VIDEO | DOCUMENT cuando la plantilla trae encabezado multimedia. */
+    templateHeaderFormat: varchar("template_header_format", { length: 20 }),
+    templateHeaderMediaUrl: varchar("template_header_media_url", { length: 2048 }),
     filters: jsonb("filters").notNull().default({}),
     status: varchar("status", { length: 20 }).notNull().default("draft"),
     recipientCount: integer("recipient_count").notNull().default(0),

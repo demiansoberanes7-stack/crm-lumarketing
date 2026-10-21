@@ -417,7 +417,8 @@ async function sendQuoteByEmail(
 export async function sendQuote(
   organizationId: string,
   quoteId: string,
-  target: QuoteSendTarget
+  target: QuoteSendTarget,
+  options?: { humanAgentTagAllowed?: boolean }
 ): Promise<{ waMessageId?: string; total: number }> {
   const channel = target.channel;
   const sent = await getDb().transaction(async (db) => {
@@ -485,10 +486,10 @@ export async function sendQuote(
         ? await db.select({ name: schema.contact.name }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, targetContactId))).limit(1)
         : [];
       const contactName = contactRow?.name?.trim() || quote.quoteNumber;
-      await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: quotePdfFileName(productName, contactName) } });
+      await sendMediaMessage({ organizationId, conversationId: conversation.id, file: { data: Buffer.from(pdf.bytes), mimeType: "application/pdf", fileName: quotePdfFileName(productName, contactName) }, humanAgentTagAllowed: options?.humanAgentTagAllowed === true });
     } else {
       const lines = await quoteSummaryLines(organizationId, quote);
-      await sendText({ organizationId, conversationId: conversation.id, text: lines.join("\n") });
+      await sendText({ organizationId, conversationId: conversation.id, text: lines.join("\n"), humanAgentTagAllowed: options?.humanAgentTagAllowed === true });
     }
   }
 

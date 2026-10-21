@@ -5,6 +5,14 @@ import { AlertCircle, Clock3, MessageSquareText, Pause, Play, RefreshCw, Send, U
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  TEMPLATE_CATEGORY_LABEL,
+  WhatsappTemplatePicker,
+  templateReady,
+  templateRequiresOptIn,
+  useWhatsappTemplates,
+  type WhatsappTemplateDto,
+} from "@/components/whatsapp/template-picker";
 import { MEDIUM_LABELS, SOCIAL_LABELS } from "@/lib/contact-medium";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 
@@ -20,9 +28,20 @@ type Campaign = {
   readCount: number;
   failedCount: number;
   skippedCount: number;
+  /** Pendientes de que el cliente reabra la ventana. */
+  waitingCount?: number;
+  templateName: string | null;
+  templateCategory: string | null;
+  scheduledAt: string;
   createdAt: string;
 };
-type Preview = { total: number; queued: number; skipped: number; skippedByReason: Record<string, number> };
+type Preview = {
+  total: number;
+  queued: number;
+  waiting: number;
+  skipped: number;
+  skippedByReason: Record<string, number>;
+};
 type ChannelOption = { id: string; label: string; enabled: boolean; connected: boolean; status: string };
 
 const MEDIUMS = ["red_social", "llamada", "correo", "presencial", "otro"] as const;
@@ -54,6 +73,7 @@ function makeFilters(input: {
   noteEnabled: boolean;
   noteText: string;
   noteDays: number;
+  optInOnly: boolean;
 }) {
   return {
     ...(input.stageId ? { stageId: input.stageId } : {}),
@@ -63,6 +83,7 @@ function makeFilters(input: {
       noteDays: input.noteDays,
       ...(input.noteText.trim() ? { noteText: input.noteText.trim() } : {}),
     } : {}),
+    ...(input.optInOnly ? { optInOnly: true } : {}),
   };
 }
 
@@ -79,14 +100,35 @@ export function BroadcastsClient() {
   const [noteEnabled, setNoteEnabled] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteDays, setNoteDays] = useState(30);
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [template, setTemplate] = useState<WhatsappTemplateDto | null>(null);
+  const [templateParams, setTemplateParams] = useState<string[]>([]);
+  const [templateHeaderMediaUrl, setTemplateHeaderMediaUrl] = useState("");
+  const [optInOnly, setOptInOnly] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const filters = useMemo(() => makeFilters({ stageId, medium, mediumDetail, noteEnabled, noteText, noteDays }), [
-    stageId, medium, mediumDetail, noteEnabled, noteText, noteDays,
-  ]);
+  const isWhatsapp = channel === "whatsapp";
+  const templatesState = useWhatsappTemplates(isWhatsapp && useTemplate);
+  const marketingTemplate = templateRequiresOptIn(template?.category);
+  const effectiveOptInOnly = optInOnly || marketingTemplate;
+
+  const filters = useMemo(
+    () => makeFilters({
+      stageId, medium, mediumDetail, noteEnabled, noteText, noteDays,
+      optInOnly: effectiveOptInOnly,
+    }),
+    [stageId, medium, mediumDetail, noteEnabled, noteText, noteDays, effectiveOptInOnly]
+  );
+
+  function chooseTemplate(next: WhatsappTemplateDto | null) {
+    setTemplate(next);
+    setTemplateParams(next ? Array.from({ length: next.variableCount }, () => "") : []);
+    setTemplateHeaderMediaUrl("");
+    setPreview(null);
+  }
 
   const refresh = useCallback(async () => {
     const [campaignResponse, stageResponse, channelResponse] = await Promise.all([
@@ -133,7 +175,11 @@ export function BroadcastsClient() {
       const result = await requestJson("/api/broadcasts/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...filters, channel }),
+        body: JSON.stringify({
+          ...filters,
+          channel,
+          ...(template ? { templateName: template.name } : {}),
+        }),
       });
       setPreview(result);
     } catch (cause) {
@@ -142,24 +188,64 @@ export function BroadcastsClient() {
   }
 
   async function createCampaign() {
-    if (!name.trim() || !messageText.trim()) {
-      setError("Escribe un nombre y el mensaje de la campaña.");
+    if (!name.trim()) {
+      setError("Escribe un nombre para la campaña.");
+      return;
+    }
+    if (useTemplate && isWhatsapp) {
+      if (!template) {
+        setError("Elige una plantilla aprobada o desactiva el envío con plantilla.");
+        return;
+      }
+      if (!templateReady(template, templateParams, templateHeaderMediaUrl)) {
+        setError("Completa las variables de la plantilla y, si lleva encabezado, su enlace https.");
+        return;
+      }
+    } else if (!messageText.trim()) {
+      setError("Escribe el mensaje de la campaña o elige una plantilla aprobada.");
       return;
     }
     setBusy(true); setError(null); setNotice(null);
     try {
+      const sendingTemplate = useTemplate && isWhatsapp ? template : null;
       const result = await requestJson("/api/broadcasts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, messageText, filters, channel }),
+        body: JSON.stringify({
+          name,
+          channel,
+          filters,
+          ...(sendingTemplate
+            ? {
+                templateName: sendingTemplate.name,
+                templateLanguage: sendingTemplate.language,
+                templateParams,
+                templateCategory: sendingTemplate.category ?? undefined,
+                ...(sendingTemplate.headerMediaRequired
+                  ? { templateHeaderMediaUrl }
+                  : {}),
+              }
+            : { messageText }),
+        }),
       });
-      setNotice(`Campaña guardada con ${result.campaign.recipientCount} contactos en su lista.`);
+      const waiting = Number(result.campaign.waitingCount ?? 0);
+      setNotice(
+        `Campaña guardada con ${result.campaign.recipientCount} contactos en su lista.` +
+          (waiting > 0
+            ? ` ${waiting} esperarán a que el cliente vuelva a escribir para enviarse.`
+            : "")
+      );
       setName(""); setMessageText(""); setPreview(null);
+      setUseTemplate(false); chooseTemplate(null);
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudo guardar la campaña");
     } finally { setBusy(false); }
   }
+
+  const messageReady = useTemplate && isWhatsapp
+    ? templateReady(template, templateParams, templateHeaderMediaUrl)
+    : messageText.trim().length > 0;
 
   async function setCampaignState(campaign: Campaign, action: "start" | "pause") {
     setError(null); setNotice(null);
@@ -178,7 +264,7 @@ export function BroadcastsClient() {
           <p className="kicker">Contactos segmentados</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Envíos masivos</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Crea campañas persistentes usando pipeline, red social y notas recientes. Cada campaña elige su canal de chat (WhatsApp, Instagram, Messenger o TikTok), conserva su lista y resultados.
+            Crea campañas persistentes usando pipeline, red social y notas recientes. En WhatsApp, fuera de la ventana de 24 h solo sale una plantilla aprobada (marketing exige opt-in). En Instagram, Messenger y TikTok el envío espera a que el cliente vuelva a escribir y sale en cuanto se abre la ventana.
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void refresh()} aria-label="Actualizar campañas">
@@ -195,7 +281,14 @@ export function BroadcastsClient() {
       <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <div className="mb-5 flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-tint text-brand-text"><Send className="h-4 w-4" /></span>
-          <div><h2 className="font-semibold">Nueva campaña de {CHANNEL_LABEL[channel as Channel] ?? channel}</h2><p className="text-xs text-muted-foreground">El envío libre solo se realiza dentro de la ventana de atención del canal elegido.</p></div>
+          <div>
+            <h2 className="font-semibold">Nueva campaña de {CHANNEL_LABEL[channel as Channel] ?? channel}</h2>
+            <p className="text-xs text-muted-foreground">
+              {isWhatsapp
+                ? "Dentro de 24 h se envía texto libre. Fuera de la ventana, usa una plantilla aprobada; si es de marketing, la audiencia se limita a quienes dieron su opt-in."
+                : "El texto libre solo sale dentro de la ventana de atención. Si está cerrada, la campaña espera al siguiente mensaje del cliente y se envía en cuanto se abre."}
+            </p>
+          </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
@@ -205,7 +298,16 @@ export function BroadcastsClient() {
               <select
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground"
                 value={channel}
-                onChange={(event) => { setChannel(event.target.value); setPreview(null); }}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setChannel(next);
+                  setPreview(null);
+                  if (next !== "whatsapp") {
+                    setUseTemplate(false);
+                    chooseTemplate(null);
+                    setOptInOnly(false);
+                  }
+                }}
                 aria-label="Canal de la campaña"
               >
                 {channelOptions.length === 0 && <option value="whatsapp">WhatsApp</option>}
@@ -220,10 +322,46 @@ export function BroadcastsClient() {
               Nombre de campaña
               <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={160} placeholder="Seguimiento octubre" />
             </label>
-            <label className="block space-y-1.5 text-sm font-medium">
-              Mensaje
-              <Textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} maxLength={4000} rows={5} placeholder="Escribe el mensaje que recibirán los contactos elegibles…" />
-            </label>
+            {isWhatsapp && (
+              <label className="flex items-start gap-2 rounded-lg border bg-subtle px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={useTemplate}
+                  onChange={(event) => {
+                    setUseTemplate(event.target.checked);
+                    if (!event.target.checked) chooseTemplate(null);
+                  }}
+                />
+                <span>
+                  <span className="font-medium">Enviar con plantilla aprobada</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Única vía legal fuera de la ventana de 24 h de WhatsApp.
+                  </span>
+                </span>
+              </label>
+            )}
+            {isWhatsapp && useTemplate ? (
+              <WhatsappTemplatePicker
+                templates={templatesState.templates}
+                provider={templatesState.provider}
+                loading={templatesState.loading}
+                error={templatesState.error}
+                onReload={templatesState.reload}
+                selected={template}
+                params={templateParams}
+                onSelect={chooseTemplate}
+                onParamsChange={setTemplateParams}
+                headerMediaUrl={templateHeaderMediaUrl}
+                onHeaderMediaUrlChange={setTemplateHeaderMediaUrl}
+                idPrefix="campaign"
+              />
+            ) : (
+              <label className="block space-y-1.5 text-sm font-medium">
+                Mensaje
+                <Textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} maxLength={4000} rows={5} placeholder="Escribe el mensaje que recibirán los contactos elegibles…" />
+              </label>
+            )}
           </div>
 
           <div className="space-y-3 rounded-lg border bg-subtle p-4">
@@ -261,6 +399,25 @@ export function BroadcastsClient() {
                 <Input type="number" min={1} max={365} value={noteDays} onChange={(event) => { setNoteDays(Math.min(365, Math.max(1, Number(event.target.value) || 1))); setPreview(null); }} aria-label="Días de antigüedad de las notas" />
               </div>
             )}
+            {isWhatsapp && (
+              <label className="flex items-start gap-2 border-t pt-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={effectiveOptInOnly}
+                  disabled={marketingTemplate}
+                  onChange={(event) => { setOptInOnly(event.target.checked); setPreview(null); }}
+                />
+                <span>
+                  Solo contactos con opt-in de marketing
+                  <span className="block text-[11px] leading-snug text-muted-foreground">
+                    {marketingTemplate
+                      ? "Obligatorio para plantillas de marketing: Meta exige consentimiento previo."
+                      : "Filtra a quienes autorizaron promociones por WhatsApp."}
+                  </span>
+                </span>
+              </label>
+            )}
             <div className="flex items-center gap-2 border-t pt-3 text-xs text-muted-foreground">
               <Clock3 className="h-4 w-4 shrink-0" /> Solo se incluyen contactos activos con conversación elegible.
             </div>
@@ -270,7 +427,12 @@ export function BroadcastsClient() {
         {preview && (
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-background px-4 py-3 text-sm">
             <span className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" /> {preview.total} en el segmento</span>
-            <span className="text-emerald-700">{preview.queued} elegibles</span>
+            <span className="text-emerald-700">{preview.queued} salen de inmediato</span>
+            {preview.waiting > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-sky-700">
+                <Clock3 className="h-4 w-4" /> {preview.waiting} esperan a que el cliente escriba
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 text-amber-700"><AlertCircle className="h-4 w-4" /> {preview.skipped} se omitirán</span>
             {Object.entries(preview.skippedByReason).map(([reason, count]) => <span key={reason} className="text-xs text-muted-foreground">{skipLabels[reason] ?? reason}: {count}</span>)}
           </div>
@@ -279,7 +441,7 @@ export function BroadcastsClient() {
           <Button variant="secondary" onClick={() => void previewAudience()} disabled={busy}>
             <Users className="mr-2 h-4 w-4" /> {busy ? "Calculando…" : "Previsualizar segmento"}
           </Button>
-          <Button onClick={() => void createCampaign()} disabled={busy || !name.trim() || !messageText.trim()}>
+          <Button onClick={() => void createCampaign()} disabled={busy || !name.trim() || !messageReady}>
             <MessageSquareText className="mr-2 h-4 w-4" /> Guardar campaña
           </Button>
         </div>
@@ -299,19 +461,35 @@ export function BroadcastsClient() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold">{campaign.name}</h3>
                   <span className="rounded-full border border-border bg-subtle px-2 py-0.5 text-xs text-muted-foreground">{CHANNEL_LABEL[campaign.channel as Channel] ?? campaign.channel}</span>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs ${campaign.status === "sending" ? "border-blue-500/30 bg-blue-500/10 text-blue-700" : "border-border bg-subtle text-muted-foreground"}`}>{statusLabels[campaign.status] ?? campaign.status}</span>
+                  {campaign.templateName && (
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-700">
+                      Plantilla {campaign.templateName}
+                      {campaign.templateCategory ? ` · ${TEMPLATE_CATEGORY_LABEL[campaign.templateCategory] ?? campaign.templateCategory}` : ""}
+                    </span>
+                  )}
+                  <span className={`rounded-full border px-2 py-0.5 text-xs ${campaign.status === "sending" ? "border-blue-500/30 bg-blue-500/10 text-blue-700" : "border-border bg-subtle text-muted-foreground"}`}>
+                    {campaign.status === "sending" && new Date(campaign.scheduledAt).getTime() > Date.now()
+                      ? "Programada"
+                      : statusLabels[campaign.status] ?? campaign.status}
+                  </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{campaign.recipientCount} contactos · {new Date(campaign.createdAt).toLocaleString("es-MX")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {campaign.recipientCount} contactos ·{" "}
+                  {new Date(campaign.scheduledAt).getTime() > Date.now()
+                    ? `programada para ${new Date(campaign.scheduledAt).toLocaleString("es-MX")}`
+                    : new Date(campaign.createdAt).toLocaleString("es-MX")}
+                </p>
               </div>
               <div className="flex gap-2">
                 {(campaign.status === "draft" || campaign.status === "paused") && <Button size="sm" onClick={() => void setCampaignState(campaign, "start")}><Play className="mr-1.5 h-3.5 w-3.5" /> {campaign.status === "paused" ? "Reanudar" : "Iniciar"}</Button>}
                 {campaign.status === "sending" && <Button size="sm" variant="secondary" onClick={() => void setCampaignState(campaign, "pause")}><Pause className="mr-1.5 h-3.5 w-3.5" /> Pausar</Button>}
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-6">
               <Metric label="Enviados" value={campaign.sentCount} />
               <Metric label="Entregados" value={campaign.deliveredCount} />
               <Metric label="Leídos" value={campaign.readCount} />
+              <Metric label="En espera" value={campaign.waitingCount ?? 0} />
               <Metric label="Fallidos" value={campaign.failedCount} />
               <Metric label="Omitidos" value={campaign.skippedCount} />
             </div>
