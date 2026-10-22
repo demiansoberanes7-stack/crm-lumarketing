@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download, Package, Pencil, Plus, Send, Trash2, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LoadError } from "@/components/load-error";
+import { webHref } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -183,7 +184,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                       )}
                       {p.websiteUrl && (
                         <a
-                          href={p.websiteUrl}
+                          href={webHref(p.websiteUrl) ?? undefined}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="mt-1 block truncate text-xs text-primary hover:underline"

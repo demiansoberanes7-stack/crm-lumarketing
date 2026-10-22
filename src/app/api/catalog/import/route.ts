@@ -5,6 +5,7 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { parseCsv } from "@/lib/csv";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,14 @@ function mapRow(row: Record<string, string>): Mapped | null {
 
   const shortDescription =
     (row["descripcion_corta"] || row["descripcion"] || row["shortdescription"] || "").trim() || null;
-  const websiteUrl = (row["url_sitio"] || row["url"] || row["sitio"] || row["websiteurl"] || "").trim() || null;
+  // La URL llega en el CSV que armó otro (el listado de precios de un
+  // proveedor). Se valida igual que en `productWebsiteUrlSchema`, que ya usan
+  // POST /api/catalog, PATCH /api/catalog/[id] y las acciones MCP: una celda
+  // `javascript:…` guardada tal cual se vuelve XSS en la tarjeta del producto.
+  // Si no es HTTP(S) se descarta el enlace, no la fila: el producto importa.
+  const websiteUrl = safeHttpUrl(
+    row["url_sitio"] || row["url"] || row["sitio"] || row["websiteurl"] || ""
+  );
 
   // inventario vacío = sin control (null); número → piezas.
   const stockRaw = (row["inventario"] || row["stock"] || row["piezas"] || "").trim();
@@ -46,7 +54,7 @@ function mapRow(row: Record<string, string>): Mapped | null {
     name: name.slice(0, 255),
     priceCents: Math.round(priceNum * 100),
     shortDescription: shortDescription ? shortDescription.slice(0, 500) : null,
-    websiteUrl: websiteUrl ? websiteUrl.slice(0, 1024) : null,
+    websiteUrl,
     stock,
   };
 }

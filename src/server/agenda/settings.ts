@@ -1,5 +1,6 @@
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { scoped } from "@/lib/db/tenant";
 import {
   DEFAULT_CONNECTOR,
@@ -206,10 +207,17 @@ export function normalizeWeeklyHours(input: unknown): WeeklyHours {
   return out;
 }
 
-/** Cadena vacía o espacios ⇒ null (el campo es opcional de verdad). */
-function normalizeLink(link: string | null | undefined): string | null {
-  const trimmed = (link ?? "").trim();
-  return trimmed.length > 0 ? trimmed : null;
+/**
+ * Cadena vacía o espacios ⇒ null (el campo es opcional de verdad).
+ *
+ * Lo que no es HTTP(S) tampoco se guarda. `meetingLink` acaba en un `href` de
+ * la pantalla de Citas (`bookings-client.tsx`) y en el mensaje con el que el
+ * agente le manda el enlace al cliente; `PUT /api/calendar/settings` es
+ * `withAuth`, así que cualquier miembro —no solo el dueño— podía escribir
+ * `javascript:…` y que otro lo ejecutara con su propia sesión al hacer clic.
+ */
+export function normalizeLink(link: string | null | undefined): string | null {
+  return safeHttpUrl(link);
 }
 
 function clampInt(value: number, min: number, max: number): number {

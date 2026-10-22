@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import type { SupplierDto } from "@/lib/types";
 import { SUPPLIER_CATEGORIES } from "@/lib/types";
+import { dialHref } from "@/lib/utils";
+import { mailtoHref, webHref } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -464,11 +466,11 @@ function SupplierDetailDialog({
               <dd className="break-words text-sm">
                 {value
                   ? label === "Correo"
-                    ? <a className="text-primary underline" href={`mailto:${value}`}>{value}</a>
+                    ? <a className="text-primary underline" href={mailtoHref(value) ?? undefined}>{value}</a>
                     : label === "Teléfono"
-                      ? <a className="text-primary underline" href={`tel:${value}`}>{value}</a>
+                      ? <a className="text-primary underline" href={dialHref(value)}>{value}</a>
                       : label === "Sitio web"
-                        ? <a className="text-primary underline" href={value.startsWith("http") ? value : `https://${value}`} target="_blank" rel="noreferrer">{value}</a>
+                        ? <a className="text-primary underline" href={webHref(value) ?? undefined} target="_blank" rel="noreferrer">{value}</a>
                         : value
                   : "Sin capturar"}
               </dd>

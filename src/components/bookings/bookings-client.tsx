@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ContactPicker } from "@/components/contact-picker";
 import { useEvents } from "@/components/use-events";
 import { LoadError } from "@/components/load-error";
+import { webHref } from "@/lib/safe-url";
 
 /** 015 — Citas: lo agendado por el operador y por la IA, con sus acciones. */
 
@@ -372,7 +373,7 @@ export function BookingsClient() {
                 {b.contact && <span>{b.contact.name}</span>}
                 {b.meetingLink && (
                   <a
-                    href={b.meetingLink}
+                    href={webHref(b.meetingLink) ?? undefined}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="text-brand-text hover:underline"
