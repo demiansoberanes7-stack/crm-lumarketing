@@ -1190,3 +1190,45 @@ verde. Sin migración, sin push y sin tocar producción.
 `html:has(.app-shell)` de `src/app/globals.css` y borrar
 `tests/unit/app-shell-scroll-lock.test.ts`. La app sigue funcionando; el vacío reaparece si una
 caja ajena vuelve a alargar el documento.
+
+### 6.22 Módulo Sucursales: inventario por sucursal (22-10-2026, migración 0084 SIN aplicar)
+
+**Lo pedido.** «Crea otro módulo llamado sucursal… manejar un control relacionado de inventario
+… cantidades de las piezas en diferentes sucursales … agregar los datos de la sucursal y
+enlazarle los productos y inventario disponible por sucursal para llevar un control de cantidad
+de producto se encuentra en qué sucursal.»
+
+**Decisión de diseño.** El stock del catálogo (`catalog_product.stock`) ya tiene dueños
+(cotizador y agente) y semántica comercial; el conteo por sucursal es un control físico distinto.
+Se modela aparte (`branch`, `branch_inventory`) y **la pantalla nunca escribe el stock general**.
+Un renglón por producto y sucursal (`unique(branch_id, product_id)`), cantidad `0..1_000_000`;
+`0` significa enlazado y agotado, no «sin dato». Borrar la sucursal arrastra su inventario por
+FK en cascada; borrar el producto lo desenlaza.
+
+**Alcance entregado (local).** Migración `0084_branches.sql` idempotente + journal `idx: 84`;
+servicio con agregados `count`/`sum` en SQL y upsert `onConflictDoUpdate`; tres rutas API
+(`/api/branches`, `/api/branches/[id]`, `/api/branches/[id]/inventory`) con `withAuth` y
+`scoped(...)`; pantalla `/branches` con alta/edición/baja de sucursal, enlace de productos,
+cantidad por sucursal, quitar enlace y `LoadError` en fallos; entrada «Sucursales» en
+`nav.ts`. Todos los ids ajenos a la organización responden 404 antes de cualquier escritura.
+
+**Verificación.** `tests/unit/branches.test.ts` (10 pruebas) cubre límites, no-escritura con
+sucursal/producto de otra organización, forma del upsert, parámetros de los `delete`, `withAuth`
+en las rutas, `scoped` en el servicio y la entrada de navegación. Gates: `db:guard` 0 avisos,
+`typecheck`, `lint`, **166 archivos / 1581 pruebas**, `build` con las cuatro rutas de sucursales
+en el manifiesto. **No se verificó la pantalla autenticada en navegador** (sin sesión/BD local);
+clasificación Regla 3 para la UI viva: *pendiente de acceso*.
+
+**Deuda abierta.**
+- La migración **0084 no está aplicada** en producción (igual que la 0083). Aplicarla exige
+  respaldo previo y autorización explícita; el push a `main` despliega código, pero las
+  migraciones se aplican aparte en la VM.
+- El enlace de producto usa `/api/catalog?limit=500`; un catálogo mayor no es seleccionable
+  desde la pantalla (la API de inventario por sucursal sí acepta cualquier producto por id).
+- El conteo por sucursal **no descuenta al vender** ni se concilia con el stock general; un
+  traspaso entre sucursales es edición manual de dos cantidades. Es lo que se pidió (control),
+  no un motor de almacén.
+
+**Deshacer.** Ver §36 de `docs/SISTEMA-COMPLETO.md`. Con la migración sin aplicar basta borrar
+los archivos del módulo; si ya se hubiera aplicado, `DROP TABLE branch_inventory` antes de
+`DROP TABLE branch`.

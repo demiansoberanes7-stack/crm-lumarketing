@@ -2582,6 +2582,105 @@ entero: el rail declara `lg:z-<dígito>`, está por encima del `z` de la cabecer
 
 ---
 
+## 36. Sucursales e inventario por sucursal (`/branches`)
+
+Control físico de existencias: **qué producto está en qué sucursal y cuántas piezas hay**. El
+dueño lo pidió como módulo propio («crea otro módulo llamado sucursal… enlazarle los productos y
+inventario disponible por sucursal»), no como una columna del catálogo.
+
+### Dos stocks que no se pisan
+
+| | `catalog_product.stock` | `branch_inventory.quantity` |
+|---|---|---|
+| Para qué | Stock comercial del negocio | Conteo físico de una sucursal |
+| Quién lo escribe | Catálogo, cotizaciones (descuento al aceptar), agente | Pantalla Sucursales |
+| Quién lo lee | Cotizador, `search_inventory`, fichas del agente | Pantalla Sucursales |
+| Nulo | Sin control de stock | No aplica: siempre hay número (0 = enlazado y agotado) |
+
+**La pantalla de Sucursales nunca escribe `catalog_product.stock`.** Aceptar una cotización
+descuenta el stock general y no toca el conteo por sucursal: son fuentes distintas y mezclarlas
+haría que una venta en línea alterara el inventario físico de una tienda sin traspaso. La UI lo
+declara en una nota visible.
+
+### Modelo (migración `0084_branches.sql`, **sin aplicar en producción**)
+
+- `branch` — `id` (`br_…`), `organizationId`, `name`, `address`, `phone`, `notes`, `active`,
+  `createdAt`, `updatedAt`. Índice `branch_org_idx`.
+- `branch_inventory` — `id` (`bri_…`), `organizationId`, `branchId`, `productId`, `quantity`,
+  `createdAt`, `updatedAt`. **Un renglón por producto y sucursal**
+  (`branch_inventory_branch_product_uq`), índices por organización y por producto.
+- FKs: organización en cascada, sucursal en cascada (borrar la sucursal borra su inventario),
+  producto en cascada (borrar el producto lo desenlaza). `CHECK` de cantidad `0..1_000_000`.
+- Es idempotente (`CREATE TABLE IF NOT EXISTS`, FK en `DO $$ … EXCEPTION WHEN duplicate_object`)
+  y el journal ya la lista como `idx: 84`. `pnpm db:guard` la ve coherente con `drizzle/*.sql`.
+
+### Servicio (`src/server/branches/service.ts`)
+
+- `listBranches` agrega en SQL: `count(branch_inventory.id)::int` (SKUs) y
+  `coalesce(sum(quantity),0)::int` (piezas), con `leftJoin` + `groupBy(branch.id)`; una sucursal
+  sin inventario aparece con 0/0, no desaparece.
+- `setBranchQuantity` **verifica sucursal y producto contra la organización antes del upsert** y
+  responde `branch_not_found` / `product_not_found`; el `insert` usa
+  `onConflictDoUpdate` sobre `(branchId, productId)`, así enlazar dos veces actualiza la cantidad
+  en vez de duplicar el renglón.
+- `deleteBranch` y `removeBranchProduct` son `delete` con `scoped(...)` + `.returning()`: un id de
+  otro negocio no borra nada y responde 404.
+- Todas las consultas pasan por `scoped(...)` de `src/lib/db/tenant.ts`; el único cruce permitido
+  es el `innerJoin` a `catalog_product` **también condicionado por organización**.
+
+### API (todas `withAuth`, `dynamic = "force-dynamic"`)
+
+| Ruta | Método | Contrato |
+|---|---|---|
+| `/api/branches` | GET | `{ branches: BranchDto[] }` con `skuCount` y `totalUnits` |
+| `/api/branches` | POST | `{name, address?, phone?, notes?, active?}` → 201 `{ ok, branch: { id } }` |
+| `/api/branches/[id]` | PATCH | parcial; 404 si no es del negocio |
+| `/api/branches/[id]` | DELETE | 404 si no existía; el inventario cae en cascada |
+| `/api/branches/[id]/inventory` | GET | verifica sucursal (404) → `{ branch, items }` con stock general de cada producto |
+| `/api/branches/[id]/inventory` | PUT | `{ productId, quantity }`; 404 `branch_not_found` / `product_not_found` |
+| `/api/branches/[id]/inventory` | DELETE | `?productId=` (422 si falta, 404 si no está enlazado) |
+
+`quantity` valida con `branchQuantitySchema` (`src/lib/branch-schema.ts`): entero `0..1_000_000`.
+El tope coincide con el `CHECK` de la migración, de modo que la API rechaza antes de llegar a la
+base y el error es 422, no un 500 de Postgres.
+
+### Pantalla (`/branches`)
+
+- Columna de sucursales con nombre, dirección, teléfono, estado activo/inactivo y totales
+  («N productos · M piezas»). Alta/edición en diálogo; borrar pide confirmación y avisa que el
+  inventario de la sucursal se va con ella.
+- Panel de inventario de la sucursal elegida: por producto muestra el stock general y el precio
+  como referencia, un campo numérico con la cantidad de la sucursal, guardar con Enter o botón,
+  y quitar el enlace. Si el guardado falla, el campo **revierte** al valor anterior.
+- Para enlazar un producto se elige del catálogo (`/api/catalog?limit=500`) y se agrega con
+  cantidad 0; luego se ajusta. Un producto ya enlazado no se duplica.
+- **Falla ≠ vacío**: si la lista o el inventario no responden 200 se pinta `LoadError` con
+  Reintentar; el estado vacío solo aparece con respuesta válida y sin filas. Sin catálogo, el
+  panel enlaza a `/catalog`.
+- Entrada «Sucursales» con icono `Store` en `src/config/nav.ts`, después de Catálogo; el rail,
+  las migas y ⌘K la toman de ahí sin cambios adicionales.
+
+### Pruebas y gates
+
+`tests/unit/branches.test.ts` (10 pruebas): límites de cantidad; sucursal o producto de otra
+organización **no escriben**; forma del upsert (`bri_`, objetivo `[branch_id, product_id]`,
+`quantity` + `updatedAt`); SQL de los dos `delete` con parámetros `[org, branch]` y
+`[org, branch, product]`; todas las rutas usan `withAuth`; el servicio usa `scoped` sobre
+`branch` y `branch_inventory`; la navegación contiene la entrada. Gates: `db:guard` 0 avisos,
+`typecheck`, `lint`, **166 archivos / 1581 pruebas** y `build` en verde.
+
+### Estado y deshacer
+
+La migración **0084 no está aplicada** en producción ni la 0083 anterior; el módulo es local y no
+se ha desplegado. Para deshacer: borrar `drizzle/0084_branches.sql` y su entrada del journal,
+quitar `branch`/`branchInventory` de `schema.ts` y los prefijos `br`/`bri` de `ids.ts`, borrar
+`src/server/branches/`, `src/app/api/branches/`, `src/app/(app)/branches/`,
+`src/components/branches/`, `src/lib/branch-schema.ts`, los DTO de `types.ts`, la entrada de
+`nav.ts` y `tests/unit/branches.test.ts`. Si la migración ya se hubiera aplicado, el `down`
+equivalente es `DROP TABLE branch_inventory; DROP TABLE branch;` (el orden importa por la FK).
+
+---
+
 ## A. Arquitectura de Agentes (Claude Code)
 
 ### Orquestador

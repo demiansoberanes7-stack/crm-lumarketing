@@ -520,9 +520,11 @@ llega a escuchar y el contenedor entra en crash loop con 502 publico. `next buil
                             +-------------------+
 ```
 
-## Tablas por Dominio (104 en el modelo)
+## Tablas por Dominio (107 en el modelo)
 
-**Deriva de esquema conocida**: la BD de produccion tiene **106** tablas. Las 4 extra
+**Deriva de esquema conocida**: la BD de produccion (v1.8.0) tiene **106** tablas. El modelo
+local incluye ademas `prospect_dismissal` (0083), `branch` y `branch_inventory` (0084),
+migraciones **sin aplicar**; al aplicarlas la BD tendria 109. Las 4 extra
 (`diagnostic_event`, `whatsapp_settings`, `integration_secret`, `whatsapp_address`) las crea
 `drizzle/0006_diagnostics_messaging.sql`, que **si** esta en el journal, asi que una replica
 nueva las recibe igual. El riesgo no es que falten: es que `drizzle-kit generate` no las conoce
@@ -586,6 +588,16 @@ y cotiza. Guia: [copiloto-agente.md](copiloto-agente.md).
 | `quote` | Cotizaciones | organizationId, contactId, number (COT-XXXX), version, status, subtotal, tax, total, sendChannel |
 | `quote_item` | Items de cotizacion | quoteId, description, quantity, unitPrice |
 | `catalog_product` | Catalogo de productos | organizationId, name, price (cents), currency |
+
+### Sucursales (migracion 0084, sin aplicar en produccion)
+
+| Tabla | Descripcion | Columnas clave |
+|-------|-------------|----------------|
+| `branch` | Sucursales del negocio | organizationId, name, address, phone, notes, active |
+| `branch_inventory` | Conteo fisico por sucursal | organizationId, branchId, productId, quantity (unico por branch+product) |
+
+El inventario de sucursal es un control **aparte** de `catalog_product.stock`: la pantalla de
+Sucursales no escribe el stock general y el cotizador no descuenta estas cantidades.
 
 ### Proyectos
 
@@ -1014,6 +1026,23 @@ tax = (subtotal - discount) * taxRate / 100
 total = subtotal - discount + tax
 ```
 
+## Sucursales (`/branches`, migracion 0084)
+
+Control fisico de existencias por sucursal: que producto esta en que sucursal y cuantas piezas.
+
+- **Dos stocks separados**: `catalog_product.stock` (comercial, lo mueve el cotizador y lo lee
+  el agente) y `branch_inventory.quantity` (conteo de la sucursal). Aceptar una cotizacion
+  descuenta el general y **no** toca el conteo por sucursal; la pantalla lo declara.
+- `branch` (nombre, direccion, telefono, notas, activo) y `branch_inventory` con **un renglon por
+  producto y sucursal**; cantidad `0..1_000_000`. `0` = enlazado y agotado.
+- La lista agrega en SQL: SKUs (`count`) y piezas (`sum(quantity)`) por sucursal; una sucursal
+  vacia aparece con 0/0.
+- Enlazar producto + cantidad es un **upsert** sobre `(branch_id, product_id)`; quitar el enlace
+  o borrar la sucursal elimina el renglon (cascada en el segundo caso).
+- Todas las rutas verifican sucursal y producto contra la organizacion antes de escribir: un id
+  de otro negocio responde 404, no crea filas cruzadas.
+- Falla ≠ vacio: `LoadError` con Reintentar si la lista o el inventario no cargan.
+
 ## Proyectos
 
 - Procesos (`project_template`) personalizables por negocio: pasos con campos propios y tareas iniciales (seguimientos)
@@ -1396,6 +1425,14 @@ APP_BASE_URL=http://localhost:3147 META_WEBHOOK_VERIFY_TOKEN=TOKEN_DE_PRUEBAS \
 | `/api/quotes/[id]/send` | POST | Enviar cotizacion. Chat: `{channel, conversationId?}`. Correo: `{channel:"email", emailAccountId, emailMessageId}` (el destinatario lo resuelve el servidor) |
 | `/api/quotes/[id]/status` | PUT | Cambiar estado |
 | `/api/quotes/[id]/pdf` | GET | Generar PDF |
+
+## Sucursales (migracion 0084)
+
+| Ruta | Metodo | Descripcion |
+|------|--------|-------------|
+| `/api/branches` | GET/POST | Listar sucursales con SKUs y piezas / crear sucursal |
+| `/api/branches/[id]` | PATCH/DELETE | Editar (404 si no es del negocio) / borrar con su inventario en cascada |
+| `/api/branches/[id]/inventory` | GET/PUT/DELETE | Inventario de la sucursal / enlazar producto y fijar cantidad / quitar enlace (`?productId=`) |
 
 ## Finanzas
 
