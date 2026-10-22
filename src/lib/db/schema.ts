@@ -2588,6 +2588,10 @@ export const broadcastRecipient = pgTable(
       .references(() => broadcastCampaign.id, { onDelete: "cascade" }),
     contactId: varchar("contact_id", { length: 255 }).references(() => contact.id, { onDelete: "set null" }),
     conversationId: varchar("conversation_id", { length: 255 }).references(() => conversation.id, { onDelete: "set null" }),
+    /** Destinatario de correo (normalizado en minúsculas). NULL en canales de chat. */
+    email: varchar("email", { length: 320 }),
+    /** Nombre para `{{nombre}}`; si falta se usa la parte local del correo. */
+    recipientName: varchar("recipient_name", { length: 255 }),
     channel: varchar("channel", { length: 20 }).notNull(),
     status: varchar("status", { length: 20 }).notNull().default("queued"),
     messageId: varchar("message_id", { length: 255 }),
@@ -2606,6 +2610,7 @@ export const broadcastRecipient = pgTable(
   },
   (t) => [
     uniqueIndex("broadcast_recipient_campaign_contact_uq").on(t.campaignId, t.contactId),
+    uniqueIndex("broadcast_recipient_campaign_email_uq").on(t.campaignId, t.email),
     index("broadcast_recipient_due_idx").on(t.status, t.scheduledAt),
     index("broadcast_recipient_org_campaign_idx").on(t.organizationId, t.campaignId),
     index("broadcast_recipient_conversation_idx").on(t.organizationId, t.conversationId, t.createdAt),
