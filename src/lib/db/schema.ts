@@ -1356,6 +1356,60 @@ export const catalogProduct = pgTable(
   ]
 );
 
+/**
+ * Sucursal del negocio. Es el punto donde se lleva el inventario físico; su
+ * nombre, dirección y teléfono son del negocio, no del catálogo.
+ */
+export const branch = pgTable(
+  "branch",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    address: varchar("address", { length: 500 }),
+    phone: varchar("phone", { length: 32 }),
+    notes: text("notes"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("branch_org_idx").on(t.organizationId)]
+);
+
+/**
+ * Cantidad de un producto del catálogo en una sucursal.
+ *
+ * Es un control **aparte** de `catalog_product.stock`: ese stock general es el
+ * que usan el cotizador y el agente para disponibilidad; aquí se sabe en qué
+ * sucursal está cada pieza. Un producto por sucursal (índice único), cantidad
+ * 0 = enlazado pero agotado en esa sucursal.
+ */
+export const branchInventory = pgTable(
+  "branch_inventory",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    branchId: varchar("branch_id", { length: 255 })
+      .notNull()
+      .references(() => branch.id, { onDelete: "cascade" }),
+    productId: varchar("product_id", { length: 255 })
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("branch_inventory_branch_product_uq").on(t.branchId, t.productId),
+    index("branch_inventory_org_idx").on(t.organizationId),
+    index("branch_inventory_product_idx").on(t.productId),
+  ]
+);
+
 export const quote = pgTable(
   "quote",
   {

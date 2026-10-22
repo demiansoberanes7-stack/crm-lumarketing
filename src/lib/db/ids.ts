@@ -110,6 +110,9 @@ const prefixes = {
   googleAdsMetric: "gam",
   // Prospectos descartados (0083)
   prospectDismissal: "pdis",
+  // Sucursales e inventario por sucursal (0084)
+  branch: "br",
+  branchInventory: "bri",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

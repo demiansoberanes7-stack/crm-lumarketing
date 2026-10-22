@@ -261,6 +261,37 @@ export type SupplierDto = {
 };
 
 /* ============================================================
+ * Sucursales e inventario por sucursal
+ * ============================================================ */
+
+export type BranchDto = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  /** Productos enlazados, aunque su cantidad sea 0. */
+  skuCount: number;
+  /** Suma de piezas de todos los productos enlazados. */
+  totalUnits: number;
+  updatedAt: string;
+};
+
+export type BranchInventoryDto = {
+  id: string;
+  productId: string;
+  name: string;
+  price: number;
+  currency: string;
+  /** Stock general del catálogo (el del cotizador), no el de la sucursal. */
+  stock: number | null;
+  available: boolean;
+  quantity: number;
+  updatedAt: string;
+};
+
+/* ============================================================
  * Prioridad del lead
  * ============================================================ */
 
