@@ -1,6 +1,7 @@
 import { and, asc, desc, or, sql } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { likeContains } from "@/lib/db/like";
 import { scoped } from "@/lib/db/tenant";
 
 /**
@@ -20,10 +21,6 @@ export type InventoryProduct = Pick<
   typeof schema.catalogProduct.$inferSelect,
   "id" | "name" | "price" | "currency" | "stock" | "available" | "shortDescription"
 >;
-
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
 
 function searchTerms(query: string): string[] {
   const seen = new Set<string>();
@@ -56,7 +53,7 @@ export async function searchInventory(
   ];
 
   const matches = patterns.map((term) => {
-    const pattern = `%${escapeLike(term)}%`;
+    const pattern = likeContains(term);
     return or(...fields.map((field) => sql`${folded(field)} LIKE ${pattern}`))!;
   });
 

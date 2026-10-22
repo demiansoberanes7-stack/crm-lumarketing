@@ -2,6 +2,7 @@ import { desc, ilike, or, eq, and, isNull, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
+import { likeContains } from "@/lib/db/like";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { serializeSupplier } from "@/server/suppliers";
@@ -25,11 +26,14 @@ export const GET = withAuth(async (session, req: Request) => {
   }
 
   if (q) {
+    // Los comodines del término se escapan: buscar «100%» no debe devolver
+    // todos los proveedores, y `?q=%` no debe barrer la tabla.
+    const pattern = likeContains(q);
     const qCond = or(
-      ilike(schema.supplier.name, `%${q}%`),
-      ilike(schema.supplier.contactName, `%${q}%`),
-      ilike(schema.supplier.email, `%${q}%`),
-      ilike(schema.supplier.rfc, `%${q}%`)
+      ilike(schema.supplier.name, pattern),
+      ilike(schema.supplier.contactName, pattern),
+      ilike(schema.supplier.email, pattern),
+      ilike(schema.supplier.rfc, pattern)
     );
     if (qCond) conditions.push(qCond);
   }
@@ -38,8 +42,11 @@ export const GET = withAuth(async (session, req: Request) => {
     conditions.push(eq(schema.supplier.category, category));
   }
 
-  if (rating) {
-    conditions.push(eq(schema.supplier.rating, Number(rating)));
+  // `Number("abc")` es `NaN` y Postgres rechaza un entero así: el filtro de
+  // estrellas se ignora en vez de tumbar el listado con un 500.
+  const ratingValue = rating === "" ? NaN : Number.parseInt(rating, 10);
+  if (Number.isFinite(ratingValue) && ratingValue >= 1 && ratingValue <= 5) {
+    conditions.push(eq(schema.supplier.rating, ratingValue));
   }
 
   const whereClause = and(...conditions);
