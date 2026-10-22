@@ -285,6 +285,7 @@ gana y `OPENROUTER_API_TOKEN` queda como respaldo de despliegue. En la instancia
 | nodemailer | ^6.9.16 | Envio SMTP |
 | imapflow | ^0.1.185 | Recepcion IMAP |
 | mailparser | ^3.7.2 | Parsing de emails |
+| read-excel-file | ^9.3.12 | Lectura de destinatarios `.xlsx` en campanas |
 
 ## Testing
 
@@ -524,7 +525,8 @@ llega a escuchar y el contenedor entra en crash loop con 502 publico. `next buil
 
 **Deriva de esquema conocida**: la BD de produccion (v1.8.0) tiene **106** tablas. El modelo
 local incluye ademas `prospect_dismissal` (0083), `branch` y `branch_inventory` (0084),
-migraciones **sin aplicar**; al aplicarlas la BD tendria 109. Las 4 extra
+migraciones **sin aplicar**; al aplicarlas la BD tendria 109. La migracion 0085 no agrega
+tablas: agrega `broadcast_recipient.email` / `.recipient_name` y su indice unico. Las 4 extra
 (`diagnostic_event`, `whatsapp_settings`, `integration_secret`, `whatsapp_address`) las crea
 `drizzle/0006_diagnostics_messaging.sql`, que **si** esta en el journal, asi que una replica
 nueva las recibe igual. El riesgo no es que falten: es que `drizzle-kit generate` no las conoce
@@ -871,6 +873,45 @@ export async function sendText(conversationId, text) {
   //    - TikTok: sendTikTokText (Zernio)
 }
 ```
+
+---
+
+## Campañas de correo (`/broadcasts`)
+
+Los «envíos masivos» son campañas de correo sobre las cuentas SMTP de
+`email_account`. Reutilizan `broadcast_campaign` / `broadcast_recipient` con
+`channel='email'`, así que el worker, el arranque/pausa y las métricas son los
+mismos del envío por chat.
+
+```text
+POST /api/email-campaigns          crea campaña + destinatarios (borrador)
+GET  /api/email-campaigns          lista campañas de correo + cuentas remitentes
+GET  /api/email-campaigns/audience conteos de contactos y remitentes del buzón
+POST /api/email-campaigns/audience vista previa de una lista pegada a mano
+POST /api/email-campaigns/parse    lee .xlsx/.csv/.tsv/.txt y devuelve correos
+POST /api/broadcasts/{id}/start    arranca el worker (reutilizado)
+```
+
+| Fuente | Cómo se resuelve |
+|---|---|
+| Contactos del CRM | `contact.ficha->>'email'` válido, `DISTINCT ON` en minúsculas, activos y no archivados |
+| Remitentes del buzón | `email_message.direction='inbound'` agrupado por `from`, sin las direcciones propias |
+| Lista manual | texto con correos separados por líneas, comas o punto y coma |
+| Archivo | primera hoja de `.xlsx`; `.csv`/`.tsv`/`.txt`; encabezados «correo»/«nombre» |
+
+Reglas del parser (`src/server/email-campaigns/recipients.ts`): normaliza a
+minúsculas, deduplica, acepta `Nombre <correo>`, límite de 5 000 correos y 3 MB
+por archivo; `.xls` binario se rechaza con instrucción de guardarlo como
+`.xlsx`/CSV. El archivo se descarta tras leerlo.
+
+El worker (`deliverEmail`) personaliza `{{nombre}}` y `{{correo}}`, envía con
+`sendEmail(..., {campaignId, contactId})` y, si la cuenta alcanzó
+`email_account.daily_limit` (100 por defecto), reencola la fila al siguiente día
+UTC a las 00:01 en vez de marcarla fallida. La pantalla muestra borradores y
+exige pulsar «Enviar» para arrancar; los fallos de lectura usan `LoadError`.
+
+Migración **0085** (columnas `email`/`recipient_name` e índice único
+`(campaign_id, email)`) **sin aplicar en producción**.
 
 ---
 

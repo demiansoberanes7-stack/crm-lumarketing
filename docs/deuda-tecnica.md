@@ -75,12 +75,16 @@ tiene dos definiciones que pueden separarse con el tiempo.
 | `google_ads_metric` (`schema.ts:2124`) | Bucle cerrado | su propia ruta | `POST /api/google-ads/metrics` escribe y `GET` lee, pero ningún panel ni Copiloto consume esa tabla (Reportes lee `meta_ads`) |
 
 Columnas muertas confirmadas por inspección (definidas, sin escritor o sin lector):
-`email_account.from_name` / `.signature` / `.daily_limit` (`schema.ts:1599,1614,1615` — el
-envío usa `emailAddress`), `ai_model`, `lead.qualified_at`/`.qualification_data`,
+`email_account.signature` (`schema.ts:1614`),
+`ai_model`, `lead.qualified_at`/`.qualification_data`,
 `message.provider_account`, `project.next_meeting_at`, `outbound_delivery.next_retry_at`,
 `ad_creative.ad_set_id`/`.creative_type`/`.media_url`, `attribution_event.offer_id`/`.creative_id`/`.click_id`,
-`broadcast_campaign.sender_account_id`/`.subject`/`.template*`, `intel_snapshot.video_count`,
-`quote.payment_plan`.
+`intel_snapshot.video_count`, `quote.payment_plan`.
+
+> `email_account.from_name` y `.daily_limit` dejaron de estar muertas con las campañas de correo
+> (§6.23): el `From:` usa el nombre configurado y el worker respeta el tope diario. En
+> `broadcast_campaign`, `sender_account_id` y `subject` también pasaron a tener lector/escritor
+> para `channel='email'`; las columnas `template*` siguen siendo exclusivas de WhatsApp.
 
 ---
 
@@ -1232,3 +1236,68 @@ clasificación Regla 3 para la UI viva: *pendiente de acceso*.
 **Deshacer.** Ver §36 de `docs/SISTEMA-COMPLETO.md`. Con la migración sin aplicar basta borrar
 los archivos del módulo; si ya se hubiera aplicado, `DROP TABLE branch_inventory` antes de
 `DROP TABLE branch`.
+
+### 6.23 Envíos masivos por correo (22-10-2026, migración 0085 SIN aplicar)
+
+**Lo pedido.** «En envíos masivos cámbialo totalmente para que los envíos masivos sean por
+correo y que sean o los correos que tenemos o podemos crear segmentos cargándole correos de
+forma manual o por archivo xls.»
+
+**Decisión de diseño.** No se creó un segundo motor de campañas: se reutilizan
+`broadcast_campaign` y `broadcast_recipient` con `channel='email'`, de modo que el worker, el
+arranque/pausa, las métricas y el refresco ya probados siguen valiendo. La API de chat
+(`/api/broadcasts`, `/api/broadcasts/preview`) se deja intacta porque el diálogo de mensaje
+programado de Contactos todavía la usa; la pantalla `/broadcasts` ya no la llama.
+
+**Fuentes de audiencia.** (1) Contactos activos con `ficha->>'email'` válido (un correo por
+contacto, `DISTINCT ON` case-insensitive); (2) remitentes entrantes del buzón
+(`email_message.direction='inbound'`), excluyendo las direcciones propias de las cuentas;
+(3) lista pegada a mano; (4) archivo `.xlsx` (primera hoja), `.csv`, `.tsv` o `.txt`.
+El parseo normaliza a minúsculas, deduplica, acepta `Nombre <correo>` y detecta encabezados
+«correo/email/mail» y «nombre/name/contacto». Límite de 5 000 correos y 3 MB por archivo; un
+`.xls` binario se rechaza con instrucción de guardarlo como `.xlsx` o CSV. Los archivos se
+procesan en memoria y se descartan; al crear se reenvían solo los correos ya normalizados.
+
+**Envío.** El worker toma las filas `queued` de campañas `sending` y llama a `sendEmail` con
+`campaignId`, `contactId` y el remitente elegido; asunto y cuerpo se personalizan con
+`{{nombre}}` (o la parte local del correo) y `{{correo}}`. Si la cuenta remitente se apagó
+después de crear la campaña, la fila falla con `sender_unavailable`. Si se alcanzó
+`email_account.daily_limit` (por defecto 100), la fila vuelve a `queued` programada al
+siguiente día UTC a las 00:01 y la campaña sigue `sending`: se difiere, no se falla en masa.
+`sendEmail` ahora registra `campaignId` y usa `from_name` en el `From:`.
+
+**Alcance entregado (local).** Migración `0085_email_campaigns.sql` idempotente (columnas
+`email`, `recipient_name` e índice único `(campaign_id, email)`), journal `idx: 85`; módulo
+`src/server/email-campaigns/` (recipients, audience, personalize, schema, service); rutas
+`/api/email-campaigns`, `/api/email-campaigns/audience` y `/api/email-campaigns/parse`; worker
+con rama de correo y tope diario; pantalla reescrita con selección de remitente, asunto,
+cuerpo, cuatro fuentes de audiencia, vista previa de la lista y lista de campañas con
+Enviar/Pausar/Reanudar; icono `Mail` en el menú.
+
+**Verificación.** 29 pruebas nuevas: `email-campaigns.test.ts` (14, incluye un XLSX real
+construido con `fflate`), `email-campaigns-service.test.ts` (6), `email-campaign-worker.test.ts`
+(5, incluido el diferimiento por límite diario) y `email-campaigns-ui.test.ts` (4 anclas de
+pantalla/menú). Gates: `db:guard` 0 avisos, `typecheck`, `lint`, **170 archivos / 1 610
+pruebas** y `build` en verde. **No se verificó la pantalla autenticada en navegador** (sin
+sesión/BD local): Regla 3, *pendiente de acceso*. Tampoco se envió un correo real desde esta
+máquina.
+
+**Deuda abierta.**
+- La migración **0085 no está aplicada** en producción (igual que 0083 y 0084). Aplicarla
+  exige respaldo previo y autorización explícita.
+- `email_account.daily_limit` se respeta pero **no es editable desde Ajustes**; el valor por
+  defecto es 100/día. Una campaña mayor se reparte en varios días sin aviso en la pantalla
+  (solo el log del worker lo registra una vez por ciclo).
+- El formato **`.xls` binario antiguo no se acepta**; sí `.xlsx`, `.csv`, `.tsv` y `.txt`.
+- Los correos cargados a mano o por archivo **no crean contactos**: quedan solo como
+  destinatarios de esa campaña. Si se quiere historial en la ficha, hay que darlos de alta
+  antes en Contactos.
+- El rebote (bounce) no se procesa: un correo rechazado por el servidor SMTP queda `failed`,
+  pero no hay webhook de rebotes ni supresión automática de direcciones inválidas.
+
+**Deshacer.** Sin la migración aplicada, restaurar `broadcasts-client.tsx` desde git y borrar
+`src/server/email-campaigns/`, las tres rutas `/api/email-campaigns/**` y
+`drizzle/0085_email_campaigns.sql` + su entrada del journal. El worker conserva la rama de
+correo (inofensiva sin campañas `channel='email'`). Si la migración ya se hubiera aplicado:
+`DROP INDEX broadcast_recipient_campaign_email_uq`, luego
+`ALTER TABLE broadcast_recipient DROP COLUMN recipient_name, DROP COLUMN email`.

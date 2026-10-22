@@ -912,6 +912,44 @@ Prospección del menú: quién escribió al negocio y todavía no es cartera.
   **No capturan** los comentarios públicos ni las reseñas de Google Business: ahí un
   número suele ser ruido o el del propio negocio.
 
+### Envíos masivos por correo (`/broadcasts`, `/api/email-campaigns`)
+
+El módulo dejó de ser una campaña de chat y ahora es un envío de correo sobre las cuentas
+SMTP configuradas. La pantalla es la misma entrada del menú, con icono `Mail`.
+
+- **Un solo motor.** La campaña vive en `broadcast_campaign` con `channel='email'` y sus
+  destinatarios en `broadcast_recipient.email`/`.recipient_name`. Se reutilizan el worker
+  (`src/server/broadcast-queue.ts`), el arranque/pausa y las métricas ya existentes. La API
+  anterior de chat (`/api/broadcasts`, `/api/broadcasts/preview`) queda intacta porque el
+  diálogo de mensaje programado de Contactos todavía la usa; la pantalla nueva no la llama.
+- **Cuatro fuentes de audiencia** (`src/server/email-campaigns/audience.ts`):
+  (1) **Contactos del CRM** con `ficha->>'email'` válido — un correo por contacto,
+  `DISTINCT ON` case-insensitive, solo activos y no archivados; (2) **remitentes del buzón**
+  (`email_message.direction='inbound'`), excluyendo las direcciones propias de las cuentas de
+  la organización; (3) **lista pegada a mano**; (4) **archivo** `.xlsx` (primera hoja),
+  `.csv`, `.tsv` o `.txt`.
+- **Parseo robusto** (`src/server/email-campaigns/recipients.ts`): normaliza a minúsculas,
+  deduplica, acepta `Nombre <correo>` y detecta encabezados «correo/email/mail» y
+  «nombre/name/contacto». Límite de **5 000 correos** por campaña y **3 MB** por archivo; el
+  `.xls` binario antiguo se rechaza con la instrucción de guardarlo como `.xlsx` o CSV. El
+  archivo se lee en memoria y se descarta: al crear la campaña el navegador manda únicamente
+  los correos ya normalizados.
+- **Envío** (`deliverEmail` en `broadcast-queue.ts`): valida que el correo exista y que la
+  cuenta remitente siga encendida; personaliza asunto y cuerpo con `{{nombre}}` (o la parte
+  local del correo) y `{{correo}}`; llama a `sendEmail` con `campaignId` y `contactId`, de modo
+  que el mensaje queda enlazado a la campaña y a la ficha. Un fallo SMTP deja la fila
+  `failed` con su `error_code`.
+- **Tope diario sin fallar en masa:** si la cuenta alcanzó `email_account.daily_limit` (por
+  defecto 100), la fila vuelve a `queued` programada al siguiente día UTC a las 00:01; la
+  campaña sigue `sending` y el resto espera su turno. El log del worker avisa una vez por
+  cuenta y ciclo.
+- **Borrador explícito.** Crear la campaña no envía nada: nace en `draft`. El botón «Enviar»
+  pide confirmación y arranca el worker; «Pausar» detiene el reparto sin perder lo pendiente.
+  Los fallos de lectura se muestran con `LoadError`, nunca como «no hay campañas».
+- **Migración `0085_email_campaigns.sql`** (columnas `email`, `recipient_name` e índice único
+  `(campaign_id, email)`; journal `idx: 85`). **No está aplicada en producción**; es idempotente
+  y se aplicará con el respaldo y la autorización que exige cualquier migración.
+
 ---
 
 ## 12. Pipeline Comercial y Leads
