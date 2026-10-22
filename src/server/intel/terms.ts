@@ -248,11 +248,12 @@ export type TermRanking = {
 };
 
 /**
- * Todos los nichos ordenados por cuánto se parecen a la consulta, SIN exigir el
- * umbral. Es lo que permite que el ranking, la comparativa y el mapa de nichos
- * se relacionen con la palabra buscada en vez de ocultarse cuando hay una
- * búsqueda activa: un 0.4 no es «este nicho», pero sí es el vecino más próximo
- * y se etiqueta con su porcentaje.
+ * TODOS los nichos del catálogo ordenados por cuánto se parecen a la consulta,
+ * incluidos los que no comparten ni una palabra (score 0). Es lo que permite
+ * que el ranking, la comparativa y el mapa de nichos se relacionen con la
+ * palabra buscada en vez de ocultarse cuando hay una búsqueda activa: un 0.4 no
+ * es «este nicho», pero sí es el vecino más próximo, y un 0 se etiqueta como
+ * «sin palabras en común» en vez de aparecer sin explicación.
  */
 export function rankTerms(
   terms: Array<{ id: string; name: string; keywords: string[] }>,
@@ -262,21 +263,27 @@ export function rankTerms(
   if (matchTokens(keyword).length === 0) return [];
   const best = new Map<string, TermRanking>();
   for (const term of terms) {
+    let chosen: TermRanking = {
+      id: term.id,
+      name: term.name,
+      score: 0,
+      via: "",
+      exact: false,
+    };
     for (const candidate of [term.name, ...term.keywords]) {
       if (!candidate.trim()) continue;
       const score = termSimilarity(keyword, candidate);
-      if (score <= 0) continue;
-      const current = best.get(term.id);
-      if (!current || score > current.score) {
-        best.set(term.id, {
+      if (score > chosen.score) {
+        chosen = {
           id: term.id,
           name: term.name,
           score: Math.round(score * 100) / 100,
           via: candidate,
           exact: score >= TERM_MATCH_MIN,
-        });
+        };
       }
     }
+    best.set(term.id, chosen);
   }
   return [...best.values()]
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))

@@ -213,9 +213,10 @@ export type KeywordOverview = {
   /** Motivo legible cuando Google Trends no aportó datos. */
   marketNote: string | null;
   /**
-   * Nichos del catálogo ordenados por parecido a la consulta (incluye los que
-   * NO cruzan el umbral). Es lo que hace que el ranking, la comparativa y el
-   * mapa de nichos se lean como contexto de ESTA búsqueda en vez de desaparecer.
+   * Todos los nichos del catálogo ordenados por parecido a la consulta,
+   * incluidos los de score 0 (`via` vacío). Es lo que hace que el ranking, la
+   * comparativa y el mapa de nichos se lean como contexto de ESTA búsqueda en
+   * vez de desaparecer o de mostrarse sin relación declarada.
    */
   catalogMatches: Array<{
     termId: string;
@@ -373,10 +374,13 @@ export async function analyzeKeyword(
   const matchesFor = (kw: string) => matchTerm(catalogForMatch, kw);
 
   /**
-   * Nichos ordenados por parecido a la consulta, con los que no cruzan el
-   * umbral incluidos. Se calcula sobre el catálogo ya leído: coste cero de red.
+   * Nichos ordenados por parecido a la consulta, con los que no comparten
+   * ninguna palabra incluidos (score 0, `via` vacío). Se calcula sobre el
+   * catálogo ya leído: coste cero de red. Va completo, sin el tope de 6 de
+   * `rankTerms`, porque cada panel de la pantalla tiene que poder etiquetar
+   * TODOS sus nichos frente a la búsqueda.
    */
-  const catalogMatches = rankTerms(catalogForMatch, q).map((t) => ({
+  const catalogMatches = rankTerms(catalogForMatch, q, catalogForMatch.length).map((t) => ({
     termId: t.id,
     name: t.name,
     score: t.score,
