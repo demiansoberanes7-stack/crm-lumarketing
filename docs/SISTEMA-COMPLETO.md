@@ -859,6 +859,27 @@ Prospección del menú: quién escribió al negocio y todavía no es cartera.
   fecha y ocultaba la etapa real. Son nueve lecturas (en ocho archivos) las que comparten
   la regla, incluidas las del cerebro externo y `leadPreferenceOrder()`.
 - **Filtros** (`/api/prospects`): `q`, `channel`, `phone=falta|tiene`, `archived`.
+- **Descartar es una marca, no un borrado** (`src/server/prospects/dismiss.ts`, migración
+  `0083_prospect_dismissal`). Cada tarjeta tiene **Descartar**; con la casilla
+  «Ver archivados y descartados» marcada, las ocultas muestran `(descartado)` y su botón
+  **Restaurar**. No hay fila de prospecto que borrar —la pantalla es una agrupación de
+  mensajes— y el remitente de correo ni siquiera tiene `contact_id`, así que se guarda la
+  **clave** en `prospect_dismissal`: `kind = 'contact'` con el `contact.id`, o
+  `kind = 'email'` con la dirección **en minúsculas** (la consulta compara contra
+  `lower(from_email)` porque el `From:` llega con las mayúsculas del servidor). Contacto,
+  hilos, mensajes y correos quedan intactos: descartar a alguien nunca pierde a un cliente.
+  Con `archived=true` la lista **sí** recorre el correo —es el único camino para restaurar
+  un remitente—, cosa que antes de esta función se saltaba.
+- **Sin FK a `contact` ni a `user` a propósito**: una cascada borraría el descarte cuando se
+  va el contacto o el miembro y la persona descartada **reaparecería** en la lista. La FK a
+  `organization` sí va en cascada. El índice único `(organization_id, kind, key)` sostiene
+  el `on conflict do nothing`: descartar dos veces no duplica ni pisa cuándo ni quién.
+- **La ruta `/api/prospects/dismiss` es `withAuth`, no `withOwner`** —descartar gente es
+  trabajo diario de cualquier miembro, igual que `PATCH /api/contacts/[id] {archived}`—.
+  `POST` lleva el objetivo en el body y `DELETE` en la query (`?contactId=` o `?email=`),
+  porque en esta API los borrados no usan body y un cuerpo en DELETE no lo garantiza el
+  intermediario. Una petición ambigua (los dos campos, o ninguno, o un correo sin `@`) es
+  `422` antes de escribir: una clave ambigua en esa tabla ocultaría a otro cliente.
 - **Teléfono desde el chat** (`src/server/inbox/phone-capture.ts`): extrae el número que
   el cliente teclea y lo guarda en la ficha. La escritura es **append-only** — el `UPDATE`
   lleva `phone IS NULL` en el `WHERE`—, así que una reentrega de Meta o una edición del

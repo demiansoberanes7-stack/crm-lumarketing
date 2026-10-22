@@ -994,3 +994,54 @@ original siga intacto. Gates: 1509 pruebas, `typecheck`, `lint` y `build` en ver
 - Lo de siempre y fuera del código: rotar el PAT pegado en el chat, reducir el ámbito del token de
   `gh`, `META_APP_SECRET` vacío y falta de respaldo fuera de la VM.
 
+### 6.18 «Borrar prospectos» — descartar reversible (22-10-2026, migración 0083 SIN aplicar en producción)
+
+Petición del dueño sobre la pantalla de Prospectos (11 tarjetas, 9 de ellas remitentes de
+correo como `bot1@syscom.mx`): que pueda quitarlas de la lista. Preguntado el alcance, eligió
+**descartar reversible**, no borrar.
+
+**Por qué no cabía un borrado.** Prospectos no es una tabla: es una agrupación de mensajes
+entrantes (`server/prospects/query.ts`). «Borrar el prospecto» habría significado borrar la
+conversación de un cliente real. Y los 9 que motivaron el pedido **no tienen fila que borrar**:
+la ingesta de correo deja `email_message.contact_id` en NULL a propósito, así que tampoco
+existía un `archived_at` donde apoyar la marca. De ahí la tabla nueva en lugar de una columna.
+
+**Lo que se hizo.** `prospect_dismissal` (`kind`, `key`, `dismissed_by`) con índice único
+`(organization_id, kind, key)`; `POST`/`DELETE /api/prospects/dismiss` (`withAuth`); la consulta
+excluye con `not in` las claves marcadas y las muestra con `(descartado)` cuando se piden los
+ocultos. Sin FK a `contact`/`user`: una cascada resucitaría al descartado. El `DELETE` se resuelve
+por query, no por body, como `DELETE /api/caltodo/tasks?id=`.
+
+**Dos decisiones que cambian lo que se ve** (no son sutilezas, hay que decirlas):
+
+- Un remitente de correo descartado **no vuelve a aparecer aunque escriba**: la clave es su
+  dirección, no el mensaje. Es el comportamiento pedido —limpiar la lista de `bot1@…`—, y es la
+  razón de que el botón sea «Restaurar» y no «mostrar otra vez».
+- La casilla pasó a llamarse **«Ver archivados y descartados»** y ahora el `archived=true` sí
+  recorre el correo (antes se saltaba la rama entera). Sin ese cambio no habría forma de
+  restaurar un remitente, porque no tiene ficha.
+
+**Arreglo de una clase ya conocida, de paso.** La tarjeta armaba el enlace con
+`mailto:${encodeURIComponent(p.email)}` sobre el `From:` de un mensaje entrante —dato ajeno—.
+El `encodeURIComponent` rompía el enlace (codificaba la `@`) y a la vez no era la regla del repo:
+ahora pasa por `mailtoHref()` (`src/lib/safe-url.ts`), que rechaza la forma inválida y pinta texto
+plano.
+
+**Efecto en las pruebas.** La lectura de descartes rompe la suposición del mock de
+`prospects-query.test.ts`, que repartía filas por **orden** de `select()`: 23 casos fallaron. El
+arnés ahora identifica la consulta por su tabla (`from(prospect_dismissal)`) y resuelve los
+descartes por `kind`, así que las 27 pruebas previas no tuvieron que intercalar filas vacías ni
+re-numerarse. 20 casos nuevos (13 de servicio y ruta, 7 anclados a la fuente del componente y de
+la ruta). Gates: 1537 pruebas, `db:guard`, `typecheck`, `lint` y `build` en verde.
+
+**Pendiente (Regla 3 — no verificado en vivo):**
+
+- La migración **0083 no está aplicada en producción**; la pantalla todavía no puede usarse
+  desde ahí. Requiere respaldo previo + autorización explícita (§6.16: el `when` del journal es
+  watermark, y 0083 entra con `when` creciente, así que `migrate()` la aplicará sola al
+  desplegar — eso es precisamente lo que hay que autorizar, no dejarlo colar).
+- El comportamiento de la tarjeta (Descartar → la tarjeta se va; casilla marcada → `(descartado)`
+  con Restaurar) está probado con mocks y anclajes de fuente, **no** visto en un navegador.
+- Commits locales de este lote: sin `push`. Los 6 commits de seguridad de §6.17 siguen esperando
+  la misma autorización, y el push los despliega juntos.
+
