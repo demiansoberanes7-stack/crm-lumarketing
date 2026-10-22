@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { schema } from "@/lib/db";
 import { listProspects } from "@/server/prospects/query";
 
 /**
@@ -10,13 +11,15 @@ import { listProspects } from "@/server/prospects/query";
  *    para que un hilo de otra organización no pueda colarse por la FK;
  *  - solo cuenta mensajes ENTRANTES de hilos REALES (ni `is_test`, ni salidas);
  *  - la etapa viene de la oportunidad principal del contacto;
- *  - el corte de 200 se aplica DESPUÉS de filtrar.
+ *  - el corte de 200 se aplica DESPUÉS de filtrar;
+ *  - lo descartado queda fuera del WHERE, y dentro cuando se pide ver ocultos.
  */
 
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   select: vi.fn(),
   whereCalls: [] as unknown[],
+  dismissalWhereCalls: [] as unknown[],
   joinCalls: [] as unknown[],
   limitCalls: [] as unknown[],
   orderByCalls: [] as unknown[],
@@ -24,13 +27,33 @@ const mocks = vi.hoisted(() => ({
 
 let selectQueue: unknown[][] = [];
 
+/**
+ * Contenido de `prospect_dismissal` que la prueba quiere ver.
+ *
+ * La lista hace UNA lectura de descartes por rama (contactos y correos) antes de
+ * su consulta principal. Si esa lectura consumiera turno en `selectQueue`, las
+ * 23 pruebas de este archivo tendrían que interpolar filas vacías sin decir por
+ * qué; aquí se resuelve por `kind`, que es lo que la prueba realmente declara.
+ */
+let dismissals: { kind: "contact" | "email"; key: string; createdAt: Date }[] = [];
+
 function render(condition: unknown) {
   return new PgDialect().sqlToQuery(condition as never);
 }
 
 function chain(rows: unknown[]) {
+  const target = { rows };
   const c: Record<string, unknown> = {};
-  for (const method of ["from", "groupBy"]) c[method] = vi.fn(() => c);
+  let overDismissals = false;
+  let dismissalKind: "contact" | "email" = "contact";
+
+  // `from` es lo que distingue la lectura de descartes de las consultas de la
+  // vista: las primeras no ensucian `whereCalls` ni gastan turno de `selectQueue`.
+  c.from = vi.fn((table: unknown) => {
+    overDismissals = table === schema.prospectDismissal;
+    return c;
+  });
+  for (const method of ["groupBy"]) c[method] = vi.fn(() => c);
   c.orderBy = vi.fn((...conditions: unknown[]) => {
     mocks.orderByCalls.push(...conditions);
     return c;
@@ -40,6 +63,12 @@ function chain(rows: unknown[]) {
     return c;
   });
   c.where = vi.fn((condition: unknown) => {
+    if (overDismissals) {
+      mocks.dismissalWhereCalls.push(condition);
+      const { params } = render(condition);
+      dismissalKind = params.includes("email") ? "email" : "contact";
+      return c;
+    }
     mocks.whereCalls.push(condition);
     return c;
   });
@@ -48,7 +77,11 @@ function chain(rows: unknown[]) {
     return c;
   });
   (c as { then: unknown }).then = (resolve: (value: unknown) => void) =>
-    Promise.resolve(rows).then(resolve);
+    Promise.resolve(
+      overDismissals
+        ? dismissals.filter((d) => d.kind === dismissalKind)
+        : (selectQueue.shift() ?? target.rows)
+    ).then(resolve);
   return c;
 }
 
@@ -60,12 +93,14 @@ vi.mock("@/lib/db", async (importOriginal) => ({
 beforeEach(() => {
   vi.resetAllMocks();
   selectQueue = [];
+  dismissals = [];
   mocks.whereCalls = [];
+  mocks.dismissalWhereCalls = [];
   mocks.joinCalls = [];
   mocks.limitCalls = [];
   mocks.orderByCalls = [];
   mocks.getDb.mockReturnValue({
-    select: mocks.select.mockImplementation(() => chain(selectQueue.shift() ?? [])),
+    select: mocks.select.mockImplementation(() => chain([])),
   });
 });
 
@@ -159,9 +194,10 @@ describe("filtros", () => {
     selectQueue.push([]);
     const out = await listProspects({ organizationId: "org_1" });
     expect(out).toEqual([]);
-    // Dos lecturas, no tres: la de chat, la de correo, y NINGUNA de `lead` —
-    // sin filas no hay contactos cuyas etapas buscar.
-    expect(mocks.select).toHaveBeenCalledTimes(2);
+    // Cuatro lecturas, no cinco: descartes de chat, chat, descartes de correo y
+    // correo. NINGUNA de `lead` — sin filas no hay contactos cuyas etapas buscar.
+    expect(mocks.select).toHaveBeenCalledTimes(4);
+    expect(mocks.dismissalWhereCalls).toHaveLength(2);
     const consultas = mocks.whereCalls.map((c) => render(c).sql);
     expect(consultas.some((s) => s.includes('"lead".'))).toBe(false);
     expect(consultas[1]).toContain('"email_message"."direction"');
@@ -345,16 +381,33 @@ describe("el correo entrante también hace prospecto", () => {
   it("un canal de chat ni siquiera consulta el correo", async () => {
     selectQueue.push([prospectRow], []);
     await listProspects({ organizationId: "org_1", channel: "instagram" });
-    expect(mocks.select).toHaveBeenCalledTimes(2);
+    // Descartes de chat, lista de chat y las etapas de esa página. El correo se
+    // salta ENTERO, también su lectura de descartes.
+    expect(mocks.select).toHaveBeenCalledTimes(3);
+    expect(mocks.dismissalWhereCalls).toHaveLength(1);
     expect(mocks.whereCalls.some((c) => render(c).sql.includes("email_message"))).toBe(false);
   });
 
-  it("«con teléfono» y «archivados» tampoco consultan el correo", async () => {
+  it("«con teléfono» sí salta el correo: un remitente nunca tiene número", async () => {
     selectQueue.push([prospectRow], []);
     await listProspects({ organizationId: "org_1", phone: "tiene" });
-    selectQueue.push([prospectRow], []);
-    await listProspects({ organizationId: "org_1", archived: true });
     expect(mocks.whereCalls.some((c) => render(c).sql.includes("email_message"))).toBe(false);
+  });
+
+  /**
+   * «Ver archivados y descartados» SÍ recorre el correo: sin esa lectura no hay
+   * forma de restaurar un remitente que se descartó, porque no tiene ficha donde
+   * marcarlo.
+   */
+  it("«archivados» también lee el correo para poder restaurar sus descartados", async () => {
+    selectQueue.push([prospectRow], [emailRow]);
+    await listProspects({ organizationId: "org_1", archived: true });
+    const correos = mocks.whereCalls.filter((c) =>
+      render(c).sql.includes("email_message")
+    );
+    expect(correos).toHaveLength(1);
+    // Y sin el `not in` de descarte: aquí se quieren ver, no esconder.
+    expect(render(correos[0]).sql).not.toContain("not in");
   });
 
   it("«sin teléfono» sí lo incluye: un remitente nunca deja número en el chat", async () => {
@@ -387,3 +440,114 @@ describe("la búsqueda no acepta comodines del usuario", () => {
     expect(params).toContain("%a\\_b%");
   });
 });
+
+describe("descartar un prospecto", () => {
+  /**
+   * Prospectos es una vista: no hay fila que borrar. Lo que se guarda es la
+   * clave (`contact.id` o el correo en minúsculas) en `prospect_dismissal` y la
+   * consulta la excluye. El historial —contacto, hilos, mensajes, correos— no se
+   * toca, así que ninguna de estas pruebas toca esas tablas.
+   */
+  it("sin descartes la consulta no lleva un `not in` vacío", async () => {
+    selectQueue.push([prospectRow], []);
+    await listProspects({ organizationId: "org_1" });
+    // `contact.id not in ()` no es SQL válido: Postgres rechazaría la lista
+    // entera y la pantalla la leería como «no hay prospectos».
+    expect(render(mocks.whereCalls[0]).sql).not.toContain("not in");
+  });
+
+  it("un contacto descartado sale del WHERE de la lista", async () => {
+    dismissals.push({
+      kind: "contact",
+      key: "ct_1",
+      createdAt: new Date("2026-10-21T09:00:00Z"),
+    });
+    selectQueue.push([prospectRow], []);
+    const out = await listProspects({ organizationId: "org_1" });
+
+    const { sql: text, params } = render(mocks.whereCalls[0]);
+    expect(text).toMatch(/"contact"\."id" not in/);
+    expect(params).toContain("ct_1");
+    expect(params).toContain("org_1");
+    expect(out).toHaveLength(1);
+  });
+
+  it("la lectura de descartes va por su propio tenant y tipo", async () => {
+    selectQueue.push([prospectRow], []);
+    await listProspects({ organizationId: "org_1" });
+    const [contactos] = mocks.dismissalWhereCalls.map((c) => render(c));
+    expect(contactos?.sql).toContain('"prospect_dismissal"."organization_id"');
+    expect(contactos?.sql).toContain('"prospect_dismissal"."kind"');
+    expect(contactos?.params).toContain("org_1");
+    expect(contactos?.params).toContain("contact");
+  });
+
+  it("con «archivados y descartados» el descartado se ve y trae su fecha", async () => {
+    dismissals.push({
+      kind: "contact",
+      key: "ct_1",
+      createdAt: new Date("2026-10-21T09:00:00Z"),
+    });
+    selectQueue.push([prospectRow], []);
+    const out = await listProspects({ organizationId: "org_1", archived: true });
+
+    expect(render(mocks.whereCalls[0]).sql).not.toContain("not in");
+    expect(out[0]).toMatchObject({ contactId: "ct_1", dismissedAt: "2026-10-21T09:00:00.000Z" });
+  });
+
+  it("el correo descartado se excluye por su dirección en minúsculas", async () => {
+    dismissals.push({
+      kind: "email",
+      key: "bot1@syscom.mx",
+      createdAt: new Date("2026-10-21T09:00:00Z"),
+    });
+    selectQueue.push([], []);
+    await listProspects({ organizationId: "org_1" });
+
+    const correos = mocks.whereCalls.filter((c) =>
+      render(c).sql.includes("email_message")
+    );
+    const { sql: text, params } = render(correos[0]);
+    // `from_email` llega con las mayúsculas del servidor, así que se compara la
+    // forma normalizada, no la columna tal cual.
+    expect(text).toMatch(/lower\("email_message"\."from_email"\) not in/);
+    expect(params).toContain("bot1@syscom.mx");
+  });
+
+  it("la tarjeta de un remitente descartado se pinta como descartada", async () => {
+    dismissals.push({
+      kind: "email",
+      key: "nancy.covarrubias@syscom.mx",
+      createdAt: new Date("2026-10-21T09:00:00Z"),
+    });
+    selectQueue.push([], [
+      {
+        email: "Nancy.Covarrubias@syscom.mx",
+        firstInboundAt: new Date("2026-10-19T10:00:00Z"),
+        lastInboundAt: new Date("2026-10-20T18:00:00Z"),
+        inboundCount: 3,
+        lastSubject: "Propuesta",
+      },
+    ]);
+    const out = await listProspects({ organizationId: "org_1", archived: true });
+    expect(out[0]).toMatchObject({
+      email: "Nancy.Covarrubias@syscom.mx",
+      dismissedAt: "2026-10-21T09:00:00.000Z",
+    });
+  });
+
+  it("un remitente sin descarte sale con dismissedAt null", async () => {
+    selectQueue.push([], [
+      {
+        email: "otro@syscom.mx",
+        firstInboundAt: new Date("2026-10-19T10:00:00Z"),
+        lastInboundAt: new Date("2026-10-20T18:00:00Z"),
+        inboundCount: 1,
+        lastSubject: "Hola",
+      },
+    ]);
+    const out = await listProspects({ organizationId: "org_1" });
+    expect(out[0]?.dismissedAt).toBeNull();
+  });
+});
+
