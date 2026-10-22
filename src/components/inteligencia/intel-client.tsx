@@ -29,6 +29,10 @@ import { TrendingPanel } from "@/components/inteligencia/trending-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
 import {
+  buildContentSignals,
+  type FallbackCatalogTerm,
+} from "@/lib/intel-fallback";
+import {
   intelRelation,
   relationIndex,
   relationLabel,
@@ -209,6 +213,48 @@ export function IntelClient() {
   const matchesById = useMemo(
     () => relationIndex(relation?.matches ?? []),
     [relation]
+  );
+
+  /**
+   * Catálogo con keywords para el respaldo de «Tendencias actuales»: si la
+   * consulta no aparece en el feed, la tabla baja al mismo giro y luego al
+   * resto de nichos, etiquetando cada fila en vez de quedar vacía.
+   */
+  const catalogTerms = useMemo<FallbackCatalogTerm[]>(
+    () =>
+      (relation?.matches ?? []).map((match) => ({
+        termId: match.termId,
+        name: match.name,
+        keywords: match.keywords ?? [],
+      })),
+    [relation]
+  );
+  const primaryNiche = relation?.exact ?? relation?.nearest ?? null;
+
+  /**
+   * Señales para «Contenido que funciona» cuando YouTube no tiene muestra:
+   * primero los temas/consultas del nicho exacto ya cargados y luego los de la
+   * búsqueda en vivo. Cero peticiones nuevas y con su fuente declarada.
+   */
+  const contentSignals = useMemo(
+    () =>
+      buildContentSignals(
+        relation?.exact && gtReport?.termId === relation.exact.termId
+          ? {
+              origin: `Google Trends · ${gtReport.termName}`,
+              topics: gtReport.topics,
+              queries: gtReport.queries,
+            }
+          : null,
+        overview?.market
+          ? {
+              origin: overview.market.sourceLabel,
+              topics: overview.market.topics,
+              queries: overview.market.queries,
+            }
+          : null
+      ),
+    [relation, gtReport, overview]
   );
 
   /**
@@ -710,6 +756,8 @@ export function IntelClient() {
               reloadKey={reloadKey}
               onMonitored={() => void loadTrends()}
               relatedTo={overview?.query ?? null}
+              catalog={catalogTerms}
+              primaryNiche={primaryNiche}
             />
 
       {/* Ranking accionable de los nichos monitoreados, etiquetado por su
@@ -896,7 +944,11 @@ export function IntelClient() {
       )}
 
       {/* Contenido que ya funciona en el feed (YouTube acotado a la búsqueda) */}
-      <ContentPanel reloadKey={reloadKey} query={overview?.query ?? null} />
+      <ContentPanel
+        reloadKey={reloadKey}
+        query={overview?.query ?? null}
+        signals={contentSignals}
+      />
 
       {/* Contexto demográfico externo (ENDUTIH, no es dato del CRM) */}
       <AudiencePanel />

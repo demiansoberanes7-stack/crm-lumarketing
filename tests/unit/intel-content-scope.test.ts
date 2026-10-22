@@ -69,6 +69,7 @@ describe("getContentInsights acotado a la consulta", () => {
     const { getContentInsights } = await import("@/server/intel/content");
     const res = await getContentInsights("org_1", 30);
     expect(res.query).toBeNull();
+    expect(res.fallback).toBeNull();
     expect(res.uniqueVideos).toBe(2);
     expect(res.matchedVideos).toBe(2);
     expect(res.top.map((v) => v.videoId)).toEqual(["vid_phone", "vid_cam"]);
@@ -79,6 +80,7 @@ describe("getContentInsights acotado a la consulta", () => {
     const { getContentInsights } = await import("@/server/intel/content");
     const res = await getContentInsights("org_1", 30, "camara de seguridad");
     expect(res.query).toBe("camara de seguridad");
+    expect(res.fallback).toBeNull();
     // El total de la muestra se conserva: es lo que permite decir «1 de 2».
     expect(res.uniqueVideos).toBe(2);
     expect(res.matchedVideos).toBe(1);
@@ -88,14 +90,31 @@ describe("getContentInsights acotado a la consulta", () => {
     expect(res.termStats.map((t) => t.termId)).toEqual(["itr_cam"]);
   });
 
-  it("recorta la consulta, y si nada la menciona devuelve muestra vacía sin inventar", async () => {
+  it("si nada menciona la consulta devuelve la muestra completa como respaldo declarado", async () => {
     const { getContentInsights } = await import("@/server/intel/content");
     const res = await getContentInsights("org_1", 30, "   panel solar   ");
     expect(res.query).toBe("panel solar");
+    // El respaldo no finge coincidencias: matched sigue en 0 y la muestra
+    // completa viaja etiquetada para que el panel no quede vacío.
     expect(res.matchedVideos).toBe(0);
+    expect(res.fallback).toBe("sample");
+    expect(res.uniqueVideos).toBe(2);
+    expect(res.top.map((v) => v.videoId)).toEqual(["vid_phone", "vid_cam"]);
+    expect(res.durationStats.reduce((a, s) => a + s.count, 0)).toBe(2);
+    expect(res.patternStats.reduce((a, s) => a + s.count, 0)).toBe(2);
+    expect(res.termStats.map((t) => t.termId).sort()).toEqual(["itr_cam", "itr_phone"]);
+  });
+
+  it("sin ningún video capturado no inventa: la muestra queda vacía y sin respaldo", async () => {
+    h.state.selects.length = 0;
+    h.state.selects.push([], terms);
+    const { getContentInsights } = await import("@/server/intel/content");
+    const res = await getContentInsights("org_1", 30, "camara de seguridad");
+    expect(res.uniqueVideos).toBe(0);
+    expect(res.matchedVideos).toBe(0);
+    expect(res.fallback).toBeNull();
     expect(res.top).toEqual([]);
     expect(res.durationStats).toEqual([]);
     expect(res.termStats).toEqual([]);
-    expect(res.uniqueVideos).toBe(2);
   });
 });

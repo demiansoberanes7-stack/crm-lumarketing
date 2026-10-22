@@ -136,6 +136,13 @@ export type ContentInsights = {
    */
   query: string | null;
   matchedVideos: number;
+  /**
+   * `"sample"` cuando la consulta no aparece en ningún video y se devuelve la
+   * muestra completa como referencia de formato. `matchedVideos` sigue siendo
+   * el número real de coincidencias (0): el panel declara el respaldo en vez de
+   * dejar la sección vacía.
+   */
+  fallback: "sample" | null;
   top: ContentVideo[];
   durationStats: BucketStat[];
   patternStats: PatternStat[];
@@ -193,14 +200,20 @@ export async function getContentInsights(
     ? unique.filter((row) => mentionsPhrase(row.title ?? "", scope))
     : unique;
 
-  const top = matched
+  // Sin coincidencias no se devuelve vacío: se entrega la muestra completa
+  // etiquetada como respaldo, para que el panel enseñe el formato que sí
+  // funciona en el giro en vez de una caja con instrucciones.
+  const fallback = scope && matched.length === 0 && unique.length > 0 ? "sample" : null;
+  const used = fallback === "sample" ? unique : matched;
+
+  const top = used
     .map(toContentVideo)
     .sort((a, b) => b.views - a.views)
     .slice(0, 10);
 
   const durationStats: BucketStat[] = (["short", "medio", "largo", "sin_dato"] as const)
     .map((bucket) => {
-      const group = matched.filter((r) => durationBucket(r.durationSeconds) === bucket);
+      const group = used.filter((r) => durationBucket(r.durationSeconds) === bucket);
       const engagements = group
         .map((r) => engagementPct(Number(r.views), Number(r.likes)))
         .filter((v): v is number => v !== null);
@@ -221,7 +234,7 @@ export async function getContentInsights(
     ["listicle", "pregunta", "tutorial", "comparativa", "resena", "otro"] as const
   )
     .map((pattern) => {
-      const group = matched.filter((r) => classifyTitlePattern(r.title ?? "") === pattern);
+      const group = used.filter((r) => classifyTitlePattern(r.title ?? "") === pattern);
       return {
         pattern,
         label: PATTERN_LABEL[pattern],
@@ -233,10 +246,12 @@ export async function getContentInsights(
     .sort((a, b) => b.medianViews - a.medianViews);
 
   // Por nicho: el video se cuenta en cada término con el que coincidió. Con
-  // consulta, solo los videos que hablan de esa consulta.
-  const scopeRows = scope
-    ? rows.filter((row) => mentionsPhrase(row.title ?? "", scope))
-    : rows;
+  // consulta, solo los videos que hablan de esa consulta; si no hubo ninguno,
+  // la muestra completa (mismo respaldo que los KPIs).
+  const scopeRows =
+    scope && !fallback
+      ? rows.filter((row) => mentionsPhrase(row.title ?? "", scope))
+      : rows;
   const byTerm = new Map<string, { name: string; rows: typeof rows }>();
   for (const row of scopeRows) {
     const entry = byTerm.get(row.termId) ?? { name: "", rows: [] as typeof rows };
@@ -284,6 +299,7 @@ export async function getContentInsights(
     uniqueVideos: unique.length,
     query: scope,
     matchedVideos: matched.length,
+    fallback,
     top,
     durationStats,
     patternStats,

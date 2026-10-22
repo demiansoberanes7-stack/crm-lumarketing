@@ -5,7 +5,11 @@ import { Download, Flame, Plus, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { downloadCsv, formatVolume, relativeStart } from "@/components/inteligencia/intel-export";
-import { mentionsQuery } from "@/lib/intel-content";
+import {
+  relateTrendRows,
+  type FallbackCatalogTerm,
+  type FallbackPrimary,
+} from "@/lib/intel-fallback";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
 
 /**
@@ -50,6 +54,14 @@ type Props = {
    * la fuente del país sigue visible, pero leída en relación a la consulta.
    */
   relatedTo?: string | null;
+  /**
+   * Catálogo de nichos con sus keywords, en orden de parecido a la búsqueda.
+   * Con él la tabla etiqueta cada tendencia y puede caer al mismo giro cuando
+   * la consulta no aparece en el feed.
+   */
+  catalog?: readonly FallbackCatalogTerm[];
+  /** Nicho que corresponde a la búsqueda: ancla del «mismo giro». */
+  primaryNiche?: FallbackPrimary | null;
 };
 
 const WINDOWS = [
@@ -74,7 +86,13 @@ const SOURCE_LABEL: Record<string, string> = {
 
 const selectCls = "rounded border bg-card p-1.5 text-xs";
 
-export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Props) {
+export function TrendingPanel({
+  reloadKey,
+  onMonitored,
+  relatedTo = null,
+  catalog = [],
+  primaryNiche = null,
+}: Props) {
   const [view, setView] = useState<TrendingView | null>(null);
   const [hours, setHours] = useState<number>(24);
   const [category, setCategory] = useState("");
@@ -121,17 +139,43 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
 
   // La búsqueda de texto es client-side: las filas ya están filtradas por
   // ventana y categoría en el servidor, y el título no debe gastar peticiones.
-  // `mentionsQuery` ignora acentos y plurales porque los títulos del feed de
-  // México vienen acentuados: con un `includes` literal, buscar «cámaras de
-  // seguridad» dejaba la tabla vacía delante de tendencias que sí lo son.
-  const rows = useMemo(() => {
-    const all = view?.rows ?? [];
-    return query.trim() ? all.filter((r) => mentionsQuery(r.title, query)) : all;
-  }, [view, query]);
+  // Si la consulta no aparece en el feed, `relateTrendRows` cae al mismo giro,
+  // luego a cualquier nicho del catálogo y al final al país: la tabla nunca
+  // queda vacía habiendo filas ingeridas, y cada nivel se declara en pantalla.
+  const fallback = useMemo(
+    () => relateTrendRows(view?.rows ?? [], query, catalog, primaryNiche),
+    [view, query, catalog, primaryNiche]
+  );
+  const rows = fallback.rows;
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const safePage = Math.min(page, pages - 1);
   const slice = rows.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  const firstPicked = rows.find((entry) => entry.row.id === picked[0])?.row ?? null;
+
+  const fallbackSummary = (() => {
+    const q = query.trim();
+    if (!q) return "";
+    if (fallback.level === "consulta") {
+      return ` · ${fallback.matched} de ${view?.rows.length ?? 0} mencionan alguna palabra de «${q}»`;
+    }
+    if (fallback.level === "mismo-giro") {
+      return ` · sin coincidencias para «${q}»; ${rows.length} del mismo giro por alcance`;
+    }
+    if (fallback.level === "catalogo") {
+      return ` · sin coincidencias para «${q}»; ${rows.length} de tus nichos por alcance`;
+    }
+    return ` · sin coincidencias para «${q}»; ${rows.length} de mayor alcance del país`;
+  })();
+
+  const fallbackNote =
+    fallback.level === "mismo-giro"
+      ? `Ninguna tendencia de la ventana menciona «${query.trim()}». Para no dejar el panel vacío, abajo van las de mayor alcance del mismo giro (${fallback.sameGiro.join(", ")}), cada una con el nicho y la palabra que la relacionan.`
+      : fallback.level === "catalogo"
+        ? `Ninguna tendencia de la ventana menciona «${query.trim()}» ni comparte giro con «${primaryNiche?.name ?? "tu búsqueda"}». Abajo van las de mayor alcance de tus nichos monitoreados, etiquetadas por el nicho que las explica.`
+        : fallback.level === "pais"
+          ? `Ni «${query.trim()}» ni tus nichos aparecen en el feed de esta ventana. Abajo van las tendencias de mayor alcance del país: no tienen relación con tu catálogo y así se etiquetan.`
+          : null;
 
   async function refresh() {
     setRefreshing(true);
@@ -209,9 +253,7 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
             {view?.lastIngestAt
               ? ` · leído ${new Date(view.lastIngestAt).toLocaleString("es-MX")}`
               : ""}
-            {query.trim()
-              ? ` · ${rows.length} de ${view?.rows.length ?? 0} mencionan alguna palabra de «${query.trim()}»`
-              : ""}
+            {fallbackSummary}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -225,16 +267,21 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
             onClick={() =>
               downloadCsv(
                 `tendencias-${hours}h.csv`,
-                ["tendencia", "volumen", "inicio", "alza_pct", "categoria", "tipo", "desglose", "fuente"],
-                rows.map((r) => [
-                  r.title,
-                  r.volume ?? "",
-                  r.startedAt ? new Date(r.startedAt).toISOString() : "",
-                  r.increasePct ?? "",
-                  r.category ?? "",
-                  r.trendType ?? "",
-                  r.breakdown.map((b) => b.name).join(" | "),
-                  r.source,
+                ["tendencia", "volumen", "inicio", "alza_pct", "categoria", "tipo", "desglose", "fuente", "relacion"],
+                rows.map(({ row, niche, level }) => [
+                  row.title,
+                  row.volume ?? "",
+                  row.startedAt ? new Date(row.startedAt).toISOString() : "",
+                  row.increasePct ?? "",
+                  row.category ?? "",
+                  row.trendType ?? "",
+                  row.breakdown.map((b) => b.name).join(" | "),
+                  row.source,
+                  niche
+                    ? `${niche.name} · vía «${niche.via}»`
+                    : level === "pais"
+                      ? "sin relación con el catálogo"
+                      : "",
                 ])
               )
             }
@@ -338,6 +385,12 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
         </p>
       )}
 
+      {fallbackNote && (
+        <p role="status" className="mt-3 rounded-md border bg-subtle p-2 text-xs text-text-2">
+          {fallbackNote}
+        </p>
+      )}
+
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead>
@@ -353,7 +406,7 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
             </tr>
           </thead>
           <tbody>
-            {slice.map((r) => {
+            {slice.map(({ row: r, niche }) => {
               const expanded = open === r.id;
               const hidden = r.breakdown.length - 3;
               return (
@@ -378,6 +431,14 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
                       {r.trendType && (
                         <span className="rounded-full bg-subtle px-1.5 py-0.5 text-[10px] text-text-2">
                           {r.trendType}
+                        </span>
+                      )}
+                      {niche && (
+                        <span
+                          className="rounded-full border px-1.5 py-0.5 text-[10px] text-text-2"
+                          title={`El título menciona «${niche.via}», palabra del nicho «${niche.name}».`}
+                        >
+                          {niche.name} · «{niche.via}»
                         </span>
                       )}
                     </div>
@@ -423,16 +484,16 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
                 </tr>
               );
             })}
-            {!loading && slice.length === 0 && (
+            {!loading && rows.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-4 text-center text-text-3">
                   {query.trim()
-                    ? `Ninguna tendencia ingerida en esta ventana menciona alguna palabra de «${query.trim()}» (sin acentos ni plurales). «Actualizar» lee el feed completo, vaciar el campo muestra el país entero, y el buscador de arriba analiza esa palabra clave en vivo.`
+                    ? `No hay tendencias ingeridas en esta ventana, así que no hay nada que relacionar con «${query.trim()}». «Actualizar» lee el feed completo; el buscador de arriba analiza esa palabra clave en vivo.`
                     : "Sin tendencias en la ventana pedida. Pulsa «Actualizar» para leer el feed de Google Trends."}
                 </td>
               </tr>
             )}
-            {loading && slice.length === 0 && (
+            {loading && rows.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-4 text-center text-text-3">
                   Leyendo tendencias…
@@ -445,7 +506,12 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
 
       <footer className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-[11px] text-text-3">
         {picked.length > 0 ? (
-          <Button size="sm" variant="outline" onClick={() => void monitor(rows.find((r) => r.id === picked[0])!.title)}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!firstPicked}
+            onClick={() => firstPicked && void monitor(firstPicked.title)}
+          >
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Monitorear la primera seleccionada
           </Button>
         ) : (
