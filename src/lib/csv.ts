@@ -93,12 +93,35 @@ export function parseCsv(text: string): Record<string, string>[] {
   return out;
 }
 
-/** Escapa un valor para celda CSV. */
-function escapeCell(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes(";")) {
-    return `"${value.replace(/"/g, '""')}"`;
+/**
+ * Inyección de fórmulas. Una celda que empieza por `=`, `+`, `-` o `@` (o por
+ * un tabulador/salto, que Excel ignora antes de mirar el primer carácter) no es
+ * texto: Excel y Sheets la EVALÚAN al abrir el archivo. Como el CSV de este
+ * CRM se genera con datos que escribió gente de fuera —notas de un contacto,
+ * nombres de prospectos tomados del chat—, un `=HYPERLINK("http://…","ver")`
+ * en una nota sale convertida en un clic que manda a la víctima a otro sitio.
+ *
+ * Se neutraliza con comilla simple inicial, que es la convención que Excel
+ * respeta como «esto es texto». Los números negativos se dejan intactos: `-5`
+ * en `monto_compra` es una devolución, no una fórmula, y convertirlo en texto
+ * rompería las sumas del dueño.
+ */
+const FORMULA_START = /^[\t\r\n ]*[=+\-@]/;
+const PURE_NUMBER = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
+
+/**
+ * Escapa un valor para celda CSV: comillas según RFC 4180 y blindaje de
+ * fórmulas. Se exporta porque el export de Inteligencia (`intel-export.ts`) se
+ * hace en el navegador y necesita la MISMA regla; duplicarla es cómo una de
+ * las dos se queda vieja.
+ */
+export function escapeCsvCell(value: string): string {
+  const safe =
+    FORMULA_START.test(value) && !PURE_NUMBER.test(value.trim()) ? `'${value}` : value;
+  if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes(";")) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 /**
@@ -110,9 +133,9 @@ export function stringifyCsv(rows: Record<string, unknown>[], columns?: string[]
   const first = rows[0];
   if (!first) return "";
   const cols = columns ?? Object.keys(first);
-  const header = cols.map(escapeCell).join(",");
+  const header = cols.map(escapeCsvCell).join(",");
   const body = rows
-    .map((row) => cols.map((c) => escapeCell(row[c] == null ? "" : String(row[c]))).join(","))
+    .map((row) => cols.map((c) => escapeCsvCell(row[c] == null ? "" : String(row[c]))).join(","))
     .join("\n");
   return `${header}\n${body}`;
 }

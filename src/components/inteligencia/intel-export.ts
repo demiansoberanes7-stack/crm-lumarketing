@@ -7,12 +7,19 @@
  * cliente.
  */
 
+import { escapeCsvCell } from "@/lib/csv";
+
 export type CsvCell = string | number | null | undefined;
 
+/**
+ * La regla vive en `src/lib/csv.ts` para que el export del servidor (Contactos,
+ * Inventario) y este, que corre en el navegador, no puedan divergir: una celda
+ * que empieza por `=`, `+`, `-`, `@` —o por un espacio previo más uno de esos—
+ * Excel la EVALÚA, y aquí se exportan consultas que buscó gente ajena.
+ */
 function csvValue(v: CsvCell): string {
   if (v === null || v === undefined) return "";
-  const text = String(v);
-  return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return escapeCsvCell(String(v));
 }
 
 /** Descarga un CSV (con BOM para que Excel lo abra en UTF-8). */
