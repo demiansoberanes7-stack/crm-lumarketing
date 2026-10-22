@@ -184,9 +184,28 @@ function sameWord(a: string, b: string): boolean {
  * México vienen con acentos y «camaras de seguridad» no los iguala.
  */
 export function mentionsQuery(title: string, phrase: string): boolean {
+  if (foldWords(phrase).length === 0) return true;
+  return matchedQueryWord(title, phrase) !== null;
+}
+
+/** ¿Dos frases comparten alguna palabra significativa? Plural y acentos tolerantes. */
+export function sharesWord(a: string, b: string): boolean {
+  const left = foldWords(a);
+  const right = foldWords(b);
+  return left.some((word) => right.some((other) => sameWord(word, other)));
+}
+
+/**
+ * Palabra significativa de `phrase` que aparece en el título (tal como se
+ * escribió en el título, para poder citarla). `null` si ninguna aparece.
+ */
+export function matchedQueryWord(title: string, phrase: string): string | null {
   const needle = foldWords(phrase);
-  if (needle.length === 0) return true;
+  if (needle.length === 0) return null;
   const haystack = foldWords(title);
-  if (needle.some((word) => haystack.some((token) => sameWord(word, token)))) return true;
-  return foldText(title).includes(foldText(phrase).trim());
+  for (const word of needle) {
+    const found = haystack.find((token) => sameWord(word, token));
+    if (found) return found;
+  }
+  return foldText(title).includes(foldText(phrase).trim()) ? phrase.trim() : null;
 }

@@ -133,7 +133,14 @@ describe("analyzeKeyword ancla los datos a la consulta", () => {
     expect(h.state.denueCalls.at(-1)).toEqual(["celulares samsung"]);
     // El catálogo no se omite: se declara sin palabras en común.
     expect(res.catalogMatches).toEqual([
-      { termId: "itr_red", name: "Redes y conectividad", score: 0, via: "", exact: false },
+      {
+        termId: "itr_red",
+        name: "Redes y conectividad",
+        keywords: ["router", "switch de red", "wifi", "redes"],
+        score: 0,
+        via: "",
+        exact: false,
+      },
     ]);
   });
 
@@ -144,7 +151,14 @@ describe("analyzeKeyword ancla los datos a la consulta", () => {
 
     expect(res.tracked).toBeNull();
     expect(res.catalogMatches).toEqual([
-      { termId: "itr_red", name: "Redes y conectividad", score: 0.5, via: "redes", exact: false },
+      {
+        termId: "itr_red",
+        name: "Redes y conectividad",
+        keywords: ["router", "switch de red", "wifi", "redes"],
+        score: 0.5,
+        via: "redes",
+        exact: false,
+      },
     ]);
   });
 

@@ -62,6 +62,8 @@ export type KeywordOverviewView = {
   catalogMatches: Array<{
     termId: string;
     name: string;
+    /** Keywords del nicho; opcional para no romper respuestas antiguas en caché. */
+    keywords?: string[];
     score: number;
     via: string;
     exact: boolean;

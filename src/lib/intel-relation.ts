@@ -12,6 +12,8 @@
 export type CatalogMatch = {
   termId: string;
   name: string;
+  /** Keywords del nicho, para etiquetar tendencias por el tema que mencionan. */
+  keywords?: string[];
   /** 0–1: palabras compartidas sobre el total; 0 = ninguna. */
   score: number;
   /** Texto del catálogo con el que puntuó; vacío cuando no compartió nada. */

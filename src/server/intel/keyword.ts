@@ -221,6 +221,8 @@ export type KeywordOverview = {
   catalogMatches: Array<{
     termId: string;
     name: string;
+    /** Keywords del nicho: el respaldo de Tendencias etiqueta con ellas. */
+    keywords: string[];
     score: number;
     via: string;
     exact: boolean;
@@ -380,9 +382,11 @@ export async function analyzeKeyword(
    * `rankTerms`, porque cada panel de la pantalla tiene que poder etiquetar
    * TODOS sus nichos frente a la búsqueda.
    */
+  const keywordsById = new Map(catalogForMatch.map((t) => [t.id, t.keywords]));
   const catalogMatches = rankTerms(catalogForMatch, q, catalogForMatch.length).map((t) => ({
     termId: t.id,
     name: t.name,
+    keywords: keywordsById.get(t.id) ?? [],
     score: t.score,
     via: t.via,
     exact: t.exact,
