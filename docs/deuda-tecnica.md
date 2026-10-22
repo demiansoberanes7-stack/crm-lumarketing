@@ -1045,3 +1045,43 @@ la ruta). Gates: 1537 pruebas, `db:guard`, `typecheck`, `lint` y `build` en verd
 - Commits locales de este lote: sin `push`. Los 6 commits de seguridad de §6.17 siguen esperando
   la misma autorización, y el push los despliega juntos.
 
+
+### 6.19 Inteligencia: que cada panel declare su relación con la búsqueda (22-10-2026, sin migración)
+
+Tercer reporte del dueño con la misma clase de queja: «estas siguen mostrando datos que no son
+referente a mis busquedas». Capturas: el selector DENUE con tres nichos (Smartphones, Accesorios
+de celular, Redes y conectividad) y todos los estados en `≥10`; la franja «Enfócate en:
+Smartphones, Accesorios de celular»; y «Interés comparado» mezclando la consulta con esos nichos.
+
+**Causa exacta.** `rankTerms` descartaba todo término con score 0 (`if (score <= 0) continue`),
+`getTrends` solo devuelve nichos con snapshots GT, y `GtRanking` pintaba la franja verde con los
+A/B **sin mirar la consulta**. Para una búsqueda sin palabras en común con el catálogo con serie
+(«camara de seguridad» frente a esos tres nichos), no quedaba ninguna etiqueta y los paneles
+parecían su resultado. La decisión anterior —ocultar el explorador (tarea #92)— ya se había
+revertido porque vaciaba la pantalla; esta vez se **relaciona**, no se esconde.
+
+**Lo que se hizo.** `rankTerms` devuelve **todos** los términos (score 0, `via: ""`);
+`analyzeKeyword` pasa el catálogo completo en `catalogMatches`; `src/lib/intel-relation.ts`
+etiqueta (`es tu búsqueda` / `N% parecido` / `sin palabras en común`) sin importar la base de
+datos; preámbulo con «Monitorear «q»» (acción explícita, una ingesta GT); franja verde solo para
+el exacto y bloque neutro con el más cercano cuando no lo hay; chips en ranking y tarjetas;
+leyenda de la comparativa; `note` en subregiones y temas/consultas; mapa DENUE con opciones
+etiquetadas, conteo nacional de la consulta ya pagado (`competition`), aviso de censura total y
+nota de que el desglose de 32 estados solo existe por nicho; «N de M» en Tendencias actuales.
+
+**Límites que se dejan escritos (Regla 3):**
+
+- El mapa por estado de una consulta no monitoreada sigue sin calcularse solo: 32 llamadas por
+  término. Tampoco se lanza YouTube en vivo por consulta (100 unidades). El panel lo dice y
+  ofrece el camino (Monitorear + Calcular mapa).
+- `CompareView` no recibe la relación: compara nichos elegidos a mano por el dueño, no un
+  resultado de la búsqueda.
+- `getTrends` sigue excluyendo nichos sin snapshots GT. Por eso un exacto recién monitoreado
+  puede no aparecer en ranking/comparativa hasta que su ingesta termine; el ranking lo declara
+  («aún no tiene serie… Pulsa «Actualizar datos»»), pero **no se ha visto en navegador**.
+- «Sin palabras en común» describe el texto, no el negocio: dos nichos del mismo giro pueden no
+  compartir palabras. La UI lo dice en cada pie y en el `title` de cada chip.
+
+**Gates.** `db:guard`, `typecheck`, `lint`, 163 archivos / 1556 pruebas y `build` en verde.
+Sin migración, sin push y sin tocar producción: la pantalla desplegada sigue con el
+comportamiento anterior hasta que se autorice el despliegue.

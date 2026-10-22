@@ -2269,6 +2269,45 @@ de que «la Inteligencia ya no tiene datos». Es la misma familia que el hallazg
 «un fallo de la API no es un listado vacío» de Prospectos (§11): la interfaz debe decir *qué*
 le falta, no fingir que no hay nada.
 
+**Qué significa «relacionar» (lote del 22-10-2026).** Tres reportes del dueño con las mismas
+capturas —el mapa DENUE de un nicho ajeno con todos los estados en `≥10`, la franja verde
+«Enfócate en: Smartphones, Accesorios de celular» y el «Interés comparado» mezclando la consulta
+con esos nichos— dejaron claro el caso que faltaba: una búsqueda **sin ninguna palabra en común**
+con el catálogo. Antes, `rankTerms` (`src/server/intel/terms.ts`) descartaba los términos con
+score 0, así que no había etiqueta que declarara la distancia y los paneles del catálogo se leían
+como si fueran el resultado de la consulta. Ahora:
+
+- `analyzeKeyword` devuelve **todo** el catálogo en `catalogMatches` (sin el tope de 6), con
+  `score` 0 cuando no comparte palabras y `via: ""`. El parecido se mide **por palabras** del
+  nombre o las keywords, no por tema de negocio: la interfaz lo dice con esa precisión y usa
+  «sin palabras en común», nunca «sin relación».
+- `src/lib/intel-relation.ts` (sin importar `@/lib/db`, para que no arrastre la base al bundle)
+  ordena y etiqueta lo ya medido: `es tu búsqueda`, `N% parecido`, `sin palabras en común`.
+- **Ningún panel se oculta bajo una búsqueda.** El orden cambia (exacto → palabras compartidas →
+  ninguna), el contenido no. El preámbulo «Contexto de tu búsqueda» declara el caso —nicho exacto,
+  vecino con su porcentaje, o catálogo sin palabras en común— y ofrece **«Monitorear «q»»**, una
+  acción del dueño que crea el nicho y dispara una ingesta GT; nada se escribe solo.
+- **Ranking (`GtRanking`)**: la franja verde «Enfócate en» solo puede recomendar nichos que
+  **sean** la búsqueda. Si no hay ninguno, muestra un bloque neutro con el más cercano (o «ninguno
+  comparte palabras») y aclara que el resto del ranking es referencia. Cada fila lleva su chip.
+- **Comparativa**: la leyenda de cada serie repite su etiqueta de relación; la línea gruesa sigue
+  siendo la consulta en vivo.
+- **Subregiones, temas y consultas GT**: reciben `note` con la relación del nicho que se está
+  viendo (`activeRelationNote`), porque el selector permite cambiar de nicho sin perder de vista
+  qué es y qué no es la búsqueda.
+- **Mapa DENUE (`GeoPanel`)**: cada `<option>` del selector declara su relación y la nota bajo el
+  título explica siempre de quién es el mapa. El desglose por estado solo existe para nichos
+  monitoreados (32 consultas), pero el panel sí habla de la consulta con el **conteo nacional ya
+  pagado** (`overview.competition`, una sola llamada del análisis) y dice cómo obtener su mapa.
+  Si los 32 estados salen censurados (`≥10`), se advierte que es un límite de DENUE y no un
+  empate de competencia.
+- **Tendencias actuales**: el filtro por la consulta es por palabra (`mentionsQuery`) y ahora
+  declara **cuántas de cuántas** casaron, en vez de decir solo «solo las que mencionan».
+- **Fuera de alcance, a propósito**: `CompareView` compara nichos que el dueño eligió a mano (no
+  es un resultado de la búsqueda); un mapa DENUE por estado para una consulta no monitoreada
+  costaría 32 llamadas y YouTube en vivo por consulta 100 unidades de cuota. Se prefiere el
+  conteo nacional y el enlace a «Monitorear» antes que gastar cuota sin autorización.
+
 ### Exportación
 
 Los paneles exportan **en el navegador**, sin ruta nueva (`src/components/inteligencia/intel-export.ts`):
@@ -2279,9 +2318,15 @@ lo abra en UTF-8 y comilla doble escapada en cualquier campo con `,` `"` `;` o s
 
 - **Confirmado mediante pruebas:** las guardas de bandera y de organización, la cadena de
   fallback y la maquinaria de jobs tienen tests unitarios (`tests/unit/api-int-params.test.ts`
-  cubre los parámetros de `content`/`trending`).
+  cubre los parámetros de `content`/`trending`). La relación consulta↔catálogo está cubierta
+  desde el 22-10-2026 por `tests/unit/intel-relation.test.ts` y por casos nuevos en
+  `intel-content.test.ts`, `intel-keyword-anchor.test.ts` e `intel-monitor.test.ts`: catálogo
+  completo con score 0, etiquetas de cada panel, franja verde solo para el nicho exacto,
+  bloque neutro sin él, y notas del mapa DENUE y de los paneles GT.
 - **Detectado mediante inspección:** la degradación de `suggest` y del conector web; dependen
-  de endpoints no oficiales.
+  de endpoints no oficiales. La afirmación «N de M» de Tendencias actuales y el estado
+  censurado total del mapa DENUE no tienen test de componente; se derivan de `rows.length` y
+  de `censoredStates === states.length`.
 - **Pendiente de acceso:** las llamadas reales a SerpApi, Apify, YouTube y DENUE con las
   credenciales de producción. Su contrato está escrito, pero **ninguna fuente externa se ha
   validado desde este entorno**.
