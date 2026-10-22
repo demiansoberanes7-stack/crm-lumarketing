@@ -1085,3 +1085,44 @@ nota de que el desglose de 32 estados solo existe por nicho; «N de M» en Tende
 **Gates.** `db:guard`, `typecheck`, `lint`, 163 archivos / 1556 pruebas y `build` en verde.
 Sin migración, sin push y sin tocar producción: la pantalla desplegada sigue con el
 comportamiento anterior hasta que se autorice el despliegue.
+
+### 6.20 Inteligencia: «nunca dejes vacíos» — respaldo declarado por alcance (22-10-2026, sin migración)
+
+Cuarto reporte del dueño sobre la misma pantalla, ahora con el vacío como protagonista: «aqui
+jamas dejen vacios, si sobre el nicho no hay info entonces muestra las tendencias del mismo giro
+con mayor alcance, nunca dejes datos vacios». Dos capturas: «Tendencias actuales» sin una sola
+fila para «camara de seguridad» (solo el aviso de que nada la menciona) y «Contenido que
+funciona» en «0 de 0» con la única salida de configurar la API key de YouTube.
+
+**Causa exacta.** El respaldo no existía: `TrendingPanel` filtraba el feed por la consulta y, con
+0 coincidencias, pintaba una fila de texto; `ContentPanel` trataba «0 coincidencias» como
+`outOfScope` y «sin videos» como `empty`, y en ambos casos devolvía solo un párrafo. Había datos
+reales en la base (431 tendencias del país el 21-10, 37 videos de 7 días, 60 relacionados GT de
+«Cámaras de seguridad») que la pantalla no usaba.
+
+**Lo que se hizo.** `src/lib/intel-fallback.ts` (puro, client-safe) implementa la cadena
+`consulta → mismo-giro → catalogo → pais` con las filas ya leídas y ordena los niveles de
+respaldo por volumen («mayor alcance»); cada fila lleva el nicho y la palabra que la delata, y el
+CSV añade `relacion`. `catalogMatches` viaja con `keywords` (misma lectura, coste cero) y
+`CatalogMatch.keywords` es opcional para respuestas antiguas. `getContentInsights` devuelve
+`fallback: "sample"` con la muestra completa y `matchedVideos: 0` cuando la consulta no aparece
+en ningún video; `ContentPanel` declara ese respaldo y, si no hay ni un video capturado, pinta
+las señales de Google Trends ya cargadas (`buildContentSignals`: nicho exacto + `overview.market`,
+deduplicadas, alzas primero) en vez de una caja de instrucciones.
+
+**Límites que se dejan escritos (Regla 3):**
+
+- El respaldo no inventa parentesco: «mismo giro» exige palabras en común entre nombres/keywords
+  del nicho principal y del otro nicho. Sin eso se pasa al nivel siguiente, que se declara.
+- Las filas de respaldo son las ya ingeridas en la ventana; no se consulta el feed en vivo ni se
+  buscan videos por consulta (100 unidades de cuota). Si no hay **ninguna** fila ingerida, el
+  panel dice que no hay datos y cómo poblarlos: no hay fuente real que mostrar.
+- `GtRelatedPanel` sigue ocultándose cuando el nicho activo no tiene temas ni consultas; no hay
+  caja vacía y esos datos ya se muestran para la búsqueda en vivo. `GtRegionPanel` y `GeoPanel`
+  siempre renderizan su declaración.
+- La verificación visual de ambos paneles con una búsqueda sin coincidencias **no se ha hecho en
+  navegador**; sí hay tests de las funciones puras y del servidor de contenido.
+
+**Gates.** `db:guard`, `typecheck`, `lint`, 164 archivos / 1568 pruebas y `build` en verde.
+Sin migración, sin push y sin tocar producción: la pantalla desplegada sigue con el
+comportamiento anterior hasta que se autorice el despliegue.

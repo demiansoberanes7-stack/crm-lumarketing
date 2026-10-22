@@ -2301,12 +2301,47 @@ como si fueran el resultado de la consulta. Ahora:
   pagado** (`overview.competition`, una sola llamada del análisis) y dice cómo obtener su mapa.
   Si los 32 estados salen censurados (`≥10`), se advierte que es un límite de DENUE y no un
   empate de competencia.
-- **Tendencias actuales**: el filtro por la consulta es por palabra (`mentionsQuery`) y ahora
-  declara **cuántas de cuántas** casaron, en vez de decir solo «solo las que mencionan».
+- **Tendencias actuales**: el filtro por la consulta es por palabra (`mentionsQuery`), declara
+  **cuántas de cuántas** casaron y, si son cero, cae a la cadena de respaldo de la subsección
+  siguiente (mismo giro → catálogo → país), siempre etiquetada.
 - **Fuera de alcance, a propósito**: `CompareView` compara nichos que el dueño eligió a mano (no
   es un resultado de la búsqueda); un mapa DENUE por estado para una consulta no monitoreada
   costaría 32 llamadas y YouTube en vivo por consulta 100 unidades de cuota. Se prefiere el
   conteo nacional y el enlace a «Monitorear» antes que gastar cuota sin autorización.
+
+### La regla «nunca vacío» y su cadena de respaldo
+
+**Si la consulta no tiene datos, el panel no queda vacío: baja de nivel y lo declara.** Instrucción
+del dueño (22-10-2026): «aquí jamás dejen vacíos; si sobre el nicho no hay info entonces muestra
+las tendencias del mismo giro con mayor alcance». Se implementa con datos que ya están en pantalla
+o en la base — sin llamadas nuevas a proveedores ni cuota adicional.
+
+- `src/lib/intel-fallback.ts` (puro y client-safe) define la cadena de «Tendencias actuales»:
+  `consulta` (el filtro por palabra de siempre) → `mismo-giro` (filas cuyo título menciona el
+  nombre o las keywords del nicho principal y de los nichos que comparten palabra con él, p. ej.
+  «Cámaras IP» ↔ «Cámaras de seguridad») → `catalogo` (cualquier nicho monitoreado) → `pais`
+  (las filas de mayor volumen, declaradas como sin relación con el catálogo). Los niveles de
+  respaldo se ordenan por **volumen** —«mayor alcance»—; las coincidencias conservan el orden que
+  eligió el dueño en el panel. Cada fila de respaldo lleva chip de nicho y la palabra que la
+  delata (`«alarma» → Alarmas y sensores`); el CSV añade la columna `relacion`.
+- `catalogMatches` ahora viaja con `keywords` (misma lectura del catálogo en `analyzeKeyword`,
+  coste cero): sin ellas el cliente no podría atribuir una tendencia a un giro. En
+  `CatalogMatch` (`src/lib/intel-relation.ts`) `keywords` es opcional para no romper respuestas
+  antiguas en caché.
+- «Contenido que funciona»: si la consulta no aparece en ningún video, `getContentInsights`
+  devuelve la **muestra completa** con `fallback: "sample"` y `matchedVideos: 0` (nunca finge
+  coincidencias); el panel la pinta con un aviso que la declara como referencia de formato,
+  duración y patrones del giro. Si no hay **ningún** video capturado (falta la API key), el panel
+  pinta las señales de Google Trends ya cargadas por la búsqueda (nicho exacto y
+  `overview.market`), con su fuente, en vez de dejar solo instrucciones. `buildContentSignals`
+  deduplica etiquetas y pone las alzas primero.
+- **Lo que no hace**: no inventa parentesco (sin palabras en común no hay «mismo giro»; el nivel
+  siguiente lo dice), no sustituye la serie de la consulta por la del nicho (regla de anclaje de
+  arriba), no busca videos en vivo (100 unidades), no crea nichos solo y no dispara las 32
+  llamadas DENUE. `GtRelatedPanel` sigue **ocultándose** cuando el nicho activo no tiene ni temas
+  ni consultas: ahí no hay ninguna fila real que mostrar y esos mismos datos ya se pintan para la
+  búsqueda en vivo más arriba; ocultar evita dos cajas vacías. `GtRegionPanel` y `GeoPanel` no
+  tienen listas que llenar: siempre renderizan su declaración de fuente y relación.
 
 ### Exportación
 
@@ -2322,14 +2357,17 @@ lo abra en UTF-8 y comilla doble escapada en cualquier campo con `,` `"` `;` o s
   desde el 22-10-2026 por `tests/unit/intel-relation.test.ts` y por casos nuevos en
   `intel-content.test.ts`, `intel-keyword-anchor.test.ts` e `intel-monitor.test.ts`: catálogo
   completo con score 0, etiquetas de cada panel, franja verde solo para el nicho exacto,
-  bloque neutro sin él, y notas del mapa DENUE y de los paneles GT.
+  bloque neutro sin él, y notas del mapa DENUE y de los paneles GT. La regla «nunca vacío» está
+  cubierta por `tests/unit/intel-fallback.test.ts` (cadena de niveles, mismo giro, orden por
+  alcance, señales de contenido) y por los casos nuevos de `intel-content-scope.test.ts`
+  (respaldo `"sample"` y muestra realmente vacía).
 - **Detectado mediante inspección:** la degradación de `suggest` y del conector web; dependen
-  de endpoints no oficiales. La afirmación «N de M» de Tendencias actuales y el estado
-  censurado total del mapa DENUE no tienen test de componente; se derivan de `rows.length` y
-  de `censoredStates === states.length`.
+  de endpoints no oficiales. La cadena de respaldo de Tendencias no tiene test de componente
+  (sí de sus funciones puras); se deriva de `relateTrendRows` sobre `view.rows`.
 - **Pendiente de acceso:** las llamadas reales a SerpApi, Apify, YouTube y DENUE con las
   credenciales de producción. Su contrato está escrito, pero **ninguna fuente externa se ha
-  validado desde este entorno**.
+  validado desde este entorno**. La comprobación visual de los dos paneles con una búsqueda sin
+  coincidencias queda pendiente de un navegador con sesión.
 
 ---
 
