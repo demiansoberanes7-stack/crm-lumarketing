@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { getDb, schema } from "@/lib/db";
 import { descNullsLast } from "@/lib/db/order";
 import { scoped } from "@/lib/db/tenant";
 import { digitsOnly, normalizeText } from "@/lib/search";
+import { listDismissals, emailKey } from "@/server/prospects/dismiss";
 import type { ProspectDto } from "@/lib/types";
 
 /**
@@ -112,6 +113,10 @@ async function listChatProspects(
   const db = getDb();
   const q = filter.q?.trim() ?? "";
 
+  // Descartados: con «Ver archivados» marcado se muestran (la tarjeta dice
+  // «descartado» y ofrece Restaurar); sin marcar, se excluyen.
+  const dismissed = await listDismissals(filter.organizationId, "contact");
+
   // Mismo criterio tolerante que Contactos: nombre sin acentos ni mayúsculas y
   // teléfono por dígitos, porque la UI lo pinta "+52 462 134…" y la BD lo
   // guarda "52462134…". Los comodines LIKE se escapan para que un "%" tecleado
@@ -174,7 +179,11 @@ async function listChatProspects(
           : undefined,
         filter.phone === "falta" ? isNull(schema.contact.phone) : undefined,
         filter.phone === "tiene" ? isNotNull(schema.contact.phone) : undefined,
-        filter.archived ? undefined : isNull(schema.contact.archivedAt)
+        filter.archived ? undefined : isNull(schema.contact.archivedAt),
+        // Lista vacía ⇒ sin condición: `not in ()` no es SQL válido.
+        !filter.archived && dismissed.size > 0
+          ? notInArray(schema.contact.id, [...dismissed.keys()])
+          : undefined
       )
     )
     .groupBy(
@@ -232,7 +241,7 @@ async function listChatProspects(
   }
 
   return rows.map((row) =>
-    serializeProspect(row, leadByContact.get(row.contactId) ?? null)
+    serializeProspect(row, leadByContact.get(row.contactId) ?? null, dismissed.get(row.contactId))
   );
 }
 
@@ -240,18 +249,19 @@ async function listChatProspects(
  * Prospectos que solo existen como remitentes de correo.
  *
  * Se consulta DESPUÉS de las oportunidades del chat para que el orden de
- * consultas del módulo no cambie, y se salta entera cuando el filtro pedido no
- * puede describir a un remitente: sin contacto no hay teléfono, ni etapa, ni
- * archivo que filtrar.
+ * consultas del módulo no cambie, y se salta cuando el filtro pedido no puede
+ * describir a un remitente: sin contacto no hay teléfono ni etapa. El «Ver
+ * archivados» sí la recorre, porque ahí es donde se muestran los correos
+ * descartados para poder restaurarlos.
  */
 async function listEmailProspects(
   filter: ProspectFilter
 ): Promise<ProspectDto[]> {
   if (filter.channel && filter.channel !== EMAIL_CHANNEL) return [];
-  if (filter.archived) return [];
   if (filter.phone === "tiene") return [];
 
   const db = getDb();
+  const dismissed = await listDismissals(filter.organizationId, "email");
   // El correo no tiene nombre de perfil guardado: lo único buscable es la
   // dirección, y se escapa igual que en el chat para que un "%" no la liste
   // todas.
@@ -275,6 +285,14 @@ async function listEmailProspects(
         schema.emailMessage.organizationId,
         filter.organizationId,
         eq(schema.emailMessage.direction, "inbound"),
+        // Se compara contra `lower(...)` porque la clave guardada está
+        // normalizada y `from_email` llega con las mayúsculas del servidor.
+        !filter.archived && dismissed.size > 0
+          ? notInArray(
+              sql`lower(${schema.emailMessage.from})`,
+              [...dismissed.keys()]
+            )
+          : undefined,
         qLike
           ? sql`lower(${schema.emailMessage.from}) like ${qLike}`
           : undefined
@@ -284,7 +302,9 @@ async function listEmailProspects(
     .orderBy(desc(sql`MAX(${schema.emailMessage.createdAt})`))
     .limit(LIMIT)) as unknown as EmailProspectRow[];
 
-  return rows.map(serializeEmailProspect);
+  return rows.map((row) =>
+    serializeEmailProspect(row, dismissed.get(emailKey(row.email)))
+  );
 }
 
 /**
@@ -306,7 +326,10 @@ export async function listProspects(
     .slice(0, LIMIT);
 }
 
-export function serializeEmailProspect(row: EmailProspectRow): ProspectDto {
+export function serializeEmailProspect(
+  row: EmailProspectRow,
+  dismissedAt?: string | null
+): ProspectDto {
   return {
     // Sin ficha: el dueño ve quién escribió, y decide si lo da de alta.
     contactId: null,
@@ -320,7 +343,10 @@ export function serializeEmailProspect(row: EmailProspectRow): ProspectDto {
     lastInboundAt: isoDate(row.lastInboundAt),
     inboundCount: row.inboundCount,
     lastInboundText: row.lastSubject,
+    // Un remitente de correo nunca estuvo «archivado»: no tiene contacto. Lo que
+    // puede tener es un descarte, y esa es la fecha que se muestra.
     archivedAt: null,
+    dismissedAt: dismissedAt ?? null,
     stageName: null,
     priority: null,
     amountCents: null,
@@ -329,7 +355,8 @@ export function serializeEmailProspect(row: EmailProspectRow): ProspectDto {
 
 export function serializeProspect(
   row: ProspectRow,
-  lead?: LeadRow | null
+  lead?: LeadRow | null,
+  dismissedAt?: string | null
 ): ProspectDto {
   return {
     contactId: row.contactId,
@@ -344,6 +371,7 @@ export function serializeProspect(
     inboundCount: row.inboundCount,
     lastInboundText: row.lastInboundText,
     archivedAt: isoDate(row.archivedAt),
+    dismissedAt: dismissedAt ?? null,
     stageName: lead?.stageName ?? null,
     priority: (lead?.priority as ProspectDto["priority"]) ?? null,
     amountCents: lead?.amountCents ?? null,

@@ -174,6 +174,8 @@ export type ProspectDto = {
   /** Último mensaje entrante, para ver si ya dejó datos o solo pregunta. */
   lastInboundText: string | null;
   archivedAt: string | null;
+  /** Fecha del descarte; null si la tarjeta no está descartada. */
+  dismissedAt: string | null;
   stageName: string | null;
   priority: PriorityValue | null;
   amountCents: number | null;
