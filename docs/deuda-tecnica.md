@@ -929,3 +929,68 @@ afecta a nada). Lo que sí queda como norma, y ya está escrito en `docs/SISTEMA
   cuando no había nada que aplicar; quien depure un despliegue buscando esa lista no la va a
   encontrar. Ya está escrito en el runbook de §6.4.
 
+### 6.17 Pase de inyección sobre la superficie v1.8.0 (21-10-2026) — 6 hallazgos corregidos
+
+Instrucción: analizar y proteger las vulnerabilidades de lo recién desplegado. Ningún hallazgo se
+arregló a partir del resumen de un subagente: cada línea se releyó antes de tocarla, y cuando una
+clase de defecto se repetía se barrió el repo entero (regla «sigue»), registrando el motivo de cada
+ruta omitida.
+
+**S-1 (alta) — el MIME del adjunto lo elige quien lo envía.** `/api/media/[assetId]` servía
+`asset.mimeType` tal cual y con `inline`. Ese valor nace fuera: `media.mime_type` del payload del
+webhook (`src/server/inbox/ingest.ts`) o el `content-type` de la respuesta remota
+(`src/server/whatsapp/media.ts`). La bandeja enlaza el adjunto con `target="_blank"`, así que un
+objeto `text/html` se abría como documento del propio CRM y ejecutaba con la sesión del que hace
+clic. `assetViewHeaders()` ([src/server/media-path.ts](../src/server/media-path.ts)) pone la lista
+blanca (`image/*` menos SVG, `video/*`, `audio/*`, PDF), `nosniff` siempre, `attachment` para todo lo
+demás y el nombre saneado. **Efecto visible:** un SVG pegado en una conversación descarga en lugar de
+previsualizarse, y un adjunto de tipo raro ya no se abre en la pestaña. Eso es el arreglo, no una
+regresión.
+
+**S-2 (media) — fórmulas en el CSV.** Dos serializadores escribían la celda sin mirar el primer
+carácter. Excel evalúa lo que empieza por `= + - @`, y por un espacio o tabulador previo más uno de
+esos. Ahora hay una sola regla, `escapeCsvCell()` en [src/lib/csv.ts](../src/lib/csv.ts), usada por
+el export del servidor (Contactos, Inventario) y por el del navegador
+(`src/components/inteligencia/intel-export.ts`), que tenía su copia duplicada. Los números negativos
+se dejan intactos: `-5` en un monto es una devolución, y convertirlo en texto rompería las sumas.
+
+**S-3/S-4/S-5 (media) — esquemas en `href`.** `src/lib/safe-url.ts` centraliza la regla: canonicaliza
+con `new URL` y compara contra `parsed.protocol`. Se midió antes de escribirla: `new URL` **elimina
+tabuladores y saltos de línea**, así que `java\nscript:` se normaliza a `javascript:` y cualquier
+filtro de prefijo sobre el texto crudo la deja pasar. Cerró tres sumideros: el import CSV del catálogo
+(escribía `website_url` crudo mientras POST/PATCH/MCP ya validaban), `meetingLink` de Citas (`normalizeLink`
+solo recortaba y la ruta es `withAuth`: cualquier miembro podía envenenar el clic de otro), y los
+`href` armados a mano en Proveedores. De 29 sumideros `href` revisados, 3 estaban crudos.
+
+**S-5/S-6 (baja) — la clase que ya se había cerrado a medias.** En el mismo barrido: `ilike` con `%`
+sin escapar en Proveedores (`?q=%` barría la tabla), `Number(rating)` produciendo `NaN` y un 500 que
+la pantalla leía como «sin proveedores», y cuatro rutas más con `limit` sin respaldar
+(`/api/quotes`, `/api/email/threads`, `/api/settings/webhooks/[id]/deliveries`,
+`/api/settings/capi/events`). `escapeLike` estaba privado en `src/server/ai/inventory.ts`; se extrajo
+a [src/lib/db/like.ts](../src/lib/db/like.ts) para que las dos búsquedas no puedan divergir.
+
+Estado de los datos: en la producción real **0 filas** de `catalog_product.website_url` empiezan por
+algo distinto de `http`. S-3 y S-4 son preventivos, no remediación.
+
+Pruebas: 5 archivos, 38 casos ( [`safe-url`](../tests/unit/safe-url.test.ts),
+[`media-asset-headers`](../tests/unit/media-asset-headers.test.ts),
+[`csv-formula`](../tests/unit/csv-formula.test.ts), [`suppliers-query`](../tests/unit/suppliers-query.test.ts),
+[`href-injection-sites`](../tests/unit/href-injection-sites.test.ts) ). El último ancla la **fuente**:
+si alguien vuelve a poner el `href` crudo en uno de los componentes, la prueba falla aunque el arreglo
+original siga intacto. Gates: 1509 pruebas, `typecheck`, `lint` y `build` en verde.
+
+**Queda abierto, y es decisión del dueño:**
+
+- Subir `next` (15.5.20 → ≥ 15.5.24) y `nodemailer` (6.10.1, dep directa con aviso). Se midió qué
+  viaja en la imagen: el runner es `standalone` y lleva solo esos dos; los 6 avisos críticos del
+  `pnpm audit` (vite, vitest, tinypool, shell-quote) son de desarrollo y **no están en producción**.
+  `drizzle-orm` pide un salto de 7 menores: no se toca sin una corrida completa y autorización.
+- **D-01**: la ruta de WAHA responde 200 siempre y lee la tabla completa de `waha_credentials` antes
+  de comparar el token. La comparación ya es con `safeEqual` sobre un HMAC derivado, así que no es una
+  fuga inminente; arreglarlo bien cambia el contrato con el proveedor.
+- Rate limiting: las superficies autenticadas internas no llevan limitador. Se verificó que lo que
+  quema presupuesto ajeno ya está acotado (`checkRateLimit` en webhooks y login, cuota mensual por
+  organización en SerpApi, caché y `rateLimitedFetch` en Google Trends).
+- Lo de siempre y fuera del código: rotar el PAT pegado en el chat, reducir el ámbito del token de
+  `gh`, `META_APP_SECRET` vacío y falta de respaldo fuera de la VM.
+

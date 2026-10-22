@@ -1838,6 +1838,12 @@ calibrada rompe la UI en producción. El único contenido que un tercero control
   dos se puede falsificar desde fuera.
 - Si la tabla de buckets falla, `checkDistributedRateLimit` **no** bloquea
   (fail-open) para no descartar webhooks legítimos; queda en el log.
+- Las rutas internas autenticadas (lista de Prospectos, Citas, paneles de
+  Inteligencia) no llevan limitador propio: lo que sí quema presupuesto de un
+  tercero está acotado más abajo, en la fuente. SerpApi reserva cuota mensual por
+  organización antes de llamar (`reserveSerpApiUsage`), y Google Trends cachea y
+  serializa sus peticiones (`rateLimitedFetch` en
+  `src/server/intel/sources/google-trends.ts`).
 
 ### Validación de URLs WAHA (`src/server/waha/url.ts`)
 
@@ -1849,6 +1855,26 @@ validateWahaUrl(url: string): void
 // Requiere HTTPS para hosts públicos
 // Bloquea IPs privadas salvo que estén en WAHA_TRUSTED_HOSTS
 ```
+
+### Saneamiento de lo que llega de fuera
+
+Cuatro piezas de código existen solo porque hay valores cuyo contenido decide un
+tercero —el que manda el mensaje, el que arma el CSV de precios, el autor de un
+comentario— y ese valor termina en un `href`, en una cabecera HTTP o en una celda
+que Excel evalúa.
+
+| Pieza | Qué guarda | Regla |
+|---|---|---|
+| `assetViewHeaders()` / `assetContentType()` en `src/server/media-path.ts` | el `content-type` con el que se sirve un adjunto privado | el MIME guardado viene del payload del webhook o del `content-type` remoto; solo se muestran `image/*` (menos SVG), `video/*`, `audio/*` y PDF. Lo demás se aplana a `application/octet-stream` con `attachment`, siempre con `nosniff` |
+| `safeHttpUrl()` / `webHref()` / `mailtoHref()` en `src/lib/safe-url.ts` | cualquier enlace que acaba en un `<a>` | canonicaliza con `new URL` y compara `parsed.protocol` contra `http:`/`https:`. No basta con mirar el prefijo crudo: `new URL` **elimina tabuladores y saltos de línea**, así que `java\nscript:` se normaliza a `javascript:`. Tope de 1024 caracteres. Un enlace inválido no borra el registro: se queda sin enlace |
+| `escapeCsvCell()` en `src/lib/csv.ts` | los export `.csv`, tanto del servidor como del navegador | prefija `'` a lo que empieza por `=`, `+`, `-` o `@` (o por un espacio/tabulador previo más uno de esos), porque Excel y Sheets lo **evalúan** al abrir. Los números negativos puros se dejan intactos para no romper las sumas |
+| `likeContains()` en `src/lib/db/like.ts` | los `LIKE`/`ILIKE` con texto escrito por el usuario | escapa `\`, `%` y `_`. Sin esto, buscar «100%» o un `%` suelto deja de ser una búsqueda y se convierte en un comodín que barre la tabla |
+
+Y una regla que no es de seguridad pero se portó como tal: los enteros de
+paginación se leen con `intParam()` (`src/lib/api.ts`). Varios listados hacían
+`parseInt(...)` sin respaldo, y un `?limit=abc` o `?limit=-1` llegaba hasta
+Postgres, que rechazaba el `LIMIT` y respondía 500 — que las pantallas leían como
+«no hay datos».
 
 ### Torre de control: quién puede abrir un negocio
 
