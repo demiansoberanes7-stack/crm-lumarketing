@@ -2533,6 +2533,30 @@ del tooltip tuvo que **mudarse del renglón al `<aside>`**: un contenedor con sc
 que asoma por su derecha, y por eso el estado `tip` vive en el componente padre y su centro
 vertical se calcula con `tooltipTop()` (`app-nav.tsx:39`), una función pura exported.
 
+### El documento tampoco scrollea
+
+`overflow-hidden` en el shell recorta a sus descendientes, pero **no impide que una caja en
+flujo fuera del shell alargue el documento** (una extensión del navegador, un nodo inyectado en
+`<body>`). Si eso pasa, al agotar el scroll de un panel interno la rueda encadena al documento:
+el rail y la cabecera se van hacia arriba y debajo del contenido aparece un vacío blanco. Por
+eso la raíz lleva la clase `app-shell` y `globals.css` condiciona el candado a su presencia:
+
+```css
+html:has(.app-shell) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+```
+
+Es declarativo (aplica antes de hidratar), se libera solo cuando el shell se desmonta —login y
+landing conservan el scroll de documento— y no necesita JS ni portales. `:has()` requiere
+Chrome 105+ / Safari 15.4+ / Firefox 121+.
+
+`tests/unit/app-shell-scroll-lock.test.ts` (3 pruebas) fija la invariante leyendo las fuentes:
+la raíz conserva `app-shell` junto a `h-dvh`, la regla conserva `overflow: hidden` +
+`overscroll-behavior: none`, y **toda** regla de `<html>` con `overflow: hidden` debe estar
+condicionada a `:has(.app-shell)` para no dejar sin scroll a las rutas públicas.
+
 ### Cómo se midió (y dos trampas)
 
 - **`elementFromPoint` nunca devuelve un elemento con `pointer-events-none`.** El globo lo es,

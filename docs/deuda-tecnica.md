@@ -1126,3 +1126,67 @@ deduplicadas, alzas primero) en vez de una caja de instrucciones.
 **Gates.** `db:guard`, `typecheck`, `lint`, 164 archivos / 1568 pruebas y `build` en verde.
 Sin migración, sin push y sin tocar producción: la pantalla desplegada sigue con el
 comportamiento anterior hasta que se autorice el despliegue.
+
+### 6.21 Inteligencia: el documento scrolleable dejaba un vacío bajo el shell (22-10-2026, sin migración)
+
+**Síntoma visto por el dueño:** dos capturas de `/inteligencia` a 2000 px de ancho. Al hacer
+scroll, el rail queda reducido a Copiloto y Ajustes, su fondo gris termina a media página, la
+cabecera desaparece y debajo del contenido aparece una franja blanca de unos 2000 px. La
+instrucción fue «repara ese bug en inteligencia, scrolleando se ve asi, solucionalo».
+
+**Lo que miden las capturas.** Hay **dos** barras verticales: la del scroller interno de
+Inteligencia y la del documento. Con las posiciones de sus pulgares, el documento mide
+~3075-3131 px contra 1088 de ventana, con `scrollY` ≈ 683-763; el scroller interno está en su
+final y el excedente (~2000 px) es **constante entre las dos capturas** aunque el contenido
+visible cambia. La cabecera y el rail están fuera de pantalla porque el documento los arrastró,
+no porque el shell haya crecido: el contenido termina exactamente en el borde inferior del shell.
+
+**Lo que NO era (medido).** El shell ya es `flex h-dvh overflow-hidden` con scroll interno por
+panel. En Chrome limpio a 2000×1088, un shell con un scroller interno de 2988 px da
+`docScrollHeight = 1088` y 12 eventos de rueda dejan `scrollY = 0`. El barrido estático de los
+componentes de Inteligencia no encontró `h-screen`/`100vh`/`fixed` ni cajas de altura grande; el
+CSS de autenticación y los layouts tampoco tocan la altura del documento. Es decir, el DOM de la
+app **no** alarga el documento: confirmado por medición, no por inspección.
+
+**Lo que sí lo reproduce (mecanismo confirmado).** Inyectar una caja en flujo de 2000 px en
+`<body>`, fuera del shell: el documento pasa a 3088 px y, al agotar el scroller interno (1956 de
+1956), la rueda encadena y deja `docScrollY = 2000` con el rail y la cabecera fuera de pantalla:
+el síntoma exacto de las capturas. `overflow: hidden` solo recorta descendientes cuyo bloque
+contenedor está dentro del shell; una caja hermana o exterior alarga el documento igual, y el
+encadenamiento de rueda la alcanza. El origen concreto en el navegador del dueño (extensión o
+nodo inyectado) **no está identificado**: no hay sesión autenticada local y la norma prohíbe
+sondear producción desde el Mac. Clasificación Regla 3: mecanismo *confirmado mediante pruebas*;
+identidad del extensor, *hipótesis pendiente* y externa a la app.
+
+**Arreglo, en el cascarón y no en Inteligencia.** La raíz del shell lleva la clase `app-shell` y
+`globals.css` bloquea el documento solo mientras el shell está montado:
+
+```css
+html:has(.app-shell) { overflow: hidden; overscroll-behavior: none; }
+```
+
+Declarativo: aplica antes de hidratar, se libera solo al desmontarse el shell (login y landing
+conservan su scroll) y no depende de JS ni de portales. Se descartaron: candado por JS en un
+efecto (parpadeo al hidratar y difícil de probar en Vitest con entorno `node`), shell en
+`position: fixed` (deja la barra del documento activa) y candado global de `html`/`body` (rompe
+las rutas públicas).
+
+**Verificación en navegador (Playwright con Chrome del sistema, 2000×1088).** Con la caja de
+2000 px presente: `html` calcula `overflow: hidden`, el documento reporta 3088 px, 18 eventos de
+rueda dejan `scrollY = 0`, el scroller interno llega a 1956/1956 y el rail se queda en `top: 0`.
+En `/login`, sin shell, `html` calcula `overflow: visible`. Esto prueba el mecanismo en un
+navegador limpio; **no** es la página real autenticada, que sigue sin poder verificarse en local.
+
+**Guardia.** `tests/unit/app-shell-scroll-lock.test.ts` (3 pruebas) lee las fuentes: la raíz
+conserva `app-shell` junto a `h-dvh`, la regla conserva `overflow: hidden` y
+`overscroll-behavior: none`, y toda regla de `<html>` con `overflow: hidden` debe estar
+condicionada a `:has(.app-shell)` para que nadie la vuelva global y deje sin scroll al login.
+Es estática porque el entorno de Vitest es `node`, sin DOM.
+
+**Gates.** `db:guard` 0 avisos, `typecheck`, `lint`, **165 archivos / 1571 pruebas** y `build` en
+verde. Sin migración, sin push y sin tocar producción.
+
+**Deshacer.** Quitar `app-shell` de la raíz en `src/components/app-shell.tsx`, borrar la regla
+`html:has(.app-shell)` de `src/app/globals.css` y borrar
+`tests/unit/app-shell-scroll-lock.test.ts`. La app sigue funcionando; el vacío reaparece si una
+caja ajena vuelve a alargar el documento.
