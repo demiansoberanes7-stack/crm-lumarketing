@@ -575,6 +575,13 @@
       "when": 1792000000023,
       "tag": "0082_quote_client_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1792000000024,
+      "tag": "0083_prospect_dismissal",
+      "breakpoints": true
     }
   ]
 }

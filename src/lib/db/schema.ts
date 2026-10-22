@@ -3100,3 +3100,38 @@ export const intelJob = pgTable(
     index("intel_job_org_created_idx").on(t.organizationId, t.createdAt),
   ]
 );
+
+/**
+ * Un prospecto descartado: la marca de «este ya no me interesa en la lista».
+ *
+ * Prospectos no es una tabla, es una vista sobre los mensajes entrantes
+ * (`src/server/prospects/query.ts`), así que no hay fila que marcar: hace falta
+ * una donde anclar el descarte. Esto es especialmente cierto para el correo,
+ * cuyo remitente no tiene contacto (`email_message.contact_id` queda en NULL) y
+ * por lo tanto no tenía ningún `archived_at` que ponerle.
+ *
+ * Se guarda la clave, no una FK al contacto: al borrar un contacto su descarte
+ * puede quedarse huérfano y no pasa nada (la vista simplemente no lo
+ * encuentra), mientras que una FK en cascada borraría el descarte junto con el
+ * contacto y la persona reaparecería en la lista. `dismissed_by` tampoco tiene
+ * FK por lo mismo: si se va el miembro, la marca sobrevive.
+ */
+export const prospectDismissal = pgTable(
+  "prospect_dismissal",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** "contact": prospecto con ficha. "email": remitente sin ficha. */
+    kind: varchar("kind", { length: 16 }).notNull(),
+    /** `contact.id` o la dirección de correo en minúsculas. */
+    key: varchar("key", { length: 320 }).notNull(),
+    dismissedBy: varchar("dismissed_by", { length: 255 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("prospect_dismissal_org_kind_key_uq").on(t.organizationId, t.kind, t.key),
+    index("prospect_dismissal_org_kind_idx").on(t.organizationId, t.kind),
+  ]
+);

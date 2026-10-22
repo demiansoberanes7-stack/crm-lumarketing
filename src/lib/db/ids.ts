@@ -108,6 +108,8 @@ const prefixes = {
   googleOauthState: "gos",
   // Métricas de Google Ads
   googleAdsMetric: "gam",
+  // Prospectos descartados (0083)
+  prospectDismissal: "pdis",
 } as const;
 
 export type IdKind = keyof typeof prefixes;
