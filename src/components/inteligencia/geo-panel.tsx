@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapPinned, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
+import { relationIndex, relationLabel, type CatalogMatch } from "@/lib/intel-relation";
 
 /**
  * Competencia por estado (DENUE) — mapa de rejilla de México con celdas
@@ -55,7 +56,8 @@ function shareLabel(s: GeoStateCell): string {
 export function GeoPanel({
   terms,
   relatedTermId = null,
-  nearest = null,
+  matches = null,
+  competition = null,
   queryLabel = null,
 }: {
   terms: TermOption[];
@@ -66,16 +68,34 @@ export function GeoPanel({
    * vaga diría «esto es lo que buscaste» cuando no lo es.
    */
   relatedTermId?: string | null;
-  /** Vecino más próximo a la consulta, aunque no cruce el umbral: solo para etiquetarlo. */
-  nearest?: { termId: string; name: string; score: number } | null;
+  /** Relación de cada nicho del catálogo con la consulta (incluye «sin palabras en común»). */
+  matches?: CatalogMatch[] | null;
+  /**
+   * Oferta nacional DENUE de la CONSULTA (una sola llamada, ya hecha por el
+   * análisis). El desglose por estado solo existe por nicho; este conteo es lo
+   * que permite hablar de la búsqueda dentro de este panel sin gastar 32 llamadas.
+   */
+  competition?: { establishments: number; censored: boolean } | null;
   queryLabel?: string | null;
 }) {
-  const [termId, setTermId] = useState<string>("");
+  // Arranca en el nicho de la búsqueda si está en la lista (puede no tener serie
+  // GT todavía), o en el primero: así la nota nunca nombra un nicho vacío.
+  const [termId, setTermId] = useState<string>(() => {
+    const preferred =
+      relatedTermId && terms.some((t) => t.id === relatedTermId) ? relatedTermId : terms[0]?.id;
+    return preferred ?? "";
+  });
   const [report, setReport] = useState<GeoReportView | null>(null);
   const [loading, setLoading] = useState(false);
   const [ingesting, setIngesting] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+
+  const matchById = useMemo(() => relationIndex(matches ?? []), [matches]);
+  const activeMatch = matchById.get(termId) ?? null;
+  const activeName =
+    terms.find((t) => t.id === termId)?.name ??
+    (report?.available ? report.termName : "este nicho");
 
   useEffect(() => {
     if (!termId && terms.length > 0) setTermId(terms[0]!.id);
@@ -172,9 +192,14 @@ export function GeoPanel({
             aria-label="Nicho para el mapa"
             className="min-h-9 rounded-md border bg-background px-2 text-sm"
           >
-            {terms.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
+            {terms.map((t) => {
+              const label = queryLabel ? relationLabel(matchById.get(t.id) ?? null) : null;
+              return (
+                <option key={t.id} value={t.id}>
+                  {label ? `${t.name} · ${label}` : t.name}
+                </option>
+              );
+            })}
           </select>
           <Button variant="outline" onClick={() => void handleIngest()} disabled={ingesting || !termId}>
             <RefreshCw className={`mr-2 h-4 w-4 ${ingesting ? "animate-spin" : ""}`} />
@@ -183,20 +208,41 @@ export function GeoPanel({
         </div>
       </div>
 
-      {queryLabel !== null && relatedTermId !== null && termId === relatedTermId && (
-        <p className="mt-2 text-xs text-text-3">
-          El mapa es del nicho monitoreado que corresponde a «{queryLabel}». DENUE solo responde
-          por término ya en el catálogo: si tu búsqueda no está, pulsa «+ Monitorear» arriba y
-          después «Calcular mapa» (32 consultas, una por estado).
-        </p>
-      )}
-
-      {queryLabel !== null && relatedTermId === null && nearest !== null && termId === nearest.termId && (
-        <p className="mt-2 text-xs text-text-3">
-          El mapa es de «{nearest.name}», el nicho de tu catálogo más parecido a «{queryLabel}» (
-          {Math.round(nearest.score * 100)} %). No es tu búsqueda: regístrala con «+ Monitorear» y
-          después calcula su mapa (32 consultas, una por estado).
-        </p>
+      {queryLabel !== null && (
+        <div className="mt-2 space-y-1 text-xs text-text-3">
+          <p>
+            {activeMatch?.exact ? (
+              <>
+                El mapa es de <strong className="font-medium text-text-2">«{activeName}»</strong>, el
+                nicho que corresponde a «{queryLabel}». Este desglose por estado SÍ es el de tu
+                búsqueda dentro del catálogo.
+              </>
+            ) : activeMatch && activeMatch.score > 0 ? (
+              <>
+                El mapa es de <strong className="font-medium text-text-2">«{activeName}»</strong>, un
+                nicho {Math.round(activeMatch.score * 100)} % parecido a «{queryLabel}» por «
+                {activeMatch.via}»; no es tu búsqueda.
+              </>
+            ) : (
+              <>
+                El mapa es de <strong className="font-medium text-text-2">«{activeName}»</strong>, un
+                nicho de tu catálogo sin palabras en común con «{queryLabel}»; no describe tu
+                búsqueda.
+              </>
+            )}
+          </p>
+          <p>
+            {competition
+              ? `DENUE sí midió «${queryLabel}» a nivel nacional: ${
+                  competition.censored
+                    ? `≥${competition.establishments}`
+                    : competition.establishments.toLocaleString("es-MX")
+                } establecimientos coincidentes. El desglose por estado solo está calculado para los nichos del catálogo.`
+              : `DENUE no devolvió un conteo nacional para «${queryLabel}».`}{" "}
+            Para tener su mapa, registra la búsqueda con «+ Monitorear» y después pulsa «Calcular
+            mapa» (32 consultas, una por estado).
+          </p>
+        </div>
       )}
 
       {error && (
@@ -285,6 +331,13 @@ export function GeoPanel({
                 </p>
             </div>
           </div>
+          {report.censoredStates === report.states.length && report.missingStates === 0 && (
+            <p className="mt-3 rounded-md border border-warning-soft bg-warning-tint p-3 text-xs text-warning-text">
+              Los 32 estados devolvieron ≥10 establecimientos: DENUE censura la ventana de
+              resultados, así que este mapa confirma presencia en todo el país pero no distingue
+              estados ni da un total real. Es un límite de la fuente, no un empate de competencia.
+            </p>
+          )}
           <p className="mt-4 border-t pt-3 text-[11px] leading-snug text-text-3">
             Unidad: establecimientos públicos DENUE que coinciden con el término del nicho
             (conteo por ventana de 10; «≥10» = censurado; «sin dato» = el estado no

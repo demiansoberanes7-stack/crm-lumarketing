@@ -38,6 +38,8 @@ type Props = {
   queries: RelatedItem[];
   termName: string;
   onMonitor: (keyword: string) => Promise<string | null>;
+  /** Relación del nicho mostrado con la búsqueda activa (null sin búsqueda). */
+  note?: string | null;
 };
 
 const PAGE_SIZE = 5;
@@ -258,7 +260,7 @@ function RelatedColumn({
   );
 }
 
-export function GtRelatedPanel({ topics, queries, termName, onMonitor }: Props) {
+export function GtRelatedPanel({ topics, queries, termName, onMonitor, note = null }: Props) {
   if (topics.length === 0 && queries.length === 0) return null;
   const slug = termName.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "termino";
 
@@ -270,6 +272,7 @@ export function GtRelatedPanel({ topics, queries, termName, onMonitor }: Props) 
           Google Trends · {termName}
         </span>
       </div>
+      {note && <p className="text-xs text-text-3">{note}</p>}
       <div className="flex flex-col gap-3 lg:flex-row">
         <RelatedColumn icon="topic" title="Temas relacionados" items={topics} slug={`${slug}-temas`} onMonitor={onMonitor} />
         <RelatedColumn icon="query" title="Consultas relacionadas" items={queries} slug={`${slug}-consultas`} onMonitor={onMonitor} />

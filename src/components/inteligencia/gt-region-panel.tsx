@@ -21,11 +21,13 @@ type Props = {
   regions: RegionItem[];
   regionsSource: "google_trends" | "denue" | "none";
   termName: string;
+  /** Relación del nicho mostrado con la búsqueda activa (null sin búsqueda). */
+  note?: string | null;
 };
 
 const PAGE_SIZE = 5;
 
-export function GtRegionPanel({ regions, regionsSource, termName }: Props) {
+export function GtRegionPanel({ regions, regionsSource, termName, note = null }: Props) {
   const [page, setPage] = useState(0);
 
   const byState = useMemo(() => {
@@ -48,6 +50,7 @@ export function GtRegionPanel({ regions, regionsSource, termName }: Props) {
         <h2 className="flex items-center gap-2 font-semibold">
           <MapPinned className="h-4 w-4 text-brand-text" /> Interés por subregión
         </h2>
+        {note && <p className="mt-1 text-xs text-text-3">{note}</p>}
         <p className="mt-3 rounded-md bg-subtle p-3 text-sm text-text-2">
           Aún no hay datos geográficos para «{termName}». Ejecuta una ingesta de Google
           Trends para poblar el mapa.
@@ -67,6 +70,7 @@ export function GtRegionPanel({ regions, regionsSource, termName }: Props) {
         <MapPinned className="h-4 w-4 text-brand-text" /> Interés por subregión
         <span className="text-sm font-normal text-text-2">({fuenteLabel})</span>
       </h2>
+      {note && <p className="mt-1 text-xs text-text-3">{note}</p>}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_220px]">
         <div

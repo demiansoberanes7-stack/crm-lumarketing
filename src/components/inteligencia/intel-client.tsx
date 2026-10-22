@@ -28,6 +28,13 @@ import {
 import { TrendingPanel } from "@/components/inteligencia/trending-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
+import {
+  intelRelation,
+  relationIndex,
+  relationLabel,
+  relationRank,
+  type CatalogMatch,
+} from "@/lib/intel-relation";
 
 /* ── Tipos ───────────────────────────────────────────────────────────────── */
 
@@ -80,8 +87,9 @@ export type IntelNicheAnchor = { termId: string; name: string; score: number };
  * Anclas de la búsqueda sobre el catálogo propio:
  * - `focus`: el nicho que CRUZA el umbral de similitud, o sea que es la consulta.
  *   Es el único que puede mover los paneles GT y el mapa DENUE.
- * - `nearest`: el primero del ranking aunque no cruce el umbral, para que la
- *   pantalla lo nombre con su porcentaje en vez de hacerlo pasar por la búsqueda.
+ * - `nearest`: el primero con alguna palabra en común aunque no cruce el
+ *   umbral, para que la pantalla lo nombre con su porcentaje en vez de hacerlo
+ *   pasar por la búsqueda.
  *
  * Existe porque antes cualquiera de los dos se tomaba de `catalogMatches[0]`:
  * un vecino al 40 % cambiaba a sus espaldas el nicho que el dueño había elegido.
@@ -89,10 +97,10 @@ export type IntelNicheAnchor = { termId: string; name: string; score: number };
 export function intelNicheAnchors(
   overview: KeywordOverviewView | null
 ): { focus: IntelNicheAnchor | null; nearest: IntelNicheAnchor | null } {
-  const matches = overview?.catalogMatches ?? [];
-  const pick = (m: (typeof matches)[number] | undefined): IntelNicheAnchor | null =>
+  const relation = intelRelation(overview?.query ?? null, overview?.catalogMatches ?? null);
+  const pick = (m: CatalogMatch | null): IntelNicheAnchor | null =>
     m ? { termId: m.termId, name: m.name, score: m.score } : null;
-  return { focus: pick(matches.find((m) => m.exact)), nearest: pick(matches[0]) };
+  return { focus: pick(relation?.exact ?? null), nearest: pick(relation?.nearest ?? null) };
 }
 
 /**
@@ -142,6 +150,7 @@ export function IntelClient() {
   const [searching, setSearching] = useState(false);
   const [ingesting, setIngesting] = useState(false);
   const [nicheRefreshing, setNicheRefreshing] = useState(false);
+  const [monitoringQuery, setMonitoringQuery] = useState(false);
   const [ingestProgress, setIngestProgress] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -187,12 +196,52 @@ export function IntelClient() {
    */
   const anchors = useMemo(() => intelNicheAnchors(overview), [overview]);
 
+  /**
+   * Relación completa consulta ↔ catálogo. Con `null` (sin búsqueda) los
+   * paneles no se etiquetan; con búsqueda, CADA nicho recibe su etiqueta,
+   * incluso «sin palabras en común», para que ninguno parezca resultado de la
+   * consulta sin serlo.
+   */
+  const relation = useMemo(
+    () => intelRelation(overview?.query ?? null, overview?.catalogMatches ?? null),
+    [overview]
+  );
+  const matchesById = useMemo(
+    () => relationIndex(relation?.matches ?? []),
+    [relation]
+  );
+
+  /**
+   * Orden de presentación de las fuentes del catálogo bajo una búsqueda: el
+   * nicho que es la consulta, luego los parecidos y al final los que no
+   * comparten palabras. Sigue mostrándose todo — solo cambia el orden.
+   */
+  const orderedTrends = useMemo(() => {
+    const list = trends?.trends ?? [];
+    if (!relation) return list;
+    return [...list].sort(
+      (a, b) =>
+        relationRank(matchesById.get(b.termId)) - relationRank(matchesById.get(a.termId)) ||
+        a.name.localeCompare(b.name)
+    );
+  }, [trends, relation, matchesById]);
+
   useEffect(() => {
     if (!anchors.focus) return;
     setActiveTermId(anchors.focus.termId);
   }, [anchors]);
 
   const focusSeries = useMemo(() => intelFocusSeries(overview), [overview]);
+
+  /** Relación del nicho que están mirando los paneles GT y el mapa. */
+  const activeMatch = relation ? matchesById.get(activeTermId) ?? null : null;
+  const activeRelationNote = relation
+    ? activeMatch?.exact
+      ? `«${activeMatch.name}» es el nicho que corresponde a «${relation.query}».`
+      : activeMatch && activeMatch.score > 0
+        ? `«${activeMatch.name}» es un nicho ${Math.round(activeMatch.score * 100)}% parecido a «${relation.query}»; no es tu búsqueda.`
+        : `«${activeMatch?.name ?? "Este nicho"}» es un nicho de tu catálogo sin palabras en común con «${relation.query}»; no describe tu búsqueda.`
+    : null;
 
   const loadGt = useCallback(async (termId: string) => {
     if (!termId) return;
@@ -257,8 +306,8 @@ export function IntelClient() {
   }, [query]);
 
   const geoTerms = useMemo(
-    () => trends?.trends.map((t) => ({ id: t.termId, name: t.name })) ?? [],
-    [trends]
+    () => orderedTrends.map((t) => ({ id: t.termId, name: t.name })),
+    [orderedTrends]
   );
 
   /** Con búsqueda activa las fuentes del catálogo van abiertas: son su contexto. */
@@ -422,6 +471,34 @@ export function IntelClient() {
     await Promise.all([loadGt(activeTermId), loadTrends()]);
   }
 
+  /**
+   * Convierte la búsqueda en un nicho propio para que los paneles del catálogo
+   * pasen a seguirla. Es una acción del dueño, no automática: crear un nicho
+   * dispara una ingesta GT (una consulta del proveedor).
+   */
+  async function monitorQueryAndReload() {
+    if (!overview || monitoringQuery) return;
+    const term = overview.query;
+    setMonitoringQuery(true);
+    setError("");
+    const res = await fetch("/api/intel/monitor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ keyword: term }),
+    }).catch(() => null);
+    setMonitoringQuery(false);
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => null) as { error?: { message?: string } } | null;
+      setError(data?.error?.message ?? "No se pudo monitorear esta búsqueda.");
+      return;
+    }
+    setNotice(`«${term}» ya es un nicho de tu catálogo: los paneles de abajo la siguen.`);
+    setReloadKey((k) => k + 1);
+    await loadTrends();
+    // Releer el análisis: el catálogo ya incluye la búsqueda como nicho exacto.
+    await runSearch(term);
+  }
+
   function onSuggestFocus() {
     if (blurTimer.current) clearTimeout(blurTimer.current);
     if (suggestions.length > 0) setShowSuggest(true);
@@ -552,12 +629,51 @@ export function IntelClient() {
             <h2 className="font-semibold">{overview ? "Contexto de tu búsqueda" : "Explorar más"}</h2>
             <p className="mt-1 max-w-xl text-xs text-text-3">
               {overview ? (
-                <>
-                  Tendencias del país, ranking y comparativa de nichos, contenido de YouTube,
-                  audiencia y competencia local, leídos en relación a{" "}
-                  <strong>«{overview.query}»</strong>. Cada panel dice con qué fuente se armó y,
-                  cuando el dato es de un nicho parecido y no de tu consulta, está etiquetado.
-                </>
+                relation && !relation.exact ? (
+                  <>
+                    {relation.total === 0 ? (
+                      <>
+                        No hay nichos del catálogo que se puedan poner en relación con{" "}
+                        <strong>«{overview.query}»</strong>.
+                      </>
+                    ) : relation.nearest ? (
+                      <>
+                        Ningún nicho de tu catálogo es{" "}
+                        <strong>«{overview.query}»</strong>; el más parecido es «
+                        {relation.nearest.name}» ({Math.round(relation.nearest.score * 100)} %, por
+                        «{relation.nearest.via}»).
+                      </>
+                    ) : (
+                      <>
+                        Ninguno de los {relation.total} nichos de tu catálogo comparte palabras con{" "}
+                        <strong>«{overview.query}»</strong>.
+                      </>
+                    )}{" "}
+                    {relation.total > 0 &&
+                      "Los paneles de abajo son tu catálogo y cada uno declara su relación: sirven de referencia, no describen esta búsqueda. "}
+                    {relation.total > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void monitorQueryAndReload()}
+                          disabled={monitoringQuery}
+                          className="font-medium text-brand-text underline-offset-2 hover:underline disabled:opacity-60"
+                        >
+                          {monitoringQuery ? "Agregando…" : `Monitorear «${overview.query}»`}
+                        </button>{" "}
+                        para que la sigan.
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Tendencias del país, ranking y comparativa de nichos, contenido de YouTube,
+                    audiencia y competencia local. Cada panel dice con qué fuente se armó y cada
+                    nicho su relación con{" "}
+                    <strong>«{overview.query}»</strong>
+                    {relation?.exact && <>: «{relation.exact.name}» es tu búsqueda</>}.
+                  </>
+                )
               ) : (
                 <>
                   Tendencias actuales del país, nichos que ya monitoreas, comparativas, YouTube,
@@ -601,8 +717,8 @@ export function IntelClient() {
       {trends && trends.trends.length > 0 && (
         <GtRanking
           ranking={buildRanking(trends.trends)}
-          related={overview?.catalogMatches ?? null}
-          queryLabel={overview?.query ?? null}
+          related={relation?.matches ?? null}
+          queryLabel={relation?.query ?? null}
         />
       )}
 
@@ -620,9 +736,14 @@ export function IntelClient() {
             {focusSeries
               ? "La línea gruesa es tu búsqueda en vivo; las demás son tus nichos monitoreados, para comparar contra ella."
               : "Son nichos de tu catálogo: al buscar arriba, la línea de tu búsqueda se dibuja aquí."}
+            {relation && !relation.exact
+              ? relation.relatedCount > 0
+                ? ` Ninguno ES tu búsqueda: ${relation.relatedCount} comparten alguna palabra con ella y van etiquetados por su parecido; el resto se dibuja como referencia.`
+                : " Ninguno comparte palabras con la búsqueda: se dibujan como referencia."
+              : ""}
           </p>
           <div className="mt-3">
-            <GtCompareChart trends={trends.trends} focus={focusSeries} />
+            <GtCompareChart trends={orderedTrends} focus={focusSeries} />
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {focusSeries && (
@@ -631,15 +752,21 @@ export function IntelClient() {
                 {overview?.query}
               </span>
             )}
-            {trends.trends.slice(0, 6).map((t, i) => (
-              <span key={t.termId} className="flex items-center gap-1 text-[11px] text-text-2">
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ background: ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"][(focusSeries ? i + 1 : i) % 6] }}
-                />
-                {t.name}
-              </span>
-            ))}
+            {orderedTrends.slice(0, 6).map((t, i) => {
+              const match = relation ? matchesById.get(t.termId) ?? null : null;
+              return (
+                <span key={t.termId} className="flex items-center gap-1 text-[11px] text-text-2">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full"
+                    style={{ background: ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"][(focusSeries ? i + 1 : i) % 6] }}
+                  />
+                  {t.name}
+                  {relation && (
+                    <span className="text-text-3">· {relationLabel(match) ?? "sin palabras en común"}</span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         </section>
       )}
@@ -653,17 +780,22 @@ export function IntelClient() {
               : "Ver detalle de:"}
           </span>
           <div className="flex flex-wrap gap-1.5">
-            {trends.trends.map((t) => {
-              const hit = overview?.catalogMatches?.find((m) => m.termId === t.termId);
+            {orderedTrends.map((t) => {
+              const hit = relation ? matchesById.get(t.termId) ?? null : null;
+              const label = relation ? relationLabel(hit) ?? "sin palabras en común" : null;
               return (
                 <button
                   key={t.termId}
                   type="button"
                   onClick={() => setActiveTermId(t.termId)}
                   title={
-                    hit
-                      ? `${Math.round(hit.score * 100)}% parecido a «${overview?.query}» (${hit.via})`
-                      : "Nicho de tu catálogo"
+                    !relation
+                      ? "Nicho de tu catálogo"
+                      : hit?.exact
+                        ? `Tu búsqueda ES este nicho (${Math.round(hit.score * 100)}% de parecido vía «${hit.via}»).`
+                        : hit && hit.score > 0
+                          ? `${Math.round(hit.score * 100)}% parecido a «${relation.query}» (${hit.via})`
+                          : `No comparte palabras con «${relation.query}»; se muestra como contexto.`
                   }
                   className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                     activeTermId === t.termId
@@ -672,7 +804,7 @@ export function IntelClient() {
                   }`}
                 >
                   {t.name}
-                  {hit ? ` · ${Math.round(hit.score * 100)}%` : ""}
+                  {label ? ` · ${label}` : ""}
                 </button>
               );
             })}
@@ -697,6 +829,7 @@ export function IntelClient() {
           regions={gtReport.regions}
           regionsSource={gtReport.regionsSource}
           termName={gtReport.termName}
+          note={activeRelationNote}
         />
       )}
 
@@ -707,6 +840,7 @@ export function IntelClient() {
           queries={gtReport.queries}
           termName={gtReport.termName}
           onMonitor={monitorKeyword}
+          note={activeRelationNote}
         />
       )}
 
@@ -716,6 +850,9 @@ export function IntelClient() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold tracking-tight text-text-2">
               Detalle por nicho · selecciona para comparar
+              {relation && (
+                <span className="font-normal text-text-3"> · ordenados por parecido con «{relation.query}»</span>
+              )}
             </h2>
             <Button
               onClick={() => void handleCompare()}
@@ -727,12 +864,14 @@ export function IntelClient() {
             </Button>
           </div>
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {trends.trends.map((trend) => (
+            {orderedTrends.map((trend) => (
               <TrendCard
                 key={trend.termId}
                 trend={trend}
                 selected={selected.includes(trend.termId)}
                 onSelect={() => toggleSelect(trend.termId)}
+                relation={relation ? matchesById.get(trend.termId) ?? null : undefined}
+                queryLabel={relation?.query ?? null}
               />
             ))}
           </div>
@@ -766,7 +905,8 @@ export function IntelClient() {
       <GeoPanel
         terms={geoTerms}
         relatedTermId={relatedTermId}
-        nearest={anchors.nearest}
+        matches={relation?.matches ?? null}
+        competition={overview?.competition ?? null}
         queryLabel={overview?.query ?? null}
       />
         </div>

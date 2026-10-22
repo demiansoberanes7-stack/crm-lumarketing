@@ -16,6 +16,7 @@ import {
   keywordInterestTrend,
   type MarketIdea,
 } from "@/lib/intel-content";
+import { relationLabel, type CatalogMatch } from "@/lib/intel-relation";
 
 /* ── Paleta de líneas (tokens chart) ─────────────────────────────────────── */
 
@@ -251,8 +252,10 @@ const ARROW = { up: "↑", down: "↓", flat: "→" } as const;
  * recomendación accionable. Es la guía principal para elegir de qué hacer
  * contenido o pautar esta semana.
  *
- * Con una búsqueda activa, `related` (termId → similitud con la consulta)
- * etiqueta cada nicho: el ranking NO se oculta, se lee en relación a lo buscado.
+ * Con una búsqueda activa, `related` (similitud de cada nicho con la consulta)
+ * etiqueta cada nicho y el bloque de recomendación: el ranking NO se oculta,
+ * se lee en relación a lo buscado y nunca recomienda un nicho como si fuera
+ * la búsqueda cuando no comparte palabras con ella.
  */
 export function GtRanking({
   ranking,
@@ -260,12 +263,21 @@ export function GtRanking({
   queryLabel = null,
 }: {
   ranking: RankedNiche[];
-  related?: Array<{ termId: string; score: number; exact: boolean }> | null;
+  related?: CatalogMatch[] | null;
   queryLabel?: string | null;
 }) {
   if (ranking.length === 0) return null;
-  const top = ranking.filter((r) => r.classification === "A" || r.classification === "B");
   const scoreById = new Map((related ?? []).map((m) => [m.termId, m]));
+  const exact = (related ?? []).find((m) => m.exact) ?? null;
+  const exactInRanking = exact ? ranking.find((r) => r.termId === exact.termId) ?? null : null;
+  const rising = ranking.filter((r) => r.classification === "A" || r.classification === "B");
+  const risingMatchesQuery = queryLabel ? rising.filter((r) => scoreById.get(r.termId)?.exact) : rising;
+  const closest = queryLabel
+    ? ranking
+        .map((r) => ({ ranking: r, match: scoreById.get(r.termId) ?? null }))
+        .filter((x): x is { ranking: RankedNiche; match: CatalogMatch } => (x.match?.score ?? 0) > 0)
+        .sort((a, b) => b.match.score - a.match.score)[0] ?? null
+    : null;
 
   return (
     <section className="rounded-xl border bg-card p-5 shadow-sm" aria-label="Ranking de nichos">
@@ -274,18 +286,54 @@ export function GtRanking({
         Según tus <strong>nichos monitoreados</strong>: z-score de los últimos 7 días
         contra los 21 previos · A = alza clara, B = estable, C = baja, D = sin datos
         suficientes.
-        {queryLabel
-          ? ` Etiquetados por cuánto se parecen a «${queryLabel}».`
-          : ""}
+        {queryLabel ? ` Etiquetados por cuánto se parecen a «${queryLabel}».` : ""}
       </p>
 
-      {top.length > 0 && (
+      {!queryLabel && rising.length > 0 && (
         <div className="mt-3 rounded-md border border-success-soft bg-success-tint p-3 text-sm">
           <p className="font-medium text-success-text">
-            Enfócate en: {top.slice(0, 3).map((t) => t.name).join(", ")}
+            Enfócate en: {rising.slice(0, 3).map((t) => t.name).join(", ")}
           </p>
           <p className="mt-0.5 text-xs text-success-text opacity-80">
             Estos nichos tienen interés estable o en alza según los últimos 30 días.
+          </p>
+        </div>
+      )}
+
+      {queryLabel && risingMatchesQuery.length > 0 && (
+        <div className="mt-3 rounded-md border border-success-soft bg-success-tint p-3 text-sm">
+          <p className="font-medium text-success-text">
+            Enfócate en: {risingMatchesQuery.slice(0, 3).map((t) => t.name).join(", ")}
+          </p>
+          <p className="mt-0.5 text-xs text-success-text opacity-80">
+            {risingMatchesQuery.length === 1
+              ? `Es el nicho de «${queryLabel}» y su interés está estable o en alza.`
+              : `Estos nichos corresponden a «${queryLabel}» y su interés está estable o en alza.`}
+          </p>
+        </div>
+      )}
+
+      {queryLabel && risingMatchesQuery.length === 0 && (
+        <div className="mt-3 rounded-md border bg-subtle p-3 text-sm">
+          {exact ? (
+            <p className="text-text-2">
+              <span className="font-medium text-foreground">«{exact.name}» es tu búsqueda</span>
+              {exactInRanking
+                ? ", pero su interés no está estable ni en alza en esta ventana: no hay recomendación de contenido para ella."
+                : ", pero aún no tiene serie de Google Trends ingestada: no aparece en el ranking. Pulsa «Actualizar datos» para traerla."}
+            </p>
+          ) : (
+            <p className="text-text-2">
+              <span className="font-medium text-foreground">Ninguno de tus nichos con serie corresponde a «{queryLabel}».</span>{" "}
+              {closest
+                ? `El más cercano es «${closest.ranking.name}» (${relationLabel(closest.match)}).`
+                : "Ninguno comparte palabras con tu búsqueda."}
+            </p>
+          )}
+          <p className="mt-0.5 text-xs text-text-3">
+            {exactInRanking
+              ? "El resto del ranking son tus otros nichos monitoreados: sirven de referencia, no describen tu búsqueda."
+              : "El ranking de abajo son tus otros nichos monitoreados: sirven de referencia, no describen tu búsqueda."}
           </p>
         </div>
       )}
@@ -305,22 +353,31 @@ export function GtRanking({
           <tbody>
             {ranking.map((r, i) => {
               const badge = CLS_BADGE[r.classification];
-              const hit = scoreById.get(r.termId);
+              const hit = scoreById.get(r.termId) ?? null;
+              const label = queryLabel ? relationLabel(hit) ?? "sin palabras en común" : null;
               return (
                 <tr key={r.termId} className="border-b border-border/50 last:border-0">
                   <td className="py-2 pr-3 tabular-nums text-text-3">{i + 1}</td>
                   <td className="py-2 pr-3 font-medium">
                     {r.name}
-                    {hit && (
+                    {label && (
                       <span
-                        className="ml-1.5 rounded-full border border-brand-soft bg-brand-tint px-1.5 py-0.5 text-[10px] font-medium text-brand-text"
+                        className={
+                          hit?.exact
+                            ? "ml-1.5 rounded-full border border-brand-soft bg-brand-tint px-1.5 py-0.5 text-[10px] font-medium text-brand-text"
+                            : hit && hit.score > 0
+                              ? "ml-1.5 rounded-full border border-border bg-subtle px-1.5 py-0.5 text-[10px] font-medium text-text-2"
+                              : "ml-1.5 rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-3"
+                        }
                         title={
-                          hit.exact
-                            ? `Tu búsqueda cae en este nicho (${Math.round(hit.score * 100)}% de similitud).`
-                            : `Nicho más vecino a tu búsqueda: ${Math.round(hit.score * 100)}% de similitud. No es lo mismo; sirve de contexto.`
+                          hit?.exact
+                            ? "Tu búsqueda es este nicho."
+                            : hit && hit.score > 0
+                              ? `Nicho vecino a tu búsqueda por «${hit.via}». No es lo mismo; sirve de contexto.`
+                              : "Este nicho no comparte palabras con tu búsqueda. El parecido se mide por palabras, no por tema de negocio."
                         }
                       >
-                        {hit.exact ? "es tu búsqueda" : `${Math.round(hit.score * 100)}% parecido`}
+                        {label}
                       </span>
                     )}
                   </td>
@@ -353,6 +410,9 @@ export function GtRanking({
         Índice: interés de búsqueda relativo al máximo de la ventana (0–100).
         Tendencia: z-score de la ventana reciente contra el histórico. Fuente:
         Google Trends (MX, endpoint no oficial), 100 % externa.
+        {queryLabel
+          ? " El parecido con tu búsqueda se mide por palabras compartidas con el nombre o las keywords del nicho, no por tema de negocio."
+          : ""}
       </p>
     </section>
   );

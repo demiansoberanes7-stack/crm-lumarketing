@@ -210,7 +210,7 @@ export function TrendingPanel({ reloadKey, onMonitored, relatedTo = null }: Prop
               ? ` · leído ${new Date(view.lastIngestAt).toLocaleString("es-MX")}`
               : ""}
             {query.trim()
-              ? ` · solo las que mencionan alguna palabra de «${query.trim()}»`
+              ? ` · ${rows.length} de ${view?.rows.length ?? 0} mencionan alguna palabra de «${query.trim()}»`
               : ""}
           </p>
         </div>

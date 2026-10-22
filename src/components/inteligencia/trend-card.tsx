@@ -1,3 +1,5 @@
+import { relationLabel, type CatalogMatch } from "@/lib/intel-relation";
+
 const numberCompact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
 
 type Trend = {
@@ -59,11 +61,21 @@ export function TrendCard({
   trend,
   selected = false,
   onSelect,
+  relation,
+  queryLabel = null,
 }: {
   trend: Trend;
   selected?: boolean;
   onSelect?: () => void;
+  /**
+   * Relación de este nicho con la búsqueda activa. `undefined` = no hay
+   * búsqueda; `null` = hay búsqueda pero el nicho no vino en la relación, y se
+   * declara igual para que ninguna tarjeta quede sin explicación.
+   */
+  relation?: CatalogMatch | null;
+  queryLabel?: string | null;
 }) {
+  const relationText = queryLabel ? relationLabel(relation) ?? "sin palabras en común" : null;
   return (
     <article
       className={`flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm transition-colors ${
@@ -74,6 +86,28 @@ export function TrendCard({
         <h3 className="min-w-0 truncate font-semibold" title={trend.name}>{trend.name}</h3>
         <ZChip z={trend.z} />
       </div>
+      {relationText && (
+        <p className="-mt-1 text-[11px]">
+          <span
+            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 font-medium ${
+              relation?.exact
+                ? "border-brand-soft bg-brand-tint text-brand-text"
+                : relation && relation.score > 0
+                  ? "border-border bg-subtle text-text-2"
+                  : "border-border bg-card text-text-3"
+            }`}
+            title={
+              relation?.exact
+                ? `Tu búsqueda «${queryLabel}» corresponde a este nicho.`
+                : relation && relation.score > 0
+                  ? `Comparte palabras con «${queryLabel}» (${Math.round(relation.score * 100)}%).`
+                  : `No comparte palabras con «${queryLabel}»; el parecido se mide por palabras, no por tema de negocio.`
+            }
+          >
+            {relationText}
+          </span>
+        </p>
+      )}
       <Sparkline series={trend.series} />
       <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-2">
         <div>
