@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { apiError, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
+import { assetViewHeaders } from "@/server/media-path";
 import {
   ensureAssetAvailable,
   readMediaFile,
@@ -59,15 +60,8 @@ export const GET = withAuth(async (session, _req: Request, ctx: Params) => {
     const data = await readMediaFile(session.organizationId, assetId);
     return new Response(new Uint8Array(data), {
       headers: {
-        "content-type": asset.mimeType ?? "application/octet-stream",
+        ...assetViewHeaders(asset.mimeType, asset.fileName),
         "content-length": String(data.byteLength),
-        // El contenido de un asset es inmutable; privado por sesión.
-        "cache-control": "private, max-age=86400",
-        ...(asset.fileName
-          ? {
-              "content-disposition": `inline; filename="${asset.fileName.replace(/[^\w. -]/g, "_")}"`,
-            }
-          : {}),
       },
     });
   } catch {

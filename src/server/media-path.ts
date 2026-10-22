@@ -98,3 +98,53 @@ export function mediaHeaders(mime: string): Record<string, string> {
   }
   return headers;
 }
+
+/**
+ * Tipos que se pueden mostrar en el navegador sin ejecutar nada.
+ *
+ * Excluye `image/svg+xml` a propósito: es imagen para `<img>` pero documento
+ * ejecutable si se abre en una pestaña, y aquí el binario lo trae un tercero.
+ */
+const INLINE_TYPES =
+  /^(image\/(?!svg)[a-z0-9.+-]+|video\/[a-z0-9.+-]+|audio\/[a-z0-9.+-]+|application\/pdf)$/i;
+
+/**
+ * El `content-type` con el que se sirve un adjunto, filtrado.
+ *
+ * El MIME guardado viene del payload del webhook (`media.mime_type` en
+ * `src/server/inbox/ingest.ts`, o el `content-type` de la respuesta remota en
+ * `src/server/whatsapp/media.ts`): lo elige quien envía el archivo, no
+ * Lumarketing. Servirlo tal cual en la raíz del CRM —con `inline` y sesión de
+ * quien hace clic— convierte un adjunto `text/html` en XSS con cookies
+ * propias. Lo que no sea multimedia o PDF se baja como archivo opaco.
+ */
+export function assetContentType(mime: string | null | undefined): string {
+  const bare = (mime ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  return INLINE_TYPES.test(bare) ? bare : "application/octet-stream";
+}
+
+/**
+ * Cabeceras del adjunto privado (`/api/media/[assetId]`).
+ *
+ * `inline` solo para lo filtrado arriba; el resto se fuerza a `attachment`
+ * para que el navegador no lo interprete como documento de la aplicación.
+ * `nosniff` va siempre, porque un `application/octet-stream` sin él vuelve a
+ * adivinar tipo a partir del contenido.
+ */
+export function assetViewHeaders(
+  storedMime: string | null | undefined,
+  fileName?: string | null
+): Record<string, string> {
+  const type = assetContentType(storedMime);
+  const inline = type !== "application/octet-stream";
+  const safeName = (fileName ?? "").replace(/[^\w. -]/g, "_");
+  return {
+    "content-type": type,
+    "x-content-type-options": "nosniff",
+    // El contenido de un asset es inmutable; privado por sesión.
+    "cache-control": "private, max-age=86400",
+    ...(safeName
+      ? { "content-disposition": `${inline ? "inline" : "attachment"}; filename="${safeName}"` }
+      : {}),
+  };
+}
