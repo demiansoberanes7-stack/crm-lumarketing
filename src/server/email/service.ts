@@ -9,6 +9,7 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { sanitizeHeaderValue } from "@/lib/email-format";
 
 
 export type EmailAccountInput = {
@@ -281,12 +282,18 @@ export async function sendEmail(
     auth: { user: creds.smtpUser, pass: creds.smtpPassword },
   });
 
+  // Asunto y nombre visible viajan como cabeceras: un CRLF permite añadir un
+  // `Bcc:` y desviar el correo. Se limpian aquí, en el único punto por el que
+  // pasan todos los envíos (campañas, respuestas, cotizaciones y agente).
+  const subject = sanitizeHeaderValue(input.subject, 998);
+  const fromName = creds.fromName ? sanitizeHeaderValue(creds.fromName, 255) : "";
+
   const result = await transporter.sendMail({
-    from: creds.fromName
-      ? { name: creds.fromName, address: creds.emailAddress }
+    from: fromName
+      ? { name: fromName, address: creds.emailAddress }
       : creds.emailAddress,
     to: input.to,
-    subject: input.subject,
+    subject,
     text: input.text,
     html: input.html,
     inReplyTo: input.inReplyTo,
@@ -309,7 +316,7 @@ export async function sendEmail(
     messageId: result.messageId,
     from: creds.emailAddress,
     to: { value: [{ address: input.to, name: "" }] },
-    subject: input.subject,
+    subject,
     bodyText: input.text ?? null,
     bodyHtml: input.html ?? null,
     direction: "outbound",

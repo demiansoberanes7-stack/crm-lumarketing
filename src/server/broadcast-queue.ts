@@ -4,6 +4,7 @@ import { scoped } from "@/lib/db/tenant";
 import { noConversationReason } from "@/server/broadcasts/audience";
 import { refreshBroadcastCampaign } from "@/server/broadcasts/metrics";
 import { CUENTA_MUDA, sendEmail } from "@/server/email/service";
+import { normalizeEmail } from "@/server/email-campaigns/recipients";
 import { personalizeEmail } from "@/server/email-campaigns/personalize";
 import { SendError, sendTemplate, sendText } from "@/server/inbox/send";
 import { templateRequiresOptIn } from "@/server/whatsapp/templates";
@@ -254,7 +255,7 @@ async function deliver(input: DeliveryRow) {
 async function deliverEmail(input: DeliveryRow): Promise<void> {
   const db = getDb();
   const now = new Date();
-  const email = input.email?.trim().toLowerCase() ?? "";
+  const email = normalizeEmail(input.email ?? "");
   const fail = async (code: string, message: string) => {
     await db.update(schema.broadcastRecipient)
       .set({ status: "failed", errorCode: code, errorMessage: message.slice(0, 500), updatedAt: now })

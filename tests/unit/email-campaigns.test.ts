@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
+import { sanitizeHeaderValue } from "@/lib/email-format";
+import { listEmailRecipients } from "@/server/email-campaigns/audience";
 import {
   EMAIL_AUDIENCE_LIMIT,
+  EMAIL_IMPORT_REQUEST_MAX_BYTES,
   EmailImportError,
+  assertXlsxWithinLimits,
+  exceedsUploadBudget,
   normalizeEmail,
   normalizeRecipientList,
   parseRecipientFile,
@@ -36,6 +41,15 @@ describe("normalización de correos", () => {
       { email: "ana@empresa.com", name: "Ana Pérez", contactId: null },
       { email: "beto@empresa.mx", name: null, contactId: null },
     ]);
+  });
+
+  it("una lista manual no hereda ids de contacto del cliente", () => {
+    expect(normalizeRecipientList([
+      { email: "ana@empresa.com", contactId: "ct_de_otro_negocio" },
+    ])).toEqual([{ email: "ana@empresa.com", name: null, contactId: null }]);
+    expect(listEmailRecipients({
+      recipients: [{ email: "beto@empresa.mx", contactId: "ct_ajeno" }],
+    })).toEqual([{ email: "beto@empresa.mx", name: null, contactId: null }]);
   });
 });
 
@@ -115,6 +129,34 @@ describe("tablas y archivos", () => {
     ).rejects.toMatchObject({ code: "file_type" });
   });
 
+  it("corta la subida por Content-Length antes de leer el cuerpo", () => {
+    expect(exceedsUploadBudget(String(EMAIL_IMPORT_REQUEST_MAX_BYTES))).toBe(false);
+    expect(exceedsUploadBudget(String(EMAIL_IMPORT_REQUEST_MAX_BYTES + 1))).toBe(true);
+    expect(exceedsUploadBudget(null)).toBe(false);
+    expect(exceedsUploadBudget("no-es-un-numero")).toBe(false);
+  });
+
+  it("un .xlsx normal pasa el preflight y uno manipulado no", () => {
+    const healthy = buildXlsx([["correo"], ["ana@empresa.com"]]);
+    expect(() => assertXlsxWithinLimits(healthy)).not.toThrow();
+
+    const bomb = buildXlsx([["correo"], ["ana@empresa.com"]]);
+    const directory = bomb.readUInt32LE(findEocd(bomb) + 16);
+    bomb.writeUInt32LE(0x7fffffff, directory + 24);
+    expect(() => assertXlsxWithinLimits(bomb)).toThrowError(/se expande/);
+
+    const zip64 = buildXlsx([["correo"], ["ana@empresa.com"]]);
+    zip64.writeUInt16LE(0xffff, findEocd(zip64) + 10);
+    expect(() => assertXlsxWithinLimits(zip64)).toThrowError(/ZIP64/);
+
+    const manyEntries = buildXlsx([["correo"], ["ana@empresa.com"]]);
+    manyEntries.writeUInt16LE(2_000, findEocd(manyEntries) + 10);
+    expect(() => assertXlsxWithinLimits(manyEntries)).toThrowError(/demasiadas partes/);
+
+    expect(() => assertXlsxWithinLimits(Buffer.from("no es un zip")))
+      .toThrowError(/no es un \.xlsx válido/);
+  });
+
   it("lee un .xlsx real (primera hoja) con read-excel-file", async () => {
     const buffer = buildXlsx([
       ["correo", "nombre"],
@@ -137,6 +179,23 @@ describe("personalización del correo", () => {
       .toBe("Hola beto");
     expect(personalizeEmail("{{Nombre}}: {{correo}}", { email: "ana@empresa.com", name: "Ana" }))
       .toBe("Ana: ana@empresa.com");
+  });
+
+  it("un nombre con salto de línea no inyecta cabeceras en el asunto", () => {
+    expect(personalizeEmail("Hola {{nombre}}", {
+      email: "ana@empresa.com",
+      name: "Ana\r\nBcc: espia@evil.com",
+    })).toBe("Hola Ana Bcc: espia@evil.com");
+    expect(personalizeEmail("Hola {{nombre}}", { email: "ana@empresa.com", name: "\r\n" }))
+      .toBe("Hola ana");
+  });
+});
+
+describe("saneo de cabeceras", () => {
+  it("colapsa los controles y recorta al límite", () => {
+    expect(sanitizeHeaderValue("Hola\r\nBcc: x@y.com")).toBe("Hola Bcc: x@y.com");
+    expect(sanitizeHeaderValue("Asunto\u0000\tcon control")).toBe("Asunto con control");
+    expect(sanitizeHeaderValue("x".repeat(1_200))).toHaveLength(998);
   });
 });
 
@@ -170,7 +229,39 @@ describe("payload de campaña de correo", () => {
     expect(createEmailCampaignSchema.safeParse({ ...base, subject: "", audience: { kind: "contacts" } }).success).toBe(false);
     expect(createEmailCampaignSchema.safeParse({ ...base, channel: "whatsapp", audience: { kind: "contacts" } }).success).toBe(false);
   });
+
+  it("un asunto con salto de línea no pasa", () => {
+    expect(createEmailCampaignSchema.safeParse({
+      ...base,
+      subject: "Hola\r\nBcc: espia@evil.com",
+      audience: { kind: "contacts" },
+    }).success).toBe(false);
+  });
+
+  it("una lista manual no puede apuntar a la ficha de un contacto", () => {
+    expect(createEmailCampaignSchema.safeParse({
+      ...base,
+      audience: {
+        kind: "list",
+        recipients: [{ email: "ana@empresa.com", contactId: "ct_ajeno" }],
+      },
+    }).success).toBe(false);
+    expect(createEmailCampaignSchema.safeParse({
+      ...base,
+      audience: {
+        kind: "list",
+        recipients: [{ email: "ana@empresa.com", contactId: null }],
+      },
+    }).success).toBe(true);
+  });
 });
+
+function findEocd(buffer: Buffer): number {
+  for (let offset = buffer.length - 22; offset >= 0; offset--) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
+  }
+  throw new Error("EOCD no encontrado");
+}
 
 /** XLSX mínimo y determinista: hoja con celdas inline (sin sharedStrings). */
 function buildXlsx(rows: string[][]): Buffer {

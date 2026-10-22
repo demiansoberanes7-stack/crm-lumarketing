@@ -14,6 +14,15 @@ export type ParsedEmailBody = {
   quoted: string | null;
 };
 
+/**
+ * Un asunto viaja como cabecera: un salto de línea ahí permite inyectar
+ * `Bcc:`/`Cc:` y convertir un correo en otro. Se colapsan los caracteres de
+ * control antes de entregarlo a nodemailer, venga el texto de donde venga.
+ */
+export function sanitizeHeaderValue(value: string, max = 998): string {
+  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, max);
+}
+
 const QUOTE_HEADER =
   /^\s*(el|le|on)\s.+?\s(escribió|escribio|a écrit|wrote)\s*:\s*$/i;
 const FORWARDED_HEADER =

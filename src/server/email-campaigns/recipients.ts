@@ -9,6 +9,19 @@
 
 export const EMAIL_AUDIENCE_LIMIT = 5_000;
 export const EMAIL_IMPORT_MAX_BYTES = 3 * 1024 * 1024;
+/** Margen del multipart (boundaries y cabeceras) sobre el archivo en sí. */
+export const EMAIL_IMPORT_REQUEST_MAX_BYTES = EMAIL_IMPORT_MAX_BYTES + 512 * 1024;
+
+/**
+ * `Content-Length` declarado por el navegador. Se comprueba antes de leer el
+ * cuerpo para no materializar en memoria una subida arbitrariamente grande.
+ * Sin cabecera (chunked) no se puede saber: el llamador valida `file.size`.
+ */
+export function exceedsUploadBudget(contentLength: string | null): boolean {
+  if (!contentLength) return false;
+  const size = Number(contentLength);
+  return Number.isFinite(size) && size > EMAIL_IMPORT_REQUEST_MAX_BYTES;
+}
 
 export type EmailRecipientInput = {
   email: string;
@@ -171,6 +184,76 @@ function extensionOf(filename: string): string {
   return match?.[1] ?? "";
 }
 
+const XLSX_MAX_ENTRIES = 1_024;
+const XLSX_MAX_UNCOMPRESSED_BYTES = 24 * 1024 * 1024;
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
+const ZIP64_MARKER_16 = 0xffff;
+const ZIP64_MARKER_32 = 0xffffffff;
+
+/**
+ * Un .xlsx es un ZIP: 3 MB comprimidos pueden expandirse a cientos de MB y
+ * agotar la memoria del proceso. Antes de descomprimir nada se lee el
+ * directorio central y se acotan el número de entradas y la suma de tamaños
+ * declarados. ZIP64 se rechaza: sus marcadores harían falsa la aritmética.
+ */
+export function assertXlsxWithinLimits(buffer: Buffer): void {
+  const invalid = () =>
+    new EmailImportError("file_type", "El archivo no es un .xlsx válido.");
+  if (buffer.length < 22) throw invalid();
+
+  let eocd = -1;
+  const earliest = Math.max(0, buffer.length - 65_557);
+  for (let offset = buffer.length - 22; offset >= earliest; offset--) {
+    if (buffer.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) throw invalid();
+
+  const entries = buffer.readUInt16LE(eocd + 10);
+  const directoryOffset = buffer.readUInt32LE(eocd + 16);
+  if (entries === ZIP64_MARKER_16 || directoryOffset === ZIP64_MARKER_32) {
+    throw new EmailImportError(
+      "file_too_large",
+      "La hoja usa un formato ZIP64 que no se admite. Vuelve a guardarla como .xlsx estándar."
+    );
+  }
+  if (entries > XLSX_MAX_ENTRIES) {
+    throw new EmailImportError(
+      "file_too_large",
+      "La hoja contiene demasiadas partes internas. Guarda solo los datos en una hoja nueva."
+    );
+  }
+
+  let cursor = directoryOffset;
+  let uncompressed = 0;
+  for (let index = 0; index < entries; index++) {
+    if (cursor + 46 > buffer.length) throw invalid();
+    if (buffer.readUInt32LE(cursor) !== ZIP_CENTRAL_SIGNATURE) throw invalid();
+    const entrySize = buffer.readUInt32LE(cursor + 24);
+    if (entrySize === ZIP64_MARKER_32) {
+      throw new EmailImportError(
+        "file_too_large",
+        "La hoja usa un formato ZIP64 que no se admite. Vuelve a guardarla como .xlsx estándar."
+      );
+    }
+    uncompressed += entrySize;
+    if (uncompressed > XLSX_MAX_UNCOMPRESSED_BYTES) {
+      throw new EmailImportError(
+        "file_too_large",
+        "La hoja se expande por encima de lo permitido. Divídela en archivos más pequeños."
+      );
+    }
+    cursor +=
+      46 +
+      buffer.readUInt16LE(cursor + 28) +
+      buffer.readUInt16LE(cursor + 30) +
+      buffer.readUInt16LE(cursor + 32);
+  }
+}
+
 /**
  * Lee un archivo de destinatarios. `.xlsx` se parsea con read-excel-file;
  * `.csv`, `.tsv` y `.txt` como texto. El `.xls` binario de Excel 97 no está
@@ -197,6 +280,7 @@ export async function parseRecipientFile(input: {
     );
   }
   if (extension === "xlsx") {
+    assertXlsxWithinLimits(input.buffer);
     const { default: readXlsxFile } = await import("read-excel-file/node");
     const sheets = await readXlsxFile(input.buffer);
     const first = sheets[0]?.data ?? [];
@@ -210,6 +294,7 @@ export async function parseRecipientFile(input: {
   }
   // Sin extensión reconocible: si es un ZIP, probablemente sea un .xlsx.
   if (input.buffer[0] === 0x50 && input.buffer[1] === 0x4b) {
+    assertXlsxWithinLimits(input.buffer);
     const { default: readXlsxFile } = await import("read-excel-file/node");
     const sheets = await readXlsxFile(input.buffer);
     const first = sheets[0]?.data ?? [];
@@ -232,7 +317,9 @@ export function normalizeRecipientList(recipients: EmailRecipientInput[]): Email
   for (const recipient of recipients) {
     const email = normalizeEmail(recipient.email);
     if (!email) continue;
-    addUnique(result, seen, email, cleanName(recipient.name), recipient.contactId ?? null);
+    // Una lista manual no procede de la cartera: no se hereda ningún id de
+    // contacto del cliente, que podría apuntar a la ficha de otro negocio.
+    addUnique(result, seen, email, cleanName(recipient.name), null);
     if (result.length > EMAIL_AUDIENCE_LIMIT) break;
   }
   return result;

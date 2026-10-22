@@ -156,6 +156,17 @@ describe("worker de campañas de correo", () => {
     );
   });
 
+  it("una dirección manipulada en la fila no llega a nodemailer", async () => {
+    dueRows = [emailRow({ email: "ana@example.com\r\nBcc: espia@evil.com" })];
+
+    await runBroadcastWorkerOnce();
+
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(updates).toContainEqual(
+      expect.objectContaining({ status: "failed", errorCode: "missing_email" })
+    );
+  });
+
   it("una campaña pausada devuelve la fila a la cola sin enviar", async () => {
     campaignStatus = "paused";
 

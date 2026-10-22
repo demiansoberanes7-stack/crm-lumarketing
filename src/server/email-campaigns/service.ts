@@ -86,7 +86,13 @@ export async function listEmailCampaigns(organizationId: string): Promise<EmailC
       createdAt: schema.broadcastCampaign.createdAt,
     })
     .from(schema.broadcastCampaign)
-    .leftJoin(schema.emailAccount, eq(schema.emailAccount.id, schema.broadcastCampaign.senderAccountId))
+    .leftJoin(
+      schema.emailAccount,
+      and(
+        eq(schema.emailAccount.id, schema.broadcastCampaign.senderAccountId),
+        scoped(schema.emailAccount.organizationId, organizationId)
+      )
+    )
     .where(
       and(
         scoped(schema.broadcastCampaign.organizationId, organizationId),
