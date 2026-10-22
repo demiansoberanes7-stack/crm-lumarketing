@@ -207,6 +207,14 @@
     letter-spacing: -0.01em;
     text-rendering: optimizeLegibility;
   }
+  /* El cascarón es la única superficie con scroll. Sin este candado, cualquier
+     caja en flujo fuera del shell (extensiones del navegador, nodos inyectados)
+     alarga el documento y la rueda, al agotar un scroller interno, arrastra el
+     rail y la cabecera fuera de pantalla sobre un vacío en blanco. */
+  html:has(.app-shell) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   ::selection {
     background: var(--accent);
     color: var(--accent-fg);

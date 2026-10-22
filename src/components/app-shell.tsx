@@ -90,7 +90,7 @@ export function AppShell({
 
   return (
     <div
-      className="flex h-dvh overflow-hidden bg-background"
+      className="app-shell flex h-dvh overflow-hidden bg-background"
       style={visibleHeight ? { height: visibleHeight } : undefined}
     >
       {navOpen && (
