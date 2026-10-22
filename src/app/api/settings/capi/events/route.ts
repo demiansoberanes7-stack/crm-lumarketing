@@ -1,9 +1,12 @@
-import { withOwner } from "@/lib/api";
+import { intParam, withOwner } from "@/lib/api";
 import {
   atribucionDisabledResponse,
   atribucionEnabled,
 } from "@/server/attribution/flag";
-import { listConversionActivity } from "@/server/attribution/conversions";
+import {
+  ACTIVITY_DEFAULT_LIMIT,
+  listConversionActivity,
+} from "@/server/attribution/conversions";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +19,14 @@ export const dynamic = "force-dynamic";
  */
 export const GET = withOwner(async (session, req: Request) => {
   if (!atribucionEnabled()) return atribucionDisabledResponse();
-  const raw = new URL(req.url).searchParams.get("limit");
-  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
   // Un límite fuera de rango se recorta, no falla: es un panel, no un contrato
-  // de paginación.
-  const limit = Number.isFinite(parsed) ? parsed : undefined;
+  // de paginación. Sin `intParam`, `?limit=-1` llegaba como `LIMIT -1` y
+  // Postgres contestaba con un 500 en vez de la actividad.
+  const limit = intParam(new URL(req.url), "limit", {
+    fallback: ACTIVITY_DEFAULT_LIMIT,
+    min: 1,
+    max: 200,
+  });
   const events = await listConversionActivity(session.organizationId, limit);
   return Response.json({ events });
 });

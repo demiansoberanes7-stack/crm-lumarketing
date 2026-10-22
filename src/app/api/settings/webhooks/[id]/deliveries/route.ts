@@ -1,5 +1,5 @@
 import { eq, desc, count } from "drizzle-orm";
-import { withOwner, apiError } from "@/lib/api";
+import { withOwner, apiError, intParam } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 
@@ -18,8 +18,8 @@ type Params = { params: Promise<{ id: string }> };
 export const GET = withOwner(async (session, req: Request, { params }: Params) => {
   const { id } = await params;
   const url = new URL(req.url);
-  const limit = Math.min(Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 100);
-  const offset = Math.max(Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
+  const limit = intParam(url, "limit", { fallback: 50, min: 1, max: 100 });
+  const offset = intParam(url, "offset", { fallback: 0 });
 
   const db = getDb();
 

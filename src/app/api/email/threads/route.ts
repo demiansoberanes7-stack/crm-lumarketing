@@ -1,4 +1,4 @@
-import { apiError, withAuth } from "@/lib/api";
+import { apiError, intParam, withAuth } from "@/lib/api";
 import { listMessages } from "@/server/email/service";
 import { groupEmailThreads, type EmailThread } from "@/components/email/threading";
 
@@ -73,7 +73,7 @@ export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const accountId = url.searchParams.get("accountId");
   if (!accountId) return apiError(400, "missing_param", "accountId es requerido");
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "200", 10) || 200, 500);
+  const limit = intParam(url, "limit", { fallback: 200, min: 1, max: 500 });
 
   const messages = await listMessages(session.organizationId, accountId, { limit });
   const threads = groupEmailThreads(messages as unknown as EmailRow[]).map(toChatThread);

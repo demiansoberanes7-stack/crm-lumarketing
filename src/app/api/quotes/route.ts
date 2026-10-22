@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseBody, withAuth } from "@/lib/api";
+import { intParam, parseBody, withAuth } from "@/lib/api";
 import { listQuotes, createQuote, listQuotesForProjectLink } from "@/server/quotes/service";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const status = url.searchParams.get("status") ?? undefined;
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50") || 50, 100);
-  const offset = parseInt(url.searchParams.get("offset") ?? "0") || 0;
+  // `intParam` y no `parseInt`: con `?limit=-5` el negativo llegaba directo a
+  // `LIMIT` y Postgres respondía 500 en vez de la lista.
+  const limit = intParam(url, "limit", { fallback: 50, min: 1, max: 100 });
+  const offset = intParam(url, "offset", { fallback: 0 });
   const archived = url.searchParams.get("archived") === "1";
 
   // Desplegable de "Nuevo proyecto": no archivadas y sin proyecto vinculado,
