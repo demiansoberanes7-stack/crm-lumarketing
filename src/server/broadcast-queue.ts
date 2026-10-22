@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { noConversationReason } from "@/server/broadcasts/audience";
 import { refreshBroadcastCampaign } from "@/server/broadcasts/metrics";
+import { CUENTA_MUDA, sendEmail } from "@/server/email/service";
+import { personalizeEmail } from "@/server/email-campaigns/personalize";
 import { SendError, sendTemplate, sendText } from "@/server/inbox/send";
 import { templateRequiresOptIn } from "@/server/whatsapp/templates";
 
@@ -15,6 +17,9 @@ const STALE_AFTER_MS = 5 * 60_000;
  * webhook llegó cuando el worker estaba caído.
  */
 const WAIT_RETRY_MS = 60 * 60_000;
+
+/** Cuentas que ya toparon su límite en este ciclo (para no repetir el aviso). */
+const dailyLimitWarned = new Set<string>();
 
 const workerState = globalThis as typeof globalThis & {
   __broadcastPoll?: ReturnType<typeof setInterval>;
@@ -62,7 +67,11 @@ export async function runBroadcastWorkerOnce(): Promise<void> {
         campaignId: schema.broadcastRecipient.campaignId,
         conversationId: schema.broadcastRecipient.conversationId,
         contactId: schema.broadcastRecipient.contactId,
+        email: schema.broadcastRecipient.email,
+        recipientName: schema.broadcastRecipient.recipientName,
         channel: schema.broadcastRecipient.channel,
+        subject: schema.broadcastCampaign.subject,
+        senderAccountId: schema.broadcastCampaign.senderAccountId,
         messageText: schema.broadcastCampaign.messageText,
         templateName: schema.broadcastCampaign.templateName,
         templateLanguage: schema.broadcastCampaign.templateLanguage,
@@ -107,6 +116,7 @@ export async function runBroadcastWorkerOnce(): Promise<void> {
   } catch (error) {
     console.error("[broadcasts] Falló el ciclo de envíos masivos:", error);
   } finally {
+    dailyLimitWarned.clear();
     workerState.__broadcastTick = false;
   }
 }
@@ -117,13 +127,18 @@ function templateParamsFrom(value: unknown): string[] {
     : [];
 }
 
-async function deliver(input: {
+type DeliveryRow = {
   id: string;
   organizationId: string;
   campaignId: string;
   conversationId: string | null;
+  contactId: string | null;
+  email: string | null;
+  recipientName: string | null;
   /** Columna varchar de la BD: se valida contra el catálogo al crearla. */
   channel: string;
+  subject: string | null;
+  senderAccountId: string | null;
   messageText: string;
   templateName: string | null;
   templateLanguage: string | null;
@@ -132,7 +147,9 @@ async function deliver(input: {
   templateHeaderFormat: string | null;
   templateHeaderMediaUrl: string | null;
   contactOptInAt: Date | null;
-}) {
+};
+
+async function deliver(input: DeliveryRow) {
   const db = getDb();
   const now = new Date();
   const [campaign] = await db
@@ -144,6 +161,10 @@ async function deliver(input: {
     await db.update(schema.broadcastRecipient)
       .set({ status: "queued", startedAt: null, updatedAt: new Date() })
       .where(scoped(schema.broadcastRecipient.organizationId, input.organizationId, eq(schema.broadcastRecipient.id, input.id)));
+    return;
+  }
+  if (input.channel === "email") {
+    await deliverEmail(input);
     return;
   }
   if (!input.conversationId) {
@@ -222,4 +243,113 @@ async function deliver(input: {
     }
   }
   await refreshBroadcastCampaign(input.organizationId, input.campaignId);
+}
+
+/**
+ * Envío de una fila de campaña de correo. Sin conversación ni ventana: el
+ * correo no depende del último mensaje del cliente. La cuenta remitente se
+ * valida aquí otra vez por si se apagó después de crear la campaña, y se
+ * respeta su límite diario: lo que sobra continúa al día siguiente.
+ */
+async function deliverEmail(input: DeliveryRow): Promise<void> {
+  const db = getDb();
+  const now = new Date();
+  const email = input.email?.trim().toLowerCase() ?? "";
+  const fail = async (code: string, message: string) => {
+    await db.update(schema.broadcastRecipient)
+      .set({ status: "failed", errorCode: code, errorMessage: message.slice(0, 500), updatedAt: now })
+      .where(scoped(schema.broadcastRecipient.organizationId, input.organizationId, eq(schema.broadcastRecipient.id, input.id)));
+    await refreshBroadcastCampaign(input.organizationId, input.campaignId);
+  };
+
+  if (!email) {
+    await fail("missing_email", "El destinatario no tiene correo.");
+    return;
+  }
+  if (!input.senderAccountId) {
+    await fail("sender_unavailable", "La campaña no tiene cuenta remitente.");
+    return;
+  }
+  const [sender] = await db
+    .select({ enabled: schema.emailAccount.enabled, dailyLimit: schema.emailAccount.dailyLimit })
+    .from(schema.emailAccount)
+    .where(
+      scoped(
+        schema.emailAccount.organizationId,
+        input.organizationId,
+        eq(schema.emailAccount.id, input.senderAccountId)
+      )
+    )
+    .limit(1);
+  if (!sender?.enabled) {
+    await fail("sender_unavailable", CUENTA_MUDA);
+    return;
+  }
+  if (sender.dailyLimit > 0) {
+    const used = await senderSentToday(input.organizationId, input.senderAccountId);
+    if (used >= sender.dailyLimit) {
+      // Se reprograma al siguiente día UTC; la campaña sigue "sending" y el
+      // resto de la lista espera su turno en vez de fallar en masa.
+      const nextDay = new Date(now);
+      nextDay.setUTCHours(24, 1, 0, 0);
+      await db.update(schema.broadcastRecipient)
+        .set({
+          status: "queued",
+          startedAt: null,
+          errorCode: null,
+          errorMessage: null,
+          scheduledAt: nextDay,
+          updatedAt: now,
+        })
+        .where(scoped(schema.broadcastRecipient.organizationId, input.organizationId, eq(schema.broadcastRecipient.id, input.id)));
+      if (!dailyLimitWarned.has(input.senderAccountId)) {
+        dailyLimitWarned.add(input.senderAccountId);
+        console.warn(
+          `[broadcasts] La cuenta ${input.senderAccountId} alcanzó su límite diario (${sender.dailyLimit}); la campaña continúa mañana.`
+        );
+      }
+      return;
+    }
+  }
+
+  try {
+    const messageId = await sendEmail(input.organizationId, input.senderAccountId, {
+      to: email,
+      subject: personalizeEmail(input.subject ?? "(sin asunto)", { email, name: input.recipientName }),
+      text: personalizeEmail(input.messageText, { email, name: input.recipientName }),
+      contactId: input.contactId,
+      campaignId: input.campaignId,
+    });
+    await db.update(schema.broadcastRecipient)
+      .set({ status: "sent", messageId, sentAt: new Date(), errorCode: null, errorMessage: null, updatedAt: new Date() })
+      .where(scoped(schema.broadcastRecipient.organizationId, input.organizationId, eq(schema.broadcastRecipient.id, input.id)));
+  } catch (error) {
+    await db.update(schema.broadcastRecipient)
+      .set({
+        status: "failed",
+        errorCode: "send_failed",
+        errorMessage: (error instanceof Error ? error.message : "No se pudo enviar el correo.").slice(0, 500),
+        updatedAt: new Date(),
+      })
+      .where(scoped(schema.broadcastRecipient.organizationId, input.organizationId, eq(schema.broadcastRecipient.id, input.id)));
+  }
+  await refreshBroadcastCampaign(input.organizationId, input.campaignId);
+}
+
+/** Correos salientes de la cuenta desde la medianoche UTC. */
+async function senderSentToday(organizationId: string, accountId: string): Promise<number> {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const [row] = await getDb()
+    .select({ total: count() })
+    .from(schema.emailMessage)
+    .where(
+      and(
+        scoped(schema.emailMessage.organizationId, organizationId),
+        eq(schema.emailMessage.accountId, accountId),
+        eq(schema.emailMessage.direction, "outbound"),
+        gte(schema.emailMessage.createdAt, start)
+      )
+    );
+  return Number(row?.total ?? 0);
 }

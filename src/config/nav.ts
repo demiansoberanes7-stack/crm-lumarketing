@@ -9,8 +9,8 @@ import {
   Kanban,
   LayoutDashboard,
   ListTodo,
+  Mail,
   Package,
-  Send,
   Settings,
   Sparkles,
   Store,
@@ -50,7 +50,7 @@ export const NAV: NavItem[] = [
   { href: "/catalog", label: "Inventario", icon: Package },
   { href: "/branches", label: "Sucursales", icon: Store },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
-  { href: "/broadcasts", label: "Envíos masivos", icon: Send },
+  { href: "/broadcasts", label: "Envíos masivos", icon: Mail },
   { href: "/suppliers", label: "Proveedores", icon: Truck },
   { href: "/todo", label: "Pendientes", icon: ListTodo },
   /**

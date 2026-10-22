@@ -260,6 +260,8 @@ export async function sendEmail(
     html?: string;
     inReplyTo?: string;
     contactId?: string | null;
+    /** Campaña masiva que originó el envío (auditoría en email_message). */
+    campaignId?: string | null;
     attachments?: { filename: string; content: string; contentType: string }[];
   }
 ): Promise<string> {
@@ -280,7 +282,9 @@ export async function sendEmail(
   });
 
   const result = await transporter.sendMail({
-    from: creds.emailAddress,
+    from: creds.fromName
+      ? { name: creds.fromName, address: creds.emailAddress }
+      : creds.emailAddress,
     to: input.to,
     subject: input.subject,
     text: input.text,
@@ -310,6 +314,7 @@ export async function sendEmail(
     bodyHtml: input.html ?? null,
     direction: "outbound",
     contactId: input.contactId ?? null,
+    campaignId: input.campaignId ?? null,
     seen: true,
     threadId: input.inReplyTo ?? null,
   });
