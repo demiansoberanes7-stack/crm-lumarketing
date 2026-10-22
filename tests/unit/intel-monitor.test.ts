@@ -128,6 +128,27 @@ describe("rankTerms (relaciona el catálogo con la búsqueda)", () => {
     expect(red!.exact).toBe(false);
   });
 
+  /**
+   * Antes `rankTerms` descartaba los score 0, así que una búsqueda sin palabras
+   * en común con el catálogo dejaba la pantalla sin ninguna etiqueta y los
+   * paneles parecían resultado de la consulta. Ahora se listan igual y la UI
+   * los declara «sin palabras en común».
+   */
+  it("conserva los nichos sin palabras en común, declarados con via vacío", () => {
+    const ranked = rankTerms(catalog, "impresora 3d");
+    expect(ranked).toHaveLength(catalog.length);
+    expect(ranked.every((t) => t.score === 0 && !t.exact && t.via === "")).toBe(true);
+    // Desempate por nombre para que la pantalla no cambie de orden entre cargas.
+    expect(ranked.map((t) => t.id)).toEqual(["t_lap", "t_red", "t_phone"]);
+  });
+
+  it("con un exacto, los demás siguen apareciendo detrás (no se filtran)", () => {
+    const ranked = rankTerms(catalog, "laptop");
+    expect(ranked[0]).toMatchObject({ id: "t_lap", exact: true });
+    expect(ranked).toHaveLength(catalog.length);
+    expect(ranked.slice(1).every((t) => t.score === 0)).toBe(true);
+  });
+
   it("puntúa por nombre y por cada keyword, conservando la mejor vía", () => {
     const ranked = rankTerms(terms, "videovigilancia");
     expect(ranked[0]).toMatchObject({ id: "itr_1", name: "Cámaras de seguridad", via: "videovigilancia", exact: true });

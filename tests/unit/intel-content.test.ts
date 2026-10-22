@@ -8,6 +8,9 @@ import {
   type MarketIdea,
 } from "@/lib/intel-content";
 import { KeywordContentRanking, GtRanking, buildRanking } from "@/components/inteligencia/gt-ranking";
+import { GeoPanel } from "@/components/inteligencia/geo-panel";
+import { GtRegionPanel } from "@/components/inteligencia/gt-region-panel";
+import { GtRelatedPanel } from "@/components/inteligencia/gt-related-panel";
 import { intelFocusSeries, intelNicheAnchors } from "@/components/inteligencia/intel-client";
 import type { KeywordOverviewView } from "@/components/inteligencia/keyword-view";
 
@@ -252,8 +255,8 @@ describe("las fuentes del catálogo se relacionan con la búsqueda, no se oculta
       createElement(GtRanking, {
         ranking,
         related: [
-          { termId: "t_cam", score: 0.86, exact: true },
-          { termId: "t_phone", score: 0.33, exact: false },
+          { termId: "t_cam", name: "Cámaras de seguridad", score: 0.86, via: "camaras de seguridad", exact: true },
+          { termId: "t_phone", name: "Smartphones", score: 0.33, via: "celular", exact: false },
         ],
         queryLabel: "camara de seguridad",
       })
@@ -263,6 +266,67 @@ describe("las fuentes del catálogo se relacionan con la búsqueda, no se oculta
     expect(html).toContain("es tu búsqueda");
     expect(html).toContain("33% parecido");
     expect(html).toContain("No es lo mismo; sirve de contexto.");
+    // Con el nicho de la consulta sin datos suficientes, no se recomienda como
+    // si su interés estuviera al alza.
+    expect(html).toContain("no está estable ni en alza");
+  });
+
+  /** 21 días con variación + 7 al alza: clasificación A del ranking. */
+  function risingSeries(): Array<{ day: string; value: number }> {
+    const prior = Array.from({ length: 21 }, (_, i) => (i % 2 === 0 ? 10 : 20));
+    return series([...prior, ...Array(7).fill(100)]);
+  }
+
+  it("con búsqueda, el bloque verde solo recomienda el nicho que ES la búsqueda", () => {
+    const html = renderToStaticMarkup(
+      createElement(GtRanking, {
+        ranking: buildRanking([
+          { termId: "t_cam", name: "Cámaras de seguridad", z: 2, lastValue: 100, series: risingSeries() },
+          { termId: "t_phone", name: "Smartphones", z: 2, lastValue: 100, series: risingSeries() },
+        ]),
+        related: [
+          { termId: "t_cam", name: "Cámaras de seguridad", score: 1, via: "camaras de seguridad", exact: true },
+          { termId: "t_phone", name: "Smartphones", score: 0, via: "", exact: false },
+        ],
+        queryLabel: "camaras de seguridad",
+      })
+    );
+    expect(html).toContain("Enfócate en: Cámaras de seguridad");
+    // Smartphones también está en alza, pero no es la búsqueda: no se recomienda.
+    expect(html).not.toContain("Enfócate en: Cámaras de seguridad, Smartphones");
+    expect(html).toContain("sin palabras en común");
+  });
+
+  it("sin nicho correspondiente, no hay bloque verde que lo haga pasar por la búsqueda", () => {
+    const html = renderToStaticMarkup(
+      createElement(GtRanking, {
+        ranking: buildRanking([
+          { termId: "t_phone", name: "Smartphones", z: 2, lastValue: 100, series: risingSeries() },
+        ]),
+        related: [{ termId: "t_phone", name: "Smartphones", score: 0, via: "", exact: false }],
+        queryLabel: "camara de seguridad",
+      })
+    );
+    expect(html).not.toContain("Enfócate en:");
+    expect(html).toContain("Ninguno de tus nichos con serie corresponde a «camara de seguridad»");
+    expect(html).toContain("Ninguno comparte palabras con tu búsqueda");
+    expect(html).toContain("sirven de referencia, no describen tu búsqueda");
+  });
+
+  it("un vecino parcial se nombra con su porcentaje, nunca como la búsqueda", () => {
+    const html = renderToStaticMarkup(
+      createElement(GtRanking, {
+        ranking: buildRanking([
+          { termId: "t_red", name: "Redes y conectividad", z: 2, lastValue: 100, series: risingSeries() },
+        ]),
+        related: [
+          { termId: "t_red", name: "Redes y conectividad", score: 0.5, via: "redes", exact: false },
+        ],
+        queryLabel: "redes sociales",
+      })
+    );
+    expect(html).not.toContain("Enfócate en:");
+    expect(html).toContain("El más cercano es «Redes y conectividad» (50% parecido)");
   });
 
   it("sin búsqueda el ranking se comporta igual que antes", () => {
@@ -314,5 +378,75 @@ describe("las fuentes del catálogo se relacionan con la búsqueda, no se oculta
   it("sin catálogo coincidido no hay anclas que inventar", () => {
     expect(intelNicheAnchors(null)).toEqual({ focus: null, nearest: null });
     expect(intelNicheAnchors(withMatches("wifi", []))).toEqual({ focus: null, nearest: null });
+  });
+});
+
+/**
+ * El mapa DENUE solo se calcula por nicho (32 consultas). Con una búsqueda
+ * activa no puede presentarse como si fuera su mapa: cada opción declara su
+ * relación y el panel usa el conteo nacional de la consulta, que ya se pagó.
+ */
+describe("mapa DENUE: de quién es y qué mide de la búsqueda", () => {
+  it("etiqueta cada opción y nombra el conteo nacional de la consulta", () => {
+    const html = renderToStaticMarkup(
+      createElement(GeoPanel, {
+        terms: [
+          { id: "t_phone", name: "Smartphones" },
+          { id: "t_red", name: "Redes y conectividad" },
+        ],
+        matches: [
+          { termId: "t_phone", name: "Smartphones", score: 0, via: "", exact: false },
+          { termId: "t_red", name: "Redes y conectividad", score: 0, via: "", exact: false },
+        ],
+        competition: { establishments: 320, censored: true },
+        queryLabel: "camara de seguridad",
+      })
+    );
+    expect(html).toContain("Smartphones · sin palabras en común");
+    expect(html).toContain("Redes y conectividad · sin palabras en común");
+    expect(html).toContain("no describe tu búsqueda");
+    expect(html).toContain("DENUE sí midió «camara de seguridad» a nivel nacional");
+    expect(html).toContain("≥320 establecimientos");
+    expect(html).toContain("El desglose por estado solo está calculado para los nichos del catálogo");
+  });
+
+  it("sin búsqueda no agrega notas de relación", () => {
+    const html = renderToStaticMarkup(
+      createElement(GeoPanel, {
+        terms: [{ id: "t_phone", name: "Smartphones" }],
+      })
+    );
+    expect(html).not.toContain("sin palabras en común");
+    expect(html).not.toContain("a nivel nacional");
+  });
+});
+
+describe("paneles de detalle GT declaran el nicho frente a la búsqueda", () => {
+  const note = "«Smartphones» es un nicho de tu catálogo sin palabras en común con «camara de seguridad»; no describe tu búsqueda.";
+
+  it("subregiones muestran la nota bajo el título", () => {
+    const html = renderToStaticMarkup(
+      createElement(GtRegionPanel, {
+        regions: [{ state: "MX-CMX", index: 100, source: "google_trends" as const }],
+        regionsSource: "google_trends" as const,
+        termName: "Smartphones",
+        note,
+      })
+    );
+    expect(html).toContain(note);
+    expect(html).toContain("sin palabras en común");
+  });
+
+  it("temas y consultas muestran la nota y no la esconden en el pie", () => {
+    const html = renderToStaticMarkup(
+      createElement(GtRelatedPanel, {
+        topics: [{ label: "Celular", value: 40, pct: null, isBreakout: false, list: "top" as const }],
+        queries: [],
+        termName: "Smartphones",
+        onMonitor: async () => null,
+        note,
+      })
+    );
+    expect(html).toContain(note);
   });
 });

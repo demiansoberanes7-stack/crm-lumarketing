@@ -114,6 +114,13 @@ describe("analyzeKeyword ancla los datos a la consulta", () => {
     expect(res.tracked?.termId).toBe("itr_red");
     expect(res.tracked?.matchScore).toBeGreaterThanOrEqual(0.6);
     expect(res.tracked?.seriesPoints.length).toBeGreaterThan(0);
+    // Y el catálogo completo llega a la pantalla para etiquetar cada panel.
+    expect(res.catalogMatches[0]).toMatchObject({
+      termId: "itr_red",
+      score: 1,
+      via: "Redes y conectividad",
+      exact: true,
+    });
   });
 
   it("no hereda el nicho cuando la búsqueda es otro tema", async () => {
@@ -124,6 +131,21 @@ describe("analyzeKeyword ancla los datos a la consulta", () => {
     expect(res.tracked).toBeNull();
     // Sin nicho, la oferta local se mide con la consulta tal cual.
     expect(h.state.denueCalls.at(-1)).toEqual(["celulares samsung"]);
+    // El catálogo no se omite: se declara sin palabras en común.
+    expect(res.catalogMatches).toEqual([
+      { termId: "itr_red", name: "Redes y conectividad", score: 0, via: "", exact: false },
+    ]);
+  });
+
+  it("un vecino parcial llega etiquetado, sin heredar el nicho", async () => {
+    queueCatalog();
+    const { analyzeKeyword } = await import("@/server/intel/keyword");
+    const res = await analyzeKeyword("org_1", "redes sociales");
+
+    expect(res.tracked).toBeNull();
+    expect(res.catalogMatches).toEqual([
+      { termId: "itr_red", name: "Redes y conectividad", score: 0.5, via: "redes", exact: false },
+    ]);
   });
 
   it("mide la dificultad con la consulta, no con las keywords del nicho", async () => {
