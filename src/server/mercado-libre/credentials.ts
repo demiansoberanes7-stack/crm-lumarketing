@@ -34,31 +34,36 @@ export async function getMarketplaceCredentials(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return {
-    userId: row.userId,
-    siteId: row.siteId,
-    clientId: row.clientId,
-    clientSecret: decryptSecret({
-      cipher: row.clientSecretCipher,
-      iv: row.clientSecretIv,
-      tag: row.clientSecretTag,
-    }),
-    refreshToken: decryptSecret({
-      cipher: row.refreshTokenCipher,
-      iv: row.refreshTokenIv,
-      tag: row.refreshTokenTag,
-    }),
-    accessToken: row.accessTokenCipher
-      ? decryptSecret({
-          cipher: row.accessTokenCipher,
-          iv: row.accessTokenIv ?? "",
-          tag: row.accessTokenTag ?? "",
-        })
-      : null,
-    accessTokenExpiresAt: row.accessTokenExpiresAt,
-    status: row.status as MarketplaceCreds["status"],
-    lastPolledAt: row.lastPolledAt,
-  };
+  try {
+    return {
+      userId: row.userId,
+      siteId: row.siteId,
+      clientId: row.clientId,
+      clientSecret: decryptSecret({
+        cipher: row.clientSecretCipher,
+        iv: row.clientSecretIv,
+        tag: row.clientSecretTag,
+      }),
+      refreshToken: decryptSecret({
+        cipher: row.refreshTokenCipher,
+        iv: row.refreshTokenIv,
+        tag: row.refreshTokenTag,
+      }),
+      accessToken: row.accessTokenCipher
+        ? decryptSecret({
+            cipher: row.accessTokenCipher,
+            iv: row.accessTokenIv ?? "",
+            tag: row.accessTokenTag ?? "",
+          })
+        : null,
+      accessTokenExpiresAt: row.accessTokenExpiresAt,
+      status: row.status as MarketplaceCreds["status"],
+      lastPolledAt: row.lastPolledAt,
+    };
+  } catch {
+    // Cifrado que no abre = sin conexion; el resto de conectores ya hace esto.
+    return null;
+  }
 }
 
 export async function saveMarketplaceCredentials(input: {

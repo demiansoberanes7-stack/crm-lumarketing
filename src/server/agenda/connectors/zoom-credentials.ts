@@ -29,16 +29,21 @@ export async function getZoomCredentials(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return {
-    accountId: row.accountId,
-    clientId: row.clientId,
-    clientSecret: decryptSecret({
-      cipher: row.secretCipher,
-      iv: row.secretIv,
-      tag: row.secretTag,
-    }),
-    status: row.status as "connected" | "error",
-  };
+  try {
+    return {
+      accountId: row.accountId,
+      clientId: row.clientId,
+      clientSecret: decryptSecret({
+        cipher: row.secretCipher,
+        iv: row.secretIv,
+        tag: row.secretTag,
+      }),
+      status: row.status as "connected" | "error",
+    };
+  } catch {
+    // Cifrado que no abre = sin conexion; el resto de conectores ya hace esto.
+    return null;
+  }
 }
 
 export async function saveZoomCredentials(input: {

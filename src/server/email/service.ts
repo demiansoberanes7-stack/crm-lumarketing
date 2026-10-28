@@ -96,25 +96,32 @@ export async function getEmailAccountCredentials(organizationId: string, account
 
   if (!account || !account.enabled) return null;
 
-  const smtpPassword = decryptSecret({
-    cipher: account.smtpPassCipher,
-    iv: account.smtpPassIv,
-    tag: account.smtpPassTag,
-  });
+  // Un cifrado que no abre (llave rotada, fila restaurada de otra instancia) se
+  // trata como cuenta no usable: el envío falla con el mensaje de siempre en
+  // vez de reventar con un 500 y perder lo que el usuario estaba escribiendo.
+  try {
+    const smtpPassword = decryptSecret({
+      cipher: account.smtpPassCipher,
+      iv: account.smtpPassIv,
+      tag: account.smtpPassTag,
+    });
 
-  return {
-    ...account,
-    smtpPassword,
-    imapPassword: decryptSecret({ cipher: account.imapPassCipher, iv: account.imapPassIv, tag: account.imapPassTag }),
-    smtpUser: account.smtpUser,
-    smtpHost: account.smtpHost,
-    smtpPort: account.smtpPort,
-    smtpSecure: account.smtpSecure,
-    imapUser: account.imapUser,
-    imapHost: account.imapHost,
-    imapPort: account.imapPort,
-    imapSecure: account.imapSecure,
-  };
+    return {
+      ...account,
+      smtpPassword,
+      imapPassword: decryptSecret({ cipher: account.imapPassCipher, iv: account.imapPassIv, tag: account.imapPassTag }),
+      smtpUser: account.smtpUser,
+      smtpHost: account.smtpHost,
+      smtpPort: account.smtpPort,
+      smtpSecure: account.smtpSecure,
+      imapUser: account.imapUser,
+      imapHost: account.imapHost,
+      imapPort: account.imapPort,
+      imapSecure: account.imapSecure,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Eliminar cuenta de email */

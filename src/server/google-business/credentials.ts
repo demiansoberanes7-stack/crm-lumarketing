@@ -29,21 +29,26 @@ export async function getGoogleBusinessCredentials(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return {
-    clientId: row.clientId,
-    clientSecret: decryptSecret({
-      cipher: row.clientSecretCipher,
-      iv: row.clientSecretIv,
-      tag: row.clientSecretTag,
-    }),
-    refreshToken: decryptSecret({
-      cipher: row.refreshTokenCipher,
-      iv: row.refreshTokenIv,
-      tag: row.refreshTokenTag,
-    }),
-    status: row.status as "connected" | "error",
-    lastSyncedAt: row.lastSyncedAt,
-  };
+  try {
+    return {
+      clientId: row.clientId,
+      clientSecret: decryptSecret({
+        cipher: row.clientSecretCipher,
+        iv: row.clientSecretIv,
+        tag: row.clientSecretTag,
+      }),
+      refreshToken: decryptSecret({
+        cipher: row.refreshTokenCipher,
+        iv: row.refreshTokenIv,
+        tag: row.refreshTokenTag,
+      }),
+      status: row.status as "connected" | "error",
+      lastSyncedAt: row.lastSyncedAt,
+    };
+  } catch {
+    // Cifrado que no abre = sin conexion; el resto de conectores ya hace esto.
+    return null;
+  }
 }
 
 export async function saveGoogleBusinessCredentials(input: {

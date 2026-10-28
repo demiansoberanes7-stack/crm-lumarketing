@@ -38,16 +38,21 @@ export async function getCapiSettings(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return {
-    datasetId: row.datasetId,
-    token: decryptSecret({
-      cipher: row.tokenCipher,
-      iv: row.tokenIv,
-      tag: row.tokenTag,
-    }),
-    qualifiedStageId: row.qualifiedStageId,
-    status: row.status as "connected" | "error",
-  };
+  try {
+    return {
+      datasetId: row.datasetId,
+      token: decryptSecret({
+        cipher: row.tokenCipher,
+        iv: row.tokenIv,
+        tag: row.tokenTag,
+      }),
+      qualifiedStageId: row.qualifiedStageId,
+      status: row.status as "connected" | "error",
+    };
+  } catch {
+    // Cifrado que no abre = sin conexion; el resto de conectores ya hace esto.
+    return null;
+  }
 }
 
 export async function getCapiSettingsView(
