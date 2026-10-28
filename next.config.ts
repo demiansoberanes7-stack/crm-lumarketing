@@ -14,6 +14,13 @@ const nextConfig: NextConfig = {
   // Paquetes que no deben empaquetarse en el bundle: nativos o que usan
   // APIs de Node que solo existen en runtime.
   serverExternalPackages: ["postgres", "nodemailer", "imapflow", "@resvg/resvg-js"],
+  // @resvg/resvg-js elige su binario nativo con un require dinámico que el
+  // trazado de archivos no puede resolver, así que el paquete de la plataforma
+  // no llegaba al despliegue standalone y el logo SVG reventaba la ruta de PDF.
+  // Declararlo aquí lo copia junto al resto del paquete.
+  outputFileTracingIncludes: {
+    "/**/*": ["./node_modules/@resvg/**/*"],
+  },
   // Se congelan al construir: el binario lleva dentro de qué código salió, así
   // que no puede mentir en tiempo de ejecución. `SOURCE_COMMIT` lo inyecta
   // Coolify solo; con docker compose se pasa por `--build-arg` y si falta, la

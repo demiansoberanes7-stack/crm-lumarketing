@@ -152,7 +152,7 @@ export async function projectPdf(
     while (out.length > 1 && bold.widthOfTextAtSize(`${out}...`, size) > maxW) out = out.slice(0, -1);
     return `${out}...`;
   };
-  const logoData = tryLoadLogo(bs.logoUrl, organizationId);
+  const logoData = await tryLoadLogo(bs.logoUrl, organizationId);
   let logoDrawn = false;
   if (logoData && (logoData.mime === "image/png" || logoData.mime === "image/jpeg")) {
     try {

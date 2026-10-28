@@ -1,6 +1,5 @@
 import { readFileSync } from "fs";
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
-import { Resvg } from "@resvg/resvg-js";
 import { resolveMediaFile } from "@/server/media-path";
 
 export const PAGE_W = 595.28;
@@ -74,9 +73,15 @@ const SVG_LOGO_WIDTH = 512;
  * Rasteriza un SVG a PNG embebible. pdf-lib solo admite PNG/JPEG, así que el
  * logo SVG se convierte aquí (local, sin servicios externos) antes de dibujarlo.
  * Devuelve null si el SVG no se puede rasterizar.
+ *
+ * El import es perezoso a propósito: `@resvg/resvg-js` carga un binario nativo
+ * por plataforma, y si ese paquete opcional falta en el despliegue, un import
+ * de módulo tumbaba la carga entera de las rutas de PDF. Aquí, en el peor caso,
+ * el PDF sale sin logo.
  */
-export function svgToPng(svg: Uint8Array): Uint8Array | null {
+export async function svgToPng(svg: Uint8Array): Promise<Uint8Array | null> {
   try {
+    const { Resvg } = await import("@resvg/resvg-js");
     const resvg = new Resvg(Buffer.from(svg).toString("utf8"), {
       fitTo: { mode: "width", value: SVG_LOGO_WIDTH },
     });
@@ -90,10 +95,10 @@ export function svgToPng(svg: Uint8Array): Uint8Array | null {
  * Logo del negocio desde MEDIA_DIR. PNG y JPEG van directos; el SVG se
  * rasteriza para que también entre a los PDF (cotizaciones y proyectos).
  */
-export function tryLoadLogo(
+export async function tryLoadLogo(
   logoUrl: string | undefined,
   organizationId: string
-): { data: Uint8Array; mime: string } | null {
+): Promise<{ data: Uint8Array; mime: string } | null> {
   if (!logoUrl) return null;
   const match = logoUrl.match(/\/([^/]+)$/);
   if (!match) return null;
@@ -104,7 +109,7 @@ export function tryLoadLogo(
     const data = readFileSync(filePath);
     const ext = filename.split(".").pop()?.toLowerCase();
     if (ext === "svg") {
-      const png = svgToPng(data);
+      const png = await svgToPng(data);
       return png ? { data: png, mime: "image/png" } : null;
     }
     const mime = ext === "png" ? "image/png" : "image/jpeg";

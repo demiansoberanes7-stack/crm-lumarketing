@@ -91,7 +91,7 @@ export async function quotePdf(organizationId: string, id: string) {
   };
 
   // ─── HEADER: Company name (left) + COTIZACIÓN title (right) ───
-  const logoData = tryLoadLogo(bs.logoUrl, organizationId);
+  const logoData = await tryLoadLogo(bs.logoUrl, organizationId);
   if (logoData && logoData.mime === "image/png") {
     try {
       const img = await doc.embedPng(logoData.data);
