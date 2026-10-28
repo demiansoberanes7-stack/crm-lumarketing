@@ -1,5 +1,5 @@
 import { apiError, withAuth } from "@/lib/api";
-import { syncInbox } from "@/server/email/service";
+import { EmailAccountUnavailableError, syncInbox } from "@/server/email/service";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
@@ -15,6 +15,12 @@ export const POST = withAuth(async (session, _req, { params }) => {
     const synced = await syncInbox(session.organizationId, id);
     return Response.json({ ok: true, synced });
   } catch (err) {
+    // Cuenta apagada, inexistente o con cifrado ilegible: es un estado que la
+    // pantalla ya explica. Registrarlo como error llenaba Diagnóstico de ruido
+    // cada vez que se abría el buzón.
+    if (err instanceof EmailAccountUnavailableError) {
+      return apiError(409, "account_unavailable", err.message);
+    }
     await recordDiagnostic({
       organizationId: session.organizationId,
       source: "email",

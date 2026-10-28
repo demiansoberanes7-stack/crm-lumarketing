@@ -85,6 +85,14 @@ export async function listEmailAccounts(organizationId: string) {
 export const CUENTA_MUDA =
   "La cuenta no existe o está apagada (Ajustes → Email).";
 
+/**
+ * La cuenta no se puede usar: no existe, el interruptor está en Off o su
+ * cifrado no abre. Es un estado de configuración, no una falla del servidor
+ * de correo, así que quien lo capture debe mostrarlo sin registrarlo como
+ * error (abrir el buzón de una cuenta apagada llenaba Diagnóstico de ruido).
+ */
+export class EmailAccountUnavailableError extends Error {}
+
 /** Obtener credentials de una cuenta para IMAP/SMTP */
 export async function getEmailAccountCredentials(organizationId: string, accountId: string) {
   const db = getDb();
@@ -141,7 +149,7 @@ export async function deleteEmailAccount(organizationId: string, accountId: stri
 /** Sincronizar inbox de una cuenta (fetch IMAP) */
 export async function syncInbox(organizationId: string, accountId: string): Promise<number> {
   const creds = await getEmailAccountCredentials(organizationId, accountId);
-  if (!creds) throw new Error(CUENTA_MUDA);
+  if (!creds) throw new EmailAccountUnavailableError(CUENTA_MUDA);
 
   const { ImapFlow } = await import("imapflow");
   const { simpleParser } = await import("mailparser");
@@ -274,7 +282,7 @@ export async function sendEmail(
   }
 ): Promise<string> {
   const creds = await getEmailAccountCredentials(organizationId, accountId);
-  if (!creds) throw new Error(CUENTA_MUDA);
+  if (!creds) throw new EmailAccountUnavailableError(CUENTA_MUDA);
 
   const nodemailer = await import("nodemailer");
 
