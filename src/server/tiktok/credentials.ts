@@ -118,6 +118,15 @@ export async function markTikTokReconnectRequired(
     .where(eq(schema.tiktokCredentials.organizationId, organizationId));
 }
 
+/** Desconectar TikTok: borra las credenciales de la organización. */
+export async function deleteTikTokCredentials(
+  organizationId: string
+): Promise<void> {
+  await getDb()
+    .delete(schema.tiktokCredentials)
+    .where(eq(schema.tiktokCredentials.organizationId, organizationId));
+}
+
 export function tokenLast4(token: string): string {
   return token.slice(-4);
 }

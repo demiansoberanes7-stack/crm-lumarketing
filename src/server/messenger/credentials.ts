@@ -135,6 +135,15 @@ export async function markMessengerReconnectRequired(
     .where(eq(schema.messengerCredentials.organizationId, organizationId));
 }
 
+/** Desconectar Messenger: borra las credenciales de la organización. */
+export async function deleteMessengerCredentials(
+  organizationId: string
+): Promise<void> {
+  await getDb()
+    .delete(schema.messengerCredentials)
+    .where(eq(schema.messengerCredentials.organizationId, organizationId));
+}
+
 export function tokenLast4(token: string): string {
   return token.slice(-4);
 }

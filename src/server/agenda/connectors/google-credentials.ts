@@ -34,22 +34,29 @@ export async function getGoogleCredentials(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return {
-    clientId: row.clientId,
-    clientSecret: decryptSecret({
-      cipher: row.clientSecretCipher,
-      iv: row.clientSecretIv,
-      tag: row.clientSecretTag,
-    }),
-    refreshToken: decryptSecret({
-      cipher: row.refreshTokenCipher,
-      iv: row.refreshTokenIv,
-      tag: row.refreshTokenTag,
-    }),
-    calendarId: row.calendarId,
-    status: row.status as "connected" | "error",
-    syncTasks: row.syncTasks ?? false,
-  };
+  // Un cifrado que no abre (llave rotada, fila restaurada desde otra instancia)
+  // no debe tumbar el calendario ni Ajustes: se trata como "sin conexión" y el
+  // dueño vuelve a conectar. Mismo criterio que el resto de los conectores.
+  try {
+    return {
+      clientId: row.clientId,
+      clientSecret: decryptSecret({
+        cipher: row.clientSecretCipher,
+        iv: row.clientSecretIv,
+        tag: row.clientSecretTag,
+      }),
+      refreshToken: decryptSecret({
+        cipher: row.refreshTokenCipher,
+        iv: row.refreshTokenIv,
+        tag: row.refreshTokenTag,
+      }),
+      calendarId: row.calendarId,
+      status: row.status as "connected" | "error",
+      syncTasks: row.syncTasks ?? false,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function saveGoogleCredentials(input: {

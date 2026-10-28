@@ -7,8 +7,14 @@ import { getEnv } from "@/lib/env";
 
 export const zernioWhatsappEnabled = () => process.env.WHATSAPP_ZERNIO_ENABLED === "true";
 export type WhatsappZernioCredentials = { organizationId: string; accountId: string; token: string; webhookSecret: string; displayPhone: string };
-function decode(row: typeof schema.whatsappZernio.$inferSelect): WhatsappZernioCredentials {
-  return { ...JSON.parse(decryptSecret(row)), organizationId: row.organizationId, accountId: row.accountId };
+function decode(row: typeof schema.whatsappZernio.$inferSelect): WhatsappZernioCredentials | null {
+  // Igual que el resto de credenciales: un cifrado ilegible es "no conectado",
+  // no un 500. Antes esto reventaba el GET de Ajustes y el webhook.
+  try {
+    return { ...JSON.parse(decryptSecret(row)), organizationId: row.organizationId, accountId: row.accountId };
+  } catch {
+    return null;
+  }
 }
 export async function getWhatsappZernio(organizationId: string) {
   const [row] = await getDb().select().from(schema.whatsappZernio).where(scoped(schema.whatsappZernio.organizationId, organizationId)).limit(1);
@@ -18,6 +24,10 @@ export async function getWhatsappZernio(organizationId: string) {
 export async function getWhatsappZernioByAccount(accountId: string) {
   const [row] = await getDb().select().from(schema.whatsappZernio).where(eq(schema.whatsappZernio.accountId, accountId)).limit(1);
   return row ? decode(row) : null;
+}
+/** Desconectar WhatsApp (Zernio): borra las credenciales de la organización. */
+export async function deleteWhatsappZernio(organizationId: string) {
+  await getDb().delete(schema.whatsappZernio).where(scoped(schema.whatsappZernio.organizationId, organizationId));
 }
 export async function saveWhatsappZernio(input: WhatsappZernioCredentials) {
   const { organizationId, accountId, ...secrets } = input;

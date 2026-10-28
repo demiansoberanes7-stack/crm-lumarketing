@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiError, parseBody, withOwner } from "@/lib/api";
 import {
+  deleteTikTokCredentials,
   getTikTokCredentialsByOrg,
   saveTikTokCredentials,
   tokenLast4,
@@ -75,6 +76,21 @@ export const PUT = withOwner(async (session, req: Request) => {
   });
 
   return Response.json({ ok: true, username: check.username ?? null });
+});
+
+/**
+ * Desconectar TikTok. Sin la bandera de canal en la puerta a propósito: una
+ * credencial inservible tiene que poder borrarse aunque el canal esté apagado.
+ */
+export const DELETE = withOwner(async (session) => {
+  await deleteTikTokCredentials(session.organizationId);
+  await recordDiagnostic({
+    organizationId: session.organizationId,
+    source: "tiktok",
+    code: "disconnected",
+    severity: "info",
+  });
+  return Response.json({ ok: true });
 });
 
 type Check =

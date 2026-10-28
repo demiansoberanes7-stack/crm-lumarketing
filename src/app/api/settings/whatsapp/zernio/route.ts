@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withOwner, parseBody, apiError } from "@/lib/api";
-import { getWhatsappZernio, getWhatsappZernioByAccount, saveWhatsappZernio, zernioWhatsappEnabled, zernioWhatsappWebhookUrl } from "@/server/whatsapp/zernio-credentials";
+import { getWhatsappZernio, getWhatsappZernioByAccount, saveWhatsappZernio, deleteWhatsappZernio, zernioWhatsappEnabled, zernioWhatsappWebhookUrl } from "@/server/whatsapp/zernio-credentials";
 import { setWhatsappProvider } from "@/server/whatsapp/provider";
 import { zernioFetch } from "@/server/zernio";
 import { MetaApiError } from "@/lib/meta/client";
@@ -33,4 +33,14 @@ export const PUT = withOwner(async (session, req: Request) => {
   } catch (err) {
     return apiError(422, "zernio_failed", err instanceof MetaApiError ? `No se pudo verificar el número en Zernio (HTTP ${err.status}). Revisa accountId, API key y permisos de WhatsApp.` : "No se pudo guardar la conexión Zernio");
   }
+});
+
+/**
+ * Desconectar WhatsApp Zernio. Sin la bandera de canal a propósito: la bandera
+ * puede estar apagada justo cuando hay una credencial vieja que borrar, y si
+ * esto respondiera 404 no habría forma de limpiarla.
+ */
+export const DELETE = withOwner(async (session) => {
+  await deleteWhatsappZernio(session.organizationId);
+  return Response.json({ ok: true });
 });

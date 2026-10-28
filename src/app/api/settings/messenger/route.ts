@@ -2,6 +2,7 @@ import { z } from "zod";
 import { apiError, parseBody, withOwner } from "@/lib/api";
 import { graphRequest, MetaApiError } from "@/lib/meta/client";
 import {
+  deleteMessengerCredentials,
   getMessengerCredentialsByOrg,
   saveMessengerCredentials,
   tokenLast4,
@@ -92,6 +93,16 @@ export const PUT = withOwner(async (session, req: Request) => {
   }
 
   return Response.json({ ok: true, pageName: check.pageName });
+});
+
+/**
+ * Desconectar Messenger. Sin la bandera de canal en la puerta a propósito:
+ * borrar una credencial que ya no sirve tiene que poder hacerse aunque el canal
+ * esté apagado; si no, la fila queda ahí sin forma de limpiarla.
+ */
+export const DELETE = withOwner(async (session) => {
+  await deleteMessengerCredentials(session.organizationId);
+  return Response.json({ ok: true });
 });
 
 type Check =
