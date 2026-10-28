@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { withOwner, parseBody, apiError } from "@/lib/api";
-import { getDb, schema } from "@/lib/db";
-import { scoped } from "@/lib/db/tenant";
+import { getDb } from "@/lib/db";
 import { whatsappProvider } from "@/server/whatsapp/provider";
-import { zernioWhatsappEnabled } from "@/server/whatsapp/zernio-credentials";
+import { getCredentialsByOrg } from "@/server/whatsapp/credentials";
+import { getInstagramCredentialsByOrg } from "@/server/instagram/credentials";
+import { getMessengerCredentialsByOrg } from "@/server/messenger/credentials";
+import { getTikTokCredentialsByOrg } from "@/server/tiktok/credentials";
+import { getWahaCredentialsByOrg } from "@/server/waha/credentials";
+import {
+  getWhatsappZernio,
+  zernioWhatsappEnabled,
+} from "@/server/whatsapp/zernio-credentials";
 import { enabledChannels } from "@/server/channels/enabled";
 
 export const dynamic = "force-dynamic";
@@ -38,16 +45,21 @@ export const GET = withOwner(async (session, req: Request) => {
     ${source ? sql`AND source=${source}` : sql``} ${severity ? sql`AND severity=${severity}` : sql``}
     ${before ? sql`AND created_at < (${before}::timestamptz AT TIME ZONE 'UTC')` : sql``}
     ORDER BY created_at DESC, id DESC LIMIT 51`);
-  const [meta, waha, email, instagram, messenger, tiktok, zernio] = await Promise.all([
-    db.select({ status: schema.metaCredentials.status }).from(schema.metaCredentials).where(scoped(schema.metaCredentials.organizationId, session.organizationId)).limit(1),
-    db.select({ status: schema.wahaCredentials.status }).from(schema.wahaCredentials).where(scoped(schema.wahaCredentials.organizationId, session.organizationId)).limit(1),
-    db.execute(sql`SELECT count(*)::int AS count FROM email_account WHERE organization_id=${session.organizationId}`),
-    db.select({ status: schema.instagramCredentials.status }).from(schema.instagramCredentials).where(scoped(schema.instagramCredentials.organizationId, session.organizationId)).limit(1),
-    db.select({ status: schema.messengerCredentials.status }).from(schema.messengerCredentials).where(scoped(schema.messengerCredentials.organizationId, session.organizationId)).limit(1),
-    db.select({ status: schema.tiktokCredentials.status }).from(schema.tiktokCredentials).where(scoped(schema.tiktokCredentials.organizationId, session.organizationId)).limit(1),
-    db.select({ accountId: schema.whatsappZernio.accountId }).from(schema.whatsappZernio).where(scoped(schema.whatsappZernio.organizationId, session.organizationId)).limit(1),
+  // El estado sale de las mismas funciones que usan los canales para enviar:
+  // una fila cuyo cifrado no abre cuenta como "sin configurar", no como
+  // "conectada". Antes se leía la columna `status` en crudo y esta pantalla
+  // decía "Credenciales guardadas" de tokens que ningún conector podía usar.
+  const zernioOn = zernioWhatsappEnabled();
+  const [email, meta, waha, instagram, messenger, tiktok, zernio] = await Promise.all([
+    db.execute(sql`SELECT count(*)::int AS count FROM email_account WHERE organization_id=${session.organizationId} AND enabled`),
+    getCredentialsByOrg(session.organizationId),
+    getWahaCredentialsByOrg(session.organizationId),
+    getInstagramCredentialsByOrg(session.organizationId),
+    getMessengerCredentialsByOrg(session.organizationId),
+    getTikTokCredentialsByOrg(session.organizationId),
+    zernioOn ? getWhatsappZernio(session.organizationId) : Promise.resolve(null),
   ]);
-  const zernioStatus = !zernioWhatsappEnabled() ? "disabled" : zernio[0] ? "connected" : "not_configured";
+  const zernioStatus = !zernioOn ? "disabled" : zernio ? "connected" : "not_configured";
   const page = events.slice(0, 50).map((event) => ({
     ...event,
     created_at: asUtcIso(event.created_at),
@@ -55,7 +67,7 @@ export const GET = withOwner(async (session, req: Request) => {
   }));
   // Credential status is explicitly not a live connection test.
   return Response.json({ events: page, nextCursor: events.length > 50 ? asUtcIso(events[49]?.created_at) : null,
-    status: { database: "Disponible", provider: await whatsappProvider(session.organizationId), channels: [...enabledChannels()], zernio: zernioStatus, meta: meta[0]?.status ?? "not_configured", waha: waha[0]?.status ?? "not_configured", instagram: instagram[0]?.status ?? "not_configured", messenger: messenger[0]?.status ?? "not_configured", tiktok: tiktok[0]?.status ?? "not_configured", emailAccounts: email[0]?.count ?? 0 }, retentionDays: 30 });
+    status: { database: "Disponible", provider: await whatsappProvider(session.organizationId), channels: [...enabledChannels()], zernio: zernioStatus, meta: meta?.status ?? "not_configured", waha: waha?.status ?? "not_configured", instagram: instagram?.status ?? "not_configured", messenger: messenger?.status ?? "not_configured", tiktok: tiktok?.status ?? "not_configured", emailAccounts: email[0]?.count ?? 0 }, retentionDays: 30 });
 });
 
 export const PATCH = withOwner(async (session, req: Request) => {

@@ -22,20 +22,26 @@ export type WahaCredentials = {
 
 type Row = typeof schema.wahaCredentials.$inferSelect;
 
-function toCredentials(row: Row): WahaCredentials {
-  const apiKey = decryptSecret({
-    cipher: row.apiKeyCipher,
-    iv: row.apiKeyIv,
-    tag: row.apiKeyTag,
-  });
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    baseUrl: row.baseUrl,
-    sessionName: row.sessionName,
-    status: row.status as "connected" | "reconnect_required",
-    apiKeyLast4: apiKey.slice(-4),
-  };
+function toCredentials(row: Row): WahaCredentials | null {
+  try {
+    const apiKey = decryptSecret({
+      cipher: row.apiKeyCipher,
+      iv: row.apiKeyIv,
+      tag: row.apiKeyTag,
+    });
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      baseUrl: row.baseUrl,
+      sessionName: row.sessionName,
+      status: row.status as "connected" | "reconnect_required",
+      apiKeyLast4: apiKey.slice(-4),
+    };
+  } catch {
+    // Igual que el resto de conectores: un cifrado que no abre es "sin
+    // conexion", no un 500 que arrastre a quien consulte las credenciales.
+    return null;
+  }
 }
 
 export async function getWahaCredentialsByOrg(
@@ -62,15 +68,19 @@ export async function getWahaCredentialsFull(
     .limit(1);
   if (!rows[0]) return null;
   const row = rows[0];
-  return {
-    baseUrl: row.baseUrl,
-    apiKey: decryptSecret({
-      cipher: row.apiKeyCipher,
-      iv: row.apiKeyIv,
-      tag: row.apiKeyTag,
-    }),
-    sessionName: row.sessionName,
-  };
+  try {
+    return {
+      baseUrl: row.baseUrl,
+      apiKey: decryptSecret({
+        cipher: row.apiKeyCipher,
+        iv: row.apiKeyIv,
+        tag: row.apiKeyTag,
+      }),
+      sessionName: row.sessionName,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function saveWahaCredentials(input: {
