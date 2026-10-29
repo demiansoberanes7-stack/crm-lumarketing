@@ -110,6 +110,7 @@ export function AppShell({
         userName={userName}
         avatar={avatar}
         role={role}
+        unread={unread}
         open={navOpen}
         onClose={() => setNavOpen(false)}
       />

@@ -9,7 +9,13 @@ import { subscribe } from "@/server/events/bus";
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_MS = 25_000;
-const MAX_SSE_CONNECTIONS = 5;
+/**
+ * Tope por organización. Cada pestaña abre una sola suscripción para el
+ * cascarón y, en la Bandeja y Citas, una más para esa pantalla: con el tope
+ * anterior (5) dos pestañas de Bandeja ya se quedaban fuera y el badge dejaba
+ * de actualizarse sin ningún aviso.
+ */
+const MAX_SSE_CONNECTIONS = 10;
 const encoder = new TextEncoder();
 
 /** Active SSE connections per org — to enforce the concurrency limit */

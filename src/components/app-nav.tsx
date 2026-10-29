@@ -8,7 +8,6 @@ import type { Branding } from "@/lib/branding";
 import { cn, initials } from "@/lib/utils";
 import { signOut } from "@/lib/auth/client";
 import { NAV_FOOTER, isNavActive, navItemsFor } from "@/config/nav";
-import { useUnreadCount } from "@/components/use-unread-count";
 import { BrandLogo } from "@/components/brand-mark";
 import { PhotoLogo } from "@/components/photo-logo";
 import { APP_VERSION, BUILD_COMMIT, versionLabel } from "@/lib/version";
@@ -64,6 +63,7 @@ export function AppNav({
   role,
   commit,
   agenda,
+  unread,
   open = false,
   onClose,
 }: {
@@ -81,13 +81,19 @@ export function AppNav({
   commit?: string;
   /** Si `/bookings` existe en esta instancia. Sin bandera, el enlace daría 404. */
   agenda: boolean;
+  /**
+   * Mensajes sin leer del badge. Llega del cascarón, que es el único que se
+   * suscribe a `/api/events`: cuando el rail abría su propia suscripción, cada
+   * pestaña gastaba dos conexiones SSE y con dos pestañas se agotaba el tope
+   * por negocio (el badge dejaba de actualizarse sin avisar).
+   */
+  unread: number | null;
   /** Solo aplica por debajo de `lg`: en escritorio el lateral es fijo. */
   open?: boolean;
   onClose?: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const unread = useUnreadCount();
   const [showVersion, setShowVersion] = useState(false);
   const [avatar, setAvatar] = useState<string | null>(initialAvatar ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
