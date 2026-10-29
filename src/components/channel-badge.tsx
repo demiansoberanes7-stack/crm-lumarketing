@@ -41,6 +41,14 @@ const COMMENTS_PATH =
 const MERCADO_LIBRE_PATH =
   "M22 9h-4.79l-4.38-6.56c-.19-.28-.51-.42-.83-.42s-.64.14-.83.43L6.79 9H2c-.55 0-1 .45-1 1 0 .09.01.18.04.27l2.54 9.27c.23.84 1 1.46 1.92 1.46h13c.92 0 1.69-.62 1.93-1.46l2.54-9.27L23 10c0-.55-.45-1-1-1zM12.31 6l3.91 6H8.4l3.91-6zM12 18.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z";
 
+/**
+ * Globo terráqueo (Material "public"); marca del Chat del sitio. No usa una
+ * burbuja porque la de Comentarios ya es una y en la fila de bandejas dos
+ * burbujas casi iguales no se distinguen de un vistazo.
+ */
+const WEBCHAT_PATH =
+  "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z";
+
 const MARK: Record<Channel, { path: string; tile: string }> = {
   whatsapp: { path: WHATSAPP_PATH, tile: "bg-[#25d366]" },
   instagram: {
@@ -56,6 +64,7 @@ const MARK: Record<Channel, { path: string; tile: string }> = {
   google_business: { path: GOOGLE_PATH, tile: "bg-[#4285F4]" },
   comments: { path: COMMENTS_PATH, tile: "bg-[#f59e0b]" },
   mercado_libre: { path: MERCADO_LIBRE_PATH, tile: "bg-[#3483FA]" },
+  webchat: { path: WEBCHAT_PATH, tile: "bg-[#0d5bff]" },
 };
 
 /**

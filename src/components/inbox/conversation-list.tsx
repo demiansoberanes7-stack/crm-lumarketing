@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Sparkles, UserRound, X, Mail } from "lucide-react";
+import { Info, Search, Sparkles, UserRound, X, Mail } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { ConversationDto } from "@/lib/types";
-import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import { CHANNEL_ACTIVATION, CHANNEL_LABEL, type Channel } from "@/lib/channels";
 import { ChannelBadge } from "@/components/channel-badge";
 import { matchesQuery } from "@/lib/search";
 import { cn } from "@/lib/utils";
@@ -44,8 +44,8 @@ function EmptyState({ onSeeded }: { onSeeded: () => void }) {
         Sin conversaciones todavía
       </p>
       <p className="text-xs text-text-3">
-        Cuando alguien escriba a tu número de WhatsApp, su conversación
-        aparecerá aquí en tiempo real.
+        Cuando alguien escriba por cualquiera de tus canales conectados, la
+        conversación aparecerá aquí en tiempo real.
       </p>
       {!failed && (
         <Button
@@ -67,6 +67,7 @@ export function ConversationList({
   loadFailed = false,
   onRetry,
   channels,
+  enabledChannels,
   selectedId,
   onSelect,
   onSeeded,
@@ -75,8 +76,10 @@ export function ConversationList({
   /** La última lectura de la lista falló: no es lo mismo que «no hay chats». */
   loadFailed?: boolean;
   onRetry?: () => void;
-  /** Canales encendidos en esta instancia (ADR-001). */
+  /** Todo el catálogo de canales: se pinta entero, encendido o no. */
   channels: readonly Channel[];
+  /** Canales encendidos en esta instancia (ADR-001). */
+  enabledChannels: readonly Channel[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onSeeded: () => void;
@@ -85,7 +88,15 @@ export function ConversationList({
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [stage, setStage] = useState<string>("all");
   const channelParam = useSearchParams().get("channel");
-  const [inbox, setInbox] = useState<Channel | "all">(channels.includes(channelParam as Channel) ? channelParam as Channel : "all");
+  // Un enlace a un canal apagado no debe dejar la lista vacía sin explicación:
+  // se abre en "Todas" y el aviso sale al pulsar el chip.
+  const [inbox, setInbox] = useState<Channel | "all">(
+    enabledChannels.includes(channelParam as Channel)
+      ? (channelParam as Channel)
+      : "all"
+  );
+  // Canal apagado cuyo chip se pulsó: explica qué variable lo enciende.
+  const [notice, setNotice] = useState<Channel | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [emailUnread, setEmailUnread] = useState(0);
 
@@ -180,36 +191,77 @@ export function ConversationList({
                 </span>
               </Link>
               {channels.map((ch) => {
-                const on = inbox === ch;
+                const enabled = enabledChannels.includes(ch);
+                const on = enabled && inbox === ch;
                 return (
                   <button
                     key={ch}
-                    onClick={() => setInbox(on ? "all" : ch)}
-                    aria-pressed={on}
+                    onClick={() => {
+                      if (!enabled) {
+                        setNotice((current) => (current === ch ? null : ch));
+                        return;
+                      }
+                      setNotice(null);
+                      setInbox(on ? "all" : ch);
+                    }}
+                    aria-pressed={enabled ? on : undefined}
                     title={
-                      on
-                        ? "Ver todas las bandejas"
-                        : `Ver solo ${CHANNEL_LABEL[ch]}`
+                      !enabled
+                        ? `${CHANNEL_LABEL[ch]}: apagado en este despliegue`
+                        : on
+                          ? "Ver todas las bandejas"
+                          : `Ver solo ${CHANNEL_LABEL[ch]}`
                     }
                     className={cn(
                       "flex min-h-11 shrink-0 items-center gap-1 rounded-full border px-2 text-[11.5px] font-medium transition-colors",
                       on
                         ? "border-brand bg-brand-veil text-foreground"
-                        : "text-text-3 hover:bg-accent",
-                      inbox !== "all" && !on && "opacity-45"
+                        : enabled
+                          ? "text-text-3 hover:bg-accent"
+                          : "border-dashed border-border-strong text-text-3 opacity-50 hover:opacity-90",
+                      inbox !== "all" && !on && enabled && "opacity-45"
                     )}
                   >
                     <ChannelBadge
                       channel={ch}
-                      className="h-[13px] w-[13px] rounded-[4px]"
+                      className={cn(
+                        "h-[13px] w-[13px] rounded-[4px]",
+                        !enabled && "grayscale"
+                      )}
                     />
-                    {inboxCount(ch)}
+                    {enabled ? inboxCount(ch) : "—"}
                   </button>
                 );
               })}
             </div>
           )}
         </div>
+        {notice && (
+          <p className="mb-3 flex items-start gap-2 rounded-md border border-border-strong bg-subtle p-2.5 text-[11.5px] leading-relaxed text-text-2">
+            <Info
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-text"
+              strokeWidth={1.8}
+            />
+            <span className="min-w-0">
+              <strong className="font-semibold text-foreground">
+                {CHANNEL_LABEL[notice]}
+              </strong>{" "}
+              está apagado en este despliegue.
+              {CHANNEL_ACTIVATION[notice] ? (
+                <>
+                  {" "}
+                  Para encenderlo agrega{" "}
+                  <code className="break-all rounded bg-background px-1 py-0.5 font-mono text-[11px] text-foreground">
+                    {CHANNEL_ACTIVATION[notice]}
+                  </code>{" "}
+                  a las variables del servidor y reconstruye.
+                </>
+              ) : (
+                <> Todavía no hay una forma de activarlo en esta instancia.</>
+              )}
+            </span>
+          </p>
+        )}
         <div className="flex items-center gap-2 rounded-full border border-border-strong bg-background px-3.5 py-[7px] shadow-sm transition-[border-color,box-shadow] focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand-soft">
           <Search className="h-4 w-4 shrink-0 text-text-3" strokeWidth={1.7} />
           <input
@@ -296,7 +348,9 @@ export function ConversationList({
           <EmptyState onSeeded={onSeeded} />
         ) : visible.length === 0 ? (
           <p className="p-6 text-center text-xs text-text-3">
-            Sin resultados para este filtro.
+            {inbox === "all"
+              ? "Sin resultados para este filtro."
+              : `Todavía no hay conversaciones de ${CHANNEL_LABEL[inbox]}.`}
           </p>
         ) : (
           <ul>

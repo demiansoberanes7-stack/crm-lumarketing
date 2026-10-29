@@ -23,6 +23,14 @@ import { googleBusinessEnabled } from "@/server/google-business/flag";
 /** WhatsApp no se puede apagar: es el canal por el que existe el producto. */
 const ALWAYS_ON: Channel = "whatsapp";
 
+/**
+ * Canales que no dependen de ninguna cuenta externa y por eso no tienen
+ * bandera: el chat del sitio se enciende por negocio desde Ajustes → Chat del
+ * sitio (su clave pública y su lista de orígenes), no desde el despliegue.
+ * Mantenerlo aquí lo deja visible en la Bandeja aunque CHANNELS no lo nombre.
+ */
+const NO_FLAG_CHANNELS: readonly Channel[] = ["webchat"];
+
 export function parseChannels(raw: string | undefined): Set<Channel> {
   const enabled = new Set<Channel>([ALWAYS_ON]);
   for (const part of (raw ?? "").split(",")) {
@@ -39,6 +47,8 @@ export function enabledChannels(): Set<Channel> {
   // Reseñas de Google Business tiene bandera PROPIA (GOOGLE_BUSINESS), no
   // viaja en CHANNELS: es un módulo con UI, poller y credenciales propias.
   if (googleBusinessEnabled()) enabled.add("google_business");
+  // Chat del sitio: sin cuenta externa que conectar, siempre disponible.
+  for (const channel of NO_FLAG_CHANNELS) enabled.add(channel);
   return enabled;
 }
 

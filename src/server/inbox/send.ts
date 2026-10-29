@@ -124,6 +124,8 @@ type SendTarget = {
     token: string;
     accountRef?: string;
   };
+  /** Presente solo en conversaciones del chat del sitio (sin transporte externo). */
+  webchat?: true;
   waha?: NonNullable<Awaited<ReturnType<typeof getWahaCredentialsFull>>>;
   zernio?: WhatsappZernioCredentials;
 };
@@ -516,6 +518,25 @@ async function prepareSend(
     };
   }
 
+  // Chat del sitio: no hay transporte externo. El mensaje se persiste y el
+  // panel del visitante lo recoge en su siguiente sondeo; por eso aquí no hay
+  // credenciales, ni ventana de 24 h, ni acuses de entrega.
+  if (row.conversation.channel === "webchat") {
+    if (!isChannelEnabled("webchat")) {
+      throw new SendError(
+        "not_connected",
+        "El canal del chat del sitio está desactivado en esta instancia"
+      );
+    }
+    return {
+      conversation: row.conversation,
+      credentials: null,
+      destinatario: { to: row.contact.waIdentity },
+      recipient: row.contact.waIdentity,
+      webchat: true,
+    };
+  }
+
   // El nucleo no decide la politica: la consulta. En WhatsApp fuera de ventana
   // no hay salida; Instagram y Messenger etiquetan y siguen; otro canal podria
   // no tener ventana en absoluto.
@@ -676,7 +697,9 @@ export async function sendText(input: {
       ? newId("message")
       : undefined;
 
-  const waMessageId = target.googleBusiness
+  const waMessageId = target.webchat
+    ? await callWebchatSend(target, input.text)
+    : target.googleBusiness
     ? await callGoogleBusinessReply(target, input.text)
     : target.comments
      ? await callCommentsReply(target, input.text, preGenId)
@@ -1547,6 +1570,23 @@ async function callMercadoLibreSend(
   }
 
   return newId("message");
+}
+
+/**
+ * Envío por el chat del sitio. No sale a ninguna red: la respuesta queda en la
+ * base y el panel del visitante la recoge en su siguiente sondeo. El id
+ * devuelto es local y único porque no existe un id de plataforma al que
+ * anclarse (el UNIQUE de `wa_message_id` lo exige).
+ */
+async function callWebchatSend(target: SendTarget, text: string): Promise<string> {
+  const caps = capabilitiesFor("webchat");
+  if (!textFits("webchat", text)) {
+    throw new SendError(
+      "meta_error",
+      `${caps.label} no acepta mensajes de más de ${caps.maxTextBytes} bytes: acorta el texto`
+    );
+  }
+  return `wc-out:${target.conversation.id}:${newId("message")}`;
 }
 
 /**

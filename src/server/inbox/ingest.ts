@@ -428,6 +428,14 @@ async function ingestManualEcho(
   });
 }
 
+/**
+ * Ingesta de un mensaje entrante.
+ *
+ * Devuelve la conversación y el mensaje persistidos (o `null` si la fila no
+ * pertenece a la organización/conversación esperada). El chat del sitio lo
+ * necesita para lanzar el turno del agente DESPUÉS de contestarle al visitante,
+ * sin repetir aquí la resolución de identidad.
+ */
 export async function ingestInboundMessage(input: {
   organizationId: string;
   identity: ResolvedIdentity;
@@ -441,7 +449,7 @@ export async function ingestInboundMessage(input: {
   suppressAi?: boolean;
   /** 016: origen del anuncio, si el mensaje vino de uno. */
   referral?: WebhookReferral | null;
-}): Promise<void> {
+}): Promise<{ conversationId: string; messageId: string } | null> {
   const db = getDb();
   const { organizationId } = input;
 
@@ -508,7 +516,7 @@ export async function ingestInboundMessage(input: {
     !message ||
     message.organizationId !== organizationId ||
     message.conversationId !== conversation.id
-  ) return;
+  ) return null;
   const isDuplicate = message.id !== msgId;
 
   const asset = input.media && !message.mediaAssetId
@@ -612,6 +620,8 @@ export async function ingestInboundMessage(input: {
       if (!reply) await maybeRunAgentTurn(conversation.id);
     }
   }
+
+  return { conversationId: conversation.id, messageId: message.id };
 }
 
 function toDate(timestamp: string): Date {

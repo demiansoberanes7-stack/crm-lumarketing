@@ -188,7 +188,10 @@ export function Composer({
   // Reseñas de Google Business: solo texto (el reply público), sin adjuntos
   // ni mensajes estructurados.
   const isReview = conversation.channel === "google_business";
-  const canStructured = !isReview;
+  // Chat del sitio: el visitante ve el hilo en su panel, que solo pinta texto;
+  // una ubicación o una ficha de contacto llegarían como un hueco vacío.
+  const isWebchat = conversation.channel === "webchat";
+  const canStructured = !isReview && !isWebchat;
 
   return (
     <div className="border-t bg-background px-[18px] pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-3">
@@ -426,7 +429,9 @@ export function Composer({
               ? "Pie del adjunto (opcional)…"
               : isReview
                 ? "Escribe la respuesta pública del negocio (máx. 4096 caracteres)…"
-                : "Escribe una respuesta…"
+                : isWebchat
+                  ? "Responde en el chat del sitio…"
+                  : "Escribe una respuesta…"
           }
           value={text}
           rows={1}
@@ -471,7 +476,9 @@ export function Composer({
               ? `Ventana abierta · quedan ${formatRemaining(conversation.windowRemainingMs)}`
               : conversation.channel === "google_business" || conversation.channel === "comments"
                 ? "Respuesta pública · sin ventana de mensajería"
-                : conversation.windowOpen
+                : conversation.channel === "webchat"
+                  ? "Chat del sitio · sin ventana de mensajería"
+                  : conversation.windowOpen
                   ? "Ventana abierta"
                   : conversation.channel === "tiktok"
                     ? "Ventana de TikTok cerrada · se requieren mensajes recientes del cliente"

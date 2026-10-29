@@ -12,6 +12,8 @@ import {
   getWhatsappZernio,
   zernioWhatsappEnabled,
 } from "@/server/whatsapp/zernio-credentials";
+import { getMarketplaceCredentials } from "@/server/mercado-libre/credentials";
+import { getWebchatSettings } from "@/server/webchat/settings";
 import { enabledChannels } from "@/server/channels/enabled";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +52,7 @@ export const GET = withOwner(async (session, req: Request) => {
   // "conectada". Antes se leía la columna `status` en crudo y esta pantalla
   // decía "Credenciales guardadas" de tokens que ningún conector podía usar.
   const zernioOn = zernioWhatsappEnabled();
-  const [email, meta, waha, instagram, messenger, tiktok, zernio] = await Promise.all([
+  const [email, meta, waha, instagram, messenger, tiktok, zernio, mercadoLibre, webchat] = await Promise.all([
     db.execute(sql`SELECT count(*)::int AS count FROM email_account WHERE organization_id=${session.organizationId} AND enabled`),
     getCredentialsByOrg(session.organizationId),
     getWahaCredentialsByOrg(session.organizationId),
@@ -58,8 +60,15 @@ export const GET = withOwner(async (session, req: Request) => {
     getMessengerCredentialsByOrg(session.organizationId),
     getTikTokCredentialsByOrg(session.organizationId),
     zernioOn ? getWhatsappZernio(session.organizationId) : Promise.resolve(null),
+    getMarketplaceCredentials(session.organizationId),
+    getWebchatSettings(session.organizationId),
   ]);
   const zernioStatus = !zernioOn ? "disabled" : zernio ? "connected" : "not_configured";
+  // El chat del sitio no tiene credenciales externas: su «conexión» es el
+  // interruptor del widget. Apagado se informa como «sin configurar» para no
+  // sugerir que falta una variable del despliegue.
+  const webchatStatus =
+    webchat.enabled && webchat.publicKey ? "connected" : "not_configured";
   const page = events.slice(0, 50).map((event) => ({
     ...event,
     created_at: asUtcIso(event.created_at),
@@ -67,7 +76,7 @@ export const GET = withOwner(async (session, req: Request) => {
   }));
   // Credential status is explicitly not a live connection test.
   return Response.json({ events: page, nextCursor: events.length > 50 ? asUtcIso(events[49]?.created_at) : null,
-    status: { database: "Disponible", provider: await whatsappProvider(session.organizationId), channels: [...enabledChannels()], zernio: zernioStatus, meta: meta?.status ?? "not_configured", waha: waha?.status ?? "not_configured", instagram: instagram?.status ?? "not_configured", messenger: messenger?.status ?? "not_configured", tiktok: tiktok?.status ?? "not_configured", emailAccounts: email[0]?.count ?? 0 }, retentionDays: 30 });
+    status: { database: "Disponible", provider: await whatsappProvider(session.organizationId), channels: [...enabledChannels()], zernio: zernioStatus, meta: meta?.status ?? "not_configured", waha: waha?.status ?? "not_configured", instagram: instagram?.status ?? "not_configured", messenger: messenger?.status ?? "not_configured", tiktok: tiktok?.status ?? "not_configured", mercado_libre: mercadoLibre?.status ?? "not_configured", webchat: webchatStatus, emailAccounts: email[0]?.count ?? 0 }, retentionDays: 30 });
 });
 
 export const PATCH = withOwner(async (session, req: Request) => {

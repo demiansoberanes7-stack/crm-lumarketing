@@ -115,6 +115,18 @@ export const CHANNEL_CAPABILITIES: Record<Channel, ChannelCapabilities> = {
     outboundMedia: false,
     deliveryReceipts: false,
   },
+  // Chat del sitio: la conversación la abre el visitante y puede seguir
+  // abierta todo el tiempo que quiera, así que no hay ventana de mensajería
+  // que respetar. Sin adjuntos en la primera versión y sin acuses: el mensaje
+  // nace "sent" y pasa a "delivered" cuando el widget del visitante lo pide.
+  webchat: {
+    label: CHANNEL_LABEL.webchat,
+    windowMs: null,
+    outsideWindow: "none",
+    maxTextBytes: 2000,
+    outboundMedia: false,
+    deliveryReceipts: false,
+  },
 };
 
 export function capabilitiesFor(channel: Channel): ChannelCapabilities {

@@ -37,9 +37,16 @@ const nextConfig: NextConfig = {
   // un cliente y sí le dice a cualquiera qué stack mirar: fuera.
   poweredByHeader: false,
   async headers() {
+    // El panel del chat del sitio es la única vista que se enmarca desde un
+    // dominio que no es este: la web del cliente. Se saca del comodín en vez de
+    // repetir la cabecera porque, con dos reglas que fijan la misma clave, quién
+    // gana depende del orden interno del servidor y el widget se rompería en
+    // silencio. Encuadrarlo no expone nada: el visitante no lleva sesión, se
+    // identifica con la llave pública y su propio id, y el envío se valida en el
+    // servidor contra los orígenes autorizados.
     return [
       {
-        source: "/:path*",
+        source: "/((?!embed/webchat).*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           // La única vista embebida es un <iframe> propio sobre un blob: de PDF,
@@ -52,6 +59,16 @@ const nextConfig: NextConfig = {
           // 180 días, sin preload ni includeSubDomains: Caddy renueva el
           // certificado ACME solo, pero deja salida si algo volviera a servir
           // esta raíz por HTTP.
+          { key: "Strict-Transport-Security", value: "max-age=15552000" },
+        ],
+      },
+      {
+        source: "/embed/webchat",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Content-Security-Policy", value: "frame-ancestors *" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "Strict-Transport-Security", value: "max-age=15552000" },
         ],
       },

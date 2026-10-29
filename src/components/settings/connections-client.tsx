@@ -13,6 +13,8 @@ type ConnectionStatus = {
   instagram: string;
   messenger: string;
   tiktok: string;
+  mercado_libre: string;
+  webchat: string;
 };
 
 type Diagnostics = { status: ConnectionStatus };
@@ -36,6 +38,8 @@ const CONNECTIONS = [
   { key: "instagram", statusKey: "instagram", channel: "instagram", name: "Instagram · Zernio / Meta", href: "/settings/instagram", detail: "Cuenta de Instagram para recibir y responder mensajes.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok" },
   { key: "messenger", statusKey: "messenger", channel: "messenger", name: "Messenger · Zernio / Meta", href: "/settings/messenger", detail: "Página de Facebook para mensajes de Messenger.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok" },
   { key: "tiktok", statusKey: "tiktok", channel: "tiktok", name: "TikTok · Zernio", href: "/settings/tiktok", detail: "Cuenta de TikTok conectada mediante Zernio.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok" },
+  { key: "mercado_libre", statusKey: "mercado_libre", channel: "mercado_libre", name: "Mercado Libre", href: "/settings/mercado-libre", detail: "Mensajes post-venta de tus órdenes, respondidos desde la Bandeja.", activationSetting: "CHANNELS=whatsapp,instagram,messenger,tiktok,comments,mercado_libre" },
+  { key: "webchat", statusKey: "webchat", channel: "webchat", name: "Chat del sitio", href: "/settings/webchat", detail: "Burbuja de chat para tu web; los visitantes aparecen en la Bandeja.", activationSetting: null },
 ] as const;
 
 /** Conexiones de datos/publicidad: se resuelven con /api/settings/connections-status. */

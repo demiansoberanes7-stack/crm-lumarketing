@@ -22,6 +22,12 @@ export const IG_PREFIX = "ig:";
 export const FB_PREFIX = "fb:";
 /** TikTok: identidad del usuario de TikTok (Open ID). */
 export const TT_PREFIX = "tt:";
+/**
+ * Chat del sitio: el visitante no tiene cuenta en ninguna plataforma, así que
+ * su identidad es un aleatorio que su propio navegador genera y guarda. El
+ * prefijo evita que dos canales colisionen en la misma cadena.
+ */
+export const WEB_PREFIX = "web:";
 
 // El tipo vive en lib/ porque la interfaz tambien lo necesita; se reexporta
 // aqui para no tocar a quien ya lo importaba de este modulo.

@@ -32,7 +32,16 @@ export type Channel =
    * la Messaging API oficial; cada comprador es un contacto y cada pack un hilo
    * en la Bandeja. Detrás de CHANNELS.
    */
-  | "mercado_libre";
+  | "mercado_libre"
+  /**
+   * Chat del sitio web: el visitante escribe por el widget que el negocio
+   * incrusta en su página y el operador (o el agente) contesta desde la
+   * Bandeja. No depende de un proveedor externo: el visitante recibe las
+   * respuestas por sondeo al CRM, así que no hay credenciales ni bandera de
+   * despliegue que activar — se enciende por negocio en Ajustes → Chat del
+   * sitio.
+   */
+  | "webchat";
 
 /**
  * Orden en que los canales se presentan al operador. WhatsApp primero: es el
@@ -46,12 +55,14 @@ export const CHANNEL_ORDER: readonly Channel[] = [
   "google_business",
   "comments",
   "mercado_libre",
+  "webchat",
 ];
 
 /**
  * Canales donde el agente incluido puede contestar SOLO si la instancia los
  * tiene encendidos. Es la verdad de runtime: `maybeRunAgentTurn` se llama
- * desde la ingesta de WhatsApp (WAHA y Zernio), Instagram, Messenger y TikTok.
+ * desde la ingesta de WhatsApp (WAHA y Zernio), Instagram, Messenger, TikTok
+ * y el chat del sitio.
  * En comentarios, reseñas de Google Business y Mercado Libre la bandeja abre
  * el hilo con `aiEnabled = false` a propósito —el agente nunca debe publicar
  * solo en un hilo público— y en Mercado Libre ni siquiera se invoca el turno.
@@ -65,6 +76,7 @@ export const AGENT_CAPABLE_CHANNELS: readonly Channel[] = [
   "instagram",
   "messenger",
   "tiktok",
+  "webchat",
 ];
 
 export function isAgentCapableChannel(channel: string): boolean {
@@ -82,6 +94,28 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   google_business: "Google Business",
   comments: "Comentarios",
   mercado_libre: "Mercado Libre",
+  webchat: "Chat del sitio",
+};
+
+/**
+ * Qué hay que poner en el despliegue para encender cada canal, o null si no
+ * hace falta nada. La Bandeja lo usa para explicar un canal apagado en lugar
+ * de esconderlo sin decir por qué: ver la bandeja vacía sin saber que existe
+ * una variable pendiente es lo que hace pensar que el canal «no sirve».
+ *
+ * Vive aquí, y no en la pantalla de Conexiones, porque la Bandeja también
+ * necesita el texto y duplicarlo garantizaba que un día dijeran cosas
+ * distintas.
+ */
+export const CHANNEL_ACTIVATION: Record<Channel, string | null> = {
+  whatsapp: null,
+  instagram: null,
+  messenger: null,
+  tiktok: "CHANNELS=whatsapp,instagram,messenger,tiktok,comments,mercado_libre",
+  google_business: "GOOGLE_BUSINESS=on",
+  comments: "CHANNELS=whatsapp,instagram,messenger,tiktok,comments,mercado_libre",
+  mercado_libre: "CHANNELS=whatsapp,instagram,messenger,tiktok,comments,mercado_libre",
+  webchat: null,
 };
 
 export function isChannel(value: string): value is Channel {

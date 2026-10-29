@@ -37,7 +37,13 @@ const PANEL_MEDIA_QUERY = "(min-width: 1280px)";
 const isWideEnoughForPanel = () =>
   typeof window !== "undefined" && window.matchMedia(PANEL_MEDIA_QUERY).matches;
 
-export function InboxClient({ channels }: { channels: readonly Channel[] }) {
+export function InboxClient({
+  channels,
+  enabledChannels,
+}: {
+  channels: readonly Channel[];
+  enabledChannels: readonly Channel[];
+}) {
   const multiChannel = channels.length > 1;
   const [conversations, setConversations] = useState<ConversationDto[] | null>(
     null
@@ -307,6 +313,7 @@ export function InboxClient({ channels }: { channels: readonly Channel[] }) {
           loadFailed={listFailed}
           onRetry={() => void refetchConversations()}
           channels={channels}
+          enabledChannels={enabledChannels}
           selectedId={selectedId}
           onSelect={select}
           onSeeded={() => void refetchConversations()}
