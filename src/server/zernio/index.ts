@@ -189,7 +189,7 @@ export async function verifyZernioToken(token: string): Promise<void> {
 export async function zernioFetch(
   path: string,
   opts: {
-    method?: "GET" | "POST";
+    method?: "GET" | "POST" | "PUT" | "DELETE";
     token: string;
     body?: unknown;
     /**

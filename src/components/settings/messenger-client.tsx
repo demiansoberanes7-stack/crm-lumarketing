@@ -43,6 +43,78 @@ type WebhookInfo = {
   signatureLayer: boolean;
 };
 
+/** Lo que Zernio tiene REGISTRADO, consultado desde el servidor. */
+type DeliveryLog = {
+  event: string | null;
+  test: boolean;
+  status: "success" | "failed" | null;
+  statusCode: number | null;
+  errorMessage: string | null;
+};
+
+type DeliveryEndpoint = {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  isActive: boolean;
+  failureCount: number;
+  lastFiredAt: string | null;
+};
+
+type DeliveryInfo = {
+  source: Source;
+  supported: boolean;
+  checked?: boolean;
+  error?: string;
+  expectedUrl?: string;
+  state?: "missing" | "wrong_url" | "inactive" | "ok";
+  endpoint?: DeliveryEndpoint | null;
+  lastInbound?: DeliveryLog | null;
+  recent?: DeliveryLog[];
+};
+
+type RepairInfo = {
+  repaired: boolean;
+  error?: string;
+  action?: "created" | "updated";
+  endpoint?: DeliveryEndpoint;
+  previousUrl?: string | null;
+  fixed?: string[];
+  test?: {
+    ok: boolean;
+    statusCode: number | null;
+    errorMessage: string | null;
+    responseTime: number | null;
+  };
+};
+
+const DELIVERY_STATE: Record<
+  "missing" | "wrong_url" | "inactive" | "ok",
+  { label: string; variant: "success" | "warning" | "destructive"; hint: string }
+> = {
+  missing: {
+    label: "Sin registrar",
+    variant: "destructive",
+    hint: "Zernio no tiene ninguna URL de este CRM: los mensajes se quedan en Zernio y nunca llegan a la bandeja.",
+  },
+  wrong_url: {
+    label: "Apuntando a otra dirección",
+    variant: "destructive",
+    hint: "La URL registrada no es la de esta instalación. Las entregas fallan, y por eso la bandeja queda vacía.",
+  },
+  inactive: {
+    label: "Desactivado por fallos",
+    variant: "warning",
+    hint: "Zernio desactivó la entrega tras varios intentos fallidos seguidos. Hay que reactivarla.",
+  },
+  ok: {
+    label: "Registrado y activo",
+    variant: "success",
+    hint: "Zernio entrega a la URL correcta.",
+  },
+};
+
 const HELP: Record<Source, { title: string; items: string[] }> = {
   zernio: {
     title: "Conecta la página en Zernio y pega aquí su cuenta y tu API key",
@@ -76,6 +148,9 @@ export function MessengerClient() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [copied, setCopied] = useState<"url" | "token" | null>(null);
+  const [delivery, setDelivery] = useState<DeliveryInfo | null>(null);
+  const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<RepairInfo | null>(null);
 
   const refetch = useCallback(async () => {
     const [c, w] = await Promise.all([
@@ -97,6 +172,48 @@ export function MessengerClient() {
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  const checkDelivery = useCallback(async () => {
+    const res = await fetch("/api/settings/messenger/webhook").catch(() => null);
+    if (!res?.ok) {
+      setDelivery({
+        source: "zernio",
+        supported: true,
+        checked: false,
+        error: res
+          ? `El CRM devolvió una respuesta inesperada (HTTP ${res.status}).`
+          : "No se pudo contactar con el CRM.",
+      });
+      return;
+    }
+    setDelivery((await res.json().catch(() => null)) as DeliveryInfo | null);
+  }, []);
+
+  useEffect(() => {
+    if (connection?.source === "zernio") void checkDelivery();
+  }, [connection?.source, checkDelivery]);
+
+  /**
+   * Registra o corrige la URL en Zernio y manda una entrega de prueba. Se hace
+   * contra Zernio, con la llave guardada: si el endpoint quedó apuntando al
+   * host viejo, esto es lo que lo arregla — la URL a mano no basta, porque
+   * nadie la revisa cuando deja de llegar correo.
+   */
+  const repair = useCallback(async () => {
+    setRepairing(true);
+    setRepairResult(null);
+    const res = await fetch("/api/settings/messenger/webhook", {
+      method: "POST",
+    }).catch(() => null);
+    const data = res
+      ? ((await res.json().catch(() => null)) as RepairInfo | null)
+      : null;
+    setRepairing(false);
+    setRepairResult(
+      data ?? { repaired: false, error: "No se pudo contactar con el CRM." }
+    );
+    await checkDelivery();
+  }, [checkDelivery]);
 
   async function save() {
     setSaving(true);
@@ -128,6 +245,9 @@ export function MessengerClient() {
     setWebhookSecret("");
     setSaved(data.pageName ? `Página conectada: ${data.pageName}` : "Conexión guardada");
     void refetch();
+    // Guardar la conexión no sirve de nada si Zernio entrega a otra dirección:
+    // se registra y se prueba en el acto.
+    if (source === "zernio") void repair();
   }
 
   async function copy(text: string, what: "url" | "token") {
@@ -303,10 +423,11 @@ export function MessengerClient() {
             <CardDescription>
               {source === "zernio" ? (
                 <>
-                  En Zernio, da de alta este endpoint con el evento{" "}
-                  <code>message.received</code> y <code>comment.received</code> (si
-                  activas Comentarios), y, si usas secreto, el mismo que pegaste
-                  arriba.
+                  Zorro Tech registra este endpoint en tu cuenta de Zernio al
+                  guardar la conexión, con los eventos{" "}
+                  <code>message.received</code> y <code>comment.received</code>, y
+                  el secreto de arriba si lo pusiste. Abajo puedes comprobar que
+                  quedó bien.
                 </>
               ) : (
                 <>
@@ -356,6 +477,145 @@ export function MessengerClient() {
                   ? "Cada entrega se verifica con la firma del App Secret de tu app."
                   : "Define META_APP_SECRET en la instancia para que además se verifique la firma de cada entrega."}
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {source === "zernio" && connection && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Entrega de mensajes</CardTitle>
+            <CardDescription>
+              Zernio entrega los mensajes a una URL registrada en tu cuenta. Aquí
+              se consulta esa configuración y se manda una entrega de prueba: es
+              la diferencia entre «el webhook está puesto» y «los mensajes entran».
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!delivery && <p className="text-sm text-text-2">Comprobando…</p>}
+
+            {delivery?.error && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-medium">No se pudo comprobar la entrega</p>
+                  <p className="opacity-80">{delivery.error}</p>
+                </div>
+              </div>
+            )}
+
+            {delivery?.checked && delivery.state && (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={DELIVERY_STATE[delivery.state].variant}>
+                    {DELIVERY_STATE[delivery.state].label}
+                  </Badge>
+                  {delivery.endpoint?.failureCount ? (
+                    <span className="text-xs text-text-2">
+                      {delivery.endpoint.failureCount} fallos consecutivos
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-text-2">
+                  {DELIVERY_STATE[delivery.state].hint}
+                </p>
+
+                <div className="space-y-1.5">
+                  <Label>URL que debe estar registrada</Label>
+                  <Input
+                    readOnly
+                    value={delivery.expectedUrl ?? ""}
+                    className="font-mono text-xs"
+                  />
+                </div>
+
+                {delivery.endpoint &&
+                  delivery.expectedUrl &&
+                  delivery.endpoint.url.trim() !== delivery.expectedUrl.trim() && (
+                    <div className="space-y-1.5">
+                      <Label>URL que entrega hoy</Label>
+                      <Input
+                        readOnly
+                        value={delivery.endpoint.url}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                  )}
+
+                {delivery.lastInbound && (
+                  <p className="flex items-start gap-2 text-xs text-text-2">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    {delivery.lastInbound.status === "success"
+                      ? `El último mensaje entrante se entregó bien (HTTP ${delivery.lastInbound.statusCode ?? 200}).`
+                      : `El último mensaje entrante FALLÓ (HTTP ${delivery.lastInbound.statusCode ?? "?"})${
+                          delivery.lastInbound.errorMessage
+                            ? `: ${delivery.lastInbound.errorMessage}`
+                            : "."
+                        }`}
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={repairing}
+                    onClick={() => void checkDelivery()}
+                  >
+                    Volver a comprobar
+                  </Button>
+                  <Button disabled={repairing} onClick={() => void repair()}>
+                    {repairing ? "Reparando…" : "Reparar y probar"}
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {repairResult && (
+              <div
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border p-3 text-sm",
+                  repairResult.repaired && repairResult.test?.ok
+                    ? "border-success-soft bg-success-tint text-success-text"
+                    : "border-danger-soft bg-danger-tint text-danger-text"
+                )}
+              >
+                {repairResult.repaired && repairResult.test?.ok ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                )}
+                <div className="space-y-1">
+                  <p className="font-medium">
+                    {!repairResult.repaired
+                      ? "No se pudo reparar"
+                      : repairResult.test?.ok
+                        ? "Webhook registrado y entrega de prueba recibida"
+                        : "Registrado, pero la entrega de prueba falló"}
+                  </p>
+                  {repairResult.repaired && (
+                    <p className="opacity-80">
+                      {repairResult.action === "created"
+                        ? "Se dio de alta el endpoint en Zernio."
+                        : "Se corrigió el endpoint que ya existía."}
+                      {repairResult.previousUrl
+                        ? ` Antes apuntaba a ${repairResult.previousUrl}.`
+                        : ""}
+                    </p>
+                  )}
+                  {repairResult.test && !repairResult.test.ok && (
+                    <p className="opacity-80">
+                      HTTP {repairResult.test.statusCode ?? "?"}
+                      {repairResult.test.errorMessage
+                        ? ` · ${repairResult.test.errorMessage}`
+                        : ""}
+                    </p>
+                  )}
+                  {repairResult.error && (
+                    <p className="opacity-80">{repairResult.error}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

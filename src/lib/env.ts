@@ -18,7 +18,10 @@ const envSchema = z.object({
       message:
         "ENCRYPTION_KEY debe ser 32 bytes en base64 (genera con: openssl rand -base64 32)",
     }),
-  META_WEBHOOK_VERIFY_TOKEN: z.string().min(8),
+  // `.trim()`: un salto de línea invisible al pegar la variable en el panel del
+  // hosting hace que el segmento de la URL no coincida y el webhook responda
+  // 404 a TODAS las entregas, sin dejar rastro en la base.
+  META_WEBHOOK_VERIFY_TOKEN: z.string().trim().min(8),
   META_APP_SECRET: z.string().optional(),
   META_GRAPH_API_VERSION: z.string().default("v25.0"),
   META_GRAPH_BASE_URL: z.string().url().default("https://graph.facebook.com"),
