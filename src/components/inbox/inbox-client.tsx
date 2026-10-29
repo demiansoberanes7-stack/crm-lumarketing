@@ -89,6 +89,9 @@ export function InboxClient({
       // como «Sin conversaciones todavía» y el dueño cree que no le escribió
       // nadie cuando el chat sí está en la base.
       setListFailed(true);
+      // `null` es el centinela de «cargando»: si el fallo lo deja en null, la
+      // lista no sale nunca de «Cargando…» y el aviso de error es inalcanzable.
+      setConversations((prev) => prev ?? []);
       return;
     }
     const data = (await res.json()) as { conversations: ConversationDto[] };
