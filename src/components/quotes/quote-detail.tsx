@@ -121,6 +121,7 @@ export function QuoteDetail({
   onUpdated: () => void;
 }) {
   const [quote, setQuote] = useState<QuoteData | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -267,15 +268,35 @@ export function QuoteDetail({
     if (match && SEND_CHANNELS.includes(match.channel as SendChannel)) setChatId(match.id);
   }, [quote?.contactId, conversations, chatId]);
 
-  useEffect(() => {
-    fetch(`/api/quotes/${quoteId}`)
-      .then((r) => r.json())
-      .then((d: { quote: QuoteData }) => {
+  /**
+   * Sin timeout ni rama de error, una petición que no volvía dejaba la ficha en
+   * «Cargando…» para siempre: la vista no tiene otro estado que `!quote`.
+   */
+  const loadQuote = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const res = await fetch(`/api/quotes/${quoteId}`, {
+          signal: signal ?? AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const d = (await res.json()) as { quote?: QuoteData };
+        if (!d.quote) throw new Error("respuesta sin cotización");
         setQuote(d.quote);
         setDisplayName(getStoredName(quoteId, d.quote.quoteNumber));
-      })
-      .catch(() => {});
-  }, [quoteId, revision]);
+        setLoadFailed(false);
+      } catch {
+        if (signal?.aborted) return;
+        setLoadFailed(true);
+      }
+    },
+    [quoteId]
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadQuote(controller.signal);
+    return () => controller.abort();
+  }, [loadQuote, revision]);
 
   const saveDisplayName = () => {
     const trimmed = displayName.trim();
@@ -337,6 +358,19 @@ export function QuoteDetail({
     }
     onUpdated();
   }, [choice, quoteId, onUpdated]);
+
+  if (!quote && loadFailed) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
+          <p className="text-sm text-text-2">No se pudo cargar la cotización.</p>
+          <Button variant="outline" onClick={() => void loadQuote()}>
+            Reintentar
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!quote) {
     return (
