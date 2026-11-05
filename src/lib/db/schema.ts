@@ -16,6 +16,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -724,6 +725,14 @@ export const calendarSettings = pgTable(
     organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
+    /**
+     * `null` = los horarios del negocio, que siguen siendo la fuente cuando un
+     * miembro todavía no define los suyos. Así el horario por usuario es
+     * aditivo: nadie cambia de comportamiento hasta que configura el suyo.
+     */
+    userId: varchar("user_id", { length: 255 }).references(() => user.id, {
+      onDelete: "cascade",
+    }),
     weeklyHours: jsonb("weekly_hours").notNull(),
     slotMinutes:   integer("slot_minutes").notNull().default(30),
     bufferMinutes:   integer("buffer_minutes").notNull().default(0),
@@ -739,7 +748,13 @@ export const calendarSettings = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("calendar_settings_org_uq").on(t.organizationId)]
+  // NULLS NOT DISTINCT es lo que impide dos filas "del negocio" para el mismo
+  // org: en un índice único ordinario los NULL no chocan entre sí.
+  (t) => [
+    unique("calendar_settings_org_user_uq")
+      .on(t.organizationId, t.userId)
+      .nullsNotDistinct(),
+  ]
 );
 
 export const booking = pgTable(
@@ -773,12 +788,31 @@ export const booking = pgTable(
     leadId: varchar("lead_id", { length: 255 }).references(() => lead.id, {
       onDelete: "set null",
     }),
+    /**
+     * Motivo propio de la cita. `null` = se muestra el nombre del contacto, que
+     * es lo que hacían todas las citas antes de esta columna.
+     */
+    title: varchar("title", { length: 255 }),
+    /** Modalidad o lugar: texto libre, no enum (aparecerán modos que nadie previó). */
+    location: varchar("location", { length: 255 }),
+    /** Quién atiende. Se conserva la cita aunque el miembro cause baja. */
+    userId: varchar("user_id", { length: 255 }).references(() => user.id, {
+      onDelete: "set null",
+    }),
     scheduledAt: timestamp("scheduled_at").notNull(),
     durationMinutes:   integer("duration_minutes").notNull(),
     connector: varchar("connector", { length: 50 }),
     externalRef: varchar("external_ref", { length: 255 }),
     meetingLink: varchar("meeting_link", { length: 1024 }),
     linkPending: boolean("link_pending").notNull().default(false),
+    /**
+     * El evento de Google Calendar de esta cita. NO es `external_ref`, que es la
+     * referencia del CONECTOR de reuniones: con Google ambos son el mismo evento
+     * y la sincronización adopta su id; con Zoom, enlace fijo o sin conector el
+     * evento se crea aparte y lleva el enlace en la descripción. Separarlos es
+     * lo que hace respondible la pregunta «¿esta cita ya tiene evento?».
+     */
+    googleEventId: varchar("google_event_id", { length: 255 }),
     isTest: boolean("is_test").notNull().default(false),
     notes: text("notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -788,6 +822,18 @@ export const booking = pgTable(
     index("booking_org_when_idx").on(t.organizationId, t.scheduledAt),
     index("booking_project_idx").on(t.projectId),
     index("booking_org_status_idx").on(t.organizationId, t.status),
+    // La vista de calendario filtra por mes Y por estado; sin esto el planner
+    // se queda con el índice de solo fecha y ordena después.
+    index("booking_org_when_status_idx").on(
+      t.organizationId,
+      t.scheduledAt,
+      t.status
+    ),
+    index("booking_org_user_when_idx").on(
+      t.organizationId,
+      t.userId,
+      t.scheduledAt
+    ),
     uniqueIndex("booking_org_active_slot_idx")
       .on(t.organizationId, t.scheduledAt)
       .where(sql`${t.status} = 'agendada' AND ${t.isTest} = false`),
@@ -839,6 +885,15 @@ export const googleCredentials = pgTable(
     organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
+    /**
+     * `null` = el calendario del negocio, que es el que siguen usando los
+     * conectores para crear enlaces de Meet. Un valor = el calendario personal
+     * de ese miembro, que solo interviene en la sincronización de sus propios
+     * eventos. Así la separación por usuario no toca el camino crítico.
+     */
+    userId: varchar("user_id", { length: 255 }).references(() => user.id, {
+      onDelete: "cascade",
+    }),
     clientId: varchar("client_id", { length: 255 }).notNull(),
     clientSecretCipher: varchar("client_secret_cipher", { length: 1024 }).notNull(),
     clientSecretIv: varchar("client_secret_iv", { length: 255 }).notNull(),
@@ -856,7 +911,11 @@ export const googleCredentials = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("google_credentials_org_uq").on(t.organizationId)]
+  (t) => [
+    unique("google_credentials_org_user_uq")
+      .on(t.organizationId, t.userId)
+      .nullsNotDistinct(),
+  ]
 );
 
 /**
@@ -874,6 +933,15 @@ export const googleOauthState = pgTable(
     organizationId: varchar("organization_id", { length: 255 })
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
+    /**
+     * `null` = el flujo del negocio. Un valor = el de esa persona, y el callback
+     * solo lo consume si es SU sesión: el estado es de un solo uso pero se
+     * busca por organización, así que sin esta columna el consentimiento de una
+     * persona podía acabar escrito en el calendario de otra.
+     */
+    userId: varchar("user_id", { length: 255 }).references(() => user.id, {
+      onDelete: "cascade",
+    }),
     state: varchar("state", { length: 255 }).notNull(),
     clientId: varchar("client_id", { length: 255 }).notNull(),
     clientSecretCipher: varchar("client_secret_cipher", { length: 1024 }).notNull(),
@@ -1357,6 +1425,67 @@ export const catalogProduct = pgTable(
 );
 
 /**
+ * Foto de un producto del catálogo.
+ *
+ * **Metadatos en la base de datos, nunca el archivo.** Los bytes viven en el
+ * mismo volumen de `MEDIA_DIR` que los logos y los adjuntos, dentro de
+ * `catalog/`; aquí se guarda la ruta relativa, el MIME que se leyó de los
+ * primeros bytes y las dimensiones, para que la rejilla del catálogo reserve el
+ * cajón correcto sin descargar nada. Un `bytea` en Postgres inflaría el dump de
+ * respaldo —que en Supabase Free es manual y cabe en 500 MB— y rompería el
+ * `pg_dump` como rutina de emergencia.
+ *
+ * `media_asset` no se reutiliza a propósito: esa tabla modela adjuntos de canal
+ * (`wa_media_id`, `provider`, `fetch_status`) que se descargan desde Graph y
+ * pueden no tener archivo local. Mezclar productos ahí obligaría a enlazar una
+ * FK a `catalog_product` en la tabla del buzón y a dejar media columna huérfana
+ * en cada lado. Lo que sí se comparte es el pipeline de discos y rutas
+ * (`src/server/media-path.ts`), que es donde estaba el trabajo.
+ *
+ * Sin imagen principal no hay estado roto: `product_image_primary_uq` garantiza
+ * que como mucho haya una por producto, y la UI elige la primera por posición
+ * cuando ninguna está marcada (subida antigua, o la principal se borró).
+ */
+export const productImage = pgTable(
+  "product_image",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    productId: varchar("product_id", { length: 255 })
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "cascade" }),
+    /**
+     * Ruta relativa dentro de `MEDIA_DIR/{organizationId}`: `catalog/{id}.jpg`.
+     * Relativa y no absoluta para que mover el volumen —o pasar a
+     * Supabase Storage— no reescriba filas. La URL pública se reconstruye.
+     */
+    storagePath: varchar("storage_path", { length: 512 }).notNull(),
+    /** MIME leído de la firma de bytes, nunca del `content-type` del cliente. */
+    mimeType: varchar("mime_type", { length: 32 }).notNull(),
+    bytes: integer("bytes").notNull(),
+    /** null si el formato no permite leerlas sin decodificar. */
+    width: integer("width"),
+    height: integer("height"),
+    /** Descripción para lectores de pantalla y para la ficha del bot. */
+    altText: varchar("alt_text", { length: 255 }),
+    /** Orden en la tira de la ficha. Empieza en 0; sin unicidad: manda `created_at`. */
+    position: integer("position").notNull().default(0),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    /** Miembro que la subió. Para "quién cambió la foto" en el registro de actividad. */
+    uploadedBy: varchar("uploaded_by", { length: 255 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("product_image_product_idx").on(t.productId, t.position),
+    index("product_image_org_idx").on(t.organizationId),
+    uniqueIndex("product_image_primary_uq").on(t.productId).where(sql`${t.isPrimary}`),
+  ]
+);
+
+/**
  * Sucursal del negocio. Es el punto donde se lleva el inventario físico; su
  * nombre, dirección y teléfono son del negocio, no del catálogo.
  */
@@ -1487,6 +1616,17 @@ export const quoteItem = pgTable(
     ),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
+    /**
+     * Foto principal que tenía el producto al cotizar, en snapshot como `name`
+     * y `description`. `product_id` se pone a null cuando el producto se
+     * borra: sin snapshot, la cotización que ya vio el cliente perdería la
+     * imagen. Ruta relativa dentro de `MEDIA_DIR/{organizationId}`.
+     */
+    imageStoragePath: varchar("image_storage_path", { length: 512 }),
+    imageMimeType: varchar("image_mime_type", { length: 32 }),
+    /** Lo mismo que `product_image.bytes`: sirve para decidir si el archivo
+     *  merece leerse antes de empotrarlo en el PDF. */
+    imageBytes: integer("image_bytes"),
     quantity:   integer("quantity").notNull().default(1),
     unitPrice:   integer("unit_price").notNull().default(0),
     currency: varchar("currency", { length: 10 }).notNull().default("MXN"),

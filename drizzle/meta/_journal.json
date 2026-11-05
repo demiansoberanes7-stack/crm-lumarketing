@@ -596,6 +596,27 @@
       "when": 1792000000026,
       "tag": "0085_email_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1792000000027,
+      "tag": "0087_citas_usuario_google_por_usuario",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792000000028,
+      "tag": "0088_product_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1792000000029,
+      "tag": "0089_google_sync_citas",
+      "breakpoints": true
     }
   ]
 }
