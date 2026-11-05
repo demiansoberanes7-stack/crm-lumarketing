@@ -10,7 +10,12 @@ import { getEnv, isAiConfigured } from "@/lib/env";
 import { chatJson, resolveAiConfig, type ChatMessage } from "@/lib/ai";
 import { publish } from "@/server/events/bus";
 import { isWindowOpenFor } from "@/server/inbox/window";
-import { capabilitiesFor } from "@/server/channels/capabilities";
+import {
+  capabilitiesFor,
+  channelLabel,
+  supportsOutboundMedia,
+} from "@/server/channels/capabilities";
+import type { ProductPhotoFile } from "@/server/catalog/images";
 import { reactToInbound, SendError, sendText } from "@/server/inbox/send";
 import {
   agentActionSchema,
@@ -601,24 +606,39 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         ...ids
           .map((id) => byId.get(id))
           .filter((product): product is (typeof products)[number] => product !== undefined)
-          .map((product) => renderProductCard(product)),
+          .map((product) => ({ text: renderProductCard(product), productId: product.id })),
         ...(missing > 0
           ? [
-              byId.size > 0
-                ? `De lo que me pides, ${missing === 1 ? "hay un producto que no encuentro" : "hay varios productos que no encuentro"} en el catálogo. ¿Me confirmas el nombre?`
-                : "No pude encontrar ese producto en el catálogo.",
+              {
+                text: byId.size > 0
+                  ? `De lo que me pides, ${missing === 1 ? "hay un producto que no encuentro" : "hay varios productos que no encuentro"} en el catálogo. ¿Me confirmas el nombre?`
+                  : "No pude encontrar ese producto en el catálogo.",
+                productId: null,
+              },
             ]
           : []),
       ];
 
       // Con una sola ficha, `reply` viaja pegada a ella: así siempre se envió y
       // el chat no se parte en bocados. Con varias, cada una es su mensaje.
-      const texts =
-        fichas.length === 1 && action.reply
-          ? [`${action.reply}\n\n${fichas[0]}`]
-          : [...(action.reply ? [action.reply] : []), ...fichas];
+      const unica = fichas.length === 1 ? fichas[0] : undefined;
+      const texts: { text: string; productId: string | null }[] =
+        unica && action.reply
+          ? [{ text: `${action.reply}\n\n${unica.text}`, productId: unica.productId }]
+          : [
+              ...(action.reply ? [{ text: action.reply, productId: null }] : []),
+              ...fichas,
+            ];
 
-      for (const text of texts) await deliverReply(conversation, text);
+      const shown = texts
+        .map((entry) => entry.productId)
+        .filter((id): id is string => id !== null);
+      const photos = await photosForFichas(conversation, shown);
+      for (const entry of texts) {
+        await deliverReply(conversation, entry.text);
+        const photo = entry.productId ? photos[entry.productId] : undefined;
+        if (photo) await deliverPhoto(conversation, photo);
+      }
       return;
     }
     case "create_quote": {
@@ -839,6 +859,76 @@ async function deliverReply(
       return;
     }
     throw err;
+  }
+}
+
+/**
+ * Fotos de las fichas de producto, con cada omisión explicada en el log.
+ *
+ * La foto es un extra: si el canal no la admite, el Laboratorio está de por
+ * medio o el archivo ya no está en disco, la ficha sale sola y el turno sigue.
+ * El motivo se escribe porque «en Instagram no me llega la foto» se ve desde
+ * fuera exactamente igual que un bug, y el log es lo único que lo distingue.
+ */
+async function photosForFichas(
+  conversation: Conversation,
+  productIds: string[]
+): Promise<Record<string, ProductPhotoFile>> {
+  if (productIds.length === 0) return {};
+  if (conversation.isTest) {
+    noteFichasWithoutPhotos(conversation.id, "el Laboratorio solo persiste texto, nunca envía");
+    return {};
+  }
+  if (!supportsOutboundMedia(conversation.channel)) {
+    noteFichasWithoutPhotos(
+      conversation.id,
+      `${channelLabel(conversation.channel)} no admite adjuntos salientes`
+    );
+    return {};
+  }
+  const { primaryImageFilesForChat } = await import("@/server/catalog/images");
+  try {
+    const { files, unreadable } = await primaryImageFilesForChat(
+      conversation.organizationId,
+      productIds
+    );
+    for (const productId of unreadable) {
+      console.warn(
+        `[agente] ficha sin foto (${productId}): su archivo ya no está en disco (org ${conversation.organizationId})`
+      );
+    }
+    return files;
+  } catch (err) {
+    // Leer la foto no puede costar la ficha: la BD puede estar caída justo aquí
+    // y el texto ya está listo para salir.
+    console.error(`[agente] no se pudieron leer las fotos en ${conversation.id}:`, err);
+    return {};
+  }
+}
+
+function noteFichasWithoutPhotos(conversationId: string, reason: string): void {
+  console.info(`[agente] fichas sin foto (${reason}) en ${conversationId}`);
+}
+
+/**
+ * Manda la foto de la ficha.
+ *
+ * Nunca lanza: el texto ya se entregó y un adjunto perdido no debe volver el
+ * turno contra el cliente ni provocar un handoff.
+ */
+async function deliverPhoto(conversation: Conversation, photo: ProductPhotoFile): Promise<void> {
+  try {
+    const { sendMediaMessage } = await import("@/server/inbox/send");
+    await sendMediaMessage({
+      conversationId: conversation.id,
+      organizationId: conversation.organizationId,
+      file: photo,
+    });
+  } catch (err) {
+    console.error(
+      `[agente] no se pudo mandar la foto en ${conversation.id}:`,
+      err
+    );
   }
 }
 

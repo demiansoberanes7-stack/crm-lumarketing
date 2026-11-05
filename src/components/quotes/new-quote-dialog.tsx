@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ContactPicker } from "@/components/contact-picker";
+import type { ProductImageDto } from "@/lib/catalog/dto";
+import { ItemPhoto } from "./item-photo";
 import { QuoteItem, formatMXNDisplay } from "./shared";
 
 interface CatalogProduct {
@@ -15,6 +17,8 @@ interface CatalogProduct {
   available: boolean;
   stock: number | null;
   shortDescription?: string | null;
+  /** Portada del catálogo: la foto que la partida va a congelar al guardar. */
+  primaryImage?: ProductImageDto | null;
 }
 
 const EMPTY_ITEM: QuoteItem = { name: "", quantity: 1, unitPrice: 0 };
@@ -95,6 +99,9 @@ export function NewQuoteDialog({
           description: product.shortDescription?.trim()
             ? product.shortDescription
             : it.description,
+          // La portada actual del producto: al guardar, el servidor congela
+          // ESTA foto en la partida, y es la que se imprime en el PDF.
+          imageUrl: product.primaryImage?.url ?? null,
         };
       })
     );
@@ -190,6 +197,7 @@ export function NewQuoteDialog({
               {items.map((item, i) => (
                 <div key={i} className="space-y-2 rounded-md border p-3">
                   <div className="flex items-start gap-2">
+                    {item.imageUrl ? <ItemPhoto url={item.imageUrl} name={item.name} /> : null}
                     <div className="flex-1 space-y-2">
                       <div className="flex gap-2">
                         <Input
@@ -204,6 +212,7 @@ export function NewQuoteDialog({
                           ))}
                         </datalist>
                         <select
+                          aria-label={`Producto del catálogo para la partida ${i + 1}`}
                           className="h-9 rounded-md border border-input bg-background px-2 text-sm"
                           value=""
                           onChange={(e) => {

@@ -72,6 +72,11 @@ const envSchema = z.object({
   AUTH_SMTP_FROM: z.string().email().optional(),
   // 008: volumen local de adjuntos (constitución II: sin S3/R2).
   MEDIA_DIR: z.string().default("./.dev-media"),
+  // 0088: fotos del catálogo. Se ajustan desde el panel sin tocar código: un
+  // negocio con catálogo extenso sube el tope por producto; el de bytes protege
+  // el disco compartido, que en hosting de pago único tiene cuota.
+  PRODUCT_IMAGE_MAX_BYTES_MB: z.coerce.number().int().min(1).max(20).default(5),
+  PRODUCT_IMAGE_MAX_PER_PRODUCT: z.coerce.number().int().min(1).max(30).default(8),
   NODE_ENV: z.string().default("development"),
 });
 

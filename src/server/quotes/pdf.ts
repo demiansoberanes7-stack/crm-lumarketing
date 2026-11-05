@@ -1,8 +1,10 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import { readFileSync } from "node:fs";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage } from "pdf-lib";
 import { getQuote } from "./service";
 import { getBusinessSettings } from "@/server/business-settings";
 import { getBranding } from "@/server/branding";
 import { pdfInkOn } from "@/lib/branding";
+import { resolveMediaFile } from "@/server/media-path";
 import { clean, tryLoadLogo, wrapText, fitText, money, PAGE_W, PAGE_H, MARGIN, CONTENT_W } from "@/server/documents/pdf";
 
 const DARK = rgb(0.13, 0.13, 0.13);
@@ -33,6 +35,70 @@ function hexRgb(hex: string) {
     parseInt(hex.slice(3, 5), 16) / 255,
     parseInt(hex.slice(5, 7), 16) / 255
   );
+}
+
+/** Caja de la miniatura: 46 pt ≈ 16 mm, legible en pantalla sin empujar importes. */
+const PHOTO_BOX = 46;
+/** Aire entre la miniatura y el texto de la partida. */
+const PHOTO_GAP = 10;
+const PHOTO_COL = PHOTO_BOX + PHOTO_GAP;
+/**
+ * Presupuesto de imagen de un PDF.
+ *
+ * En este árbol no hay reescalonado de fotos (sin `sharp`), así que el archivo
+ * entra con sus bytes originales y el tamaño del PDF es el tamaño del archivo.
+ * Veintitantas partidas de 5 MB reventarían la memoria del hosting compartido;
+ * lo que no cabe dentro del presupuesto se omite y la partida se imprime solo
+ * con su texto.
+ */
+const IMAGE_BUDGET = 12 * 1024 * 1024;
+
+type Cover = { image: PDFImage; width: number; height: number };
+
+/**
+ * Foto congelada de la partida → imagen lista para dibujar.
+ *
+ * `null` en todo lo que hace que una partida salga sin foto: sin ruta, formato
+ * que pdf-lib no admite (webp y gif sí se suben al catálogo), archivo ilegible o
+ * presupuesto agotado. Nunca lanza: una cotización que no se puede descargar es
+ * peor que una miniatura que falta.
+ *
+ * La ruta se resuelve con `resolveMediaFile`, que es la única que contiene el
+ * archivo dentro de `MEDIA_DIR/{negocio}`; `imageBytes` es el aviso para no leer
+ * discos enormes que de todos modos no caben.
+ */
+async function embedCover(
+  doc: PDFDocument,
+  cache: Map<string, Cover | null>,
+  used: { bytes: number },
+  organizationId: string,
+  item: { imageStoragePath: string | null; imageMimeType: string | null; imageBytes: number | null }
+): Promise<Cover | null> {
+  const path = item.imageStoragePath;
+  const png = item.imageMimeType === "image/png";
+  const jpg = item.imageMimeType === "image/jpeg" || item.imageMimeType === "image/jpg";
+  if (!path || (!png && !jpg)) return null;
+  const cached = cache.get(path);
+  if (cached !== undefined) return cached;
+
+  let cover: Cover | null = null;
+  if (!item.imageBytes || used.bytes + item.imageBytes <= IMAGE_BUDGET) {
+    const filePath = resolveMediaFile(organizationId, ...path.split("/"));
+    if (filePath) {
+      try {
+        const data = readFileSync(filePath);
+        if (used.bytes + data.length <= IMAGE_BUDGET) {
+          used.bytes += data.length;
+          const image = png ? await doc.embedPng(data) : await doc.embedJpg(data);
+          cover = { image, width: image.width, height: image.height };
+        }
+      } catch {
+        cover = null;
+      }
+    }
+  }
+  cache.set(path, cover);
+  return cover;
 }
 
 export async function quotePdf(organizationId: string, id: string) {
@@ -196,6 +262,21 @@ export async function quotePdf(organizationId: string, id: string) {
   y -= 10;
 
   // ─── ITEMS TABLE (dark header) ───
+  // Las miniaturas se cargan ANTES de dibujar la cabecera: si ninguna partida
+  // tiene foto, la columna no existe y la descripción ocupa todo el ancho de
+  // siempre. Con foto, la caja se recorta por la izquierda y su borde derecho
+  // sigue cayendo en el mismo punto, así que las columnas de importes no se
+  // mueven.
+  const coverCache = new Map<string, Cover | null>();
+  const usedBytes = { bytes: 0 };
+  const covers: (Cover | null)[] = [];
+  for (const item of quote.items) {
+    covers.push(await embedCover(doc, coverCache, usedBytes, organizationId, item));
+  }
+  const photoCol = covers.some(Boolean) ? PHOTO_COL : 0;
+  const descX = QUOTE_COLS.descX + photoCol;
+  const descW = QUOTE_COLS.descW - photoCol;
+
   const headerH = 22;
 
   /** Escribe `text` alineado al borde derecho de su columna, encogiéndolo. */
@@ -211,7 +292,7 @@ export async function quotePdf(organizationId: string, id: string) {
     const label = (text: string, right: number) => {
       page.drawText(text, { x: right - bold.widthOfTextAtSize(text, 9), y: hy, size: 9, font: bold, color: HEADER_INK });
     };
-    page.drawText("Descripción", { x: QUOTE_COLS.descX, y: hy, size: 9, font: bold, color: HEADER_INK });
+    page.drawText("Descripción", { x: descX, y: hy, size: 9, font: bold, color: HEADER_INK });
     label("Cantidad", QUOTE_COLS.qtyRight);
     label("P. Unit.", QUOTE_COLS.unitRight);
     label("Total", QUOTE_COLS.totalRight);
@@ -224,20 +305,23 @@ export async function quotePdf(organizationId: string, id: string) {
   // Table rows
   for (let i = 0; i < quote.items.length; i++) {
     const item = quote.items[i]!;
+    const cover = covers[i] ?? null;
     const amount = item.quantity * item.unitPrice;
     // Tipografía por jerarquía: el nombre manda (11, negrita), la descripción
     // corta sigue a 9 y la descripción larga del catálogo cierra en 8 gris —
     // era el texto que más rápido se perdía en la página.
-    const nameLines = wrapText(clean(item.name), bold, 11, QUOTE_COLS.descW);
+    const nameLines = wrapText(clean(item.name), bold, 11, descW);
     const descLines = item.description
-      ? wrapText(clean(item.description), regular, 9, QUOTE_COLS.descW)
+      ? wrapText(clean(item.description), regular, 9, descW)
       : [];
     const longLines = item.longDescription
-      ? wrapText(clean(item.longDescription), regular, 8, QUOTE_COLS.descW)
+      ? wrapText(clean(item.longDescription), regular, 8, descW)
       : [];
     const rowH = Math.max(
       nameLines.length * 14 + descLines.length * 12 + longLines.length * 10 + 12,
-      30
+      // Con miniatura la fila tiene que dar su alto: si no, la foto se montaba
+      // sobre la partida de abajo.
+      cover ? PHOTO_BOX + 6 : 30
     );
 
     // Si la fila salta de página, la cabecera de la tabla viaja con ella.
@@ -254,23 +338,36 @@ export async function quotePdf(organizationId: string, id: string) {
       });
     }
 
+    // Miniatura: arriba de la fila, centrada en su columna, escalada a la caja.
+    if (cover) {
+      const scale = Math.min(PHOTO_BOX / cover.width, PHOTO_BOX / cover.height);
+      const w = cover.width * scale;
+      const h = cover.height * scale;
+      page.drawImage(cover.image, {
+        x: MARGIN + 8 + (PHOTO_BOX - w) / 2,
+        y: y + 3 - h,
+        width: w,
+        height: h,
+      });
+    }
+
     // Nombre (grande) → descripción → descripción larga (pequeña)
     let textY = y;
     for (const line of nameLines) {
-      page.drawText(line, { x: QUOTE_COLS.descX, y: textY, size: 11, font: bold, color: DARK });
+      page.drawText(line, { x: descX, y: textY, size: 11, font: bold, color: DARK });
       textY -= 14;
     }
     for (const line of descLines) {
-      page.drawText(line, { x: QUOTE_COLS.descX, y: textY, size: 9, font: regular, color: DARK });
+      page.drawText(line, { x: descX, y: textY, size: 9, font: regular, color: DARK });
       textY -= 12;
     }
     for (const line of longLines) {
-      page.drawText(line, { x: QUOTE_COLS.descX, y: textY, size: 8, font: regular, color: GRAY });
+      page.drawText(line, { x: descX, y: textY, size: 8, font: regular, color: GRAY });
       textY -= 10;
     }
 
     // Qty, Unit price, Total — alineados a la derecha de su columna
-    cell(String(item.quantity), QUOTE_COLS.qtyRight, QUOTE_COLS.qtyRight - (QUOTE_COLS.descX + QUOTE_COLS.descW) - 8, 10, regular, DARK);
+    cell(String(item.quantity), QUOTE_COLS.qtyRight, QUOTE_COLS.qtyRight - (descX + descW) - 8, 10, regular, DARK);
     cell(money(item.unitPrice), QUOTE_COLS.unitRight, QUOTE_COLS.unitRight - QUOTE_COLS.qtyRight - 8, 10, regular, DARK);
     cell(money(amount), QUOTE_COLS.totalRight, QUOTE_COLS.totalRight - QUOTE_COLS.unitRight - 8, 10, bold, DARK);
 

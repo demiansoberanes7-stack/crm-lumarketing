@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { intParam, parseBody, withAuth } from "@/lib/api";
 import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
+import { primaryImagesByProducts } from "@/server/catalog/images";
 import {
   createCatalogProduct,
   listCatalogProducts,
@@ -14,8 +15,16 @@ export const GET = withAuth(async (session, req: Request) => {
   const limit = intParam(url, "limit", { fallback: 100, min: 1, max: 500 });
 
   const products = await listCatalogProducts(session.organizationId, { limit });
+  // Una sola consulta para toda la lista. Pedir la foto por producto eran 500
+  // viajes al servidor en un catálogo grande, por pantalla.
+  const images = await primaryImagesByProducts(
+    session.organizationId,
+    products.map((p) => p.id)
+  );
 
-  return Response.json({ products });
+  return Response.json({
+    products: products.map((p) => ({ ...p, primaryImage: images[p.id] ?? null })),
+  });
 });
 
 const postSchema = z.object({

@@ -54,6 +54,8 @@ import { ensureMarketplaceAccessToken } from "@/server/mercado-libre/sync";
 import { sendPackMessage } from "@/server/mercado-libre/client";
 import {
   capabilitiesFor,
+  channelLabel,
+  supportsOutboundMedia,
   textFits,
   windowClosedMessage,
 } from "@/server/channels/capabilities";
@@ -917,11 +919,10 @@ export async function sendMediaMessage(input: {
 
   const target = await prepareSend(input.conversationId, input.organizationId);
   const { credentials } = target;
-  const sendCaps = capabilitiesFor(target.conversation.channel as Channel);
-  if (!sendCaps.outboundMedia) {
+  if (!supportsOutboundMedia(target.conversation.channel)) {
     throw new SendError(
       "meta_error",
-      `Todavía no se pueden enviar adjuntos por ${sendCaps.label}; manda el texto`
+      `Todavía no se pueden enviar adjuntos por ${channelLabel(target.conversation.channel)}; manda el texto`
     );
   }
 

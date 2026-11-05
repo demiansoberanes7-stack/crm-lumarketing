@@ -46,6 +46,13 @@ vi.mock("@/lib/db", async (importOriginal) => ({
   getDb: mocks.getDb,
 }));
 vi.mock("@/server/webhooks/dispatcher", () => ({ publishWebhook: mocks.publishWebhook }));
+// Las portadas congelan en `quote_item` y se leen con una consulta propia; sin
+// este doble esa consulta se comería una fila de `selectQueue` y desalinearía
+// las colas de cada caso.
+vi.mock("@/server/catalog/images", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/catalog/images")>(),
+  primaryImageSnapshots: async () => ({}),
+}));
 // Este archivo prueba el DESCUENTO de inventario; la conversión a proyecto/OS
 // se sustituye para que el mock de db de aquí no tenga que emular esas tablas.
 vi.mock("@/server/projects/from-quote", async (importOriginal) => ({

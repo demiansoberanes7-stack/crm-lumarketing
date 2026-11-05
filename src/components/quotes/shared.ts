@@ -10,6 +10,13 @@ export interface QuoteItem {
   description?: string;
   /** Vínculo con catálogo para trazabilidad y descuento de inventario. */
   productId?: string | null;
+  /**
+   * Foto que el PDF va a imprimir para esta partida. En una cotización guardada
+   * es la congelada en `quote_item`; en el compositor, la portada actual del
+   * producto recién elegido. El servidor ignora este campo: la foto se decide
+   * contra el catálogo, nunca desde el navegador.
+   */
+  imageUrl?: string | null;
 }
 
 export const STATUS_LABELS: Record<string, string> = {

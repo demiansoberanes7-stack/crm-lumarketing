@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PdfActions } from "@/components/pdf-actions";
+import { ItemPhoto } from "./item-photo";
 import { NewQuoteDialog } from "./new-quote-dialog";
 import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
@@ -475,7 +476,12 @@ export function QuoteDetail({
           <tbody>
             {quote.items.map((it, i) => (
               <tr key={i} className="border-b border-dashed">
-                <td className="py-2">{it.name}</td>
+                <td className="py-2">
+                  <div className="flex items-center gap-2">
+                    {it.imageUrl ? <ItemPhoto url={it.imageUrl} name={it.name} /> : null}
+                    <span>{it.name}</span>
+                  </div>
+                </td>
                 <td className="py-2 text-right">{it.quantity}</td>
                 <td className="py-2 text-right">{formatMXNCents(it.unitPrice)}</td>
                 <td className="py-2 text-right">{formatMXNCents(it.quantity * it.unitPrice)}</td>

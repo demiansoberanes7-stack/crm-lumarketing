@@ -133,6 +133,25 @@ export function capabilitiesFor(channel: Channel): ChannelCapabilities {
   return CHANNEL_CAPABILITIES[channel] ?? CHANNEL_CAPABILITIES.whatsapp;
 }
 
+/**
+ * ¿Este canal admite adjuntos salientes?
+ *
+ * No usa `capabilitiesFor`: su caída al remitente de WhatsApp es lo correcto
+ * para preguntas conservadoras —un valor nuevo en `conversation.channel` no
+ * debe cerrar el envío de texto ni exigir ventana—, pero para un adjunto esa
+ * misma caída inventa una capacidad: mandaría una foto por un canal que nadie
+ * describió y el turno quedaría con un mensaje `failed`. Aquí un canal
+ * desconocido responde `false`, que es la única respuesta honesta.
+ */
+export function supportsOutboundMedia(channel: string): boolean {
+  return CHANNEL_CAPABILITIES[channel as Channel]?.outboundMedia === true;
+}
+
+/** Etiqueta legible de un canal leído de la BD, aunque su valor no esté en la unión. */
+export function channelLabel(channel: string): string {
+  return CHANNEL_LABEL[channel as Channel] ?? channel;
+}
+
 /** Mensaje para el operador cuando la ventana está cerrada, según el canal. */
 export function windowClosedMessage(channel: Channel): string {
   const caps = capabilitiesFor(channel);

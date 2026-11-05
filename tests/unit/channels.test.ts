@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CHANNEL_LABEL, CHANNEL_ORDER, isChannel } from "@/lib/channels";
 import { parseChannels } from "@/server/channels/enabled";
-import { capabilitiesFor, textFits } from "@/server/channels/capabilities";
+import { capabilitiesFor, channelLabel, supportsOutboundMedia, textFits } from "@/server/channels/capabilities";
 import { channelMark } from "@/components/channel-badge";
 
 describe("CHANNELS: qué bandejas enciende la instancia (ADR-001)", () => {
@@ -43,6 +43,25 @@ describe("capacidades por canal", () => {
   it("un canal desconocido cae en WhatsApp en vez de reventar", () => {
     const caps = capabilitiesFor("telegram" as never);
     expect(caps.label).toBe(CHANNEL_LABEL.whatsapp);
+  });
+
+  it("pero la caída a WhatsApp no llega a los adjuntos", () => {
+    // Para la ventana, el texto o los acuses, desconocer un canal es asumirlo
+    // lo más parecido que hay. Para un adjunto es inventarse una capacidad:
+    // mandarían bytes por un transporte que nadie eligió.
+    expect(capabilitiesFor("telegram" as never).outboundMedia).toBe(true);
+    expect(supportsOutboundMedia("telegram")).toBe(false);
+    expect(supportsOutboundMedia("whatsapp")).toBe(true);
+    expect(supportsOutboundMedia("messenger")).toBe(true);
+    expect(supportsOutboundMedia("instagram")).toBe(false);
+    expect(supportsOutboundMedia("webchat")).toBe(false);
+    // Todos los canales declarados responden lo mismo por las dos vías: la
+    // asimetría solo existe para los valores que no están en la unión.
+    for (const ch of CHANNEL_ORDER) {
+      expect(supportsOutboundMedia(ch)).toBe(capabilitiesFor(ch).outboundMedia);
+      expect(channelLabel(ch)).toBe(CHANNEL_LABEL[ch]);
+    }
+    expect(channelLabel("telegram")).toBe("telegram");
   });
 
   it("el límite de Instagram es en BYTES: los acentos cuentan doble", () => {

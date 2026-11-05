@@ -9,8 +9,10 @@ import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { catalogImageUrl } from "@/lib/product-images";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { emailParticipantOf, sendEmail } from "@/server/email/service";
+import { primaryImageSnapshots } from "@/server/catalog/images";
 import { acceptQuoteIntoProjectTx } from "@/server/projects/from-quote";
 import { syncTaskById } from "@/server/agenda/tasks-sync";
 import { quotePdfFileName } from "./filename";
@@ -36,6 +38,12 @@ export type QuoteInput = {
     description?: string;
     quantity: number;
     unitPrice: number;
+    /**
+     * Foto YA congelada en esta partida. La usa solo `updateQuote` al reescribir
+     * las partidas que no cambiaron: editar una nota no debe cambiar la foto de
+     * un documento que igual ya se envió al cliente.
+     */
+    frozenImage?: { storagePath: string; mimeType: string; bytes: number } | null;
   }>;
   discountType?: "fixed" | "percentage" | null;
   discountValue?: number | null;
@@ -45,6 +53,25 @@ export type QuoteInput = {
   paymentConditions?: string;
   paymentMethod?: Record<string, unknown>;
 };
+
+/**
+ * Portadas congeladas para las partidas.
+ *
+ * `quote_item` guarda la ruta, el tipo y los bytes que tenía el producto EN EL
+ * MOMENTO de crear la cotización, no una FK viva: el PDF es un documento que se
+ * envía al cliente y dentro de un año —aunque el producto cambie de foto o se
+ * borre— tiene que verse igual. Una sola consulta para todas las partidas,
+ * aunque el pedido traiga veinte productos.
+ */
+async function coversForItems(
+  organizationId: string,
+  items: QuoteInput["items"]
+): Promise<Record<string, { storagePath: string; mimeType: string; bytes: number }>> {
+  const ids = [
+    ...new Set(items.map((item) => item.productId).filter((id): id is string => !!id)),
+  ];
+  return primaryImageSnapshots(organizationId, ids);
+}
 
 /** Generar número de cotización secuencial (usa el db del transaction para evitar race condition) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,6 +184,9 @@ export async function createQuote(
   createdBy?: string,
   options?: { agentSourceMessageId?: string }
 ): Promise<string> {
+  // Leído antes del candado: son filas ya confirmadas del catálogo, y en el
+  // camino idempotente (`agentSourceMessageId` repetido) el resultado no se usa.
+  const covers = await coversForItems(organizationId, input.items);
   const created = await getDb().transaction(async (db) => {
   await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId + ':quotes'}))`);
   if (options?.agentSourceMessageId) {
@@ -221,6 +251,7 @@ export async function createQuote(
 
   // Insertar partidas
   for (const [i, item] of input.items.entries()) {
+    const cover = item.frozenImage ?? (item.productId ? covers[item.productId] ?? null : null);
     await db.insert(schema.quoteItem).values({
       id: newId("quoteItem"),
       organizationId,
@@ -232,6 +263,9 @@ export async function createQuote(
       unitPrice: item.unitPrice,
       currency: "MXN",
       position: i,
+      imageStoragePath: cover?.storagePath ?? null,
+      imageMimeType: cover?.mimeType ?? null,
+      imageBytes: cover?.bytes ?? null,
     });
   }
 
@@ -268,6 +302,11 @@ export async function updateQuote(
   quoteId: string,
   input: Partial<QuoteInput>
 ): Promise<void> {
+  // Las portadas de las partidas NUEVAS se leen antes de abrir la transacción:
+  // dentro, esa lectura pediría una segunda conexión del pool mientras la
+  // transacción tiene una reservada (y el pool es de 5). Con `items` ausente el
+  // vector sale vacío y no se consulta nada.
+  const covers = await coversForItems(organizationId, input.items ?? []);
   return getDb().transaction(async (db) => {
   if (input.contactId) {
     const [contact] = await db.select({ id: schema.contact.id }).from(schema.contact).where(scoped(schema.contact.organizationId, organizationId, eq(schema.contact.id, input.contactId)));
@@ -298,7 +337,7 @@ export async function updateQuote(
   const patch = Object.fromEntries(
     Object.entries(input).filter(([, value]) => value !== undefined)
   ) as Partial<QuoteInput>;
-  input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...patch };
+  input = { contactId: quote.contactId, items: previous!.items.map((item) => ({ ...item, description: item.description ?? undefined, frozenImage: item.imageStoragePath && item.imageMimeType ? { storagePath: item.imageStoragePath, mimeType: item.imageMimeType, bytes: item.imageBytes ?? 0 } : null })), discountType: quote.discountType as QuoteInput["discountType"], discountValue: quote.discountValue, taxRate: quote.taxRate, ...patch };
 
   // Aislamiento: los productId de las partidas nuevas tienen que existir en
   // ESTA organización, y el stock vigente tiene que alcanzar — sin esto, un
@@ -337,6 +376,7 @@ export async function updateQuote(
   await db.delete(schema.quoteItem).where(eq(schema.quoteItem.quoteId, quoteId));
 
   for (const [i, item] of input.items!.entries()) {
+    const cover = item.frozenImage ?? (item.productId ? covers[item.productId] ?? null : null);
     await db.insert(schema.quoteItem).values({
       id: newId("quoteItem"),
       organizationId,
@@ -348,6 +388,9 @@ export async function updateQuote(
       unitPrice: item.unitPrice,
       currency: "MXN",
       position: i,
+      imageStoragePath: cover?.storagePath ?? null,
+      imageMimeType: cover?.mimeType ?? null,
+      imageBytes: cover?.bytes ?? null,
     });
   }
   });
@@ -609,6 +652,12 @@ export async function getQuote(organizationId: string, quoteId: string) {
     items: items.map(({ item, longDescription }) => ({
       ...item,
       longDescription: longDescription ?? null,
+      // La URL se deriva de la ruta congelada en la partida, nunca se guarda:
+      // así el compositor y el detalle muestran LA MISMA foto que sale en el PDF,
+      // aunque el producto del catálogo ya haya cambiado de imagen.
+      imageUrl: item.imageStoragePath
+        ? catalogImageUrl(organizationId, item.imageStoragePath)
+        : null,
     })),
     contactName: contact?.name ?? null,
     // El de la cotización manda: es el número que el operador escribió para

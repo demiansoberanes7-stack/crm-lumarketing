@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Download, Package, Pencil, Plus, Send, Trash2, Upload, X } from "lucide-react";
+import { Download, ImageOff, Package, Pencil, Plus, Send, Trash2, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LoadError } from "@/components/load-error";
 import { webHref } from "@/lib/safe-url";
+import type { ProductImageDto } from "@/lib/catalog/dto";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImportInventoryDialog } from "@/components/catalog/import-inventory-dialog";
+import { ProductImages } from "@/components/catalog/product-images";
 import { SendProductDialog } from "@/components/catalog/send-product-dialog";
 
 interface Product {
@@ -19,6 +21,37 @@ interface Product {
   websiteUrl: string | null;
   stock: number | null;
   available: boolean;
+  /** Portada resuelta por el servidor: null si el producto no tiene fotos. */
+  primaryImage: ProductImageDto | null;
+}
+
+function CardPhoto({ image, name }: { image: ProductImageDto; name: string }) {
+  const [broken, setBroken] = useState(false);
+  // Sin foto no hay hueco gris: la tarjeta de un catálogo sin imágenes era
+  // exactamente la que ya existía. Con foto perdida, la banda se queda para que
+  // el relleno de la rejilla no brinque, pero dice lo que pasa.
+  if (broken) {
+    return (
+      <div className="flex h-28 items-center justify-center gap-1.5 border-b bg-subtle text-xs text-text-3">
+        <ImageOff className="h-4 w-4" aria-hidden />
+        Foto no disponible
+      </div>
+    );
+  }
+  return (
+    <div className="h-28 w-full overflow-hidden border-b bg-subtle">
+      {/* eslint-disable-next-line @next/next/no-img-element -- la foto vive en MEDIA_DIR con dimensiones arbitrarias y el negocio la sube ya comprimida; pasarla por el optimizador recodifica en cada petición y invalida la caché cada vez que cambia la portada. */}
+      <img
+        src={image.url}
+        alt={image.altText ?? name}
+        width={image.width ?? undefined}
+        height={image.height ?? undefined}
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className="h-full w-full object-cover"
+      />
+    </div>
+  );
 }
 
 function formatMXN(amount: number): string {
@@ -173,6 +206,7 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                 key={p.id}
                 className="group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md"
               >
+                {p.primaryImage && <CardPhoto image={p.primaryImage} name={p.name} />}
                 <div className="flex flex-1 flex-col gap-1.5 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -338,6 +372,12 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                   value={form.stock}
                   onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
                 />
+              </div>
+
+              {/* Fotos: se suben solas, sin esperar a «Guardar cambios». */}
+              <div className="space-y-1.5">
+                <Label>Fotos del producto</Label>
+                <ProductImages productId={editingId} productName={form.name.trim() || "producto"} />
               </div>
 
               {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}

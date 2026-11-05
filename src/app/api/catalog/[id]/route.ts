@@ -4,6 +4,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
+import { primaryImagesByProducts, removeProductImageFiles } from "@/server/catalog/images";
 import { getCatalogProduct, updateCatalogProduct } from "@/server/catalog/service";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,8 @@ export const GET = withAuth(async (session, _req, { params }) => {
   const { id } = await params;
   const product = await getCatalogProduct(session.organizationId, id);
   if (!product) return apiError(404, "not_found", "Producto no encontrado");
-  return Response.json({ product });
+  const images = await primaryImagesByProducts(session.organizationId, [id]);
+  return Response.json({ product: { ...product, primaryImage: images[id] ?? null } });
 });
 
 const patchSchema = z.object({
@@ -57,6 +59,12 @@ export const DELETE = withAuth(async (session, _req, { params }) => {
         eq(schema.catalogProduct.id, id)
       )
     );
+
+  // Después del commit: `product_image` se va por cascade con el producto, y
+  // los archivos solo se retiran cuando la fila ya no existe. Al revés, un
+  // borrado fallido dejaría el catálogo del cliente sin fotos que no pidió
+  // quitar.
+  await removeProductImageFiles(session.organizationId, id);
 
   return Response.json({ ok: true });
 });
