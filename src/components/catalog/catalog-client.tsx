@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImportInventoryDialog } from "@/components/catalog/import-inventory-dialog";
+import { ProductCosts } from "@/components/catalog/product-costs";
 import { ProductImages } from "@/components/catalog/product-images";
 import { SendProductDialog } from "@/components/catalog/send-product-dialog";
+import { marginOf } from "@/lib/catalog/cost";
 
 interface Product {
   id: string;
@@ -23,6 +25,8 @@ interface Product {
   available: boolean;
   /** Portada resuelta por el servidor: null si el producto no tiene fotos. */
   primaryImage: ProductImageDto | null;
+  /** null = sin receta de costos; NO es «cuesta 0». */
+  costSummary: { totalCostCents: number; lineCount: number } | null;
 }
 
 function CardPhoto({ image, name }: { image: ProductImageDto; name: string }) {
@@ -81,6 +85,19 @@ function stockLabel(stock: number | null): { text: string; variant: "success" | 
   if (stock === null) return { text: "Consultar", variant: "secondary" };
   if (stock <= 0) return { text: "Agotado", variant: "warning" };
   return { text: `${stock} pieza${stock === 1 ? "" : "s"}`, variant: "success" };
+}
+
+/**
+ * Precio del formulario en centavos, para la receta.
+ *
+ * La receta necesita el precio que el negocio está tecleando, no el guardado,
+ * para que el margen se mueva mientras se edita. Lo que no entra —vacío, texto,
+ * negativo— se toma como 0 y la pantalla dice «sin precio» en vez de calcular un
+ * margen sobre una cifra inválida.
+ */
+function priceCentsOf(value: string): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
 }
 
 export function CatalogClient({ compact = false, onClose }: { compact?: boolean; onClose?: () => void }) {
@@ -269,6 +286,28 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                     </div>
                     <span className="text-sm font-bold tabular-nums">{formatMXN(p.price)}</span>
                   </div>
+
+                  {/* Costo solo si hay receta: sin receta es «sin registrar», no $0. */}
+                  {p.costSummary && (() => {
+                    const m = marginOf(p.price, p.costSummary.totalCostCents);
+                    return (
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                        <span>
+                          Cuesta producir{" "}
+                          <strong className="tabular-nums text-foreground">
+                            {formatMXN(p.costSummary.totalCostCents)}
+                          </strong>
+                        </span>
+                        <span className={m.marginCents < 0 ? "font-semibold text-destructive" : "tabular-nums"}>
+                          {m.marginPct === null
+                            ? "Margen sin precio"
+                            : m.marginCents < 0
+                              ? `Pierdes ${formatMXN(-m.marginCents)}`
+                              : `Margen ${m.marginPct}%`}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </li>
             ))}
@@ -371,6 +410,20 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
                   placeholder="Ej. 12"
                   value={form.stock}
                   onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                />
+              </div>
+
+              {/* Receta de costos: se guarda sola, como las fotos. */}
+              <div className="space-y-1.5">
+                <Label>Costos de producción</Label>
+                <p className="text-xs text-muted-foreground">
+                  Los insumos que entran en una unidad del producto, con lo que cuesta cada uno.
+                  El costo total, el porcentaje de mezcla y el margen se calculan solos.
+                </p>
+                <ProductCosts
+                  productId={editingId}
+                  productName={form.name.trim() || "producto"}
+                  priceCents={priceCentsOf(form.price)}
                 />
               </div>
 
