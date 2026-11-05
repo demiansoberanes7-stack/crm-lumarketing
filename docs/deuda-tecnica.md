@@ -1606,11 +1606,19 @@ una decisión explícita de privilegios.
 
 **Las tres salidas, con su coste:**
 
-1. **El dueño ejecuta el script** (la que se usó): `~/Desktop/respaldos/2026-11-04-075434/aplicar-0087-0088-0089.sql`,
-   conectado como `lumark_app` por el **pooler de sesión** (`aws-0-us-east-1.pooler.supabase.com:5432`,
-   usuario `lumark_app.hehgscuuzhojefscjcvw`, `sslmode=require`, una sola conexión — el tope es 15).
-   El archivo lleva `BEGIN/COMMIT`, es re-ejecutable, registra las tres filas del ledger con su
-   sha256 y termina con cinco consultas de verificación.
+1. **El dueño ejecuta el script** (la salida elegida el 05-11-2026):
+   `node ~/Desktop/respaldos/2026-11-04-075434/aplicar-fase3.mjs` — ejecutable, se conecta como
+   `lumark_app`, lee la contraseña de `~/.lumark/creds/supabase-db.pass` sin imprimirla, aborta si
+   el rol no es `lumark_app`, recalcula el sha256 de cada `drizzle/*.sql` (para que el ledger siga
+   siendo coherente con lo que espera `reconcileMigrationLedger()`), aplica y registra en un solo
+   `BEGIN`/`COMMIT` con `ROLLBACK` si algo falla, y verifica: ledger **86**, **10** columnas nuevas,
+   los 5 índices, `product_image` con dueño `lumark_app` y los conteos `booking`/`quote_item`/
+   `catalog_product` **1 / 2 / 12** sin bajar. `--verificar` es solo lectura y conviene correrlo
+   primero. **No se ha ejecutado todavía**: el intento del 05-11-2026 lo frenó el clasificador de
+   permisos, que exige autorización escrita por el dueño en su propio mensaje. Si se prefiere
+   pegar el SQL a mano, el mismo lote está en `aplicar-0087-0088-0089.sql`, conectado por el
+   **pooler de sesión** (`aws-0-us-east-1.pooler.supabase.com:5432`, usuario
+   `lumark_app.hehgscuuzhojefscjcvw`, `sslmode=require`, una sola conexión — el tope es 15).
 2. **Darle a `postgres` el `SET` sobre `lumark_app`** (`GRANT lumark_app TO postgres`, migrar,
    `REVOKE`). Es reversible y `postgres` ya tiene `admin_option`, pero el clasificador lo bloquea:
    requiere que el dueño lo ejecute en su propio cliente, no que lo autorice al agente.
