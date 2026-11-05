@@ -6,7 +6,7 @@ import { agendaEnabled } from "@/server/agenda/flag";
 import { recordDiagnostic } from "@/server/diagnostics/logger";
 import { googleFetch } from "@/server/agenda/connectors/google";
 import {
-  getGoogleCredentials,
+  getPersonalGoogleCredentials,
   markGoogleError,
   type GoogleCreds,
 } from "@/server/agenda/connectors/google-credentials";
@@ -31,6 +31,10 @@ import {
  *  3. **Un evento por tarea.** El id de Google se guarda en la propia fila
  *     (`google_event_id`): editar mueve el mismo evento y no duplica; borrar la
  *     tarea borra el evento. Si la fecha desaparece, se retira el evento.
+ *  4. **El calendario es el de la dueña de la tarea.** Cada fila se resuelve con
+ *     `getPersonalGoogleCredentials`: el calendario de esa persona si conectó el
+ *     suyo, si no el del negocio. Las tareas de tres miembros nunca acaban en el
+ *     calendario de uno.
  */
 
 export type SyncableTask = {
@@ -44,20 +48,28 @@ export type SyncableTask = {
   googleEventId?: string | null;
   /** Nombre del proyecto, para anteponerlo al asunto. */
   prefix?: string | null;
+  /**
+   * Dueño de la tarea, es decir de qué calendario es el evento. `null` = el del
+   * negocio. Una tarea de Pendientes siempre tiene; la de proyecto solo si tiene
+   * responsable asignado.
+   */
+  userId?: string | null;
 };
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
 /**
- * Nada de esto corre si la bandera está apagada o si el negocio no conectó
- * Google con la sincronización encendida: la consulta ni siquiera se hace.
+ * Nada de esto corre si la bandera está apagada o si no hay calendario
+ * conectado para esa persona (con la cascada de D2: el suyo, si no el del
+ * negocio) con la sincronización encendida.
  */
 async function syncContext(
-  organizationId: string
+  organizationId: string,
+  userId: string | null = null
 ): Promise<GoogleCreds | null> {
   if (!agendaEnabled()) return null;
-  const creds = await getGoogleCredentials(organizationId);
+  const creds = await getPersonalGoogleCredentials(organizationId, userId);
   if (!creds || creds.status !== "connected" || !creds.syncTasks) return null;
   return creds;
 }
@@ -175,6 +187,7 @@ async function readTask(
       start: row.dueDate,
       googleEventId: row.googleEventId,
       prefix: row.projectName,
+      userId: row.assigneeId ?? null,
     };
   }
 
@@ -202,6 +215,7 @@ async function readTask(
     start,
     end,
     googleEventId: row.googleEventId,
+    userId: row.userId,
   };
 }
 
@@ -222,7 +236,8 @@ function isRevokedCredentials(error: unknown): boolean {
 async function noteFailure(
   organizationId: string,
   taskId: string,
-  error: unknown
+  error: unknown,
+  userId: string | null = null
 ): Promise<void> {
   try {
     await recordDiagnostic({
@@ -238,9 +253,10 @@ async function noteFailure(
   }
   // Un refresh token revocado deja de funcionar en silencio: la tarea se
   // guarda, pero sin evento. Marcarlo hace que Ajustes pida reconectar en vez
-  // de seguir diciendo "conectado".
+  // de seguir diciendo "conectado". Se marca LA FILA del dueño, no todas las
+  // del negocio: el token roto de una persona no puede desconectar a las demás.
   if (isRevokedCredentials(error)) {
-    await markGoogleError(organizationId).catch(() => {});
+    await markGoogleError(organizationId, userId).catch(() => {});
   }
 }
 
@@ -286,14 +302,19 @@ export async function syncTaskById(
   organizationId: string,
   taskId: string
 ): Promise<void> {
-  const creds = await syncContext(organizationId);
-  if (!creds) return;
+  if (!agendaEnabled()) return;
+  let task: SyncableTask | null = null;
   try {
-    const task = await readTask(organizationId, taskId);
+    // Se lee la fila ANTES de resolver credenciales: la dueña de la tarea es la
+    // que decide en qué calendario vive el evento. Sin bandera no hay ni una
+    // consulta, así que el coste extra solo lo pagan las instancias con agenda.
+    task = await readTask(organizationId, taskId);
     if (!task) return;
+    const creds = await syncContext(organizationId, task.userId ?? null);
+    if (!creds) return;
     await pushWithCreds(creds, organizationId, task);
   } catch (error) {
-    await noteFailure(organizationId, taskId, error);
+    await noteFailure(organizationId, taskId, error, task?.userId ?? null);
   }
 }
 
@@ -302,28 +323,38 @@ export async function pushTaskEvent(
   organizationId: string,
   task: SyncableTask
 ): Promise<void> {
-  const creds = await syncContext(organizationId);
+  const creds = await syncContext(organizationId, task.userId ?? null);
   if (!creds) return;
   try {
     await pushWithCreds(creds, organizationId, task);
   } catch (error) {
-    await noteFailure(organizationId, task.id, error);
+    await noteFailure(organizationId, task.id, error, task.userId ?? null);
   }
 }
 
+/** El evento de una tarea y su dueño, resueltos de una sola lectura. */
+export type TaskEventRef = { eventId: string | null; userId: string | null };
+
 /**
- * El id de Google que tenga la tarea, o `null`. `null` también cuando la
- * sincronización está apagada: entonces no hay evento que retirar.
+ * El id de Google que tenga la tarea Y a quién pertenece. `eventId` también es
+ * `null` cuando la sincronización está apagada: entonces no hay evento que
+ * retirar.
+ *
+ * Se llama SIEMPRE antes de borrar la fila —después ya no se puede saber en qué
+ * calendario estaba el evento, y borrar con las credenciales equivocadas deja
+ * el evento huérfano en el calendario correcto.
  */
-export async function taskEventIdFor(
+export async function taskEventRefFor(
   organizationId: string,
   taskId: string
-): Promise<string | null> {
-  const creds = await syncContext(organizationId);
-  if (!creds) return null;
+): Promise<TaskEventRef | null> {
+  if (!agendaEnabled()) return null;
   try {
     const task = await readTask(organizationId, taskId);
-    return task?.googleEventId ?? null;
+    if (!task) return null;
+    const creds = await syncContext(organizationId, task.userId ?? null);
+    if (!creds) return null;
+    return { eventId: task.googleEventId ?? null, userId: task.userId ?? null };
   } catch (error) {
     await noteFailure(organizationId, taskId, error);
     return null;
@@ -333,10 +364,11 @@ export async function taskEventIdFor(
 /** Borra el evento de Google. Se llama DESPUÉS de que la fila ya no existe. */
 export async function removeTaskEvent(
   organizationId: string,
-  googleEventId: string | null | undefined
+  googleEventId: string | null | undefined,
+  userId: string | null = null
 ): Promise<void> {
   if (!googleEventId) return;
-  const creds = await syncContext(organizationId);
+  const creds = await syncContext(organizationId, userId);
   if (!creds) return;
   try {
     await googleFetch(creds, `${eventsPath(creds)}/${googleEventId}`, {
@@ -344,7 +376,7 @@ export async function removeTaskEvent(
       allow404: true,
     });
   } catch (error) {
-    await noteFailure(organizationId, googleEventId, error);
+    await noteFailure(organizationId, googleEventId, error, userId);
   }
 }
 
@@ -357,16 +389,22 @@ export async function removeTaskEvent(
  * Solo lee filas SIN `google_event_id`: nunca duplica un evento existente.
  * Si Google rechaza las credenciales, corta en el primer fallo en vez de
  * martillar la API con el mismo token muerto.
+ *
+ * `owner` restringe el relleno a las tareas de UNA persona. Se usa cuando un
+ * miembro conecta SU calendario: subirle también las tareas de sus compañeros
+ * al suyo sería justo el defecto que la cascada de D2 impide.
  */
 export async function syncPendingTasks(
   organizationId: string,
-  limit = 100
+  limit = 100,
+  owner?: string | null
 ): Promise<{ synced: number; failed: number }> {
-  const creds = await syncContext(organizationId);
-  if (!creds) return { synced: 0, failed: 0 };
+  if (!agendaEnabled()) return { synced: 0, failed: 0 };
 
   const db = getDb();
   const pending: SyncableTask[] = [];
+  const owned = owner ? eq(schema.caltodoTask.userId, owner) : undefined;
+  const assigned = owner ? eq(schema.projectTask.assigneeId, owner) : undefined;
 
   try {
     const caltodoRows = await db
@@ -377,7 +415,8 @@ export async function syncPendingTasks(
           scoped(schema.caltodoTask.organizationId, organizationId),
           eq(schema.caltodoTask.completed, false),
           isNotNull(schema.caltodoTask.scheduledStart),
-          isNull(schema.caltodoTask.googleEventId)
+          isNull(schema.caltodoTask.googleEventId),
+          owned
         )
       )
       .limit(limit);
@@ -394,6 +433,7 @@ export async function syncPendingTasks(
           row.scheduledEnd ??
           new Date(row.scheduledStart.getTime() + (row.duration ?? 60) * 60_000),
         googleEventId: row.googleEventId,
+        userId: row.userId,
       });
     }
 
@@ -409,7 +449,8 @@ export async function syncPendingTasks(
           scoped(schema.projectTask.organizationId, organizationId),
           ne(schema.projectTask.estado, "terminado"),
           isNotNull(schema.projectTask.dueDate),
-          isNull(schema.projectTask.googleEventId)
+          isNull(schema.projectTask.googleEventId),
+          assigned
         )
       )
       .limit(limit);
@@ -424,6 +465,7 @@ export async function syncPendingTasks(
         start: row.dueDate,
         googleEventId: row.googleEventId,
         prefix: row.projectName,
+        userId: row.assigneeId ?? null,
       });
     }
   } catch (error) {
@@ -431,15 +473,35 @@ export async function syncPendingTasks(
     return { synced: 0, failed: 0 };
   }
 
+  // Con las credenciales por usuario, un relleno ya no puede resolver el
+  // calendario una sola vez: cada fila va al de su dueño. La memoria evita
+  // releer la misma fila de credenciales tarea tras tarea.
+  const credsByOwner = new Map<string | null, GoogleCreds | null>();
+  const credsFor = async (userId: string | null): Promise<GoogleCreds | null> => {
+    if (!credsByOwner.has(userId)) {
+      credsByOwner.set(userId, await syncContext(organizationId, userId));
+    }
+    return credsByOwner.get(userId) ?? null;
+  };
+
   let synced = 0;
   let failed = 0;
-  for (const task of pending.slice(0, limit)) {
+  let attempted = 0;
+  for (const task of pending) {
+    const owner = task.userId ?? null;
+    const creds = await credsFor(owner);
+    // Sin credenciales para ese dueño (no conectó, o tiene la sincronización
+    // apagada) la tarea no se intenta ni cuenta: no es un fallo, es que ese
+    // calendario no existe.
+    if (!creds) continue;
+    if (attempted >= limit) break;
+    attempted += 1;
     try {
       await pushWithCreds(creds, organizationId, task);
       synced += 1;
     } catch (error) {
       failed += 1;
-      await noteFailure(organizationId, task.id, error);
+      await noteFailure(organizationId, task.id, error, owner);
       if (isRevokedCredentials(error)) break;
     }
   }

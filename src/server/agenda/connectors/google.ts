@@ -188,6 +188,7 @@ export const googleConnector: AgendaConnector<GoogleCreds> = {
         body: JSON.stringify({
           summary: req.topic,
           description: req.notes ?? undefined,
+          location: req.location ?? undefined,
           start: { dateTime: req.startUtc, timeZone: "UTC" },
           end: { dateTime: endUtc, timeZone: "UTC" },
           conferenceData: {
@@ -232,6 +233,15 @@ export const googleConnector: AgendaConnector<GoogleCreds> = {
     return { externalId, joinUrl: meetLinkOf(event) };
   },
 
+  /**
+   * Mueve la hora Y lo que la cita ES.
+   *
+   * Va sin `conferenceData` a propósito, y esa omisión es la regla: en Google
+   * PATCH es merge, así que un cuerpo que no menciona la conferencia deja el
+   * enlace de Meet intacto. Reescribir el evento completo con `insert` (o
+   * mandando un `conferenceData` viejo) rompería el enlace que ya se le mandó
+   * al cliente.
+   */
   async updateMeeting(creds, externalId, req): Promise<void> {
     const endUtc = new Date(
       Date.parse(req.startUtc) + req.durationMinutes * 60_000
@@ -241,6 +251,11 @@ export const googleConnector: AgendaConnector<GoogleCreds> = {
       body: JSON.stringify({
         start: { dateTime: req.startUtc, timeZone: "UTC" },
         end: { dateTime: endUtc, timeZone: "UTC" },
+        // `undefined` en un objeto que se serializa desaparece de JSON: eso es
+        // exactamente lo que hace falta — no tocar lo que el operador no cambió.
+        summary: req.summary,
+        description: req.description,
+        location: req.location,
       }),
     });
   },

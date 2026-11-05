@@ -2,7 +2,7 @@ import { z } from "zod";
 import { apiError, parseBody, withOwner } from "@/lib/api";
 import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
 import { googleConnector } from "@/server/agenda/connectors/google";
-import { getGoogleCredentials } from "@/server/agenda/connectors/google-credentials";
+import { getBusinessGoogleCredentials } from "@/server/agenda/connectors/google-credentials";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,10 @@ export const POST = withOwner(async (session, req: Request) => {
   const body = await parseBody(req, schema);
   if (!body.ok) return body.response;
 
-  const stored = await getGoogleCredentials(session.organizationId);
+  // Se prueba la fila del NEGOCIO: esta pantalla es la del calendario de la
+  // empresa. Lo personal no se prueba a mano —se conecta por OAuth y su tarjeta
+  // muestra el estado—, así que este botón no tiene versión personal.
+  const stored = await getBusinessGoogleCredentials(session.organizationId);
   const clientId = body.data.clientId || stored?.clientId;
   const clientSecret = body.data.clientSecret || stored?.clientSecret;
   const refreshToken = body.data.refreshToken || stored?.refreshToken;

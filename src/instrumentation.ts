@@ -32,6 +32,11 @@ export async function register(): Promise<void> {
     // correo solo llegaba cuando alguien pulsaba el sync manual.
     const { startEmailWorker } = await import("./server/email/poller");
     await startEmailWorker();
+    // Google Calendar (citas y tareas sin evento): repara lo que Google se dejó
+    // por caído o por un token revocado. Chequea su propia bandera en cada
+    // barrido, así que registrarlo es inofensivo sin el módulo de agenda.
+    const { startAgendaWorker } = await import("./server/agenda/poller");
+    await startAgendaWorker();
     // MCP: poda de códigos/tokens/auditoría/clientes caducados; barre su
     // propia bandera en cada tick, así registrarla es inofensivo sin MCP.
     const { startMcpMaintenance } = await import("./server/mcp/maintenance");

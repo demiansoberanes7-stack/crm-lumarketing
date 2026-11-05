@@ -20,8 +20,14 @@ const state = {
   /** Filas por tabla para las consultas de relleno. */
   rowsByTable: {} as Record<string, Record<string, unknown>[]>,
   diagnostics: [] as { code?: string; metadata?: Record<string, unknown> }[],
-  /** Organizaciones cuya credencial se marcó como rota. */
-  marked: [] as string[],
+  /** Filas de credencial marcadas como rotas: «quién», no solo «de qué negocio». */
+  marked: [] as { organizationId: string; userId: string | null }[],
+  /**
+   * Credenciales POR DUEÑO para la cascada de D2. Cuando está lleno, manda él y
+   * `creds` se ignora: es la forma de probar que las tareas de tres personas no
+   * acaban en el calendario de una. La clave `"business"` es `userId = null`.
+   */
+  credsByOwner: null as null | Record<string, unknown | null>,
   /** Qué responde cada petición: status por defecto 200 con este JSON. */
   respond: (_call: Call): { status: number; json?: unknown } => ({ status: 200, json: {} }),
 };
@@ -35,6 +41,7 @@ function reset() {
   state.rowsByTable = {};
   state.diagnostics = [];
   state.marked = [];
+  state.credsByOwner = null;
   state.respond = () => ({ status: 200, json: {} });
   // El access token se cachea por proceso: sin limpiarlo, un test hereda el
   // "tok" de otro y el rechazo del refresh token nunca llega a ejercitarse.
@@ -67,20 +74,48 @@ vi.mock("@/lib/db", () => ({
     },
   }),
   schema: {
-    caltodoTask: { id: "id", organizationId: "organization_id", __table: "caltodoTask" },
-    projectTask: { id: "id", organizationId: "organization_id", __table: "projectTask" },
+    caltodoTask: {
+      id: "id",
+      organizationId: "organization_id",
+      userId: "user_id",
+      __table: "caltodoTask",
+    },
+    projectTask: {
+      id: "id",
+      organizationId: "organization_id",
+      assigneeId: "assignee_id",
+      __table: "projectTask",
+    },
     project: { id: "id", name: "name", __table: "project" },
   },
 }));
+
+/**
+ * Cascada de D2, como la implementa `getPersonalGoogleCredentials`: el
+ * calendario de la persona si conectó el suyo, si no el del negocio. `peek` es
+ * la fila exacta, sin cascada —el mismo contrato que en producción.
+ */
+function cascadeCreds(userId: string | null): unknown {
+  if (!state.credsByOwner) return state.creds;
+  return state.credsByOwner[userId ?? "business"] ?? state.credsByOwner.business ?? null;
+}
+
+function exactCreds(userId: string | null): unknown {
+  if (!state.credsByOwner) return state.creds;
+  return state.credsByOwner[userId ?? "business"] ?? null;
+}
 
 vi.mock("@/server/agenda/connectors/google-credentials", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/server/agenda/connectors/google-credentials")>();
   return {
     ...actual,
-    getGoogleCredentials: async () => state.creds,
-    markGoogleError: async (organizationId: string) => {
-      state.marked.push(organizationId);
+    getBusinessGoogleCredentials: async () => state.creds,
+    getPersonalGoogleCredentials: async (_org: string, userId: string | null) =>
+      cascadeCreds(userId),
+    peekGoogleCredentials: async (_org: string, userId: string | null) => exactCreds(userId),
+    markGoogleError: async (organizationId: string, userId: string | null = null) => {
+      state.marked.push({ organizationId, userId });
     },
   };
 });
@@ -97,9 +132,14 @@ vi.mock("@/server/diagnostics/logger", () => ({
 }));
 
 async function load() {
-  const { pushTaskEvent, syncTaskById, syncPendingTasks, taskEventIdFor, removeTaskEvent } =
-    await import("@/server/agenda/tasks-sync");
-  return { pushTaskEvent, syncTaskById, syncPendingTasks, taskEventIdFor, removeTaskEvent };
+  const {
+    pushTaskEvent,
+    syncTaskById,
+    syncPendingTasks,
+    taskEventRefFor,
+    removeTaskEvent,
+  } = await import("@/server/agenda/tasks-sync");
+  return { pushTaskEvent, syncTaskById, syncPendingTasks, taskEventRefFor, removeTaskEvent };
 }
 
 function connected(syncTasks = true) {
@@ -111,6 +151,11 @@ function connected(syncTasks = true) {
     status: "connected",
     syncTasks,
   };
+}
+
+/** Igual, pero identificando el calendario: es lo que separa a los dueños. */
+function connectedOn(calendarId: string, syncTasks = true) {
+  return { ...connected(syncTasks), calendarId };
 }
 
 beforeAll(() => {
@@ -322,7 +367,7 @@ describe("sincronización de tareas con Google Calendar", () => {
   });
 
   it("un corte de Google nunca tumba la operación: se degrada con diagnóstico", async () => {
-    const { pushTaskEvent, syncTaskById, taskEventIdFor, removeTaskEvent } = await load();
+    const { pushTaskEvent, syncTaskById, taskEventRefFor, removeTaskEvent } = await load();
     state.creds = connected();
     vi.stubGlobal("fetch", async () => {
       throw new Error("ECONNRESET");
@@ -341,15 +386,15 @@ describe("sincronización de tareas con Google Calendar", () => {
 
     expect(state.diagnostics.length).toBeGreaterThan(0);
     expect(state.diagnostics.every((d) => d.code === "tasks_sync_failed")).toBe(true);
-    expect(await taskEventIdFor("org_1", "t1")).toBeNull();
+    expect(await taskEventRefFor("org_1", "t1")).toBeNull();
   });
 
-  it("taskEventIdFor devuelve null cuando la sincronización está apagada", async () => {
-    const { taskEventIdFor, removeTaskEvent } = await load();
+  it("taskEventRefFor devuelve null cuando la sincronización está apagada", async () => {
+    const { taskEventRefFor, removeTaskEvent } = await load();
     state.creds = connected(false);
     state.selectRow = { id: "t1", googleEventId: "evt_1" };
 
-    expect(await taskEventIdFor("org_1", "t1")).toBeNull();
+    expect(await taskEventRefFor("org_1", "t1")).toBeNull();
 
     await removeTaskEvent("org_1", "evt_1");
     expect(state.calls).toHaveLength(0);
@@ -375,7 +420,7 @@ describe("sincronización de tareas con Google Calendar", () => {
       start: new Date("2026-10-08T15:00:00Z"),
     });
 
-    expect(state.marked).toEqual(["org_1"]);
+    expect(state.marked).toEqual([{ organizationId: "org_1", userId: null }]);
     expect(state.diagnostics).toHaveLength(1);
     expect(state.saves).toHaveLength(0);
   });
@@ -461,7 +506,7 @@ describe("sincronización de tareas con Google Calendar", () => {
 
     // Un solo intento fallido, no dos: el token muerto no se repite.
     expect(result).toEqual({ synced: 0, failed: 1 });
-    expect(state.marked).toEqual(["org_1"]);
+    expect(state.marked).toEqual([{ organizationId: "org_1", userId: null }]);
   });
 
   it("sin el interruptor encendido el relleno no toca Google", async () => {
@@ -474,5 +519,128 @@ describe("sincronización de tareas con Google Calendar", () => {
 
     expect(await syncPendingTasks("org_1")).toEqual({ synced: 0, failed: 0 });
     expect(state.calls).toHaveLength(0);
+  });
+
+  it("cada tarea va al calendario de su dueño, no a un calendario único", async () => {
+    const { pushTaskEvent } = await load();
+    // H-B2 era esto: con una sola fila de credenciales, las tareas de tres
+    // personas acababan en el calendario de una.
+    state.credsByOwner = { usr_a: connectedOn("cal-ana"), usr_b: connectedOn("cal-bea") };
+
+    await pushTaskEvent("org_1", {
+      id: "t1",
+      kind: "caltodo",
+      title: "de Ana",
+      start: new Date("2026-10-08T15:00:00Z"),
+      userId: "usr_a",
+    });
+    await pushTaskEvent("org_1", {
+      id: "t2",
+      kind: "caltodo",
+      title: "de Bea",
+      start: new Date("2026-10-08T16:00:00Z"),
+      userId: "usr_b",
+    });
+
+    const paths = state.calls
+      // Solo escrituras de evento: se descartan los POST al endpoint de tokens
+      // (llevan POST pero no calendario) y los PATCH a un evento ya existente.
+      .filter((c) => c.method === "POST" && c.url.includes("/events"))
+      .map((c) => c.url.match(/\/calendars\/([^/]+)\/events/)?.[1]);
+    expect(paths).toEqual(["cal-ana", "cal-bea"]);
+  });
+
+  it("sin calendario propio, la tarea de un miembro usa el del negocio (cascada D2)", async () => {
+    const { pushTaskEvent } = await load();
+    state.credsByOwner = { usr_a: null, business: connected() };
+
+    await pushTaskEvent("org_1", {
+      id: "t1",
+      kind: "caltodo",
+      title: "Llamar a Ana",
+      start: new Date("2026-10-08T15:00:00Z"),
+      userId: "usr_a",
+    });
+
+    expect(state.calls.some((c) => c.url.includes("/calendars/primary/events"))).toBe(true);
+  });
+
+  it("el token revocado de una persona marca SU fila, no la del negocio", async () => {
+    const { pushTaskEvent } = await load();
+    state.credsByOwner = { usr_a: connectedOn("cal-ana"), business: connected() };
+    vi.stubGlobal("fetch", async () =>
+      new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    await pushTaskEvent("org_1", {
+      id: "t1",
+      kind: "caltodo",
+      title: "Llamar a Ana",
+      start: new Date("2026-10-08T15:00:00Z"),
+      userId: "usr_a",
+    });
+
+    // Desconectar al negocio por el token roto de un miembro cortaría de raíz
+    // las citas con Meet de toda la empresa.
+    expect(state.marked).toEqual([{ organizationId: "org_1", userId: "usr_a" }]);
+  });
+
+  it("el relleno resuelve el calendario fila por fila", async () => {
+    const { syncPendingTasks } = await load();
+    state.credsByOwner = {
+      usr_a: connectedOn("cal-ana"),
+      usr_b: connectedOn("cal-bea"),
+      business: null,
+    };
+    state.respond = () => ({ status: 200, json: { id: "evt" } });
+    state.rowsByTable = {
+      caltodoTask: [
+        {
+          id: "t1",
+          title: "Una",
+          details: null,
+          scheduledStart: new Date("2026-10-21T19:14:00Z"),
+          scheduledEnd: null,
+          duration: 60,
+          googleEventId: null,
+          userId: "usr_a",
+        },
+        {
+          id: "t2",
+          title: "Otra",
+          details: null,
+          scheduledStart: new Date("2026-10-22T19:14:00Z"),
+          scheduledEnd: null,
+          duration: 60,
+          googleEventId: null,
+          userId: "usr_b",
+        },
+        // Sin dueño conocido y sin calendario del negocio: no hay dónde ponerla.
+        {
+          id: "t3",
+          title: "Huérfana",
+          details: null,
+          scheduledStart: new Date("2026-10-23T19:14:00Z"),
+          scheduledEnd: null,
+          duration: 60,
+          googleEventId: null,
+          userId: "usr_c",
+        },
+      ],
+      projectTask: [],
+    };
+
+    const result = await syncPendingTasks("org_1");
+
+    expect(result).toEqual({ synced: 2, failed: 0 });
+    const paths = state.calls
+      // Solo escrituras de evento: se descartan los POST al endpoint de tokens
+      // (llevan POST pero no calendario) y los PATCH a un evento ya existente.
+      .filter((c) => c.method === "POST" && c.url.includes("/events"))
+      .map((c) => c.url.match(/\/calendars\/([^/]+)\/events/)?.[1]);
+    expect(paths).toEqual(["cal-ana", "cal-bea"]);
   });
 });

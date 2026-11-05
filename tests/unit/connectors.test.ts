@@ -223,7 +223,7 @@ describe("google", () => {
     calendarId: "primary",
     status: "connected" as const,
   };
-  const calls: { url: string; method: string }[] = [];
+  const calls: { url: string; method: string; body?: Record<string, unknown> }[] = [];
   let fetchMock: ReturnType<typeof vi.fn>;
   /** Lecturas del evento antes de que la conferencia esté lista. */
   let pendingReads = 0;
@@ -234,7 +234,15 @@ describe("google", () => {
     pendingReads = 0;
     fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
-      calls.push({ url, method });
+      calls.push({
+        url,
+        method,
+        // El cuerpo solo se mira en los eventos; el del token va urlencoded.
+        body:
+          init?.body && !url.endsWith("/token")
+            ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+            : undefined,
+      });
 
       if (url.endsWith("/token")) {
         return Response.json({ access_token: "tk", expires_in: 3600 });
@@ -300,6 +308,29 @@ describe("google", () => {
     expect(
       calls.some((c) => c.method === "POST" && c.url.includes("/events"))
     ).toBe(false);
+  });
+
+  it("mover el evento deja la conferencia INTACTA: el PATCH no menciona conferenceData", async () => {
+    await googleConnector.updateMeeting(creds, "evt_1", {
+      startUtc: REQ.startUtc,
+      durationMinutes: REQ.durationMinutes,
+      timezone: REQ.timezone,
+      summary: "Cita — Ana (nueva hora)",
+      location: "Showroom Norte",
+    });
+
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch?.url).toContain("/calendars/primary/events/evt_1");
+    expect(patch?.body).toMatchObject({
+      summary: "Cita — Ana (nueva hora)",
+      location: "Showroom Norte",
+      start: { dateTime: REQ.startUtc, timeZone: "UTC" },
+      end: { dateTime: "2026-08-05T15:30:00.000Z", timeZone: "UTC" },
+    });
+    // La regla: en Google `PATCH` es MERGE, así que lo que no se manda se
+    // conserva. Mencionar la conferencia —aunque sea con la vieja— reiniciaría
+    // el enlace y el cliente se quedaría con una Meet URL que ya no abre.
+    expect(patch?.body).not.toHaveProperty("conferenceData");
   });
 
   it("borrar tolera el 404 (idempotencia)", async () => {

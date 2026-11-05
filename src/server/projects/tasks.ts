@@ -5,7 +5,7 @@ import { scoped } from "@/lib/db/tenant";
 import { updateTaskSchema } from "@/lib/project-contract";
 import { validateProjectMember } from "./members";
 import { ProjectError } from "./errors";
-import { syncTaskById, taskEventIdFor, removeTaskEvent } from "@/server/agenda/tasks-sync";
+import { syncTaskById, taskEventRefFor, removeTaskEvent } from "@/server/agenda/tasks-sync";
 
 export async function listAllTasks(organizationId: string, filters: { projectId?: string; assigneeId?: string; estado?: string } = {}) {
   const conditions = [scoped(schema.projectTask.organizationId, organizationId), scoped(schema.project.organizationId, organizationId)];
@@ -30,9 +30,11 @@ export async function updateTask(organizationId: string, projectId: string, task
 }
 
 export async function deleteTask(organizationId: string, projectId: string, taskId: string) {
-  const googleEventId = await taskEventIdFor(organizationId, taskId);
+  const ref = await taskEventRefFor(organizationId, taskId);
   const deleted = await getDb().delete(schema.projectTask)
     .where(scoped(schema.projectTask.organizationId, organizationId, eq(schema.projectTask.projectId, projectId), eq(schema.projectTask.id, taskId))).returning({ id: schema.projectTask.id });
   if (!deleted.length) throw new ProjectError(404, "Tarea no encontrada en este proyecto");
-  await removeTaskEvent(organizationId, googleEventId);
+  // El calendario es el del responsable de la tarea, que es lo que acaba de
+  // leer `taskEventRefFor` antes de que la fila dejara de existir.
+  await removeTaskEvent(organizationId, ref?.eventId, ref?.userId ?? null);
 }

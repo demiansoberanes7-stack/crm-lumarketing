@@ -21,7 +21,7 @@ import type { ConnectorId } from "@/lib/agenda-connectors";
  */
 
 export type MeetingRequest = {
-  /** "Cita — <nombre del contacto>". */
+  /** Motivo de la cita: su título propio o «Cita — <nombre del contacto>». */
   topic: string;
   /** Instante UTC ISO-8601 con Z. */
   startUtc: string;
@@ -29,6 +29,8 @@ export type MeetingRequest = {
   /** Zona IANA del negocio: el proveedor la usa para mostrarla a los suyos. */
   timezone: string;
   notes?: string;
+  /** Lugar/modalidad de la cita; solo los conectores con evento propio lo usan. */
+  location?: string;
 };
 
 export type MeetingResult = {
@@ -42,6 +44,29 @@ export type TestConnectionResult =
   | { ok: true; detail?: string }
   | { ok: false; error: string };
 
+/**
+ * Lo que se manda al mover o editar una reunión ya creada.
+ *
+ * `summary`, `description` y `location` son opcionales y llegaron tarde a
+ * propósito: existen porque la cita de Google ES un evento de calendario, y
+ * desde el bloque A la cita tiene motivo propio, lugar y notas. Un conector que
+ * solo gestiona la videoconferencia —Zoom— puede ignorarlos sin romper nada;
+ * quien mantiene el evento de Google debe llevarlos, si no el calendario se
+ * queda con «Cita — Ana» cuando el dueño renombró la cita.
+ *
+ * Regla del proveedor para quien SÍ los usa: un PATCH que no menciona
+ * `conferenceData` NO toca el enlace de Meet. Borrarlo del evento sería dejar
+ * sin reunión a un cliente ya avisado.
+ */
+export type UpdateMeetingRequest = Pick<
+  MeetingRequest,
+  "startUtc" | "durationMinutes" | "timezone"
+> & {
+  summary?: string;
+  description?: string;
+  location?: string;
+};
+
 export type AgendaConnector<Creds> = {
   id: ConnectorId;
   /** ¿Necesita credenciales guardadas para operar? */
@@ -52,7 +77,7 @@ export type AgendaConnector<Creds> = {
   updateMeeting(
     creds: Creds,
     externalId: string,
-    req: Pick<MeetingRequest, "startUtc" | "durationMinutes" | "timezone">
+    req: UpdateMeetingRequest
   ): Promise<void>;
 
   /** Idempotente: un 404 del proveedor es éxito (ya no estaba). */

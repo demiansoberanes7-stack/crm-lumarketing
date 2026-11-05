@@ -18,6 +18,7 @@ const messages = {
   media_failed: "No se pudo descargar el adjunto. Revisa la conexión y disponibilidad del archivo.",
   ai_failed: "El proveedor de IA no pudo completar el turno. Revisa token, modelo y disponibilidad.",
   tasks_sync_failed: "No se pudo sincronizar la tarea con Google Calendar. La tarea quedó guardada; el evento se reintentará en la siguiente edición.",
+  bookings_sync_failed: "No se pudo sincronizar la cita con Google Calendar. La cita quedó guardada; el evento se reintentará en la siguiente edición o al reconectar.",
   email_sync_failed: "No se pudo sincronizar la cuenta de correo. Revisa IMAP y el estado del servidor.",
 } as const;
 export type DiagnosticCode = keyof typeof messages;

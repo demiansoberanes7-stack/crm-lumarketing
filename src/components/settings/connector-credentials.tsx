@@ -77,19 +77,6 @@ const HELP: Record<ExternalConnector, { title: string; items: string[] }> = {
   },
 };
 
-/** Motivos de vuelta del callback → lo que le hace falta entender al dueño. */
-const OAUTH_ERRORS: Record<string, string> = {
-  state_invalid:
-    "El enlace de conexión caducó o ya se usó. Vuelve a iniciar la conexión.",
-  missing_code: "Google no devolvió el código de autorización.",
-  exchange_failed: "No se pudo canjear el código por una credencial.",
-  access_denied: "Cancelaste la autorización en Google.",
-  invalid_client: "El Client ID o el Client Secret no son válidos.",
-  invalid_grant: "El código caducó o la app sigue en modo prueba; repite la conexión.",
-  redirect_uri_mismatch:
-    "La URI de redirección no coincide con la registrada en Google Cloud.",
-};
-
 type Connection = {
   status: "connected" | "error";
   secretLast4: string | null;
@@ -146,25 +133,6 @@ export function ConnectorCredentials({
     setLoadFailed(false);
     void reload();
   }, [connector, reload]);
-
-  /**
-   * Resultado del vuelco OAuth (Google redirige aquí). Se lee del historial y
-   * no con `useSearchParams` para no exigir un <Suspense> en toda la página.
-   */
-  useEffect(() => {
-    if (connector !== "google") return;
-    const params = new URLSearchParams(window.location.search);
-    const connected = params.get("connected");
-    const error = params.get("error");
-    if (connected) {
-      setMessage({ kind: "ok", text: "Google conectado" });
-    } else if (error) {
-      setMessage({ kind: "error", text: OAUTH_ERRORS[error] ?? error });
-    }
-    if (connected || error) {
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [connector]);
 
   /** Abre el consentimiento de Google; vuelve aquí con el refresh token. */
   async function connectWithGoogle() {
@@ -231,9 +199,21 @@ export function ConnectorCredentials({
       setMessage({ kind: "ok", text: "Conexión correcta" });
       return;
     }
-    const data = (await res.json()) as { connection: Connection };
+    const data = (await res.json()) as {
+      connection: Connection;
+      bookings?: { synced: number; failed: number };
+    };
     setConnection(data.connection);
-    setMessage({ kind: "ok", text: `${meta.label} conectado` });
+    // Pegar el token a mano también rellena el calendario con las citas que
+    // quedaron sin evento; decirlo en cifras evita que alguien cuente de más.
+    const citas = data.bookings?.synced ?? 0;
+    setMessage({
+      kind: "ok",
+      text:
+        citas > 0
+          ? `${meta.label} conectado — ${citas} cita(s) en tu calendario`
+          : `${meta.label} conectado`,
+    });
   }
 
   async function disconnect() {

@@ -25,6 +25,13 @@ export type GoogleOAuthPending = {
   clientId: string;
   clientSecret: string;
   calendarId: string;
+  /**
+   * A quién pertenece lo que se va a guardar: `null` = el calendario del
+   * negocio. Viene DE LA FILA DE ESTADO, no del body del callback: el único
+   * modo de que una persona no pueda desconectar ni sobrescribir el calendario
+   * del negocio es que eso lo decida lo que se guardó al iniciar el flujo.
+   */
+  userId: string | null;
 };
 
 function baseUrl(path: string): string {
@@ -62,6 +69,8 @@ export async function startGoogleOAuth(input: {
   clientId: string;
   clientSecret: string;
   calendarId?: string | null;
+  /** `null`/ausente = flujo del negocio; un id = el calendario personal de esa persona. */
+  userId?: string | null;
 }): Promise<string> {
   const db = getDb();
   await db
@@ -78,6 +87,7 @@ export async function startGoogleOAuth(input: {
   await db.insert(schema.googleOauthState).values({
     id: newId("googleOauthState"),
     organizationId: input.organizationId,
+    userId: input.userId ?? null,
     state,
     clientId: input.clientId,
     clientSecretCipher: secret.cipher,
@@ -95,6 +105,10 @@ export async function startGoogleOAuth(input: {
  * uso): estado ajeno, vencido o repetido ⇒ null. La organización se compara en
  * la query, no después: el `state` es un identificador opaco, no un secreto
  * que autorice por sí solo.
+ *
+ * Devuelve el `userId` del estado para que la ruta decida si quien vuelve
+ * puede escribir ESE calendario: el dueño del negocio no puede acabar con la
+ * conexión personal de un miembro, ni un miembro con la del negocio.
  */
 export async function consumeGoogleOAuthState(
   organizationId: string,
@@ -127,6 +141,7 @@ export async function consumeGoogleOAuthState(
       tag: row.clientSecretTag,
     }),
     calendarId: row.calendarId,
+    userId: row.userId ?? null,
   };
 }
 
@@ -178,9 +193,22 @@ export async function exchangeGoogleAuthCode(input: {
   return { refreshToken: data.refresh_token };
 }
 
-/** A dónde volver después del callback, con el resultado a la vista. */
-export function googleOAuthReturnUrl(result: "ok" | string): string {
-  return baseUrl(
-    result === "ok" ? "/settings/google?connected=1" : `/settings/google?error=${encodeURIComponent(result)}`
-  );
+/**
+ * A dónde volver después del callback, con el resultado a la vista.
+ *
+ * El `scope` es lo que permite que la pantalla explique QUÉ calendario se
+ * conectó: el del negocio y el personal de quien autoriza vuelven al mismo
+ * `/settings/google`, y un «Google conectado» a secas dejaría al dueño sin
+ * saber si acaba de mover la conexión de su empresa o la suya propia.
+ */
+export function googleOAuthReturnUrl(
+  result: "ok" | string,
+  userId?: string | null
+): string {
+  // `encodeURIComponent`, no `URLSearchParams`: los motivos largos llevan
+  // espacios y `searchParams` los convierte en `+`, que un `decodeURIComponent`
+  // —el de las pruebas y el de cualquier que copie el enlace— deja como signo.
+  const query =
+    result === "ok" ? "connected=1" : `error=${encodeURIComponent(result)}`;
+  return baseUrl(`/settings/google?${query}${userId ? "&scope=personal" : ""}`);
 }

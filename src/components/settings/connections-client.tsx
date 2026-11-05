@@ -87,7 +87,8 @@ const DATA_CONNECTIONS = [
     key: "calendar",
     name: "Google Calendar",
     href: "/settings/google",
-    detail: "App de Google Cloud del negocio para agendar citas en el calendario.",
+    detail:
+      "App de Google Cloud del negocio para agendar citas en su calendario. Cada persona puede enlazar además el suyo, para sus tareas.",
     activationSetting: "AGENDA=on",
     hint: null,
     account: (s: ConnectionsStatus) => s.calendar_id,

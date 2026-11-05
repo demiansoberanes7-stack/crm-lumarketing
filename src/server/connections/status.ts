@@ -1,5 +1,5 @@
 import { getIntegration } from "@/server/integrations";
-import { getGoogleCredentials } from "@/server/agenda/connectors/google-credentials";
+import { getBusinessGoogleCredentials } from "@/server/agenda/connectors/google-credentials";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { getCapiSettings } from "@/server/attribution/settings";
 import { atribucionEnabled } from "@/server/attribution/flag";
@@ -26,7 +26,7 @@ export async function getConnectionsStatus(organizationId: string) {
       getIntegration(organizationId, "meta_ads"),
       getIntegration(organizationId, "ga4"),
       getIntegration(organizationId, "google_ads"),
-      agendaEnabled() ? getGoogleCredentials(organizationId) : null,
+      agendaEnabled() ? getBusinessGoogleCredentials(organizationId) : null,
       atribucionEnabled() ? getCapiSettings(organizationId) : null,
       listEmailAccounts(organizationId),
       googleBusinessEnabled() ? getGoogleBusinessCredentials(organizationId) : null,

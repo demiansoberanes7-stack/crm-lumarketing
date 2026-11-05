@@ -6,6 +6,7 @@ import {
   type MeetingRequest,
   type MeetingResult,
   type TestConnectionResult,
+  type UpdateMeetingRequest,
 } from "@/server/agenda/connectors/types";
 import { enlaceFijoConnector } from "@/server/agenda/connectors/enlace-fijo";
 import { zoomConnector } from "@/server/agenda/connectors/zoom";
@@ -15,7 +16,7 @@ import {
 } from "@/server/agenda/connectors/zoom-credentials";
 import { googleConnector } from "@/server/agenda/connectors/google";
 import {
-  getGoogleCredentials,
+  getBusinessGoogleCredentials,
   markGoogleError,
 } from "@/server/agenda/connectors/google-credentials";
 
@@ -35,7 +36,7 @@ export type BoundConnector = {
   createMeeting(req: MeetingRequest): Promise<MeetingResult>;
   updateMeeting(
     externalId: string,
-    req: Pick<MeetingRequest, "startUtc" | "durationMinutes" | "timezone">
+    req: UpdateMeetingRequest
   ): Promise<void>;
   deleteMeeting(externalId: string): Promise<void>;
   testConnection(): Promise<TestConnectionResult>;
@@ -87,7 +88,9 @@ export async function bindConnector(
     }
 
     case "google": {
-      const creds = await getGoogleCredentials(organizationId);
+      // Siempre la fila del negocio: una cita la reserva un cliente contra la
+      // agenda de la empresa, no contra el calendario personal de nadie.
+      const creds = await getBusinessGoogleCredentials(organizationId);
       if (!creds) {
         throw new ConnectorError(
           "google",

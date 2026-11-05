@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   testConnection: vi.fn(),
   saveGoogleCredentials: vi.fn(),
+  syncPendingTasks: vi.fn(),
+  syncPendingBookings: vi.fn(),
 }));
 
 let selectQueue: unknown[][] = [];
@@ -78,6 +80,16 @@ vi.mock("@/server/agenda/connectors/google", () => ({
 vi.mock("@/server/agenda/connectors/google-credentials", () => ({
   saveGoogleCredentials: mocks.saveGoogleCredentials,
 }));
+// El relleno posterior es trabajo de `tasks-sync`/`bookings-sync`, probado en sus
+// propios archivos. Aquí se mide otra cosa: QUÉ se rellena según qué calendario
+// acaba de conectar (el del negocio trae las citas; el personal, solo las tareas
+// de esa persona).
+vi.mock("@/server/agenda/tasks-sync", () => ({
+  syncPendingTasks: mocks.syncPendingTasks,
+}));
+vi.mock("@/server/agenda/bookings-sync", () => ({
+  syncPendingBookings: mocks.syncPendingBookings,
+}));
 
 function startRequest(body: Record<string, unknown>) {
   return new Request("https://crm.test/api/settings/google/oauth/start", {
@@ -124,6 +136,8 @@ beforeEach(() => {
     role: "owner",
   });
   mocks.testConnection.mockResolvedValue({ ok: true });
+  mocks.syncPendingTasks.mockResolvedValue({ synced: 0, failed: 0 });
+  mocks.syncPendingBookings.mockResolvedValue({ synced: 0, failed: 0 });
   fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     json: async () => ({ access_token: "at_1", refresh_token: "rt_1" }),
@@ -176,6 +190,9 @@ describe("inicio del flujo", () => {
       organizationId: "org_1",
       clientId: "c.apps.googleusercontent.com",
       calendarId: "primary",
+      // El flujo iniciado desde la tarjeta del negocio nace sin dueño: es la
+      // única forma de que el callback sepa qué fila debe escribir.
+      userId: null,
     });
     const expires = inserted[0]!.expiresAt as Date;
     expect(expires.getTime()).toBeGreaterThan(Date.now());
@@ -243,7 +260,14 @@ describe("vuelta de Google (callback)", () => {
       clientSecret: "client-secret-123",
       refreshToken: "rt_1",
       calendarId: "primary",
+      // `userId: null` ES la fila del negocio. Sin la columna, el callback de un
+      // miembro escribiría sobre el calendario de la empresa.
+      userId: null,
     });
+    // Conecta el negocio: se rellenan las tareas de la organización (cada una al
+    // calendario de su dueño) y LAS CITAS, que solo viven en este calendario.
+    expect(mocks.syncPendingTasks).toHaveBeenCalledWith("org_1", 100, null);
+    expect(mocks.syncPendingBookings).toHaveBeenCalledWith("org_1");
     expect(deleteCalls).toBe(1);
   });
 
@@ -311,5 +335,73 @@ describe("vuelta de Google (callback)", () => {
     const noState = await callbackRoute(callbackRequest({ code: "abc" }));
     expect(noState.headers.get("location")).toContain("error=state_invalid");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("un miembro conecta el SUYO: escribe su fila, avisa el alcance y no mueve citas", async () => {
+    mocks.session.mockResolvedValue({
+      userId: "usr_1",
+      organizationId: "org_1",
+      role: "member",
+    });
+    selectQueue.push([await pendingStateRow({ userId: "usr_1" })]);
+
+    const res = await callbackRoute(callbackRequest({ code: "code-1", state: "state-uuid" }));
+
+    expect(res.headers.get("location")).toBe(
+      "https://crm.test/settings/google?connected=1&scope=personal"
+    );
+    expect(mocks.saveGoogleCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: "org_1", userId: "usr_1" })
+    );
+    // El relleno se limita a SUS tareas: si subiera las de sus compañeros al
+    // calendario que acaban de autorizar, ese sería el defecto de D2.
+    expect(mocks.syncPendingTasks).toHaveBeenCalledWith("org_1", 100, "usr_1");
+    // Las citas son del calendario del negocio: un miembro no puede escribir en él.
+    expect(mocks.syncPendingBookings).not.toHaveBeenCalled();
+  });
+
+  it("un miembro no puede canjear el estado del negocio", async () => {
+    mocks.session.mockResolvedValue({
+      userId: "usr_1",
+      organizationId: "org_1",
+      role: "member",
+    });
+    selectQueue.push([await pendingStateRow()]); // userId null = flujo del dueño
+
+    const res = await callbackRoute(callbackRequest({ code: "code-1", state: "state-uuid" }));
+
+    expect(res.headers.get("location")).toContain("error=state_invalid");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.saveGoogleCredentials).not.toHaveBeenCalled();
+  });
+
+  it("el estado de otra persona no se canjea, aunque vuelva el dueño", async () => {
+    selectQueue.push([await pendingStateRow({ userId: "usr_2" })]);
+
+    const res = await callbackRoute(callbackRequest({ code: "code-1", state: "state-uuid" }));
+
+    // La sesión es de usr_1 (dueño). Sobrescribir el calendario personal de
+    // usr_2 con el token que autorizó otra cuenta sería mezclar dos personas.
+    expect(res.headers.get("location")).toContain("error=state_invalid");
+    expect(mocks.saveGoogleCredentials).not.toHaveBeenCalled();
+    expect(mocks.syncPendingTasks).not.toHaveBeenCalled();
+  });
+
+  it("un fallo posterior de Google conserva el alcance personal en el aviso", async () => {
+    mocks.session.mockResolvedValue({
+      userId: "usr_1",
+      organizationId: "org_1",
+      role: "member",
+    });
+    selectQueue.push([await pendingStateRow({ userId: "usr_1" })]);
+    mocks.testConnection.mockResolvedValue({ ok: false, error: "403 forbidden" });
+
+    const res = await callbackRoute(callbackRequest({ code: "code-1", state: "state-uuid" }));
+
+    // Si el aviso perdiera el alcance, el miembro leería «no se pudo conectar
+    // Google Calendar del negocio» por un fallo de SU calendario.
+    expect(decodeURIComponent(res.headers.get("location")!)).toContain(
+      "error=403 forbidden&scope=personal"
+    );
   });
 });

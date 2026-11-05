@@ -38,6 +38,14 @@ const WEBHOOKS_TAB: Tab = { href: "/settings/webhooks", label: "Webhooks" };
 const DIAGNOSTICS_TAB: Tab = { href: "/settings/diagnostics", label: "Diagnóstico" };
 const DATA_CLEANUP_TAB: Tab = { href: "/settings/data-cleanup", label: "Limpieza de Datos" };
 
+/**
+ * Para un miembro, `/settings/google` no es una credencial del negocio: la
+ * pantalla solo le enseña SU calendario personal, y Conexiones no es un destino
+ * al que pueda llegar. Sin esta entrada no tendría forma de abrir la página más
+ * que escribiendo la URL. Con `AGENDA`, porque sin la bandera responde 404.
+ */
+const PERSONAL_CALENDAR_TAB: Tab = { href: "/settings/google", label: "Mi calendario" };
+
 export function SettingsNav({ owner = false, agenda = false }: { owner?: boolean; agenda?: boolean }) {
   const pathname = usePathname();
   const activeTabRef = useRef<HTMLAnchorElement | null>(null);
@@ -62,7 +70,12 @@ export function SettingsNav({ owner = false, agenda = false }: { owner?: boolean
           ],
         },
       ]
-    : [{ label: "Ajustes", tabs: CORE_TABS }];
+    : [
+        {
+          label: "Ajustes",
+          tabs: [...CORE_TABS, ...(agenda ? [PERSONAL_CALENDAR_TAB] : [])],
+        },
+      ];
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 639px)").matches) {

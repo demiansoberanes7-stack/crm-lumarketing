@@ -4,21 +4,32 @@ import { agendaDisabledResponse, agendaEnabled } from "@/server/agenda/flag";
 import { googleConnector } from "@/server/agenda/connectors/google";
 import {
   deleteGoogleCredentials,
-  getGoogleCredentials,
+  getBusinessGoogleCredentials,
   saveGoogleCredentials,
   secretLast4,
   setGoogleTasksSync,
 } from "@/server/agenda/connectors/google-credentials";
 import { googleOAuthRedirectUri } from "@/server/agenda/google-oauth";
+import { syncPendingBookings } from "@/server/agenda/bookings-sync";
 import { syncPendingTasks } from "@/server/agenda/tasks-sync";
 
 export const dynamic = "force-dynamic";
 
-/** 015 — Conexión de Google Calendar. Los secretos entran y no vuelven a salir. */
+/**
+ * 015 — La conexión de Google Calendar DEL NEGOCIO.
+ *
+ * Esta pantalla es siempre `user_id IS NULL`: el calendario contra el que
+ * reservan los clientes y con el que los conectores crean los enlaces de Meet.
+ * El calendario personal de cada miembro vive en `/api/settings/google/personal`
+ * y jamás se escribe desde aquí —por eso ninguna ruta de esta ficha acepta un
+ * `userId` venido del body.
+ *
+ * Los secretos entran y no vuelven a salir.
+ */
 
 export const GET = withOwner(async (session) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
-  const creds = await getGoogleCredentials(session.organizationId);
+  const creds = await getBusinessGoogleCredentials(session.organizationId);
   if (!creds)
     return Response.json({
       connection: null,
@@ -63,8 +74,15 @@ export const PUT = withOwner(async (session, req: Request) => {
   });
 
   // Credenciales nuevas con el interruptor ya encendido: las tareas que
-  // quedaron sin evento durante el corte se crean ahora.
+  // quedaron sin evento durante el corte se crean ahora. Las citas van detrás
+  // por el mismo motivo —quien pega el token a mano espera ver SU agenda, no
+  // solo las tareas— y con la misma regla: un fallo de Google no puede devolver
+  // 500 de una operación que ya se guardó.
   const backfilled = await syncPendingTasks(session.organizationId);
+  const bookings = await syncPendingBookings(session.organizationId).catch(() => ({
+    synced: 0,
+    failed: 0,
+  }));
 
   return Response.json({
     connection: {
@@ -73,12 +91,14 @@ export const PUT = withOwner(async (session, req: Request) => {
       fields: { clientId: body.data.clientId, calendarId },
     },
     backfilled,
+    bookings,
   });
 });
 
+/** Desconectar el negocio revoca SU token en Google; no toca los personales. */
 export const DELETE = withOwner(async (session) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
-  await deleteGoogleCredentials(session.organizationId);
+  await deleteGoogleCredentials(session.organizationId, null);
   return Response.json({ ok: true });
 });
 
@@ -93,9 +113,9 @@ export const PATCH = withOwner(async (session, req: Request) => {
   if (!agendaEnabled()) return agendaDisabledResponse();
   const body = await parseBody(req, syncSchema);
   if (!body.ok) return body.response;
-  const creds = await getGoogleCredentials(session.organizationId);
+  const creds = await getBusinessGoogleCredentials(session.organizationId);
   if (!creds) return apiError(409, "google_not_connected", "Conecta Google antes de sincronizar tareas");
-  await setGoogleTasksSync(session.organizationId, body.data.syncTasks);
+  await setGoogleTasksSync(session.organizationId, body.data.syncTasks, null);
   // Al encenderlo, las tareas que ya tenían fecha se suben de inmediato; si no,
   // el dueño tendría que editarlas una por una para que aparecieran.
   const backfilled = body.data.syncTasks
