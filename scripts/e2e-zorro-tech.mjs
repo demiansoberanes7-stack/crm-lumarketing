@@ -97,6 +97,18 @@ function pdfHasText(buf, text) {
   const hex = Buffer.from(text, "latin1").toString("hex").toUpperCase();
   return content.includes(text) || content.includes(hex);
 }
+/**
+ * El PDF dibuja al menos una imagen.
+ *
+ * No hay que decodificar nada: `pdf-lib` escribe el XObject como objeto de
+ * cabecera (`/Subtype /Image`) y solo el contenido del stream va comprimido, así
+ * que la expresión regular lo ve sobre los bytes crudos. Es lo que distingue una
+ * cotización con partidas fotografiada de una que las omitió —por WEBP/GIF, por
+ * archivo perdido o por agotar el presupuesto de 12 MB—.
+ */
+function pdfHasImage(buf) {
+  return /\/Subtype\s*\/Image/.test(buf.toString("latin1"));
+}
 try {
   // Tres intentos: si la página no hidrató, el submit es nativo (`GET /login?`)
   // o el POST de sesión tarda más que el timeout; se reintenta solo eso.
@@ -128,15 +140,46 @@ try {
   await page.getByRole("button", { name: `Editar Servicio ${suffix}` }).click();
   await page.locator("#prod-name").fill(`Servicio editado ${suffix}`);
   await page.locator("#prod-price").fill("234.56");
-  const imageUpload = page.waitForResponse((r) => r.url().endsWith("/api/media/upload") && r.request().method() === "POST");
+  // La tira sube AL INSTANTE contra `/api/catalog/{id}/images`; `/api/media/upload`
+  // ya no existe (publicaba sin fila en la BD y fiándose del MIME del navegador).
+  const imageUpload = page.waitForResponse((r) =>
+    r.url().endsWith(`/api/catalog/${product.id}/images`) && r.request().method() === "POST"
+  );
   await page.locator('input[type="file"]').setInputFiles({ name: "producto.png", mimeType: "image/png", buffer: pngFixture });
   const imageResponse = await imageUpload;
-  assert.ok(imageResponse.ok(), `carga de imagen: ${imageResponse.status()}`);
+  assert.ok(imageResponse.ok(), `carga de imagen: ${imageResponse.status()} ${await imageResponse.text()}`);
+  const uploaded = (await imageResponse.json()).image;
+  // Un HTML anunciado como `image/png` es el ataque que la ruta vieja dejaba
+  // pasar; desde el navegador se comprueba el rechazo, no solo en las unitarias.
+  const smuggled = await page.request.post(`${base}/api/catalog/${product.id}/images`, {
+    timeout: 300000,
+    multipart: { file: { name: "colado.png", mimeType: "image/png", buffer: Buffer.from("<html><script>alert(1)</script></html>") } },
+  });
+  ok(
+    "la foto se valida por bytes: un HTML disfrazado de PNG se rechaza",
+    smuggled.status() === 422 && (await smuggled.json()).error?.code === "invalid_image"
+  );
+  // Servida por la ruta pública con el prefijo del catálogo: la única forma que
+  // `isPublicMediaPath()` admite. Si la URL saliera con otro prefijo, el cuadro
+  // se vería roto en la rejilla y el e2e lo vería.
+  const served = await page.request.get(`${base}${uploaded.url}`, { timeout: 300000 });
+  ok(
+    "la foto subida se sirve desde su URL pública y con su tipo real",
+    uploaded.url.includes(`/catalog/${uploaded.id}.png`) &&
+      served.status() === 200 &&
+      served.headers()["content-type"] === "image/png"
+  );
   const productUpdate = page.waitForResponse((r) => r.url().endsWith(`/api/catalog/${product.id}`) && r.request().method() === "PATCH");
   await page.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   assert.ok((await productUpdate).ok());
   const edited = (await json("/api/catalog")).products.find((p) => p.id === product.id);
-  ok("producto editable guarda precio correcto e imagen cargada", edited?.name === `Servicio editado ${suffix}` && edited.price === 23456 && edited.imageUrl?.includes("/catalog/"));
+  ok(
+    "producto editable guarda precio correcto y su portada",
+    edited?.name === `Servicio editado ${suffix}` &&
+      edited.price === 23456 &&
+      edited.primaryImage?.id === uploaded.id &&
+      edited.primaryImage?.url.includes("/catalog/")
+  );
 
   // La pantalla Datos de Empresa debe permitir reemplazar un logo existente.
   const initialLogo = await page.request.post(`${base}/api/settings/business/logo`, {
@@ -190,6 +233,40 @@ try {
     ghostSend.status() === 400 &&
       /no existe en este canal/i.test(ghostBody?.error?.message ?? "")
   );
+
+  // C4 — la foto del catálogo sigue al producto hasta la cotización.
+  await nav("/quotes");
+  await page.getByRole("button", { name: "Nueva Cotización", exact: true }).click();
+  await page.getByLabel(/Producto del catálogo para la partida 1/).selectOption(product.id);
+  // La miniatura aparece en la fila sin recargar: es la portada ACTUAL, y es la
+  // que el servidor va a congelar al guardar. Si el archivo no se pudiera
+  // servir, `ItemPhoto` cambiaría el `img` por el icono de roto y esto fallaría.
+  await page.locator('img[src*="/catalog/"]').first().waitFor();
+  ok("el compositor muestra la portada del producto en su partida");
+  const photoQuote = await save("/api/quotes", "Crear cotización");
+  const { quote: withPhoto } = await json(`/api/quotes/${photoQuote.quoteId}`);
+  const frozen = withPhoto.items[0];
+  ok(
+    "la partida nace con la foto congelada: ruta y tipo en la fila, URL derivada en la lectura",
+    frozen.productId === product.id &&
+      frozen.imageStoragePath === `catalog/${uploaded.id}.png` &&
+      frozen.imageMimeType === "image/png" &&
+      frozen.imageBytes > 0 &&
+      frozen.imageUrl === uploaded.url
+  );
+  const photoPdf = await page.request.get(`${base}/api/quotes/${photoQuote.quoteId}/pdf`, { timeout: 300000 });
+  assert.ok(photoPdf.ok(), `PDF con foto: ${photoPdf.status()}`);
+  ok(
+    "el PDF de la cotización lleva la miniatura empotrada",
+    pdfHasImage(Buffer.from(await photoPdf.body()))
+  );
+  // Una partida escrita a mano (la cotización de arriba) sigue sin foto: el
+  // congelado no puede inventarla.
+  const { quote: plainQuote } = await json(`/api/quotes/${created.quoteId}`);
+  ok("una partida sin producto no tiene foto", plainQuote.items[0].imageUrl === null);
+  await page.getByText(withPhoto.quoteNumber, { exact: true }).click();
+  await page.locator(`img[src="${frozen.imageUrl}"]`).waitFor();
+  ok("el detalle de la cotización muestra la misma foto que salió en el PDF");
 
   await nav("/projects");
   await page.getByRole("button", { name: /Nuevo proyecto/i }).click();
