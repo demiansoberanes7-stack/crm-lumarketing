@@ -36,6 +36,12 @@ vi.mock("@/lib/db", async (importOriginal) => ({
   getDb: mocks.getDb,
 }));
 vi.mock("@/server/webhooks/dispatcher", () => ({ publishWebhook: mocks.publishWebhook }));
+// Las portadas de catálogo se leen en su propia consulta; sin este doble se
+// comería una fila de `selectQueue` y el caso idempotente leería otra cosa.
+vi.mock("@/server/catalog/images", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/catalog/images")>(),
+  primaryImageSnapshots: async () => ({}),
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();
