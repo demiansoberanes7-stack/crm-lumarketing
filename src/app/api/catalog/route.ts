@@ -2,6 +2,7 @@ import { z } from "zod";
 import { intParam, parseBody, withAuth } from "@/lib/api";
 import { productStockSchema, productWebsiteUrlSchema } from "@/lib/catalog-schema";
 import { primaryImagesByProducts } from "@/server/catalog/images";
+import { costSummariesByProducts } from "@/server/catalog/costs";
 import {
   createCatalogProduct,
   listCatalogProducts,
@@ -21,9 +22,20 @@ export const GET = withAuth(async (session, req: Request) => {
     session.organizationId,
     products.map((p) => p.id)
   );
+  // Idem con el costo: una consulta para toda la lista, no 500. Si la lectura
+  // falla, falla la rejilla entera — «sin receta» (`null`) es un estado real,
+  // un error disfrazado de catálogo vacío no.
+  const costs = await costSummariesByProducts(
+    session.organizationId,
+    products.map((p) => p.id)
+  );
 
   return Response.json({
-    products: products.map((p) => ({ ...p, primaryImage: images[p.id] ?? null })),
+    products: products.map((p) => ({
+      ...p,
+      primaryImage: images[p.id] ?? null,
+      costSummary: costs[p.id] ?? null,
+    })),
   });
 });
 
