@@ -1,3 +1,4 @@
+import { eq, isNull, or } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -16,8 +17,11 @@ import {
 } from "@/lib/time/slots";
 
 /**
- * 015 — La configuración de la agenda del negocio (una por organización):
- * lectura con defaults y upsert normalizado.
+ * 015 — La configuración de la agenda.
+ *
+ * Desde 0087 hay dos niveles en la misma tabla: la fila del negocio
+ * (`user_id IS NULL`) y, opcionalmente, una fila por usuario. La lectura es la
+ * cascada usuario → negocio → defaults, y la escritura admite los dos niveles.
  */
 
 export type WeeklyHours = Partial<Record<WeekdayKey, Interval[]>>;
@@ -65,20 +69,18 @@ export const LIMITS = {
   maxDaysAhead: { min: 1, max: 60 },
 } as const;
 
-export async function getSettings(
-  organizationId: string
-): Promise<CalendarSettings> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(schema.calendarSettings)
-    .where(scoped(schema.calendarSettings.organizationId, organizationId))
-    .limit(1);
+type SettingsRow = typeof schema.calendarSettings.$inferSelect;
 
-  const row = rows[0];
-  // Sin fila: la instancia recién encendida ya es usable.
-  if (!row) return DEFAULT_CALENDAR_SETTINGS;
+/** Lo que puede ser distinto para cada persona: cuándo está disponible. */
+type SchedulingFields = Pick<
+  CalendarSettings,
+  "weeklyHours" | "slotMinutes" | "bufferMinutes" | "minNoticeHours" | "maxDaysAhead" | "timezone"
+>;
 
+/** Lo que decide el NEGOCIO aunque lo lea un usuario: cómo se entrega la reunión. */
+type DeliveryFields = Pick<CalendarSettings, "connector" | "meetingLink">;
+
+function schedulingOf(row: SettingsRow): SchedulingFields {
   return {
     weeklyHours: normalizeWeeklyHours(row.weeklyHours as WeeklyHours),
     slotMinutes: row.slotMinutes,
@@ -86,11 +88,54 @@ export async function getSettings(
     minNoticeHours: row.minNoticeHours,
     maxDaysAhead: row.maxDaysAhead,
     timezone: row.timezone,
+  };
+}
+
+function deliveryOf(row: SettingsRow): DeliveryFields {
+  return {
     // Un conector que ya no existe en el código (p. ej. venías de un fork) no
     // puede dejar la agenda inservible: se degrada al soberano.
     connector: isConnectorId(row.connector) ? row.connector : DEFAULT_CONNECTOR,
     meetingLink: row.meetingLink,
   };
+}
+
+/**
+ * Horarios de trabajo de `userId`, con la entrega de reunión del negocio.
+ *
+ * La separación no es un detalle: si la fila personal trajera el conector, un
+ * usuario que solo quiso cambiar sus horas —y cuya fila nació con el default
+ * `enlace-fijo`— dejaría de generar enlaces Meet para toda la organización.
+ * Las credenciales y la sala son del negocio; las horas son de cada quien.
+ */
+export async function getSettings(
+  organizationId: string,
+  userId?: string | null
+): Promise<CalendarSettings> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.calendarSettings)
+    .where(
+      scoped(
+        schema.calendarSettings.organizationId,
+        organizationId,
+        userId
+          ? or(
+              eq(schema.calendarSettings.userId, userId),
+              isNull(schema.calendarSettings.userId)
+            )
+          : isNull(schema.calendarSettings.userId)
+      )
+    );
+
+  const business = rows.find((r) => r.userId === null) ?? null;
+  const personal = userId ? rows.find((r) => r.userId === userId) ?? null : null;
+
+  // Sin ninguna fila: la instancia recién encendida ya es usable.
+  if (!business && !personal) return DEFAULT_CALENDAR_SETTINGS;
+  const base = business ?? personal!;
+  return { ...schedulingOf(personal ?? base), ...deliveryOf(base) };
 }
 
 export class CalendarSettingsError extends Error {
@@ -113,11 +158,20 @@ export type CalendarSettingsInput = Partial<
   connector?: string;
 };
 
+/**
+ * Guarda la fila del negocio (`userId` omitido) o la de una persona.
+ *
+ * Al guardar la fila personal se parte de lo que esa persona ya vería (la
+ * cascada de `getSettings`), así que tocar solo el horario no reinicia los
+ * minutos de slot ni la zona al default de la columna: lo que no se envía se
+ * hereda y queda materializado en la fila.
+ */
 export async function upsertSettings(
   organizationId: string,
-  input: CalendarSettingsInput
+  input: CalendarSettingsInput,
+  userId?: string | null
 ): Promise<CalendarSettings> {
-  const current = await getSettings(organizationId);
+  const current = await getSettings(organizationId, userId);
 
   const timezone = input.timezone ?? current.timezone;
   // Una zona desconocida rompería el motor entero: se rechaza al guardar.
@@ -177,10 +231,11 @@ export async function upsertSettings(
     .values({
       id: newId("calendarSettings"),
       organizationId,
+      userId: userId ?? null,
       ...values,
     })
     .onConflictDoUpdate({
-      target: schema.calendarSettings.organizationId,
+      target: [schema.calendarSettings.organizationId, schema.calendarSettings.userId],
       set: { ...values, updatedAt: new Date() },
     });
 

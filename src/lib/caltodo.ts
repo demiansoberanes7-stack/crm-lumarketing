@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimeZone } from "@/lib/time/slots";
 
 export const DEFAULT_TODO_SETTINGS = {
   workStartHour: 9, workEndHour: 17, timezone: "America/Mexico_City", defaultDuration: 60,
@@ -55,7 +56,11 @@ export function zonedDisplayDate(date: Date | string, timeZone: string) {
  */
 export function zonedInputToUtc(value: string, timeZone: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
-  if (!match) return null;
+  // Con un nombre de zona que el runtime no conoce, `Intl` lanza RangeError; y
+  // quien llama espera null, no un crash en el submit. Las rutas ya validan la
+  // zona al guardar, pero esta es la barrera que vale aunque la fila venga
+  // sucia de otra instancia o de un fork.
+  if (!match || !isValidTimeZone(timeZone)) return null;
   const [, year, month, day, hour, minute, second] = match;
   const naive = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second ?? 0));
 

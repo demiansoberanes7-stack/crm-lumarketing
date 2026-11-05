@@ -51,9 +51,15 @@ describe("los sumideros siguen anclados al saneado", () => {
   });
 
   it("el enlace de reunión de Citas pasa por webHref", () => {
-    const src = leer("src", "components", "bookings", "bookings-client.tsx");
-    expect(src.match(/href=\{webHref\(b\.meetingLink\)/)).not.toBeNull();
-    expect(src).not.toMatch(/href=\{b\.meetingLink\}/);
+    // El sumidero se mudó a `agenda/booking-detail.tsx` con el panel de detalle
+    // (FASE 3, A3); el ancla lo sigue, no se suelta: un `href` crudo vuelve en
+    // cuanto alguien renderice `meetingLink` otra vez sin saneado.
+    const src = leer("src", "components", "agenda", "booking-detail.tsx");
+    expect(src.match(/href=\{webHref\(booking\.meetingLink\)/)).not.toBeNull();
+    expect(src).not.toMatch(/href=\{booking\.meetingLink\}/);
+    // Y el contenedor ya no imprime el enlace por su cuenta.
+    const contenedor = leer("src", "components", "bookings", "bookings-client.tsx");
+    expect(contenedor).not.toMatch(/href=\{b\.meetingLink\}/);
   });
 
   it("la ficha de proveedor usa los tres hrefs saneados", () => {

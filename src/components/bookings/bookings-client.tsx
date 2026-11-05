@@ -1,486 +1,404 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ContactPicker } from "@/components/contact-picker";
-import { useEvents } from "@/components/use-events";
 import { LoadError } from "@/components/load-error";
-import { webHref } from "@/lib/safe-url";
-
-/** 015 — Citas: lo agendado por el operador y por la IA, con sus acciones. */
-
-type Booking = {
-  id: string;
-  kind: "session" | "block";
-  status: "agendada" | "realizada" | "no_show" | "cancelada";
-  source: "manual" | "ai";
-  scheduledAtUtc: string;
-  durationMinutes: number;
-  date: string;
-  time: string;
-  weekday: string;
-  contact: { id: string; name: string } | null;
-  conversationId: string | null;
-  connector: string | null;
-  meetingLink: string | null;
-  linkPending: boolean;
-  isTest: boolean;
-  notes: string | null;
-};
-
-type Slot = { startUtc: string; label: string };
+import { useEvents } from "@/components/use-events";
+import {
+  rangeForView,
+  rangeLabel,
+  shiftISO,
+  toneFor,
+  type AgendaView,
+} from "@/lib/agenda/view-model";
+import { CalendarGrid, type GridBlock, type GridFreeSlot } from "@/components/agenda/calendar-grid";
+import {
+  AgendaForm,
+  type AgendaPreset,
+  type NewBookingDraft,
+} from "@/components/agenda/agenda-form";
+import { BookingDetail } from "@/components/agenda/booking-detail";
+import { STATUS_LABEL } from "@/components/agenda/labels";
+import type { BookingDto, SlotDto } from "@/lib/agenda/dto";
 
 /**
- * El instante de la cita manual, en UTC.
+ * 015 · A3 — Citas como calendario, no como lista.
  *
- * Un hueco de la disponibilidad ya llega en UTC; la hora impuesta viene de un
- * `datetime-local`, que el navegador escribe SIN zona y hay que interpretar
- * como hora local del operador — si se mandara crudo, el servidor lo leería
- * como UTC y la cita quedaría 6 horas corrida.
+ * La pantalla siempre fue la lista de `listBookings`; aquí manda la rejilla y la
+ * lista pasa a ser el resumen del rango. Todo lo que se lee y se escribe sigue
+ * siendo el mismo contrato de `/api/bookings` y `/api/calendar/availability`:
+ * esta pieza solo los junta, y **refresca lista y disponibilidad después de cada
+ * operación** — si no, el hueco que acabas de llenar seguiría ofreciéndose y la
+ * siguiente cita nacería encimada.
+ *
+ * El fetch vive aquí y en ningún hijo: un solo lugar que sepa qué es «guardar» y
+ * qué es «volver a leer» es lo que impide que tres componentes distintos crean
+ * que refrescarles toca a ellos.
  */
-export function citaStartUtc(
-  choice: "hueco" | "otra",
-  slot: string,
-  custom: string
-): string | null {
-  if (choice === "hueco") return slot || null;
-  if (!custom) return null;
-  const ms = Date.parse(custom);
-  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
-}
 
-const STATUS_LABEL: Record<Booking["status"], string> = {
-  agendada: "Agendada",
-  realizada: "Realizada",
-  no_show: "No asistió",
-  cancelada: "Cancelada",
+const VIEWS: { id: AgendaView; label: string }[] = [
+  { id: "month", label: "Mes" },
+  { id: "week", label: "Semana" },
+  { id: "day", label: "Día" },
+];
+
+type ErrorResponse = {
+  error?: { code?: string; message?: string };
+  slots?: SlotDto[];
 };
 
 export function BookingsClient() {
-  const [bookings, setBookings] = useState<Booking[] | null>(null);
+  const [view, setView] = useState<AgendaView>("month");
+  // Día ISO alrededor del cual se pinta. Se siembra con la fecha del navegador
+  // y se corrige con el `today` que devuelve el servidor (zona del negocio).
+  const [anchor, setAnchor] = useState(() => new Date().toISOString().slice(0, 10));
+  const [timezone, setTimezone] = useState("America/Mexico_City");
+  const [today, setToday] = useState("");
+  const [bookings, setBookings] = useState<BookingDto[] | null>(null);
+  const [slots, setSlots] = useState<SlotDto[]>([]);
   const [listFailed, setListFailed] = useState(false);
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [availFailed, setAvailFailed] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [preset, setPreset] = useState<AgendaPreset>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rescheduling, setRescheduling] = useState<string | null>(null);
-  const [blockStart, setBlockStart] = useState("");
-  const [blockMinutes, setBlockMinutes] = useState(60);
-  // Alta manual de la cita: contacto, hora y nota. `slotChoice` decide si el
-  // operador escoge un hueco de su horario o impone una hora concreta.
-  const [citaContactId, setCitaContactId] = useState<string | null>(null);
-  const [slotChoice, setSlotChoice] = useState<"hueco" | "otra">("hueco");
-  const [citaSlot, setCitaSlot] = useState("");
-  const [citaCustom, setCitaCustom] = useState("");
-  const [citaNotes, setCitaNotes] = useState("");
-  const [creating, setCreating] = useState(false);
+  // true solo cuando el operador movió el rango a mano: es lo que impide que el
+  // `today` del servidor le devuelva la vista a agosto mientras mira octubre.
+  const touched = useRef(false);
 
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  // La agenda cambia también cuando agenda la IA: SSE mantiene la vista viva.
-  useEvents({ onBookingUpdated: () => void refresh() });
-
-  async function refresh() {
-    const [list, avail] = await Promise.all([
-      fetch("/api/bookings").catch(() => null),
-      fetch("/api/calendar/availability").catch(() => null),
+  const refresh = useCallback(async () => {
+    const { from, to } = rangeForView(anchor, view);
+    const query = `from=${from}&to=${to}`;
+    const [listRes, availRes] = await Promise.all([
+      fetch(`/api/bookings?${query}`).catch(() => null),
+      fetch(`/api/calendar/availability?${query}`).catch(() => null),
     ]);
-    if (list?.ok) {
-      const data = (await list.json()) as { bookings: Booking[] };
-      setBookings(data.bookings);
+
+    if (listRes?.ok) {
+      const data = (await listRes.json().catch(() => null)) as {
+        bookings?: BookingDto[];
+        timezone?: string;
+        today?: string;
+      } | null;
+      setBookings(data?.bookings ?? []);
       setListFailed(false);
+      if (data?.timezone) setTimezone(data.timezone);
+      if (data?.today) {
+        setToday(data.today);
+        if (!touched.current && data.today !== anchor) setAnchor(data.today);
+      }
     } else {
+      // Un 500 no es «no hay citas»: se dice, y la rejilla no se llena de vacíos.
       setBookings([]);
       setListFailed(true);
     }
-    if (avail?.ok) {
-      const data = (await avail.json()) as { slots: Slot[] };
-      setSlots(data.slots);
-    }
-  }
 
-  async function act(id: string, body: unknown) {
-    setBusy(id);
+    if (availRes?.ok) {
+      const data = (await availRes.json().catch(() => null)) as {
+        slots?: SlotDto[];
+      } | null;
+      setSlots(data?.slots ?? []);
+      setAvailFailed(false);
+    } else {
+      setSlots([]);
+      setAvailFailed(true);
+    }
+  }, [anchor, view]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // La agenda también la mueve la IA: SSE mantiene la vista viva.
+  useEvents({ onBookingUpdated: () => void refresh() });
+
+  const selected = bookings?.find((b) => b.id === selectedId) ?? null;
+
+  const gridBlocks: GridBlock[] = (bookings ?? []).map((b) => ({
+    id: b.id,
+    dayIso: b.dayIso,
+    startMinutes: b.startMinutes,
+    endMinutes: b.endMinutes,
+    label: b.title ?? (b.kind === "block" ? "Bloqueo" : b.contact?.name ?? "Cita"),
+    sub: b.contact && b.title ? b.contact.name : undefined,
+    tone: toneFor(b),
+  }));
+
+  const gridFree: GridFreeSlot[] = slots.map((s) => ({
+    id: s.startUtc,
+    dayIso: s.dayIso,
+    startMinutes: s.startMinutes,
+    endMinutes: s.endMinutes,
+  }));
+
+  /** Un `PATCH` sobre la cita seleccionada. Devuelve si hay que refrescar. */
+  async function act(body: Record<string, unknown>): Promise<boolean> {
+    if (!selected) return false;
+    setBusy(true);
     setError(null);
-    const res = await fetch(`/api/bookings/${id}`, {
+    const res = await fetch(`/api/bookings/${selected.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }).catch(() => null);
-    setBusy(null);
+    setBusy(false);
+    const data = res ? ((await res.json().catch(() => null)) as ErrorResponse | null) : null;
     if (!res?.ok) {
-      const data = (await res?.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setError(data?.error?.message ?? "No se pudo completar la acción");
-      return;
+      setError(data?.error?.message ?? "No se pudo completar la acción.");
+      return false;
     }
-    setRescheduling(null);
+    if (body.action === "cancel") setSelectedId(null);
     await refresh();
+    return true;
   }
 
-  async function createBlock() {
-    if (!blockStart) return;
+  /** Alta. El 201 es contrato; cualquier otro código se muestra tal cual. */
+  async function create(draft: NewBookingDraft) {
+    setBusy(true);
     setError(null);
     const res = await fetch("/api/bookings", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "block",
-        // El input datetime-local da hora local del navegador.
-        startUtc: new Date(blockStart).toISOString(),
-        durationMinutes: blockMinutes,
-      }),
+      body: JSON.stringify(draft),
     }).catch(() => null);
-    if (res?.status !== 201) {
-      const data = (await res?.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setError(data?.error?.message ?? "No se pudo bloquear ese rango");
-      return;
-    }
-    setBlockStart("");
-    await refresh();
-  }
+    setBusy(false);
 
-  /**
-   * Alta manual. El servidor es el que valida: un horario fuera del configured
-   * o ya ocupado vuelve `slot_taken`, así que el mensaje se deja ver tal cual
-   * en vez de fingir que la cita se creó.
-   */
-  async function createCita() {
-    const startUtc = citaStartUtc(slotChoice, citaSlot, citaCustom);
-    if (!citaContactId || !startUtc) return;
-    setCreating(true);
-    setError(null);
-    const res = await fetch("/api/bookings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "session",
-        contactId: citaContactId,
-        startUtc,
-        notes: citaNotes.trim() || null,
-      }),
-    }).catch(() => null);
-    setCreating(false);
     if (res?.status !== 201) {
-      const data = (await res?.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
+      const data = res
+        ? ((await res.json().catch(() => null)) as ErrorResponse | null)
+        : null;
       setError(
         data?.error?.message ??
-          "No se pudo crear la cita. Si elegiste «otra hora», puede que ese instante esté fuera de tu horario o ya ocupado."
+          "No se pudo crear. Si la hora está fuera de tu horario o el instante ya está ocupado, el servidor lo dice arriba."
       );
+      // `slot_taken` viene con alternativas frescas: se pintan de inmediato en
+      // vez de obligar a volver a consultar la disponibilidad.
+      if (data?.slots?.length) setSlots(data.slots);
       return;
     }
-    setCitaSlot("");
-    setCitaCustom("");
-    setCitaNotes("");
+
+    const data = (await res.json().catch(() => null)) as {
+      booking?: { id?: string };
+      bookingId?: string;
+    } | null;
+    const created = data?.booking?.id ?? data?.bookingId ?? null;
+    setPreset(null);
+    setFormOpen(false);
+    setSelectedId(created);
     await refresh();
   }
 
-  if (!bookings) return <p className="text-sm text-text-3">Cargando…</p>;
+  function pick(dayIso: string, startMinutes: number | null) {
+    setPreset({ dayIso, startMinutes });
+    setFormOpen(true);
+    setSelectedId(null);
+    setError(null);
+  }
+
+  const ordered = [...(bookings ?? [])].sort(
+    (a, b) => Date.parse(a.scheduledAtUtc) - Date.parse(b.scheduledAtUtc)
+  );
 
   return (
-    <div className="space-y-6">
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <section className="space-y-3 rounded-md border p-4">
-        <div>
-          <h3 className="text-sm font-semibold">Nueva cita</h3>
-          <p className="text-sm text-text-3">
-            Tú la creas, sin esperar a que la IA cierre el hueco en el chat.
-          </p>
-        </div>
-
-        <ContactPicker value={citaContactId} onChange={setCitaContactId} />
-
-        <div className="space-y-1.5">
-          <Label htmlFor="cita-mode">Hora</Label>
-          <select
-            id="cita-mode"
-            value={slotChoice}
-            onChange={(e) =>
-              setSlotChoice(e.target.value === "otra" ? "otra" : "hueco")
-            }
-            className="w-full rounded-md border bg-card p-2 text-sm sm:w-64"
-          >
-            <option value="hueco">
-              Un hueco libre de mi horario ({slots.length})
-            </option>
-            <option value="otra">Otra hora concreta</option>
-          </select>
-        </div>
-
-        {slotChoice === "hueco" ? (
-          slots.length === 0 ? (
-            <p className="text-sm text-text-3">
-              No hay huecos libres que ofrecer: configura tu horario en Ajustes
-              → Calendario, o elige «Otra hora concreta».
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              <Label htmlFor="cita-slot">Hueco</Label>
-              <select
-                id="cita-slot"
-                value={citaSlot}
-                onChange={(e) => setCitaSlot(e.target.value)}
-                className="w-full rounded-md border bg-card p-2 text-sm sm:w-72"
-              >
-                <option value="">Elige un hueco…</option>
-                {slots.map((s) => (
-                  <option key={s.startUtc} value={s.startUtc}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )
-        ) : (
-          <div className="space-y-1.5">
-            <Label htmlFor="cita-custom">Inicio</Label>
-            <Input
-              id="cita-custom"
-              type="datetime-local"
-              value={citaCustom}
-              onChange={(e) => setCitaCustom(e.target.value)}
-              className="w-56"
-            />
-            <p className="text-xs text-text-3">
-              Se respeta igual que las citas de la IA: si el horario está
-              ocupado o cae fuera de tu jornada, el servidor la rechaza y te lo
-              dice.
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-1.5">
-          <Label htmlFor="cita-notes">Nota (opcional)</Label>
-          <textarea
-            id="cita-notes"
-            value={citaNotes}
-            onChange={(e) => setCitaNotes(e.target.value)}
-            rows={2}
-            placeholder="Qué se va a atender, dónde, con quién…"
-            className="w-full rounded-md border bg-card p-2 text-sm"
-          />
-        </div>
-
-        <Button
-          onClick={createCita}
-          disabled={
-            creating ||
-            !citaContactId ||
-            citaStartUtc(slotChoice, citaSlot, citaCustom) === null
-          }
-        >
-          {creating ? "Agendando…" : "Agendar cita"}
-        </Button>
-      </section>
-
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Bloquear un rango</h3>
-        <p className="text-sm text-text-3">
-          Para compromisos que viven fuera del CRM: ese tiempo deja de
-          ofrecerse.
-        </p>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="block-start">Inicio</Label>
-            <Input
-              id="block-start"
-              type="datetime-local"
-              value={blockStart}
-              onChange={(e) => setBlockStart(e.target.value)}
-              className="w-56"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="block-min">Minutos</Label>
-            <Input
-              id="block-min"
-              type="number"
-              min={10}
-              max={480}
-              value={blockMinutes}
-              onChange={(e) => setBlockMinutes(Number(e.target.value))}
-              className="w-24"
-            />
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1">
           <Button
-            variant="secondary"
-            onClick={createBlock}
-            disabled={!blockStart}
+            size="icon"
+            variant="outline"
+            aria-label="Periodo anterior"
+            onClick={() => {
+              touched.current = true;
+              setAnchor((a) => shiftISO(a, view, -1));
+            }}
           >
-            Bloquear
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              touched.current = false;
+              setAnchor(today || anchor);
+            }}
+          >
+            Hoy
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            aria-label="Periodo siguiente"
+            onClick={() => {
+              touched.current = true;
+              setAnchor((a) => shiftISO(a, view, 1));
+            }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <span className="ml-2 text-sm font-medium text-text-2">
+            {rangeLabel(anchor, view)}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1" role="group" aria-label="Vista">
+          {VIEWS.map((v) => (
+            <Button
+              key={v.id}
+              size="sm"
+              variant={view === v.id ? "default" : "outline"}
+              onClick={() => setView(v.id)}
+            >
+              {v.label}
+            </Button>
+          ))}
+          <Button size="sm" onClick={() => setFormOpen((o) => !o)}>
+            {formOpen ? "Ocultar alta" : "Nueva cita"}
           </Button>
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">
-          Citas <span className="text-text-3">({bookings.length})</span>
-        </h3>
-        {listFailed && bookings.length === 0 ? (
-          <LoadError
-            message="No se pudo leer la agenda."
-            detail="«Todavía no hay nada agendado» sería otra cosa: la lista de citas no llegó. Reintenta y, si sigue, avisa."
-            onRetry={() => void refresh()}
-          />
-        ) : (
-          bookings.length === 0 && (
+      <p className="text-xs text-text-3">
+        Zona del calendario: {timezone.replace(/_/g, " ")} ·{" "}
+        {slots.length > 0
+          ? `${slots.length} huecos libres en el rango`
+          : availFailed
+            ? "no se pudo leer la disponibilidad"
+            : "sin huecos libres en el rango"}
+      </p>
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-4">
+          {!bookings && <p className="text-sm text-text-3">Cargando…</p>}
+          {listFailed && bookings?.length === 0 ? (
+            <LoadError
+              message="No se pudo leer la agenda."
+              detail="«Todavía no hay nada agendado» sería otra cosa: la lista de citas no llegó. Reintenta y, si sigue, avisa."
+              onRetry={() => void refresh()}
+            />
+          ) : (
+            bookings && (
+              <CalendarGrid
+                view={view}
+                anchor={anchor}
+                today={today || anchor}
+                blocks={gridBlocks}
+                free={gridFree}
+                selectedId={selectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  setFormOpen(false);
+                  setError(null);
+                }}
+                onPick={pick}
+              />
+            )
+          )}
+
+          {formOpen && (
+            <AgendaForm
+              timezone={timezone}
+              preset={preset}
+              slots={slots}
+              busy={busy}
+              error={error}
+              onCancel={() => {
+                setFormOpen(false);
+                setPreset(null);
+                setError(null);
+              }}
+              onSubmit={create}
+            />
+          )}
+
+          {bookings && bookings.length === 0 && !listFailed && (
             <p className="text-sm text-text-3">
-              Todavía no hay nada agendado. Crea la primera arriba con «Nueva
-              cita», o configura tu horario en Ajustes → Calendario para que la
-              IA empiece a cerrar huecos sola.
+              Este rango está vacío. Pincha un día o un hueco para agendar ahí, o
+              configura tu horario en Ajustes → Calendario para que la IA empiece
+              a cerrar huecos sola.
             </p>
-          )
-        )}
-        <ul className="divide-y rounded-md border">
-          {bookings.map((b) => (
-            <li key={b.id} className="space-y-2 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">
-                  {b.weekday} {b.date} · {b.time}
-                </span>
-                <span className="text-xs text-text-3">
-                  {b.durationMinutes} min
-                </span>
-                <Badge
-                  variant={b.status === "cancelada" ? "secondary" : "default"}
+          )}
+
+          {ordered.length > 0 && (
+            <ul className="divide-y rounded-md border">
+              {ordered.slice(0, 60).map((b) => (
+              <li key={b.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(b.id)}
+                  className={`flex w-full flex-wrap items-center gap-2 p-2 text-left text-sm hover:bg-accent ${
+                    selectedId === b.id ? "bg-accent" : ""
+                  }`}
                 >
-                  {STATUS_LABEL[b.status]}
-                </Badge>
-                {b.kind === "block" ? (
-                  <Badge variant="secondary">Bloqueo</Badge>
-                ) : (
-                  <Badge variant="secondary">
-                    {b.source === "ai" ? "Agendó la IA" : "Manual"}
-                  </Badge>
-                )}
-                {b.isTest && <Badge variant="secondary">Prueba</Badge>}
-                {b.linkPending && b.status !== "cancelada" && (
-                  <Badge variant="secondary">Sin enlace</Badge>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 text-sm text-text-3">
-                {b.contact && <span>{b.contact.name}</span>}
-                {b.meetingLink && (
-                  <a
-                    href={webHref(b.meetingLink) ?? undefined}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-brand-text hover:underline"
-                  >
-                    Enlace de la reunión
-                  </a>
-                )}
-                {b.notes && <span>{b.notes}</span>}
-              </div>
-
-              {/* El proveedor falló al crear la reunión. La cita existe; lo
-                  único que falta es el enlace, y se reintenta desde aquí — sin
-                  esto, un hipo del proveedor sería una pérdida silenciosa. */}
-              {b.linkPending && b.status !== "cancelada" && (
-                <div className="flex flex-wrap items-center gap-2 rounded-sm bg-subtle p-2">
-                  <span className="text-sm text-text-2">
-                    Esta cita quedó sin enlace: el proveedor no respondió.
+                  <span className="text-text-3">
+                    {b.weekday} {b.date} · {b.time}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy === b.id}
-                    onClick={() => act(b.id, { action: "retry_link" })}
-                  >
-                    Reintentar enlace
-                  </Button>
-                </div>
-              )}
-
-              {b.status === "agendada" && (
-                <div className="flex flex-wrap gap-2">
-                  {/* Un bloqueo no se "realiza" ni tiene quien falte: solo se
-                      mueve o se quita. */}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy === b.id}
-                    onClick={() =>
-                      setRescheduling((r) => (r === b.id ? null : b.id))
+                  <span className="font-medium">
+                    {b.title ?? (b.kind === "block" ? "Bloqueo" : "Cita")}
+                  </span>
+                  {b.contact && (
+                    <span className="text-text-2">{b.contact.name}</span>
+                  )}
+                  <Badge
+                    variant={
+                      b.status === "cancelada"
+                        ? "secondary"
+                        : b.status === "realizada"
+                          ? "success"
+                          : "default"
                     }
                   >
-                    Reprogramar
-                  </Button>
-                  {b.kind === "session" && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={busy === b.id}
-                        onClick={() =>
-                          act(b.id, { action: "status", status: "realizada" })
-                        }
-                      >
-                        Realizada
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={busy === b.id}
-                        onClick={() =>
-                          act(b.id, { action: "status", status: "no_show" })
-                        }
-                      >
-                        No asistió
-                      </Button>
-                    </>
+                    {STATUS_LABEL[b.status]}
+                  </Badge>
+                  <span className="text-xs text-text-3">
+                    {b.durationMinutes} min
+                  </span>
+                  {b.assigneeName && (
+                    <span className="text-xs text-text-3">
+                      {b.assigneeName}
+                    </span>
                   )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy === b.id}
-                    onClick={() => act(b.id, { action: "cancel" })}
-                  >
-                    {b.kind === "block" ? "Quitar bloqueo" : "Cancelar"}
-                  </Button>
-                </div>
-              )}
+                </button>
+              </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-              {rescheduling === b.id && (
-                <div className="space-y-1 rounded-sm bg-subtle p-2">
-                  {slots.length === 0 && (
-                    <p className="text-sm text-text-3">
-                      No hay huecos libres para mover esta cita.
-                    </p>
-                  )}
-                  {slots.slice(0, 12).map((s) => (
-                    <button
-                      key={s.startUtc}
-                      type="button"
-                      disabled={busy === b.id}
-                      onClick={() =>
-                        act(b.id, {
-                          action: "reschedule",
-                          startUtc: s.startUtc,
-                        })
-                      }
-                      className="block w-full rounded-sm px-2 py-1 text-left text-sm hover:bg-accent"
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+        <div className="space-y-4">
+          {selected ? (
+            <BookingDetail
+              key={selected.id}
+              booking={selected}
+              timezone={timezone}
+              slots={slots}
+              busy={busy}
+              onAct={act}
+              onClose={() => setSelectedId(null)}
+            />
+          ) : (
+            <aside className="rounded-md border border-dashed p-4 text-sm text-text-3">
+              Selecciona una cita en la rejilla para verla y editarla. Pincha un
+              hueco libre para agendar ahí.
+            </aside>
+          )}
+          {availFailed && (
+            <LoadError
+              message="No se pudo leer la disponibilidad."
+              detail="La rejilla no puede pintar huecos libres: no es que no tengas, es que la consulta falló. Reintenta."
+              onRetry={() => void refresh()}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

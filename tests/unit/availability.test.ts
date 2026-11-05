@@ -234,3 +234,54 @@ describe("normalizeWeeklyHours", () => {
     expect(out.wed?.[0]?.start).toBe("09:00");
   });
 });
+
+describe("slots para una reunión más larga que la rejilla", () => {
+  // 2026-08-05 es miércoles: con L-V 09:00-18:00 en Ciudad de México (UTC-6
+  // todo el año), la ventana en UTC va de 15:00Z a 24:00Z.
+  const SLOTS = (durationMinutes?: number) =>
+    buildCandidateSlots(
+      settings({ slotMinutes: 30, weeklyHours: { wed: [{ start: "09:00", end: "18:00" }] } }),
+      "2026-08-05",
+      "2026-08-05",
+      durationMinutes
+    );
+
+  it("sin duración pedida, la rejilla de siempre", () => {
+    const slots = SLOTS();
+    expect(slots).toHaveLength(18);
+    expect(slots[0]!.startUtc).toBe("2026-08-05T15:00:00.000Z");
+    expect(slots[0]!.endUtc).toBe("2026-08-05T15:30:00.000Z");
+  });
+
+  it("una hora sigue entrando cada 30 min, pero el hueco mide 60 y CABE", () => {
+    const slots = SLOTS(60);
+    // El último que cabe es 17:00 local (termina justo a las 18:00).
+    expect(slots).toHaveLength(17);
+    expect(slots[0]!.endUtc).toBe("2026-08-05T16:00:00.000Z");
+    expect(slots[slots.length - 1]!.startUtc).toBe("2026-08-05T23:00:00.000Z");
+  });
+
+  it("no se ofrece lo que desborda la jornada", () => {
+    // 90 min: el último que cabe arranca a las 16:30 local.
+    expect(SLOTS(90)).toHaveLength(16);
+    // Una reunión de 10 horas no cabe en una jornada de 9: agenda vacía, no una
+    // lista de huecos imposibles.
+    expect(SLOTS(600)).toEqual([]);
+  });
+
+  it("un hueco largo choca con lo ocupado en su parte final", () => {
+    const candidates = SLOTS(60);
+    const libre = candidates[0]!; // 15:00-16:00Z
+    const busy = [
+      { startUtc: "2026-08-05T15:30:00.000Z", endUtc: "2026-08-05T16:00:00.000Z" },
+    ];
+    const free = filterFreeSlots(candidates, busy, {
+      now: new Date("2026-08-01T00:00:00.000Z"),
+      minNoticeHours: 0,
+      timezone: MX,
+    });
+    // Con la rejilla de 30 este hueco habría parecido libre: la cita de las
+    // 15:30 solo toca su segunda mitad.
+    expect(free.some((s) => s.startUtc === libre.startUtc)).toBe(false);
+  });
+});

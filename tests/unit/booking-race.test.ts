@@ -47,6 +47,10 @@ vi.mock("@/server/agenda/availability", () => ({
   // El hueco se ve libre al re-validar: la otra confirmación aún no escribía.
   findSlot: async () => ({ startUtc: SLOT, endUtc: "…", label: "mié 5 ago, 09:00" }),
   computeAvailability: async () => ALTERNATIVES,
+  // Dentro de la transacción el candado es un no-op y el solape no aparece:
+  // quien dirime este choque es la llave única, como antes.
+  lockBookingSlots: async () => {},
+  findSlotClash: async () => null,
 }));
 
 vi.mock("@/server/agenda/offers", async (importOriginal) => {
@@ -88,48 +92,59 @@ function chain(rows: unknown[]) {
   return c;
 }
 
-vi.mock("@/lib/db", () => ({
-  getDb: () => ({
-    select: () => chain(selectRows.shift() ?? []),
-    insert: () => ({
-      values: (v: unknown) => ({
-        returning: () => {
-          if (insertThrows) return Promise.reject(insertThrows);
-          inserted.push(v);
-          return Promise.resolve([
-            {
-              ...(v as object),
-              scheduledAt: new Date(SLOT),
-              meetingLink: null,
-              linkPending: false,
-              isTest: false,
-              externalRef: null,
-            },
-          ]);
-        },
-      }),
+/**
+ * El `insert` de la cita ahora va dentro de una transacción (candado por
+ * negocio + chequeo de solape), así que el mock también sabe abrir una y
+ * ejecutar el `pg_advisory_xact_lock`. La transacción de mentira corre sobre el
+ * mismo objeto: lo que se prueba sigue siendo la traducción del choque, no la
+ * aislamiento real de Postgres — eso lo ve el arnés E2E.
+ */
+const dbMock: Record<string, unknown> = {
+  select: () => chain(selectRows.shift() ?? []),
+  insert: () => ({
+    values: (v: unknown) => ({
+      returning: () => {
+        if (insertThrows) return Promise.reject(insertThrows);
+        inserted.push(v);
+        return Promise.resolve([
+          {
+            ...(v as object),
+            scheduledAt: new Date(SLOT),
+            meetingLink: null,
+            linkPending: false,
+            isTest: false,
+            externalRef: null,
+          },
+        ]);
+      },
     }),
-    update: () => ({
-      set: (v: unknown) => ({
-        where: () => ({
-          returning: () =>
-            Promise.resolve([
-              {
-                id: "bk_1",
-                organizationId: "org_1",
-                scheduledAt: new Date(SLOT),
-                durationMinutes: 30,
-                isTest: false,
-                connector: "enlace-fijo",
-                notes: null,
-                contactId: "ct_1",
-                ...(v as object),
-              },
-            ]),
-        }),
+  }),
+  update: () => ({
+    set: (v: unknown) => ({
+      where: () => ({
+        returning: () =>
+          Promise.resolve([
+            {
+              id: "bk_1",
+              organizationId: "org_1",
+              scheduledAt: new Date(SLOT),
+              durationMinutes: 30,
+              isTest: false,
+              connector: "enlace-fijo",
+              notes: null,
+              contactId: "ct_1",
+              ...(v as object),
+            },
+          ]),
       }),
     }),
   }),
+  execute: async () => [],
+  transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(dbMock),
+};
+
+vi.mock("@/lib/db", () => ({
+  getDb: () => dbMock,
   schema: {
     booking: {},
     conversation: { organizationId: "organizationId", id: "id" },

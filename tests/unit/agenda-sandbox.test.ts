@@ -49,6 +49,8 @@ vi.mock("@/server/agenda/settings", () => ({ getSettings: async () => settings }
 vi.mock("@/server/agenda/availability", () => ({
   findSlot: async () => ({ startUtc: SLOT, endUtc: "…", label: "mié 5 ago, 09:00" }),
   computeAvailability: async () => [],
+  lockBookingSlots: async () => {},
+  findSlotClash: async () => null,
 }));
 vi.mock("@/server/agenda/offers", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/server/agenda/offers")>();
@@ -81,27 +83,33 @@ function chain(rows: unknown[]) {
   return c;
 }
 
-vi.mock("@/lib/db", () => ({
-  getDb: () => ({
-    select: () => chain(selectRows.shift() ?? []),
-    insert: () => ({
-      values: (v: Record<string, unknown>) => ({
-        returning: () => {
-          lastInsert = v;
-          return Promise.resolve([
-            { ...v, scheduledAt: new Date(SLOT), externalRef: null, linkPending: false },
-          ]);
-        },
-      }),
+const dbMock: Record<string, unknown> = {
+  select: () => chain(selectRows.shift() ?? []),
+  insert: () => ({
+    values: (v: Record<string, unknown>) => ({
+      returning: () => {
+        lastInsert = v;
+        return Promise.resolve([
+          { ...v, scheduledAt: new Date(SLOT), externalRef: null, linkPending: false },
+        ]);
+      },
     }),
-    update: () => ({
-      set: (v: Record<string, unknown>) => ({
-        where: () => ({
-          returning: () => Promise.resolve([{ ...updatedRow, ...v }]),
-        }),
+  }),
+  update: () => ({
+    set: (v: Record<string, unknown>) => ({
+      where: () => ({
+        returning: () => Promise.resolve([{ ...updatedRow, ...v }]),
       }),
     }),
   }),
+  // La escritura de la cita va en transacción (candado + solape): el mock abre
+  // la transacción sobre sí mismo y el lock no hace nada.
+  execute: async () => [],
+  transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(dbMock),
+};
+
+vi.mock("@/lib/db", () => ({
+  getDb: () => dbMock,
   schema: {
     booking: {},
     conversation: { organizationId: "organizationId", id: "id" },

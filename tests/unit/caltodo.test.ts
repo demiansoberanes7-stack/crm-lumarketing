@@ -93,4 +93,9 @@ describe("zonedInputToUtc", () => {
     expect(zonedInputToUtc("mañana", MX)).toBeNull();
     expect(zonedInputToUtc("2026/10/08 06:00", MX)).toBeNull();
   });
+
+  it("zona desconocida da null: `Intl` lanzaría RangeError y el submit se rompería", () => {
+    expect(zonedInputToUtc("2026-10-08T06:00", "No/Existe")).toBeNull();
+    expect(zonedInputToUtc("2026-10-08T06:00", "")).toBeNull();
+  });
 });

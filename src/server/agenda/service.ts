@@ -9,6 +9,8 @@ import { CONNECTOR_META, type ConnectorId } from "@/lib/agenda-connectors";
 import {
   computeAvailability,
   findSlot,
+  findSlotClash,
+  lockBookingSlots,
   type AvailableSlot,
 } from "@/server/agenda/availability";
 import { getSettings, type CalendarSettings } from "@/server/agenda/settings";
@@ -24,6 +26,11 @@ import {
   markConnectorAuthError,
 } from "@/server/agenda/connectors";
 import { ConnectorError } from "@/server/agenda/connectors/types";
+import {
+  bookingDescription,
+  bookingSummary,
+  syncBookingEvent,
+} from "@/server/agenda/bookings-sync";
 import { moveLeadToStage } from "@/server/leads/stage-history";
 import { publish } from "@/server/events/bus";
 
@@ -36,6 +43,10 @@ import { publish } from "@/server/events/bus";
  *  2. Al confirmar se re-valida el hueco y la base lo cierra con su índice
  *     único parcial; si se ocupó, se responde `slot_taken` con alternativas
  *     frescas y NO se crea nada. Nunca se confirma una reserva que no se creó.
+ *     La escritura va ADEMÁS dentro de una transacción con el candado por
+ *     negocio (`lockBookingSlots`) y el chequeo de solape, porque el índice
+ *     único solo ve el instante exacto y una reunión de 60 puede cabalgar dos
+ *     slots de 30 sin chocar con ninguna llave.
  *
  * Y una regla de honestidad: la entrega de la reunión (el conector) corre
  * DESPUÉS de escribir la verdad del CRM y es best-effort. Si el proveedor está
@@ -91,6 +102,14 @@ export async function createSessionBooking(input: {
   /** Camino manual del operador. */
   contactId?: string | null;
   notes?: string | null;
+  /** Motivo de la cita; en null se muestra el título por defecto. */
+  title?: string | null;
+  /** Lugar o modalidad (sala, enlace, domicilio…). */
+  location?: string | null;
+  /** Quién atiende la cita. En el camino manual, quien está en la sesión. */
+  userId?: string | null;
+  /** Duración pedida; sin valor, la rejilla configurada. */
+  durationMinutes?: number;
   /**
    * true ⇒ exige que el instante figure entre los ofrecidos a la conversación
    * (agente/bot). El operador elige de la disponibilidad que está viendo, así
@@ -100,7 +119,8 @@ export async function createSessionBooking(input: {
   now?: Date;
 }): Promise<BookingResult> {
   const db = getDb();
-  const settings = await getSettings(input.organizationId);
+  const settings = await getSettings(input.organizationId, input.userId);
+  const durationMinutes = resolveDuration(input.durationMinutes, settings.slotMinutes);
 
   if (Number.isNaN(Date.parse(input.startUtc))) {
     throw new BookingError("invalid", "Instante inválido");
@@ -139,13 +159,18 @@ export async function createSessionBooking(input: {
     contactId = contactId ?? conv.contactId;
   }
 
-  if (!contactId) {
+  // El contacto sigue siendo obligatorio en el camino conversacional: sin él
+  // la cita no tiene a quién atender. En el manual ya no — hay citas de
+  // show-up (una llamada, una visita) que no corresponden a nadie del CRM.
+  if (!contactId && input.requireOffer) {
     throw new BookingError("invalid", "La cita necesita un contacto");
   }
   // El contacto viene crudo del cliente en la ruta manual: tiene que existir
   // EN ESTA organización. Sin esto, un contactId ajeno creaba la cita igual
   // (el nombre quedaba vacío y nadie se daba cuenta).
-  contactName = await requireContactName(input.organizationId, contactId);
+  if (contactId) {
+    contactName = await requireContactName(input.organizationId, contactId);
+  }
 
   // REGLA 1: solo se reserva lo que se ofreció.
   if (input.requireOffer) {
@@ -165,10 +190,12 @@ export async function createSessionBooking(input: {
     }
   }
 
-  // REGLA 2 (primera mitad): el hueco debe seguir libre AHORA.
+  // REGLA 2 (primera mitad): el hueco debe seguir libre AHORA, midiéndolo con
+  // la duración real de esta cita.
   const slot = await findSlot(input.organizationId, input.startUtc, {
     now: input.now,
     settings,
+    durationMinutes,
   });
   if (!slot) {
     throw new BookingError(
@@ -180,43 +207,72 @@ export async function createSessionBooking(input: {
     );
   }
 
-  const leadRows = await db
-    .select({ id: schema.lead.id })
-    .from(schema.lead)
-    .where(
-      scoped(
-        schema.lead.organizationId,
-        input.organizationId,
-        eq(schema.lead.contactId, contactId)
+  let leadId: string | null = null;
+  if (contactId) {
+    const leadRows = await db
+      .select({ id: schema.lead.id })
+      .from(schema.lead)
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          input.organizationId,
+          eq(schema.lead.contactId, contactId)
+        )
       )
-    )
-    .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
-    .limit(1);
+      .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
+      .limit(1);
+    leadId = leadRows[0]?.id ?? null;
+  }
 
   let booking: BookingRow;
   try {
-    const inserted = await db
-      .insert(schema.booking)
-      .values({
-        id: newId("booking"),
-        organizationId: input.organizationId,
-        kind: "session",
-        source: input.source === "ai" ? "ai" : "manual",
-        contactId,
-        conversationId: input.conversationId ?? null,
-        leadId: leadRows[0]?.id ?? null,
-        scheduledAt: new Date(slot.startUtc),
-        durationMinutes: settings.slotMinutes,
-        // Copia histórica: si el negocio cambia de conector, esta cita conserva
-        // el que le tocó y sigue hablando con él al moverse o cancelarse.
-        connector: settings.connector,
-        isTest,
-        notes: input.notes ?? null,
-      })
-      .returning();
-    booking = inserted[0]!;
+    // REGLA 2 (segunda mitad): candado por negocio + chequeo de solape DENTRO
+    // de la transacción, y el índice único parcial como última red del choque
+    // exacto. Nada más corre aquí dentro: ni el conector ni las etapas del
+    // lead, para que la transacción dure lo que dura un SELECT y un INSERT.
+    const claimed = await getDb().transaction(async (tx) => {
+      await lockBookingSlots(tx, input.organizationId);
+      const clash = await findSlotClash(tx, input.organizationId, {
+        startUtc: new Date(slot.startUtc),
+        endUtc: new Date(slot.endUtc),
+      });
+      if (clash) return null;
+      const inserted = await tx
+        .insert(schema.booking)
+        .values({
+          id: newId("booking"),
+          organizationId: input.organizationId,
+          userId: input.userId ?? null,
+          kind: "session",
+          source: input.source === "ai" ? "ai" : "manual",
+          contactId,
+          conversationId: input.conversationId ?? null,
+          leadId,
+          scheduledAt: new Date(slot.startUtc),
+          durationMinutes,
+          title: input.title?.trim() || null,
+          location: input.location?.trim() || null,
+          // Copia histórica: si el negocio cambia de conector, esta cita conserva
+          // el que le tocó y sigue hablando con él al moverse o cancelarse.
+          connector: settings.connector,
+          isTest,
+          notes: input.notes ?? null,
+        })
+        .returning();
+      return inserted[0]!;
+    });
+    if (!claimed) {
+      throw new BookingError(
+        "slot_taken",
+        "Ese horario acaba de ocuparse",
+        await refreshOffer(input.organizationId, input.conversationId, {
+          now: input.now,
+        })
+      );
+    }
+    booking = claimed;
   } catch (err) {
-    // REGLA 2 (segunda mitad): la llave única cierra la carrera exacta. Dos
+    // REGLA 2 (tercera red): la llave única cierra la carrera exacta. Dos
     // confirmaciones simultáneas del mismo instante — la perdedora sale por
     // aquí, sin cita creada.
     if (isUniqueViolation(err)) {
@@ -242,13 +298,15 @@ export async function createSessionBooking(input: {
 
   // Efectos secundarios: ninguno puede revertir la cita.
   const delivered = await deliverMeeting(booking, settings, contactName);
-  await advanceLeadStage(
-    input.organizationId,
-    contactId,
-    input.source === "ai" ? "bot" : "dueno"
-  ).catch((err) => {
-    console.warn(`[agenda] avance de etapa falló: ${err}`);
-  });
+  if (contactId) {
+    await advanceLeadStage(
+      input.organizationId,
+      contactId,
+      input.source === "ai" ? "bot" : "dueno"
+    ).catch((err) => {
+      console.warn(`[agenda] avance de etapa falló: ${err}`);
+    });
+  }
 
   publish(input.organizationId, {
     type: "booking.updated",
@@ -275,25 +333,42 @@ export async function createBlock(input: {
   startUtc: string;
   durationMinutes: number;
   notes?: string | null;
+  userId?: string | null;
 }): Promise<BookingRow> {
   if (Number.isNaN(Date.parse(input.startUtc))) {
     throw new BookingError("invalid", "Instante inválido");
   }
+  const durationMinutes = resolveDuration(input.durationMinutes, 30);
+  const start = new Date(input.startUtc);
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+
   const db = getDb();
   try {
-    const inserted = await db
-      .insert(schema.booking)
-      .values({
-        id: newId("booking"),
-        organizationId: input.organizationId,
-        kind: "block",
-        source: "manual",
-        scheduledAt: new Date(input.startUtc),
-        durationMinutes: input.durationMinutes,
-        notes: input.notes ?? null,
-      })
-      .returning();
-    const block = inserted[0]!;
+    const inserted = await db.transaction(async (tx) => {
+      await lockBookingSlots(tx, input.organizationId);
+      // Un bloqueo no puede caer encima de una cita: el hueco ya tiene dueño.
+      if (await findSlotClash(tx, input.organizationId, { startUtc: start, endUtc: end })) {
+        return null;
+      }
+      const rows = await tx
+        .insert(schema.booking)
+        .values({
+          id: newId("booking"),
+          organizationId: input.organizationId,
+          userId: input.userId ?? null,
+          kind: "block",
+          source: "manual",
+          scheduledAt: start,
+          durationMinutes,
+          notes: input.notes ?? null,
+        })
+        .returning();
+      return rows[0]!;
+    });
+    if (!inserted) {
+      throw new BookingError("slot_taken", "Ese horario ya está ocupado");
+    }
+    const block = inserted;
     publish(input.organizationId, {
       type: "booking.updated",
       data: { bookingId: block.id },
@@ -304,6 +379,7 @@ export async function createBlock(input: {
     });
     return block;
   } catch (err) {
+    if (err instanceof BookingError) throw err;
     if (isUniqueViolation(err)) {
       throw new BookingError("slot_taken", "Ese horario ya está ocupado");
     }
@@ -317,18 +393,18 @@ export async function rescheduleBooking(input: {
   startUtc: string;
   now?: Date;
 }): Promise<BookingResult> {
-  const db = getDb();
   const booking = await getOwnBooking(input.organizationId, input.bookingId);
   if (booking.status === "cancelada") {
     throw new BookingError("invalid", "La cita está cancelada");
   }
 
-  const settings = await getSettings(input.organizationId);
+  const settings = await getSettings(input.organizationId, booking.userId);
   // excludeBookingId: la propia cita no debe bloquearse a sí misma.
   const slot = await findSlot(input.organizationId, input.startUtc, {
     excludeBookingId: booking.id,
     now: input.now,
     settings,
+    durationMinutes: booking.durationMinutes,
   });
   if (!slot) {
     throw new BookingError("slot_taken", "Ese horario ya no está disponible");
@@ -336,13 +412,32 @@ export async function rescheduleBooking(input: {
 
   let next: BookingRow;
   try {
-    const updated = await db
-      .update(schema.booking)
-      .set({ scheduledAt: new Date(slot.startUtc), updatedAt: new Date() })
-      .where(eq(schema.booking.id, booking.id))
-      .returning();
-    next = updated[0]!;
+    const updated = await getDb().transaction(async (tx) => {
+      await lockBookingSlots(tx, input.organizationId);
+      // El índice único solo ve el instante exacto; aquí se ve también el
+      // solape, porque la cita que se mueve puede medir más que la rejilla.
+      if (
+        await findSlotClash(tx, input.organizationId, {
+          startUtc: new Date(slot.startUtc),
+          endUtc: new Date(slot.endUtc),
+          excludeBookingId: booking.id,
+        })
+      ) {
+        return null;
+      }
+      const rows = await tx
+        .update(schema.booking)
+        .set({ scheduledAt: new Date(slot.startUtc), updatedAt: new Date() })
+        .where(eq(schema.booking.id, booking.id))
+        .returning();
+      return rows[0]!;
+    });
+    if (!updated) {
+      throw new BookingError("slot_taken", "Ese horario acaba de ocuparse");
+    }
+    next = updated;
   } catch (err) {
+    if (err instanceof BookingError) throw err;
     if (isUniqueViolation(err)) {
       throw new BookingError("slot_taken", "Ese horario acaba de ocuparse");
     }
@@ -357,8 +452,15 @@ export async function rescheduleBooking(input: {
       startUtc: slot.startUtc,
       durationMinutes: next.durationMinutes,
       timezone: settings.timezone,
+      // Con Google la reunión y el evento de calendario son el mismo objeto, así
+      // que el evento se reordena Y se reetiqueta en el mismo PATCH: si no, al
+      // mover una cita el calendario se quedaría con la hora vieja.
+      summary: await bookingSummary(input.organizationId, next),
+      description: bookingDescription(next),
+      location: next.location ?? undefined,
     });
   });
+  await syncBookingEvent(input.organizationId, next.id);
 
   publish(input.organizationId, {
     type: "booking.updated",
@@ -467,6 +569,9 @@ export async function cancelBooking(input: {
   await withConnector(booking, settings, async (conn, externalRef) => {
     await conn.deleteMeeting(externalRef);
   });
+  // Cancelar también retira el evento del calendario. Con Google ese borrado ya
+  // lo hizo `deleteMeeting` arriba — aquí queda la marca local coherente.
+  await syncBookingEvent(input.organizationId, booking.id);
 
   publish(input.organizationId, {
     type: "booking.updated",
@@ -497,6 +602,125 @@ export async function markBookingStatus(input: {
     type: "booking.updated",
     data: { bookingId: booking.id },
   });
+}
+
+/**
+ * Edita lo que la cita ES —motivo, lugar/modalidad, notas, duración— sin mover
+ * el instante. Para mover el instante está `rescheduleBooking`; separarlos es lo
+ * que impide que corregir una nota re-valide el hueco y, de paso, lo pierda.
+ *
+ * La duración sí puede invadir a la cita que sigue (acortar nunca, alargar sí),
+ * así que ese cambio vuelve por el mismo candado y chequeo de solape que la
+ * inserción. Si el proveedor ya tiene la reunión, se le pasa la nueva duración:
+ * es la MISMA reunión, más larga.
+ */
+export async function updateBooking(input: {
+  organizationId: string;
+  bookingId: string;
+  title?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  durationMinutes?: number | null;
+}): Promise<BookingResult> {
+  const booking = await getOwnBooking(input.organizationId, input.bookingId);
+  const settings = await getSettings(input.organizationId, booking.userId);
+  const durationMinutes =
+    input.durationMinutes === undefined || input.durationMinutes === null
+      ? booking.durationMinutes
+      : resolveDuration(input.durationMinutes, settings.slotMinutes);
+  const longer = durationMinutes !== booking.durationMinutes;
+
+  const values = {
+    // `undefined` = no se tocó; `null` = se borró. Distintos, y el cliente
+    // manda null explícito cuando limpia el campo.
+    title:
+      input.title === undefined ? booking.title : input.title?.trim() || null,
+    location:
+      input.location === undefined
+        ? booking.location
+        : input.location?.trim() || null,
+    notes: input.notes === undefined ? booking.notes : input.notes?.trim() || null,
+    durationMinutes,
+    updatedAt: new Date(),
+  };
+
+  // Cambiar el asunto, el lugar o las notas también es un cambio que el
+  // proveedor debe conocer: con Google el evento de calendario ES la reunión, y
+  // sin ese PATCH el dueño se quedaría viendo el motivo viejo en su agenda.
+  const contentChanged =
+    values.title !== booking.title ||
+    values.location !== booking.location ||
+    values.notes !== booking.notes;
+
+  let next: BookingRow;
+  try {
+    const updated = await getDb().transaction(async (tx) => {
+      if (longer) {
+        await lockBookingSlots(tx, input.organizationId);
+        const endUtc = new Date(
+          booking.scheduledAt.getTime() + durationMinutes * 60_000
+        );
+        if (
+          await findSlotClash(tx, input.organizationId, {
+            startUtc: booking.scheduledAt,
+            endUtc,
+            excludeBookingId: booking.id,
+          })
+        ) {
+          return null;
+        }
+      }
+      const rows = await tx
+        .update(schema.booking)
+        .set(values)
+        .where(eq(schema.booking.id, booking.id))
+        .returning();
+      return rows[0]!;
+    });
+    if (!updated) {
+      throw new BookingError(
+        "slot_taken",
+        "Esa duración chocaría con la cita que le sigue"
+      );
+    }
+    next = updated;
+  } catch (err) {
+    if (err instanceof BookingError) throw err;
+    if (isUniqueViolation(err)) {
+      throw new BookingError("slot_taken", "Ese horario ya está ocupado");
+    }
+    throw err;
+  }
+
+  if (longer || contentChanged) {
+    await withConnector(next, settings, async (conn, externalRef) => {
+      await conn.updateMeeting(externalRef, {
+        startUtc: next.scheduledAt.toISOString(),
+        durationMinutes,
+        timezone: settings.timezone,
+        summary: await bookingSummary(input.organizationId, next),
+        description: bookingDescription(next),
+        location: next.location ?? undefined,
+      });
+    });
+  }
+  await syncBookingEvent(input.organizationId, next.id);
+
+  publish(input.organizationId, {
+    type: "booking.updated",
+    data: { bookingId: next.id },
+  });
+  publishWebhook(input.organizationId, "booking.updated", {
+    bookingId: next.id,
+    contactId: next.contactId ?? null,
+  });
+
+  return {
+    booking: next,
+    meetingLink: next.meetingLink,
+    linkPending: next.linkPending,
+    label: labelInTz(next.scheduledAt.toISOString(), settings.timezone),
+  };
 }
 
 /**
@@ -561,14 +785,15 @@ async function deliverMeeting(
       booking.externalRef && conn.refreshMeeting
         ? await conn.refreshMeeting(booking.externalRef)
         : await conn.createMeeting({
-            topic: contactName ? `Cita — ${contactName}` : "Cita",
+            topic: await bookingSummary(booking.organizationId, booking, contactName),
             startUtc: booking.scheduledAt.toISOString(),
             durationMinutes: booking.durationMinutes,
             timezone: settings.timezone,
             notes: booking.notes ?? undefined,
+            location: booking.location ?? undefined,
           });
 
-    return await persistDelivery(booking.id, {
+    const delivered = await persistDelivery(booking.id, {
       externalRef: meeting.externalId ?? booking.externalRef,
       meetingLink: meeting.joinUrl,
       // Un conector que promete enlace por cita y no lo trajo todavía deja la
@@ -576,6 +801,8 @@ async function deliverMeeting(
       // en cambio, no tiene nada pendiente: simplemente no hay enlace.
       linkPending: CONNECTOR_META[connectorId].perBookingLink && !meeting.joinUrl,
     });
+    await syncBookingEvent(booking.organizationId, delivered.id);
+    return delivered;
   } catch (err) {
     console.warn(
       `[agenda] el conector ${connectorId} no pudo entregar la reunión: ${err}`
@@ -588,11 +815,16 @@ async function deliverMeeting(
     // La cita ya existe y se queda: el enlace es lo único que falta. Se
     // conserva la referencia externa si ya la había, para que el reintento
     // sepa que no debe crear otra reunión.
-    return await persistDelivery(booking.id, {
+    const delivered = await persistDelivery(booking.id, {
       externalRef: booking.externalRef,
       meetingLink: null,
       linkPending: true,
     });
+    // Aquí también: con Google, el evento suele estar creado y lo que falta es
+    // el enlace de Meet. Con otro conector, la cita existe y su evento del
+    // calendario también debe existir — el cliente no puede quedarse sin aviso.
+    await syncBookingEvent(booking.organizationId, delivered.id);
+    return delivered;
   }
 }
 
@@ -824,6 +1056,21 @@ export async function hasActiveBooking(
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * La duración pedida, siempre dentro de lo que la pantalla puede escribir
+ * (5 min..10 h). `undefined` o un valor basura = la rejilla configurada, que es
+ * exactamente lo que hacían estas rutas antes.
+ */
+function resolveDuration(
+  requested: number | undefined | null,
+  slotMinutes: number
+): number {
+  if (requested === undefined || requested === null || !Number.isFinite(requested)) {
+    return slotMinutes;
+  }
+  return Math.max(5, Math.min(600, Math.round(requested)));
 }
 
 /** 23505 = unique_violation de Postgres. */

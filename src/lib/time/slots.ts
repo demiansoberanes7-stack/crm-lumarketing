@@ -169,17 +169,23 @@ export function addDaysISO(dayISODate: string, days: number): string {
  * Expande los intervalos hábiles de UN día (hora de pared en tz) a slots UTC.
  * Avanza `slot + buffer` por paso y solo emite el slot si CABE completo dentro
  * del intervalo.
+ *
+ * `lengthMinutes` permite pedir una reunión más larga que la rejilla (una hora
+ * en una agenda de 30): el PASO sigue siendo el de la rejilla, pero el hueco
+ * mide lo que dure la reunión y por eso se exige que quepa en el intervalo. Sin
+ * ese parámetro el comportamiento es idéntico al de siempre.
  */
 export function expandWorkingDayToUtc(
   dayISODate: string,
   intervals: Interval[],
   tz: string,
   slotMinutes: number,
-  bufferMinutes: number
+  bufferMinutes: number,
+  lengthMinutes = slotMinutes
 ): SlotUtc[] {
   const out: SlotUtc[] = [];
   const step = slotMinutes + Math.max(0, bufferMinutes);
-  if (slotMinutes <= 0 || step <= 0) return out;
+  if (slotMinutes <= 0 || step <= 0 || lengthMinutes <= 0) return out;
 
   for (const iv of intervals) {
     const start = zonedWallClockToUtc(dayISODate, iv.start, tz);
@@ -188,12 +194,12 @@ export function expandWorkingDayToUtc(
 
     for (
       let t = start.getTime(), guard = 0;
-      t + slotMinutes * 60_000 <= end.getTime() && guard < 500;
+      t + lengthMinutes * 60_000 <= end.getTime() && guard < 500;
       t += step * 60_000, guard++
     ) {
       out.push({
         startUtc: new Date(t).toISOString(),
-        endUtc: new Date(t + slotMinutes * 60_000).toISOString(),
+        endUtc: new Date(t + lengthMinutes * 60_000).toISOString(),
       });
     }
   }
@@ -270,6 +276,31 @@ export function dayLabelInTz(startUtc: string, tz: string, now?: Date): string {
     month: "long",
   }).format(d);
   return `${prefijo}${cuerpo}`;
+}
+
+/**
+ * Minutos desde la medianoche EN LA ZONA dada (0..1439).
+ *
+ * La vista de calendario posiciona bloques verticalmente; hacerlo sobre
+ * `new Date().getHours()` usaría la zona del NAVEGADOR, que no es la del negocio
+ * ni la de la persona que mira. `en-GB` + `hourCycle: h23` porque `es-MX` con
+ * `hour12: false` ha llegado a imprimir la medianoche como «24:00» según el ICU.
+ */
+export function minutesInTz(instant: Date | string, tz: string): number {
+  const d = typeof instant === "string" ? new Date(instant) : instant;
+  if (Number.isNaN(d.getTime())) return 0;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const map: Record<string, string> = {};
+  for (const p of parts) map[p.type] = p.value;
+  const hour = Number(map.hour);
+  const minute = Number(map.minute);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return 0;
+  return (hour % 24) * 60 + minute;
 }
 
 /** Partes por separado para la tabla de Citas. */

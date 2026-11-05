@@ -33,6 +33,8 @@ vi.mock("@/server/agenda/settings", () => ({
 vi.mock("@/server/agenda/availability", () => ({
   findSlot: async () => ({ startUtc: SLOT, endUtc: "…", label: "mié 5 ago, 09:00" }),
   computeAvailability: async () => [],
+  lockBookingSlots: async () => {},
+  findSlotClash: async () => null,
 }));
 vi.mock("@/server/agenda/offers", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/server/agenda/offers")>();
@@ -67,30 +69,34 @@ function chain(rows: unknown[]) {
   return c;
 }
 
-vi.mock("@/lib/db", () => ({
-  getDb: () => ({
-    select: () => chain(selectRows.shift() ?? []),
-    insert: () => ({
-      values: (v: unknown) => ({
-        returning: () => {
-          inserted.push(v);
-          return Promise.resolve([
-            { ...(v as object), scheduledAt: new Date(SLOT), meetingLink: null, linkPending: false, isTest: false, externalRef: null },
-          ]);
-        },
-      }),
+const dbMock: Record<string, unknown> = {
+  select: () => chain(selectRows.shift() ?? []),
+  insert: () => ({
+    values: (v: unknown) => ({
+      returning: () => {
+        inserted.push(v);
+        return Promise.resolve([
+          { ...(v as object), scheduledAt: new Date(SLOT), meetingLink: null, linkPending: false, isTest: false, externalRef: null },
+        ]);
+      },
     }),
-    update: () => ({
-      set: (v: unknown) => ({
-        where: () => ({
-          returning: () =>
-            Promise.resolve([
-              { id: "bk_1", organizationId: "org_1", scheduledAt: new Date(SLOT), durationMinutes: 30, isTest: false, connector: "enlace-fijo", notes: null, contactId: "ct_1", ...(v as object) },
-            ]),
-        }),
+  }),
+  update: () => ({
+    set: (v: unknown) => ({
+      where: () => ({
+        returning: () =>
+          Promise.resolve([
+            { id: "bk_1", organizationId: "org_1", scheduledAt: new Date(SLOT), durationMinutes: 30, isTest: false, connector: "enlace-fijo", notes: null, contactId: "ct_1", ...(v as object) },
+          ]),
       }),
     }),
   }),
+  execute: async () => [],
+  transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(dbMock),
+};
+
+vi.mock("@/lib/db", () => ({
+  getDb: () => dbMock,
   schema: {
     booking: {},
     conversation: { organizationId: "organizationId", id: "id" },

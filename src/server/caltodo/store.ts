@@ -2,7 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
 import { hasIdKind } from "@/lib/db/ids";
-import { syncTaskById, taskEventIdFor, removeTaskEvent } from "@/server/agenda/tasks-sync";
+import { syncTaskById, taskEventRefFor, removeTaskEvent } from "@/server/agenda/tasks-sync";
 import { nanoid } from "nanoid";
 
 export type CalTodoTask = typeof schema.caltodoTask.$inferSelect;
@@ -102,15 +102,16 @@ export async function updateCalTodoTask(taskId: string, organizationId: string, 
 export async function deleteCalTodoTask(taskId: string, organizationId: string, userId: string) {
   const db = getDb();
   // El id de Google vive en la fila: se lee antes de borrarla y el evento se
-  // retira solo si la tarea se borró de verdad.
-  const googleEventId = await taskEventIdFor(organizationId, taskId);
+  // retira solo si la tarea se borró de verdad. Se retira CON las credenciales
+  // de esa persona: su tarea está en su calendario, no en el del negocio.
+  const ref = await taskEventRefFor(organizationId, taskId);
   if (hasIdKind(taskId, "projectTask")) {
     const deleted = await db.delete(schema.projectTask).where(and(eq(schema.projectTask.id, taskId), scoped(schema.projectTask.organizationId, organizationId), eq(schema.projectTask.assigneeId, userId))).returning({ id: schema.projectTask.id });
-    if (deleted.length) await removeTaskEvent(organizationId, googleEventId);
+    if (deleted.length) await removeTaskEvent(organizationId, ref?.eventId, userId);
     return deleted.length > 0;
   }
   const deleted = await db.delete(schema.caltodoTask).where(and(eq(schema.caltodoTask.id, taskId), scoped(schema.caltodoTask.organizationId, organizationId), eq(schema.caltodoTask.userId, userId))).returning({ id: schema.caltodoTask.id });
-  if (deleted.length) await removeTaskEvent(organizationId, googleEventId);
+  if (deleted.length) await removeTaskEvent(organizationId, ref?.eventId, userId);
   return deleted.length > 0;
 }
 
