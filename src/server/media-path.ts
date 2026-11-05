@@ -1,6 +1,7 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
+import { CATALOG_DIR } from "@/lib/product-images";
 
 /**
  * Rutas de archivo bajo `MEDIA_DIR`, siempre contenidas en el directorio del
@@ -31,6 +32,29 @@ function safeRealpath(target: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Lo que se puede servir **sin sesión**.
+ *
+ * El volumen de media es plano por negocio y ahí conviven dos cosas con grados
+ * de secreto opuestos: el logo (`logo-*` en la raíz) y las fotos del catálogo
+ * (`catalog/…`) son públicas; los adjuntos del buzón se guardan en la raíz con
+ * su `media_asset.id` y **son de quien escribió al negocio**. Antes esta ruta no
+ * distinguía: `GET /api/media/public/{org}/{assetId}` sin cookies devolvía la
+ * foto que mandó un cliente, porque el id del asset aparece en URLs de mensaje,
+ * en logs y en el payload que reenvían algunos proveedores. Un id de 20 cifras
+ * no es una contraseña.
+ *
+ * Lista corta y explícita: lo nuevo que se quiera publicar se añade aquí, con
+ * su consumidor al lado, en vez de servir todo lo que caiga dentro del árbol.
+ */
+export function isPublicMediaPath(segments: string[]): boolean {
+  if (segments.length === 0) return false;
+  if (segments[0] === CATALOG_DIR) {
+    return segments.length === 2;
+  }
+  return segments.length === 1 && segments[0]!.startsWith("logo-");
 }
 
 /**
@@ -78,6 +102,48 @@ export async function removeOrganizationMedia(orgId: string): Promise<boolean> {
   await rm(dir, { recursive: true, force: true });
   return true;
 }
+
+/**
+ * Respuesta de la media pública.
+ *
+ * Las dos rutas bajo `/api/media/public/[orgId]` (un segmento y catch-all)
+ * hacían lo mismo por separado y divergieron: una conocía GIF y WEBP y la otra
+ * no, así que el mismo archivo se veía distinto según cuántos segmentos tuviera
+ * su URL. Aquí está la única implementación; la de un segmento es un alias
+ * histórico porque esa forma es la que ya está guardada en `organization`.
+ *
+ * Lo que no está en la lista pública sale como **404, no 403**: esta ruta no
+ * tiene sesión, y un 403 sería la confirmación gratis de que el archivo del
+ * cliente existe. Lo mismo para la ruta inválida que para el archivo perdido.
+ */
+export function publicMediaResponse(orgId: string, segments: string[]): Response {
+  if (!isPublicMediaPath(segments)) {
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+  const filePath = resolveMediaFile(orgId, ...segments);
+  if (filePath === null) {
+    return Response.json({ error: "invalid path" }, { status: 422 });
+  }
+  let data: Buffer;
+  try {
+    data = readFileSync(filePath);
+  } catch {
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+  const ext = segments.at(-1)?.split(".").pop()?.toLowerCase() ?? "";
+  const mime = PUBLIC_MIME[ext] ?? "application/octet-stream";
+  return new Response(new Uint8Array(data), { headers: mediaHeaders(mime) });
+}
+
+/** Lo que se sirve sin sesión; lo desconocido sale como archivo opaco. */
+const PUBLIC_MIME: Record<string, string> = {
+  png: "image/png",
+  svg: "image/svg+xml",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
 
 /**
  * Cabeceras de una respuesta de media pública.
