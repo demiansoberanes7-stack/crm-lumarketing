@@ -53,12 +53,21 @@ Puntos duros confirmados:
 | `experiment*` | `schema.ts:2006-2110` | A/B: hipótesis, variantes, observaciones con ingresos/costos/contribución |
 | `sync_state` | `schema.ts:1982-2003` | estado por proveedor (sin uso hoy) |
 | `marketplace_order` | `schema.ts:2140-2171` | `amountCents`, `commissionCents` |
+| `product_image` | `schema.ts:1449` **(post-snapshot, 0088 sin aplicar)** | metadatos de la foto; los bytes van a disco (`MEDIA_DIR/{org}/catalog/`). Unique parcial `WHERE is_primary` = una portada por producto |
+| `product_cost_line` | `schema.ts:1512` **(post-snapshot, 0090 sin aplicar)** | la receta: `name` + `quantity` `numeric(14,4)` + `unit` + `unit_price_cents`. **Sin total ni porcentaje** — derivados en `src/lib/catalog/cost.ts` |
+
+> Las dos últimas filas son de FASE 3 y están medidas en el worktree actual; los rangos de las
+> demás corresponden al snapshot `5ce91e2` y desfasan respecto al árbol de hoy (`schema.ts` pasó de
+> 2 749 a 3 389 líneas).
 
 ## Entidades que FALTAN (a crear, justificadas)
 
 - `project.quoteId` (o tabla puente `project_quote`) + unique idempotente — vínculo P1.
 - `service_order` (folio `OS-XXXX`, estados propios, `projectId`+`quoteId`+`contactId`) — P1.
-- `catalog_product.cost` y/o `serviceType` — margen por producto (P4).
+- `catalog_product.cost` y/o `serviceType` — margen por producto (P4). **Parcialmente resuelto el
+  05-11-2026** por `product_cost_line` (0090): el costo existe, como receta de varias líneas y sin
+  columna en `catalog_product` a propósito. Lo que sigue abierto es `serviceType` y la unificación
+  con `service_cost`, que hoy dan dos números distintos (§6.27 de `docs/deuda-tecnica.md`).
 
 ## Restricciones a modificar (con cuidado)
 

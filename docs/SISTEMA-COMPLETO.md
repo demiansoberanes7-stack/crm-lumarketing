@@ -3060,6 +3060,181 @@ disco—.
 
 ---
 
+## 38. Costos de producción por producto (Inventario)
+
+Petición del negocio: *«contar cuánto % de algo tiene ese producto y su valor monetario, para
+saber cuánto cuesta producirlo»*. Se construyó en el worktree `feature/citas-google-imagenes`
+como bloque D (D1 esquema, D2 servicio y matemática, D3 API, D4 pantalla, D5 pruebas). **Local**:
+la migración `0090_product_costs.sql` no está aplicada en `lumark-prod`, igual que 0087, 0088 y
+0089 (§6.26 de `docs/deuda-tecnica.md`).
+
+### La pregunta que había que resolver antes de programar
+
+«¿Cuánto % de algo?» tiene tres respuestas distintas y una sola de ellas es verdadera sin
+contexto:
+
+- **% de la mezcla**: qué fracción del producto físico aporta cada insumo (300 g de cera de 500 g
+  totales = 60 %). Solo significa algo si **todas** las cantidades están en la misma unidad.
+- **% del costo**: qué fracción del costo total paga cada insumo (la cera es el 77 % de lo que
+  cuesta la vela). Esto siempre significa algo, porque todo está en dinero.
+- **% de margen**: cuánto queda del precio. Es la cifra que el negocio suele querer decir cuando
+  pregunta «¿cuánto me queda?».
+
+Las tres se calculan sobre lo mismo y ninguna se guarda. Decidir esto fue el eje del diseño: un
+porcentaje almacenado es un porcentaje que caduca.
+
+### Modelo (`product_cost_line`, migración 0090, journal `idx: 89`)
+
+| columna | tipo | por qué |
+|---|---|---|
+| `id` | varchar(255) PK | prefijo `pcst_` en `src/lib/db/ids.ts` |
+| `organization_id` | varchar(255) FK → `organization` | `ON DELETE CASCADE`; Constitución III |
+| `product_id` | varchar(255) FK → `catalog_product` | `ON DELETE CASCADE`: borrar el producto borra su receta |
+| `name` | varchar(255) | el insumo, escrito por el negocio («Cera de soya») |
+| `quantity` | **numeric(14,4)** | la cantidad en `unit`; `numeric`, no `real` |
+| `unit` | varchar(16) | etiqueta libre: kg, g, ml, pza, min… |
+| `unit_price_cents` | **integer** | valor **por unidad** en centavos |
+| `position` | integer default 0 | el orden que el negocio tecleó |
+
+No hay columna `cost`, `total` ni `pct`. La receta entera vive en esta tabla: **no se añadió
+ninguna columna a `catalog_product`**, y el «rendimiento por tanda» (cuántas unidades salen de una
+mezcla) se quedó fuera a propósito —es otra pregunta, con otra tabla, y quien la quiera después no
+tiene que reescribir esta—.
+
+`numeric(14,4)` y no `real`: `0.3` en float de JavaScript se escribe
+`0.29999999999999998889776975374843` en Postgres y ese error se multiplica por el precio de cada
+insumo, para siempre. El servicio inserta `String(line.quantity)` y al leer convierte con
+`Number()` una sola vez.
+
+Tres `CHECK` (`quantity > 0 AND ≤ 1 000 000`, `unit_price_cents ≥ 0 AND ≤ 100 000 000`,
+`position 0…1000`) y dos índices (`(product_id, position)`, `organization_id`). Los teches no son
+política de negocio, son aritmética de `double`: 1e6 × 1e8 = 1e14 por línea y, con el tope de 60
+líneas del servicio, 6e15 en el peor caso, todavía por debajo de `Number.MAX_SAFE_INTEGER`
+(9.007e15). Sin teches, una línea mal escrita produce un costo total que deja de ser exacto y la
+pantalla empieza a mentir en los últimos dígitos.
+
+### La cuenta, en un módulo puro (`src/lib/catalog/cost.ts`)
+
+`computeProductCost(priceCents, lines)` devuelve las líneas derivadas y los totales. Es **puro**
+—sin `fs`, sin BD, sin Next— porque lo llaman las dos mitades que tienen que dar el mismo número:
+el navegador, mientras el negocio escribe, y `src/server/catalog/costs.ts`, al responder. Hay un
+test que fija esa igualdad (`marginOf` es la única fórmula del margen, y la rejilla la llama).
+
+- `costCents = Math.round(quantity × unit_price_cents)`
+- `mixPct = quantity / Σ quantities` **solo** si `lines.length > 1` y todas las unidades,
+  normalizadas a minúsculas, coinciden. Si no, `null`.
+- `costPct = costCents / totalCostCents`, `null` si el total es 0.
+- `marginCents = price − totalCostCents`; `marginPct = margen / precio`, `null` si el precio es 0.
+- Porcentajes a **un decimal**. Nunca lanza: una fila a medio escribir vale 0 y se devuelve tal
+  cual, porque el usuario la está viendo formarse. La validación que rechaza está en el zod del
+  controlador.
+
+`null` es la decisión de producto de este módulo. «—» en la pantalla afirma «no se puede saber
+con estos datos»; un 0 % afirmaría algo falso, y en dinero eso se audita.
+
+### Servicio (`src/server/catalog/costs.ts`)
+
+Dueño único de la escritura, como el servicio de fotos.
+
+- `getProductCosts(org, productId)`: la fila del producto, las líneas ordenadas por
+  `position, created_at`, todo derivado, **y** el costo plano vigente de `service_cost` (ventana
+  `effective_from`/`effective_to` resuelta en SQL, `ORDER BY updated_at LIMIT 1`).
+- `replaceProductCosts({org, productId, lines})`: transacción con comprobación de propiedad
+  primero, `pg_advisory_xact_lock(hashtext("org:producto:product_costs"))`, `DELETE` de la receta
+  y `INSERT` de la nueva. Borrar e insertar es deliberado: nada apunta a una línea de costo, así
+  que el reciclado de ids no rompe nada y ahorra el diff. **La lectura de respuesta va después
+  del commit**, no dentro de la transacción, porque `RETURNING` no garantiza el orden que el
+  negocio ve. `{ lines: [] }` es una orden legítima (dejar el producto sin receta), no un error.
+- `costSummariesByProducts(org, ids)`: los resúmenes de la rejilla en **una** consulta agrupada,
+  con `sum(round(quantity * unit_price_cents))` resuelto por Postgres sobre `numeric` exacto y
+  `count(*)::int`. Un producto sin receta **no aparece** en el mapa: «sin registrar» ≠ «cuesta 0».
+  La alternativa —resolver la receta producto a producto— son 500 viajes por pantalla, el mismo
+  error que `primaryImagesByProducts` ya cerró para las fotos.
+
+### API (`src/app/api/catalog/[id]/costs`)
+
+`GET` → `{ product, lines, totals, flatCostCents }`; `PUT` → `{ ok, lines, totals,
+flatCostCents }` (responde lo derivado por el servicio, no un eco del request). `POST` no existe:
+no hay media receta que crear. El cuerpo habla en **centavos**, como `POST /api/catalog`; la
+conversión de los decimales del `<input>` la hace el componente, una vez. El `organizationId` sale
+siempre de la sesión. `quantity: z.number().finite().positive()` —`.positive()`, no `.min(0)`,
+porque la `CHECK` rechazaría el 0 y una validación que deja pasar lo que la base de datos va a
+tirar produce un 500.
+
+### Pantalla
+
+`src/components/catalog/product-costs.tsx`, montado dentro del modal de producto de
+`catalog-client.tsx`, entre Inventario y Fotos. Cada insumo ocupa **dos líneas** (nombre, y luego
+cantidad + unidad + valor/unidad + costo + los dos porcentajes) porque el modal mide `max-w-lg` y
+en móvil menos: una fila de seis columnas no entra, y un panel que solo se ve bien en escritorio
+no lo va a usar quien apunta la receta desde el taller.
+
+- Calcula en vivo con `computeProductCost` y muestra Costo de producción / Precio / Margen, con
+  el margen en rojo y la insignia «Cuesta más de lo que vale» cuando es negativo.
+- Tres estados distintos, no uno: **no se pudo leer** (con Reintentar), **sin insumos** (receta
+  legítimamente vacía) y **sin producto** (modal de creación, que aún no tiene `product_id`).
+  Confundir el primero con el segundo invitaría a guardar una receta vacía sobre una que existe.
+- Explica los dos porcentajes en una línea, y por qué el de la mezcla sale «—» cuando las unidades
+  no son comparables, nombrando las unidades que hay.
+- Guarda solo (`PUT`), como las fotos, con insignia «Sin guardar» y botón «Descartar cambios».
+- Si el producto tiene costo plano en `service_cost`, lo muestra y dice que **Rentabilidad sigue
+  usando ese número**; la receta no lo sustituye en silencio.
+
+En la rejilla, cada tarjeta con receta añade una línea «Cuesta producir $X · Margen Y %» (o
+«Pierdes $Z» en rojo). Sin receta, la tarjeta no cambia: no hay un $0 que fingir.
+
+### Lo que se decidió no tocar, y por qué
+
+1. **`/comercial` y Rentabilidad** siguen con `service_cost`. Un costo plano y una receta son dos
+   modelos distintos; fusionarlos a traición cambiaría un índice que otro módulo está leyendo sin
+   que nadie lo pidiera. Se muestran los dos, con la fuente nombrada. Fusionarlos es una decisión
+   de negocio, no un refactor.
+2. **El agente y el MCP** no leen ni escriben costos. `src/server/mcp/actions/catalog.ts` sigue
+   creando productos, pero la receta es dato financiero interno: el bot habla con clientes, y
+   «¿cuánto te cuesta producir esto?» no puede contestarse por su boca.
+3. **El CSV de `api/catalog/export`** conserva sus 5 columnas. Es ida y vuelta con
+   `api/catalog/import`; una columna de costo no se puede reimportar (una receta no es un número)
+   y añadirla rompería el ciclo. El costo sí sale, cuando haga falta, en un informe propio.
+4. **Rendimiento por tanda** (cuántas unidades salen de la mezcla) no tiene columna ni tabla. Es
+   la pregunta gemela y se responderá con `0091` si el negocio la pide; mientras tanto, la suma de
+   cantidades se muestra para que quien lo sepa pueda comparar.
+
+### Pruebas y gates
+
+Cuatro ficheros nuevos, 62 pruebas: `catalog-costs-math` (15: redondeo, mezcla con unidades
+distintas, `kg` vs `KG` vs `g`, denominadores 0, margen negativo, el techo de 60 líneas y que
+`marginOf` y `computeProductCost` coinciden en cinco casos), `catalog-costs-service` (19: la
+cantidad viaja como texto, posiciones e ids regenerados, candado antes de borrar, `lines: []`
+borra, producto ajeno no borra nada, WHERE con `organization_id` en cada lectura y escritura —
+serializados con `PgDialect`—, el agregado en una sola consulta), `catalog-costs-route` (16: el
+negocio de la sesión y no del cuerpo, cantidad 0 → 422 y no 500, 61 líneas fuera, 60 dentro,
+cuerpo roto, 404) y `catalog-costs-ui` (12: el bloque montado en el modal y cableado al precio
+del formulario, la tarjeta consumiendo `costSummary` con la misma `marginOf` de la receta, que
+sin receta no se pinte un costo $0, que el componente hable con la ruta de costos, que distinga
+«no se pudo leer» de «sin insumos», que avise que Rentabilidad sigue con el costo plano, que
+explique los dos porcentajes y que el agregado se haga en SQL y no fila por fila).
+
+Gates (medidos en el worktree): `node scripts/check-migrations.mjs` 0 avisos, `npx eslint .`
+limpio, `npx tsc --noEmit` limpio, `npx vitest run` **195 archivos / 1945 pruebas** en verde y
+`npm run build` en verde con `/api/catalog/[id]/costs` en la lista de rutas.
+
+**Sin verificación en navegador**: hace falta el contenedor de pruebas (Postgres con 0090
+aplicada y sesión), el mismo bloqueo de #183 y del recorrido C4 de `scripts/e2e-zorro-tech.mjs`.
+
+### Estado y deshacer
+
+Nada de esto está en producción. Deshacer el bloque local: borrar `drizzle/0090_product_costs.sql`
+y su entrada del journal (`idx: 89`), quitar `productCostLine` de `schema.ts` y el prefijo `pcst`
+de `ids.ts`, borrar `src/lib/catalog/cost.ts`, `src/server/catalog/costs.ts`,
+`src/app/api/catalog/[id]/costs/route.ts`, `src/components/catalog/product-costs.tsx` y lo que
+añade `catalog-client.tsx` (`costSummary`, la línea de la tarjeta, el bloque del modal y
+`priceCentsOf`) más el `costSummary` de `src/app/api/catalog/route.ts`. Los cuatro ficheros de
+prueba: `catalog-costs-math`, `catalog-costs-service`, `catalog-costs-route`, `catalog-costs-ui`.
+Si la migración ya se hubiera aplicado, el `down` es `DROP TABLE product_cost_line;` —no deja
+archivos ni toca `catalog_product`—.
+
+---
+
 ## A. Arquitectura de Agentes (Claude Code)
 
 ### Orquestador

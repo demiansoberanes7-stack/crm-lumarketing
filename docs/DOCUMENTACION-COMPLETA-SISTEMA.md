@@ -535,18 +535,19 @@ codigo; hay que decidir si se borran o se conservan como prueba.
 De esas 111: **107** estan en el `src/lib/db/schema.ts` **desplegado** (`b67e21c`, medido con
 `git show HEAD:...`) y **4** no (`diagnostic_event`, `whatsapp_settings`, `integration_secret`,
 `whatsapp_address`). O sea que el codigo que corre hoy modela exactamente 107 de las 111: no hay
-ninguna tabla declarada que falte en la BD. Los dos arboles de trabajo sin commitear llegan a 108
-cada uno por vias distintas: el del repo principal anade `email_template` (migracion 0086, con su
-archivo y su entrada `idx: 86` en el journal, **todo sin rastrear en git**), y el worktree
-`feature/citas-google-imagenes` anade `product_image` (0088, commiteable pero aun sin aplicar).
-Ninguna de esas dos tablas existe en produccion, y son dos cosas distintas: 0086 no se aplica por
-decision explicita, 0088 esta bloqueada por permisos. Con 0088 aplicada la BD tendria 112 tablas de
-la app.
+ninguna tabla declarada que falte en la BD. Los dos arboles de trabajo sin desplegar se pasan por
+vias distintas: el del repo principal modela **108** (anade `email_template`, migracion 0086, con
+su archivo y su entrada `idx: 86` en el journal, **todo sin rastrear en git**), y el worktree
+`feature/citas-google-imagenes` modela **109** (medido con `grep -c "^export const … = pgTable("`
+sobre su `schema.ts`): agrega `product_image` (0088) y `product_cost_line` (0090). Ninguna de esas
+tres tablas existe en produccion, y son dos cosas distintas: 0086 no se aplica por decision
+explicita, 0087-0090 estan bloqueadas por permisos de dueno. Aplicadas todas, la BD tendria **114**
+tablas de la app: 0087 y 0089 solo agregan columnas.
 
 **Aplicadas y verificadas en la BD**: 0083 (`prospect_dismissal`), 0084 (`branch`,
 `branch_inventory`), 0085 (que no agrega tablas: agrega `broadcast_recipient.email` /
-`.recipient_name` y su indice unico). **Sin aplicar**: 0086 (deliberado), 0087, 0088, 0089.
-Las tres ultimas no esperan una decision de negocio sino una accion del dueno: ninguna
+`.recipient_name` y su indice unico). **Sin aplicar**: 0086 (deliberado), 0087, 0088, 0089, 0090.
+Las cuatro ultimas no esperan una decision de negocio sino una accion del dueno: ninguna
 herramienta autorizada puede escribir DDL en esta BD porque todas las tablas son de
 `lumark_app` y la sesion corre como `postgres`. Ver §6.26 de `docs/deuda-tecnica.md`.
 
@@ -716,9 +717,12 @@ obligatorio esta en `drizzle/meta/_journal.json`.
   sin la 60; hash = sha256 de los bytes del archivo; unica restriccion = PK de `id`, o sea que
   insertar hay que hacerlo con `WHERE NOT EXISTS`). El porqué y las tres salidas estan en
   §6.26 de `docs/deuda-tecnica.md`.
-- Estado a 04-11-2026: aplicadas hasta **0085**; **0086** sin aplicar por decision explicita;
-  **0087, 0088 y 0089** sin aplicar y bloqueadas por permisos. Las columnas y tablas que
-  agregan no existen en produccion, y el codigo que las lee no debe desplegarse antes.
+- Estado a 05-11-2026: aplicadas hasta **0085**; **0086** sin aplicar por decision explicita;
+  **0087, 0088, 0089 y 0090** sin aplicar y bloqueadas por permisos. Las columnas y tablas que
+  agregan no existen en produccion, y el codigo que las lee no debe desplegarse antes. El ledger
+  tiene hoy **83** filas; con las cuatro pendientes aplicadas tendria **87** (0086 no entra en
+  esta cuenta: su `idx` 86 vive en el journal del otro arbol de trabajo, no se aplica y por lo
+  tanto no se registra).
 
 ---
 
@@ -1170,10 +1174,77 @@ Fotos reales por producto, en disco y no en la BD. Detalle completo en
   `capabilitiesFor()`: la caida a WhatsApp de esta ultima es correcta para la ventana y el
   texto, pero inventaria un adjunto en un canal que la app no conoce (la columna
   `conversation.channel` es varchar sin restriccion).
-- **Estado (medido 04-11-2026)**: 0088 **sin aplicar**, asi que `product_image` no existe en
+- **Estado (medido 05-11-2026)**: 0088 **sin aplicar**, asi que `product_image` no existe en
   `lumark-prod` y las tres columnas `quote_item.image_*` tampoco. Nada de esto funciona en
   produccion hasta aplicarla; el bloqueo no es de autorizacion sino de permisos de dueno
-  (§6.26 de `docs/deuda-tecnica.md`, con el script `aplicar-0087-0088-0089.sql`).
+  (§6.26 de `docs/deuda-tecnica.md`, con el ejecutable `aplicar-fase3.mjs` que cubre
+  0087-0090).
+
+## Costos de produccion (receta por producto; migracion 0090)
+
+Cada producto puede declarar los insumos que lleva y cuanto vale cada uno. El
+costo de producirlo, el margen y los porcentajes **no se guardan nunca**: se
+calculan. Detalle completo en `docs/SISTEMA-COMPLETO.md` §38.
+
+- `product_cost_line`: `name`, `quantity numeric(14,4)`, `unit varchar(16)`,
+  `unit_price_cents integer`, `position`. No hay columna `cost` ni `pct`: una
+  receta con el costo escrito moriria el dia que sube la cera, y mentiria sin
+  aviso. `numeric` y no `real`, porque 0.3 en float se escribe
+  0.29999999999999998889…; el servicio manda la cantidad como **texto**.
+- El dinero sigue en **centavos enteros**, la convencion de toda la casa
+  (`catalog_product.price`, `quote_item.unit_price`, `service_cost.cost_cents`).
+- Los teches de las `CHECK` (cantidad <= 1 000 000, centavos por unidad <=
+  100 000 000, posicion <= 1000, maximo 60 lineas por receta) no son politica de
+  negocio: son aritmetica. 1e6 x 1e8 = 1e14 por linea y 6e15 en el peor caso,
+  todavia debajo de `Number.MAX_SAFE_INTEGER` (9.007e15). Pasarse de ahi deja de
+  sumar centavos exactos y el costo empieza a mentir en los ultimos digitos.
+- **Dos porcentajes, y ninguno es "el" porcentaje.** `% de la mezcla` = cantidad
+  de la linea entre suma de cantidades; solo significa algo si TODAS las lineas
+  estan en la misma unidad (comparada sin mayusculas: `kg` y `KG` si, `kg` y `g`
+  no). `% del costo` = costo de la linea entre costo total. Cuando la mezcla no
+  es comparable la pantalla muestra **—**, no un numero inventado; con una sola
+  linea tampoco hay mezcla que repartir. Lo mismo con el denominador 0:
+  `marginPct` es `null` sin precio, nunca "0 %".
+- La cuenta vive en `src/lib/catalog/cost.ts`, modulo **puro** sin dependencias
+  de servidor: lo llama el navegador (mientras el negocio escribe) y lo llama el
+  servicio (al responder). La rejilla de Inventario pinta su margen con
+  `marginOf()`, la misma funcion, para que tarjeta y receta no puedan separarse.
+- `PUT /api/catalog/[id]/costs` reemplaza la receta entera, no linea a linea: el
+  margen y la mezcla solo tienen sentido sobre el conjunto, y tres rutas serian
+  tres validaciones que mantener de acuerdo. Candado
+  `pg_advisory_xact_lock(hashtext("org:producto:product_costs"))`, borrar e
+  insertar en la misma transaccion, y la lectura de verificacion **despues** del
+  commit (`RETURNING` no garantiza el orden que el negocio ve).
+- `{ lines: [] }` es una orden legitima: "este producto ya no tiene receta".
+  Cantidad 0, nombre o unidad vacios, y los decimales que la `CHECK` rechazaria
+  salen 422 en el validador, no 500 del INSERT.
+- `GET /api/catalog` adjunta `costSummary` (`{ totalCostCents, lineCount }`) con
+  **una** consulta agrupada (`sum(round(quantity * unit_price_cents))`, el
+  redondeo en SQL sobre `numeric`). Un producto sin receta viene `null` = "sin
+  registrar", que la tarjeta no confunde con "cuesta $0". Pedir la receta
+  producto a producto serian 500 viajes por pantalla, el mismo error que las
+  fotos de producto ya evitaron con `primaryImagesByProducts`.
+- **Rentabilidad no cambia de numeros.** `/comercial` sigue usando el costo plano
+  de `service_cost` (0035). Fusionarlos en silencio reescribiria un indice que
+  otro modulo esta leyendo, asi que la receta convive con el costo plano y el
+  panel lo dice: muestra ambos y explica cual usa Rentabilidad hoy.
+- **Tres superficies decididas, no olvidadas.** (a) El agente y el MCP **no** ven
+  costos: son datos financieros internos, y un cliente que pregunte "cuanto te
+  cuesta" no los va a leer por boca del bot. (b) El CSV de `api/catalog/export`
+  sigue con sus 5 columnas porque es ida y vuelta con `api/catalog/import`: una
+  columna de costo no se puede reimportar (una receta no es un numero) y romperia
+  el ciclo. (c) El modal de creacion no muestra la receta: no hay `product_id` al
+  que colgar las lineas, y la pantalla lo dice en vez de dejar un boton que no
+  hace nada.
+- Fotos y receta comparten forma pero no almacenamiento: las fotos son archivos
+  en disco, la receta son filas. Ninguna de las dos espera a «Guardar cambios»
+  del producto: guardan solas, porque una linea o un archivo pendiente en
+  memoria que se pierde al cerrar el modal es la peor forma de fallar.
+- **Estado (medido 05-11-2026)**: 0090 **sin aplicar**, asi que `product_cost_line`
+  no existe en `lumark-prod`. La pantalla sale con «No se pudo leer la receta de
+  este producto» y Reintentar —no con una receta vacia, que seria otra cosa—, y
+  la rejilla no pinta margen. El codigo que la lee no debe desplegarse antes que
+  la tabla (§6.26 de `docs/deuda-tecnica.md`).
 
 ## Proyectos
 

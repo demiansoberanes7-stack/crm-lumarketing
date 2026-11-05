@@ -1401,14 +1401,15 @@ que el arreglo es un candado, no la corrección de un fallo observado. En el PDF
 a la fila con miniatura (`PHOTO_BOX + 6`): una partida de texto corto medía 30 pt y su foto
 de 46 se montaba sobre la línea de abajo. **No verificado en navegador** las pantallas de
 Citas, de fotos del catálogo, del compositor y el PDF con miniaturas: no hay BD local con
-0087/0088 aplicadas ni sesión; la verificación visual queda pendiente (#183).
+0087/0088 aplicadas ni sesión; la verificación visual queda pendiente (#183). Lo mismo aplica a
+la pantalla de **Costos de producción** (0090, §6.27).
 
 **Deuda abierta.**
 - **0087 y 0088 sin aplicar** en `lumark-prod`. Lo dicho aquí el 02-11-2026 («y también
   0083/0084/0085») era **falso**: medido el 04-11-2026 en `drizzle.__drizzle_migrations`, 0083,
   0084 y 0085 **sí están aplicadas** (filas con `created_at` …024/…025/…026 y hash = sha256 del
   archivo, comprobado contra `6f8b8385…`, `978ca39b…` y `ec850362…`). Lo pendiente es
-  **0086 (deliberadamente), 0087, 0088 y 0089**. Ver §6.26: aplicarlas ya no es una cuestión de
+  **0086 (deliberadamente), 0087, 0088, 0089 y 0090**. Ver §6.26: aplicarlas ya no es una cuestión de
   autorización, es una cuestión de **quién tiene permisos para hacerlo**.
 - El **bloque B (Google Calendar)** tiene su parte bloqueada fuera del código: hace falta que
   el propietario publique la OAuth app; el token actual está revocado. Lo construido está en
@@ -1610,15 +1611,17 @@ una decisión explícita de privilegios.
    `node ~/Desktop/respaldos/2026-11-04-075434/aplicar-fase3.mjs` — ejecutable, se conecta como
    `lumark_app`, lee la contraseña de `~/.lumark/creds/supabase-db.pass` sin imprimirla, aborta si
    el rol no es `lumark_app`, recalcula el sha256 de cada `drizzle/*.sql` (para que el ledger siga
-   siendo coherente con lo que espera `reconcileMigrationLedger()`), aplica y registra en un solo
-   `BEGIN`/`COMMIT` con `ROLLBACK` si algo falla, y verifica: ledger **86**, **10** columnas nuevas,
-   los 5 índices, `product_image` con dueño `lumark_app` y los conteos `booking`/`quote_item`/
+   siendo coherente con lo que espera `reconcileMigrationLedger()`), aplica **0087, 0088, 0089 y
+   0090** en un solo `BEGIN`/`COMMIT` con `ROLLBACK` si algo falla, y verifica: ledger
+   **83 + pendientes = 87** y los cuatro hashes presentes, **10** columnas nuevas de las tres
+   migraciones de Citas/imágenes, `product_cost_line` con sus **10** columnas nombradas, las dos
+   tablas nuevas con dueño `lumark_app`, sus índices, y los conteos `booking`/`quote_item`/
    `catalog_product` **1 / 2 / 12** sin bajar. `--verificar` es solo lectura y conviene correrlo
    primero. **No se ha ejecutado todavía**: el intento del 05-11-2026 lo frenó el clasificador de
    permisos, que exige autorización escrita por el dueño en su propio mensaje. Si se prefiere
-   pegar el SQL a mano, el mismo lote está en `aplicar-0087-0088-0089.sql`, conectado por el
-   **pooler de sesión** (`aws-0-us-east-1.pooler.supabase.com:5432`, usuario
-   `lumark_app.hehgscuuzhojefscjcvw`, `sslmode=require`, una sola conexión — el tope es 15).
+   pegar el SQL a mano, el mismo lote está en `aplicar-fase3.sql` (renombrado el 05-11-2026 cuando
+   entró 0090), conectado por el **pooler de sesión** (`aws-0-us-east-1.pooler.supabase.com:5432`,
+   usuario `lumark_app.hehgscuuzhojefscjcvw`, `sslmode=require`, una sola conexión — el tope es 15).
 2. **Darle a `postgres` el `SET` sobre `lumark_app`** (`GRANT lumark_app TO postgres`, migrar,
    `REVOKE`). Es reversible y `postgres` ya tiene `admin_option`, pero el clasificador lo bloquea:
    requiere que el dueño lo ejecute en su propio cliente, no que lo autorice al agente.
@@ -1628,15 +1631,85 @@ una decisión explícita de privilegios.
    si se reconstruye la instancia (pendiente #168, que incluye el `pg_dump` periódico que Supabase
    Free no hace).
 
-**Estado a 04-11-2026:** `lumark-prod` con ledger de 83 filas y última entrada `…026` = 0085.
-Sin aplicar: **0086 (deliberadamente), 0087, 0088, 0089**. El push a `main` del worktree FASE 3 va
-**después** de las migraciones, no antes: el código nuevo lee `booking.title`, `booking.user_id`,
-`booking.google_event_id` y las columnas de imagen de `quote_item`, y sin esas columnas Citas, el
-catálogo y el PDF de cotización dan error. El orden acordado es respaldo → esquema → código.
+**Estado a 05-11-2026:** `lumark-prod` con ledger de 83 filas y última entrada `…026` = 0085.
+Sin aplicar: **0086 (deliberadamente), 0087, 0088, 0089 y 0090**. El push a `main` del worktree
+FASE 3 va **después** de las migraciones, no antes: el código nuevo lee `booking.title`,
+`booking.user_id`, `booking.google_event_id`, las columnas de imagen de `quote_item` y la tabla
+`product_cost_line`, y sin eso Citas, el catálogo, el PDF de cotización y la ficha de Inventario
+dan error. El orden acordado es respaldo → esquema → código.
 
 **Regla para no repetir esto:** antes de prometer «aplico las migraciones», comprobar
 `pg_class.relowner` contra `current_user`. Si no coinciden, no hay migración que valga, por muy
 autorizada que esté la orden.
 
 **Deshacer.** Esta sección no cambia nada: documenta un bloqueo. El `down` de las tres migraciones
-está en §6.24 y §6.25.
+está en §6.24 y §6.25, y el de 0090 en §6.27.
+
+---
+
+### 6.27 FASE 3 · bloque D (05-11-2026, worktree): costos de producción por producto (migración 0090 SIN aplicar)
+
+**Qué se pidió.** «Calcular costos de productos, que nos permita poder contar cuánto % de algo
+tiene ese producto y valor monetario para al final saber cuánto cuesta producir dicho producto.»
+La frase pide dos cosas que no son la misma: **cuánto lleva** un producto y **a cuánto está
+cotizado lo que lleva**. Ninguna de las dos es un porcentaje; el porcentaje es una consecuencia.
+
+**Qué se construyó.** `product_cost_line`: una fila por insumo, con `name`, `quantity`
+`numeric(14,4)`, `unit` (varchar 16, texto libre) y `unit_price_cents` (centavos por unidad).
+Hasta **60 líneas** por producto (`COST_LINES_MAX`), con teches de `CHECK` que son aritmética de
+`double` y no política: 1 000 000 × 100 000 000 = 1e14 por línea y 6e15 por receta, todavía por
+debajo de `Number.MAX_SAFE_INTEGER` (9.007e15). Con el tope de líneas roto, una receta mal escrita
+produciría un costo total que deja de ser un número exacto.
+
+**Lo que NO se guardó, y por eso es la decisión del capítulo.** Ni el costo total ni ningún
+porcentaje tienen columna. Son derivados de `quantity × unit_price_cents`: si se hubieran
+congelado, cambiar el precio de la cera dejaría **mientiendo cada receta del catálogo sin aviso**.
+La cuenta vive en `src/lib/catalog/cost.ts`, un módulo puro que usan el navegador y el servidor, y
+`marginOf()` es compartida por la insignia de la rejilla y por la receta — la prueba de matemáticas
+verifica que las dos rutas coinciden en cinco casos en vez de confiar en que nadie duplicó la
+división.
+
+**Los tres porcentajes que sí se muestran** (derivados, nunca persistidos): `% de la mezcla` —
+`null` si las unidades no son comparables entre sí, porque un 40 % de «kg de cera» mezclado con
+«ml de esencia» no existe; `% del costo` — `null` con costo 0; y `margen` — `null` si el producto
+no tiene precio. `null` se pinta como «no aplica», no como 0 %.
+
+**Escritura.** Un solo `PUT` de la receta entera bajo `pg_advisory_xact_lock(hashtext(org:producto
+:product_costs))`: borrar e insertar, regenerando ids y posiciones. Con tres rutas (por línea)
+habría tres validaciones que mantener de acuerdo. La lectura de verificación va **después** del
+commit porque `RETURNING` no garantiza el orden de las filas y el orden aquí es lo que el negocio
+ve. `{ lines: [] }` es «ya no tiene receta», no un error.
+
+**Lectura en lote.** `costSummariesByProducts()` resuelve la rejilla entera (hasta 500 productos)
+en **una** consulta con `sum(round(quantity * unit_price_cents))` y `GROUP BY`: el redondeo se hace
+en SQL sobre `numeric` exacto, no en JS. Sin esto serían 500 viajes, el mismo error que
+`primaryImagesByProducts` ya había cerrado para las fotos. Un producto sin receta **no aparece** en
+el mapa → `costSummary: null`, que la UI pinta como «sin registrar», distinto de «cuesta $0».
+
+**La deuda que este bloque destapa sin resolver: dos costos en la casa.** `service_cost` (0035)
+guarda UN número gordo por servicio con vigencia y `/comercial` lo usa para el margen de
+contribución; la receta nueva puede dar otro. **No se fusionaron a traición** —eso cambiaría un
+índice que alguien está leyendo en otro módulo sin pedirlo—: `GET /api/catalog/[id]/costs` devuelve
+también `flatCostCents` y la pantalla muestra ambos con el nombre de la fuente. Fusionarlos es una
+decisión de negocio y queda abierta. Lo mismo, documentado en `docs/SISTEMA-COMPLETO.md` §38: el
+agente/MCP no leen ni escriben costos, el CSV de export conserva sus 5 columnas (una receta no es
+reimportable) y el **rendimiento por tanda** —cuántas unidades salen de la mezcla— no tiene tabla;
+se respondería con `0091` si el negocio lo pide.
+
+**Estado a 05-11-2026.** Construido en el worktree `feature/citas-google-imagenes`: journal `idx:
+89`, `when: 1792000000030`, `check-migrations` 0 avisos, `tsc --noEmit` y `eslint .` limpios,
+`vitest run` **195 archivos / 1945 pruebas** en verde (62 de ellas nuevas, en cuatro ficheros
+`catalog-costs-*`) y `npm run build` con `/api/catalog/[id]/costs` en la lista de rutas.
+**0090 no está aplicada en `lumark-prod`** —el mismo muro de dueño de §6.26—, así que la tabla no
+existe allí y la pantalla fallaría en producción; por eso el lote entra en el runner
+(`aplicar-fase3.mjs`, que ahora cubre 0087-0090) y el push sigue retenido (#201).
+**Sin verificación en navegador**, por el mismo bloqueo de #183.
+
+**Deshacer.** En la BD: `DROP TABLE "product_cost_line";` — no arrastra nada más; las dos FK son
+`ON DELETE CASCADE` *hacia* `organization` y `catalog_product`, así que soltar la tabla no toca ni
+una fila de las madre. En el repo: borrar `drizzle/0090_product_costs.sql` y su entrada del
+journal, `productCostLine` de `schema.ts`, el prefijo `pcst` de `ids.ts`,
+`src/lib/catalog/cost.ts`, `src/server/catalog/costs.ts`, la ruta, `product-costs.tsx` y lo que
+añade `catalog-client.tsx` (`costSummary`, la línea de la tarjeta, el bloque del modal y
+`priceCentsOf`). La lista completa está en §38.
+
