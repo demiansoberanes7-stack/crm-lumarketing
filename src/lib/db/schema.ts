@@ -1486,6 +1486,59 @@ export const productImage = pgTable(
 );
 
 /**
+ * Un insumo de la receta de un producto (migración 0090).
+ *
+ * **Se guarda la cantidad y el valor; el costo y los porcentajes se calculan.**
+ * Ese es el criterio que sostiene todo el módulo: si el almacén guardara
+ * `cost_cents` o `share_percent`, un cambio de precio de la cera dejaría cada
+ * una de las líneas mintiendo, y nadie avisa de que 40 % de un costo viejo ya no
+ * es 40 % de nada. Con `quantity × unit_price_cents` la cuenta se hace siempre
+ * contra el dato vivo y el porcentaje que ve el negocio es una consecuencia.
+ *
+ * `quantity` es la única columna no entera del dinero-medible de la app: admite
+ * decimales porque «0,3 kg de cera» es la realidad del taller. Es `numeric`, no
+ * `real`: `real` redondea en binario y 0.3 × 80000 da 23999.9999…; `numeric` es
+ * exacto. El valor por unidad sí sigue la convención de centavos enteros de todo
+ * el CRM (ver `projectItem.unitPrice`).
+ *
+ * `unit` es una etiqueta libre, no una FK a un catálogo de unidades: el negocio
+ * escribe «kg», «g», «ml», «pza» y no hay conversión entre ellas —convertir
+ * unidades es la puerta por la que entran los errores de costo del doble o la
+ * mitad. Lo que sí depende de ella es el «% de la mezcla», que el servicio solo
+ * calcula cuando **todas** las líneas comparten unidad; mezclar 300 g con 2 piezas
+ * daría un 60/40 que no significa nada, y es mejor devolver `null` y explicarlo
+ * que devolver un número falso.
+ */
+export const productCostLine = pgTable(
+  "product_cost_line",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    productId: varchar("product_id", { length: 255 })
+      .notNull()
+      .references(() => catalogProduct.id, { onDelete: "cascade" }),
+    /** Nombre libre del insumo («Cera de soya», «Esencia vainilla»). */
+    name: varchar("name", { length: 255 }).notNull(),
+    /** Cantidad usada por unidad de producto vendible, en `unit`. */
+    quantity: numeric("quantity", { precision: 14, scale: 4 }).notNull(),
+    /** Etiqueta de la medida. No se convierte: solo se compara con las demás. */
+    unit: varchar("unit", { length: 16 }).notNull(),
+    /** Centavos de UNA `unit`. Entero, como todo el dinero del CRM. */
+    unitPriceCents: integer("unit_price_cents").notNull(),
+    /** Orden en la tabla. Sin unicidad: manda `created_at` en los empates. */
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("product_cost_line_product_idx").on(t.productId, t.position),
+    index("product_cost_line_org_idx").on(t.organizationId),
+  ]
+);
+
+/**
  * Sucursal del negocio. Es el punto donde se lleva el inventario físico; su
  * nombre, dirección y teléfono son del negocio, no del catálogo.
  */
