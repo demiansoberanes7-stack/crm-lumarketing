@@ -70,9 +70,9 @@ Contado sobre el repo el 21 de octubre de 2026 (`find`/`grep`/`vitest`, no estim
 |---------|-------|
 | Tablas en `schema.ts` (`pgTable`) | 104 (106 en produccion: 4 las crea una migracion) |
 | Entradas del journal de migraciones | 82 |
-| Rutas API (`src/app/**/route.ts`) | 207 |
-| Componentes UI (`src/components/**/*.tsx`) | 140 |
-| Unit tests | 1471 en 155 archivos (`pnpm test`, 142 s) |
+| Rutas API (`src/app/**/route.ts`) | 221 |
+| Componentes UI (`src/components/**/*.tsx`) | 149 |
+| Unit tests | 1883 en 191 archivos (medido el 2026-11-03 en el worktree FASE 3, `npx vitest run` en 26 s) |
 | Scripts E2E | 21 |
 | Canales soportados | 4 |
 | Conectores de agenda | 3 |
@@ -521,17 +521,39 @@ llega a escuchar y el contenedor entra en crash loop con 502 publico. `next buil
                             +-------------------+
 ```
 
-## Tablas por Dominio (107 en el modelo)
+## Tablas por Dominio (107 en el codigo desplegado, 108 en cada arbol sin commitear)
 
-**Deriva de esquema conocida**: la BD de produccion (v1.8.0) tiene **106** tablas. El modelo
-local incluye ademas `prospect_dismissal` (0083), `branch` y `branch_inventory` (0084),
-migraciones **sin aplicar**; al aplicarlas la BD tendria 109. La migracion 0085 no agrega
-tablas: agrega `broadcast_recipient.email` / `.recipient_name` y su indice unico. Las 4 extra
-(`diagnostic_event`, `whatsapp_settings`, `integration_secret`, `whatsapp_address`) las crea
-`drizzle/0006_diagnostics_messaging.sql`, que **si** esta en el journal, asi que una replica
-nueva las recibe igual. El riesgo no es que falten: es que `drizzle-kit generate` no las conoce
-y si algun dia se modelan en `schema.ts` el generador emite un `CREATE TABLE` que choca.
-`whatsapp_address` ademas no la referencia ningun codigo.
+**Deriva de esquema conocida**, medida el 04-11-2026 consultando `pg_class`/`pg_namespace` en
+`lumark-prod` (antes de este parrafo decia "106 tablas en produccion, 0083 y 0084 sin aplicar";
+eso era cierto al escribirse y dejo de serlo en el restaurado del 28-10-2026): la BD tiene
+**119** tablas en `public`, de las cuales **111** son de la app (dueno `lumark_app`) y **8** son
+residuos del restaurado (dueno `postgres`, todas `_bak_20261028_*`: `email_account`,
+`google_credentials`, `instagram_credentials`, `integration`, `intel_credentials`,
+`messenger_credentials`, `tiktok_credentials`, `whatsapp_zernio`). Las 8 no las lee ningun
+codigo; hay que decidir si se borran o se conservan como prueba.
+
+De esas 111: **107** estan en el `src/lib/db/schema.ts` **desplegado** (`b67e21c`, medido con
+`git show HEAD:...`) y **4** no (`diagnostic_event`, `whatsapp_settings`, `integration_secret`,
+`whatsapp_address`). O sea que el codigo que corre hoy modela exactamente 107 de las 111: no hay
+ninguna tabla declarada que falte en la BD. Los dos arboles de trabajo sin commitear llegan a 108
+cada uno por vias distintas: el del repo principal anade `email_template` (migracion 0086, con su
+archivo y su entrada `idx: 86` en el journal, **todo sin rastrear en git**), y el worktree
+`feature/citas-google-imagenes` anade `product_image` (0088, commiteable pero aun sin aplicar).
+Ninguna de esas dos tablas existe en produccion, y son dos cosas distintas: 0086 no se aplica por
+decision explicita, 0088 esta bloqueada por permisos. Con 0088 aplicada la BD tendria 112 tablas de
+la app.
+
+**Aplicadas y verificadas en la BD**: 0083 (`prospect_dismissal`), 0084 (`branch`,
+`branch_inventory`), 0085 (que no agrega tablas: agrega `broadcast_recipient.email` /
+`.recipient_name` y su indice unico). **Sin aplicar**: 0086 (deliberado), 0087, 0088, 0089.
+Las tres ultimas no esperan una decision de negocio sino una accion del dueno: ninguna
+herramienta autorizada puede escribir DDL en esta BD porque todas las tablas son de
+`lumark_app` y la sesion corre como `postgres`. Ver §6.26 de `docs/deuda-tecnica.md`.
+
+El riesgo de las 4 huerfanas no es que falten: `drizzle/0006_diagnostics_messaging.sql` **si**
+esta en el journal, asi que una replica nueva las recibe igual. Es que `drizzle-kit generate`
+no las conoce, y si algun dia se modelan en `schema.ts` el generador emitira un `CREATE TABLE`
+que choca. `whatsapp_address` ademas no la referencia ningun codigo.
 
 ### Core (Tablas fundamentales)
 
@@ -591,7 +613,7 @@ y cotiza. Guia: [copiloto-agente.md](copiloto-agente.md).
 | `quote_item` | Items de cotizacion | quoteId, description, quantity, unitPrice |
 | `catalog_product` | Catalogo de productos | organizationId, name, price (cents), currency |
 
-### Sucursales (migracion 0084, sin aplicar en produccion)
+### Sucursales (migracion 0084, **aplicada** — medido 04-11-2026)
 
 | Tabla | Descripcion | Columnas clave |
 |-------|-------------|----------------|
@@ -675,15 +697,28 @@ Sucursales no escribe el stock general y el cotizador no descuenta estas cantida
 
 ## Migraciones
 
-La cadena completa vive en `drizzle/` (`0000_baseline.sql` en adelante) y se
-aplica automaticamente al arrancar el contenedor. El registro obligatorio esta
-en `drizzle/meta/_journal.json`.
+La cadena completa vive en `drizzle/` (`0000_baseline.sql` en adelante) y el registro
+obligatorio esta en `drizzle/meta/_journal.json`.
 
 - La lista canonica es `ls drizzle/*.sql`; este documento no la duplica (una
   tabla congelada aqui quedo obsoleta al poco de existir).
 - Cambios de esquema: editar `src/lib/db/schema.ts` → `pnpm db:generate` →
   revisar el SQL → commitear archivo y journal.
-- Verificacion: los logs de arranque muestran cada migracion aplicada.
+- **Ya no se aplican solas.** Desde el 28-10-2026 (Hostinger + Supabase) el arranque
+  **no** corre `scripts/migrate.mjs`: desplegar codigo no toca el esquema. Aplicar una
+  migracion es un paso manual, deliberado y suelto, y por eso el orden de cualquier
+  despliegue es respaldo → esquema → codigo.
+- **Hoy ninguna herramienta autorizada puede aplicarlas** en `lumark-prod`: las 111 tablas
+  de la app son de `lumark_app` y la sesion administrativa corre como `postgres`, que no
+  puede `SET ROLE` (`set_option = false`) ni hacer DDL ajeno. Lo que sigue siendo cierto es
+  el **como se comprueba**, no el quien: el estado real es `SELECT id, hash, created_at FROM
+  drizzle.__drizzle_migrations ORDER BY id` (medido 04-11-2026: **83 filas**, ids 1-59 y 61-84,
+  sin la 60; hash = sha256 de los bytes del archivo; unica restriccion = PK de `id`, o sea que
+  insertar hay que hacerlo con `WHERE NOT EXISTS`). El porqué y las tres salidas estan en
+  §6.26 de `docs/deuda-tecnica.md`.
+- Estado a 04-11-2026: aplicadas hasta **0085**; **0086** sin aplicar por decision explicita;
+  **0087, 0088 y 0089** sin aplicar y bloqueadas por permisos. Las columnas y tablas que
+  agregan no existen en produccion, y el codigo que las lee no debe desplegarse antes.
 
 ---
 
@@ -911,7 +946,11 @@ UTC a las 00:01 en vez de marcarla fallida. La pantalla muestra borradores y
 exige pulsar «Enviar» para arrancar; los fallos de lectura usan `LoadError`.
 
 Migración **0085** (columnas `email`/`recipient_name` e índice único
-`(campaign_id, email)`) **sin aplicar en producción**.
+`(campaign_id, email)`) **aplicada en producción** — medido el 04-11-2026: fila del ledger
+con hash `ec850362070135d892480e42b40f88d1561a44bd9425d63b2036154fd438dc76` y las columnas
+presentes en `broadcast_recipient`. Lo de «sin aplicar» era el estado del 22-10-2026; las
+aplicó el restaurado del 28-10-2026. **0086** (plantillas de correo), en cambio, sigue sin
+aplicar por decisión explícita del dueño del proyecto.
 
 ---
 
@@ -1084,6 +1123,58 @@ Control fisico de existencias por sucursal: que producto esta en que sucursal y 
   de otro negocio responde 404, no crea filas cruzadas.
 - Falla ≠ vacio: `LoadError` con Reintentar si la lista o el inventario no cargan.
 
+## Fotos de producto (catalogo, cotizacion, PDF y chat; migracion 0088)
+
+Fotos reales por producto, en disco y no en la BD. Detalle completo en
+`docs/SISTEMA-COMPLETO.md` §37.
+
+- `product_image` guarda **metadatos** (`storage_path`, `mime_type`, `bytes`,
+  `width`/`height`, `alt_text`, `position`, `is_primary`, `uploaded_by`); los bytes viven
+  en `MEDIA_DIR/{org}/catalog/{pimg_…}.{ext}`. Ningun `bytea`: el respaldo de Supabase Free
+  no es automatico y el catalogo es la tabla mas grande del negocio.
+- Un indice unico **parcial** (`WHERE is_primary`) garantiza una portada por producto.
+- El tipo lo deciden los **primeros bytes**, no el `Content-Type` ni el nombre: se aceptan
+  JPEG, PNG, WEBP y GIF verificados por firma; SVG, HTML, PDF y ejecutables se rechazan.
+  Las dimensiones se leen de la cabecera real y quedan `null` si la cabecera no es legible
+  (la foto entra, el tamano no se promete).
+- Limites por entorno, leidos al arrancar: `PRODUCT_IMAGE_MAX_BYTES_MB` (1-20, default 5)
+  y `PRODUCT_IMAGE_MAX_PER_PRODUCT` (1-30, default 8).
+- Contar y escribir van bajo `pg_advisory_xact_lock` por producto: dos subidas paralelas no
+  pueden colar una foto mas alla del tope. La primera foto del producto es la portada.
+- Cambiar la portada son dos sentencias (apagar todas, encender la elegida), no un `UPDATE`
+  atomico: con uno solo Postgres puede escribir la nueva como principal antes de desmarcar
+  la anterior y el indice unico lanza un `23505` falso.
+- Archivo primero, fila despues, con `unlink` si el `insert` falla: al reves quedaria una
+  fila apuntando a la nada y la rejilla mostraria un producto roto.
+- Rutas: `GET|POST|PATCH /api/catalog/[id]/images` (listar, subir multipart, portada y
+  orden) y `DELETE /api/catalog/images/[imageId]`. El negocio sale siempre de la sesion.
+- Se sirven por `/api/media/public/{org}/catalog/…`, una ruta **sin sesion**: la lista corta
+  de `isPublicMediaPath()` solo publica `catalog/…` y `logo-*`; todo lo demas (incluidos los
+  adjuntos del buzon) responde 404, no 403, para no confirmar que el archivo existe.
+- La tira se sube al instante dentro del modal de **edicion**; el modal de creacion no la
+  muestra (no hay `product_id` al que colgar la fila) y lo dice en pantalla.
+- **La foto sigue al producto (C4).** `createQuote` congela la portada de cada partida en
+  `quote_item.image_*` (una consulta para todo el pedido, leida antes de abrir la
+  transaccion); al editar, las partidas que no manda el llamador conservan su foto ya
+  congelada y las que si manda toman la portada actual. El PDF imprime esa miniatura
+  (46 pt a la izquierda de la linea) y `getQuote` deriva la `imageUrl` de la ruta congelada,
+  asi que cotizacion en pantalla, ficha e impreso son la misma foto aunque el catalogo
+  cambie.
+- `pdf-lib` solo admite PNG y JPEG: WEBP y GIF (que si se suben) salen sin foto en el PDF,
+  y un archivo ilegible o borrado tampoco rompe la descarga. Hay presupuesto de 12 MB por
+  documento: sin `sharp` no hay reescalado, el PDF pesa lo que pesan los archivos.
+- La ficha del bot y el boton «compartir» del catalogo mandan la foto **despues** del texto,
+  como mensaje de archivo aparte, solo en canales con `outboundMedia` (WhatsApp, Messenger)
+  y nunca en el Laboratorio. Su fallo no revierte la ficha y cada omision queda con motivo
+  en el log. La capacidad se pregunta con `supportsOutboundMedia()`, no con
+  `capabilitiesFor()`: la caida a WhatsApp de esta ultima es correcta para la ventana y el
+  texto, pero inventaria un adjunto en un canal que la app no conoce (la columna
+  `conversation.channel` es varchar sin restriccion).
+- **Estado (medido 04-11-2026)**: 0088 **sin aplicar**, asi que `product_image` no existe en
+  `lumark-prod` y las tres columnas `quote_item.image_*` tampoco. Nada de esto funciona en
+  produccion hasta aplicarla; el bloqueo no es de autorizacion sino de permisos de dueno
+  (§6.26 de `docs/deuda-tecnica.md`, con el script `aplicar-0087-0088-0089.sql`).
+
 ## Proyectos
 
 - Procesos (`project_template`) personalizables por negocio: pasos con campos propios y tareas iniciales (seguimientos)
@@ -1227,11 +1318,44 @@ Configuracion semanal (weeklyHours)
 - Refresh token expira despues de 7 dias en modo test
 - **OAuth por redirect** (`google-oauth.ts`): el CRM abre el consentimiento de Google y lo
   canjea por el refresh token; el `state` de un solo uso vive en `google_oauth_state` 10
-  minutos y ata la vuelta de Google a la organizacion que inicio el flujo, con el client
-  secret cifrado. Sin SDK nuevo (Constitucion).
+  minutos y ata la vuelta de Google a la organizacion **y a la persona** (`user_id`, migracion
+  0089), con el client secret cifrado. Sin SDK nuevo (Constitucion).
+- **Dos clases de fila** (0087): `user_id IS NULL` es EL calendario del negocio, el unico que
+  puede crear citas con Meet; `user_id = alguien` es el personal de esa persona y solo sirve
+  para sus tareas. Tres lectores con nombre en `google-credentials.ts` —`getBusiness...`,
+  `getPersonal...` (cascada: la suya, si no la del negocio) y `peek...` (fila exacta, sin
+  cascada, para que Ajustes no mienta)— en vez de un parametro opcional que se pueda olvidar
+  omitir. Antes era un `.limit(1)` sin filtro: el calendario de un miembro podia acabar
+  guardando las citas de todos.
+- **Desconectar si revoca** (`deleteGoogleCredentials`): `POST /oauth2/revoke` con el token de
+  ESA fila antes de borrarla, con `AbortSignal.timeout(5000)`. Best-effort: un 4xx ya es el
+  estado buscado; si Google no responde se borra igual y se loguea.
 - **Tareas → Google Calendar** (`tasks-sync.ts`): **opt-in** (`google_credentials.sync_tasks`,
   apagado por defecto) y **nunca bloquea**: corre despues de guardar la tarea, en un `try/catch`
   que solo deja un diagnostico.
+- **Citas → Google Calendar** (`bookings-sync.ts`): la regla es **«UNA cita, UN evento»**. Con
+  `connector = google` el evento ya existe (lo creo `createMeeting`) y la sincronizacion
+  **adopta** su `external_ref` a `google_event_id` sin llamar a Google; con zoom, enlace fijo o
+  ninguno, el CRM crea su propio evento y el enlace va en la descripcion. Las dos columnas no se
+  funden: `external_ref` es la referencia del conector y `google_event_id` la del calendario.
+  El `PATCH` de `updateMeeting` **no menciona `conferenceData`** (Google hace merge) para no
+  levarse el enlace de Meet al mover la hora.
+- **Relleno y poller** (`poller.ts`, 5 min, `sync_state` con `provider = google_calendar`):
+  las citas sin evento se rellenan en dos consultas — adopcion sin suelo de fechas, creacion
+  solo futura — y se corta al primer rechazo de credenciales. Deliberadamente **no** re-intenta
+  `link_pending` (cambiaria el enlace prometido al cliente; es decision del dueño con su boton).
+- **Bidireccional: documentada, NO implementada** (`docs/agenda-conectores.md`). Hoy el CRM
+  manda y lo que el dueño cambie en Google se queda en Google.
+- **Pantalla en dos estados** (`/settings/google`): el dueño ve la credencial de la app del
+  negocio; cualquier miembro enlaza el suyo (`personal-calendar.tsx`, rutas
+  `/api/settings/google/personal`).
+- **Estado (medido 04-11-2026)**: 0087 y 0089 **sin aplicar**. No existen aun
+  `calendar_settings.user_id`, `google_credentials.user_id`, `booking.title`, `booking.location`,
+  `booking.user_id` ni `booking.google_event_id`, y `google_oauth_state` no tiene `user_id`; las
+  credenciales del negocio siguen bajo el indice unico viejo por organizacion. Nada de lo de esta
+  seccion funciona en produccion, y **tampoco puede desplegarse el codigo antes de aplicarlas**:
+  las consultas nuevas piden columnas inexistentes y Google daria 500 en cada alta de cita. El
+  porque y como se resuelven estan en §6.26 de `docs/deuda-tecnica.md`.
 
 ## Nombre en la interfaz
 
@@ -2236,6 +2360,9 @@ archivo fuente se vuelve contra ti: de ahi que se extraigan las clases antes de 
 | Cotizaciones | `quote-partial-update.test.ts`, `quote-client-phone.test.ts`, `quote-send-email.test.ts`, `quote-pdf-filename.test.ts`, `quote-tenant.test.ts`, `messenger-pdf-filename.test.ts` |
 | Comentarios y correo | `comment-thread.test.ts`, `comments-format.test.ts`, `zernio-comments.test.ts`, `zernio-comment-routing.test.ts`, `email-threading.test.ts`, `email-format.test.ts`, `email-account-toggle.test.ts` |
 | Guardas de rutas del bot | `bot-routes-guards.test.ts`, `agent-channel-policy.test.ts`, `agent-profile-channels-route.test.ts` |
+| FASE 3 — citas por usuario y su vista | `agenda-por-usuario.test.ts`, `agenda-huecos.test.ts`, `agenda-solape.test.ts`, `agenda-vista.test.ts` |
+| FASE 3 — Google por usuario, evento de cita y poller | `google-personal-routes.test.ts`, `agenda-bookings-sync.test.ts`, `agenda-poller.test.ts` |
+| FASE 3 — fotos de producto y media publica | `product-images.test.ts`, `catalog-images-route.test.ts`, `catalog-images-service.test.ts`, `quote-image-snapshot.test.ts`, `quote-pdf-images.test.ts`, `quote-item-photo.test.ts`, `agent-ficha-photo.test.ts`, `catalog-share-photo.test.ts`, `media-path.test.ts` (lista corta de `isPublicMediaPath`) |
 
 ## Scripts E2E (Playwright)
 
@@ -2244,7 +2371,7 @@ archivo fuente se vuelve contra ti: de ahi que se extraigan las clases antes de 
 | Script | Flujo |
 |--------|-------|
 | `e2e-selftest.mjs` | Test comprehensive: BSUID, bot API, agenda, atribucion |
-| `e2e-zorro-tech.mjs` | Flujos Zorro Tech: login, catalogo, cotizaciones, proyectos |
+| `e2e-zorro-tech.mjs` | Flujos Zorro Tech: login, catalogo con fotos (subida, rechazo por bytes, URL publica), cotizacion con foto congelada y PDF con miniatura, proyectos |
 | `e2e-bitacora-etapas.mjs` | Eventos de etapa del pipeline |
 | `e2e-send-failure.mjs` | Visualizacion de envios fallidos |
 | `e2e-search-filters.mjs` | Busqueda y filtros del inbox |
@@ -2330,11 +2457,19 @@ Un solo contenedor = despliegue simple, latencia minima, debugging facil. Suitab
 
 ## Comandos Utiles
 
+> **Estos comandos son de la era de la VM (Azure), apagada el 27-10-2026.** El bloque
+> `docker compose` ya no aplica: hoy el CRM corre en **Hostinger Node hosting** (git auto-deploy
+> desde `main`, sin docker en el host) y la BD en **Supabase Free** (`lumark-prod`), a la que se
+> entra por el *session pooler* `aws-0-us-east-1.pooler.supabase.com:5432` como `lumark_app` o
+> desde el SQL Editor del dashboard como `postgres` (solo lectura: ver §6.26 de
+> `docs/deuda-tecnica.md`). Lo que sigue vigente es el orden: respaldo → esquema → codigo, y que
+> desplegar codigo **no** aplica migraciones.
+
 ```bash
 # --- En la VM (desde ~/crm-lumarketing) ---
 
 # Verificar salud y QUE commit esta corriendo (viene quemado en la imagen)
-curl https://crm.tudominio.com/api/health
+curl https://crm.lumarketing.digital/api/health
 # Sondear desde dentro de la red docker: desde la propia VM el HTTPS del dominio no responde
 # (el cliente interno habla HTTP a un listener TLS y sale code=000)
 docker compose exec caddy wget -qO- http://app:3000/api/health
@@ -2370,7 +2505,8 @@ pnpm db:guard
 # Generar migracion
 pnpm db:generate
 
-# Aplicar migraciones (se hace automaticamente al arrancar el contenedor)
+# Aplicar migraciones — SOLO en la era de la VM. En Hostinger+Supabase el arranque no
+# las aplica; es un paso manual (y hoy requiere ser dueno de las tablas, §6.26 deuda-tecnica)
 node scripts/migrate.mjs
 ```
 
@@ -2427,7 +2563,10 @@ maquina**. Rollback: fijar `APP_IMAGE=…@sha256:<digest>` en `.env` y `docker c
    tambien es error, no aviso.
 7. Antes de empujar, dry-run en una copia: restaurar un `pg_dump` en una BD de pruebas y aplicar el
    `.sql` con `ON_ERROR_STOP=1`
-8. Las migraciones se aplican automaticamente al arrancar el contenedor
+8. **Las migraciones NO se aplican solas.** Con Docker en la VM el `CMD` si las corrida antes de
+   arrancar Next; desde el 28-10-2026 (Hostinger + Supabase) el despliegue no toca el esquema.
+   Primero respaldo, luego esquema, al final codigo — y nunca empujar codigo que lea columnas que
+   aun no existen.
 
 ## Monitoreo
 

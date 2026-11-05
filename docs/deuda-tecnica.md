@@ -998,7 +998,7 @@ original siga intacto. Gates: 1509 pruebas, `typecheck`, `lint` y `build` en ver
 - Lo de siempre y fuera del código: rotar el PAT pegado en el chat, reducir el ámbito del token de
   `gh`, `META_APP_SECRET` vacío y falta de respaldo fuera de la VM.
 
-### 6.18 «Borrar prospectos» — descartar reversible (22-10-2026, migración 0083 SIN aplicar en producción)
+### 6.18 «Borrar prospectos» — descartar reversible (22-10-2026, migración 0083: escrita sin aplicar y **aplicada después**)
 
 Petición del dueño sobre la pantalla de Prospectos (11 tarjetas, 9 de ellas remitentes de
 correo como `bot1@syscom.mx`): que pueda quitarlas de la lista. Preguntado el alcance, eligió
@@ -1040,10 +1040,15 @@ la ruta). Gates: 1537 pruebas, `db:guard`, `typecheck`, `lint` y `build` en verd
 
 **Pendiente (Regla 3 — no verificado en vivo):**
 
-- La migración **0083 no está aplicada en producción**; la pantalla todavía no puede usarse
-  desde ahí. Requiere respaldo previo + autorización explícita (§6.16: el `when` del journal es
-  watermark, y 0083 entra con `when` creciente, así que `migrate()` la aplicará sola al
-  desplegar — eso es precisamente lo que hay que autorizar, no dejarlo colar).
+- La migración **0083 ya está aplicada en producción** — medido el 04-11-2026 en
+  `drizzle.__drizzle_migrations` (fila con `created_at 1792000000024`, hash `6f8b8385…` = sha256
+  del archivo). Cuando se escribió esta sección no lo estaba, y así queda: se aplicó en el
+  restaurado de `lumark-prod` (entre el 22 y el 28-10-2026), y la fecha exacta **no es
+  recuperable** porque `created_at` del ledger es el `when` del journal, no el instante real del
+  `ALTER`. La pantalla se puede usar desde producción; lo que sigue sin
+  haber es **una pasada por navegador** (#183 es exactamente este tipo de hueco). Lo dicho aquí de
+  «`migrate()` la aplicará sola al desplegar» ya no es cierto en Hostinger: desde el 28-10-2026 el
+  hosting **no corre migraciones al arrancar**, se aplican a mano (§6.26).
 - El comportamiento de la tarjeta (Descartar → la tarjeta se va; casilla marcada → `(descartado)`
   con Restaurar) está probado con mocks y anclajes de fuente, **no** visto en un navegador.
 - Commits locales de este lote: sin `push`. Los 6 commits de seguridad de §6.17 siguen esperando
@@ -1224,20 +1229,23 @@ en el manifiesto. **No se verificó la pantalla autenticada en navegador** (sin 
 clasificación Regla 3 para la UI viva: *pendiente de acceso*.
 
 **Deuda abierta.**
-- La migración **0084 no está aplicada** en producción (igual que la 0083). Aplicarla exige
-  respaldo previo y autorización explícita; el push a `main` despliega código, pero las
-  migraciones se aplican aparte en la VM.
+- La migración **0084 sí está aplicada** en producción — medido el 04-11-2026: fila `…025` del
+  ledger con hash `978ca39b…`. Se aplicó en el restaurado de `lumark-prod` (22→28-10-2026), no por
+  esta sección, que la escribió pendiente. La frase «se aplican aparte en la VM» ya no existe: la
+  VM se apagó el 27-10-2026 y desde el 28-10-2026 las migraciones se aplican **a mano contra
+  Supabase**, con el problema de permisos de §6.26.
 - El enlace de producto usa `/api/catalog?limit=500`; un catálogo mayor no es seleccionable
   desde la pantalla (la API de inventario por sucursal sí acepta cualquier producto por id).
 - El conteo por sucursal **no descuenta al vender** ni se concilia con el stock general; un
   traspaso entre sucursales es edición manual de dos cantidades. Es lo que se pidió (control),
   no un motor de almacén.
 
-**Deshacer.** Ver §36 de `docs/SISTEMA-COMPLETO.md`. Con la migración sin aplicar basta borrar
-los archivos del módulo; si ya se hubiera aplicado, `DROP TABLE branch_inventory` antes de
-`DROP TABLE branch`.
+**Deshacer.** 0084 **sí está aplicada** (medido 04-11-2026), así que deshacer el módulo exige BD:
+`DROP TABLE branch_inventory` antes de `DROP TABLE branch`, quitar las dos filas del ledger
+(`…025` y su `978ca39b…`) y borrar los archivos del módulo. Borrar solo los archivos deja las
+tablas huérfanas, no rompe nada.
 
-### 6.23 Envíos masivos por correo (22-10-2026, migración 0085 SIN aplicar)
+### 6.23 Envíos masivos por correo (22-10-2026, migración 0085: escrita sin aplicar y **aplicada después**)
 
 **Lo pedido.** «En envíos masivos cámbialo totalmente para que los envíos masivos sean por
 correo y que sean o los correos que tenemos o podemos crear segmentos cargándole correos de
@@ -1283,8 +1291,11 @@ sesión/BD local): Regla 3, *pendiente de acceso*. Tampoco se envió un correo r
 máquina.
 
 **Deuda abierta.**
-- La migración **0085 no está aplicada** en producción (igual que 0083 y 0084). Aplicarla
-  exige respaldo previo y autorización explícita.
+- La migración **0085 sí está aplicada** en producción — medido el 04-11-2026: última fila del
+  ledger, `created_at 1792000000026`, hash `ec850362…`. Fue la última del restaurado de
+  `lumark-prod` (22→28-10-2026); desde entonces nada más se ha podido aplicar (§6.26). Lo de
+  «exige respaldo previo y autorización explícita» sigue siendo la política, pero ya no es la
+  barrera real.
 - `email_account.daily_limit` se respeta pero **no es editable desde Ajustes**; el valor por
   defecto es 100/día. Una campaña mayor se reparte en varios días sin aviso en la pantalla
   (solo el log del worker lo registra una vez por ciclo).
@@ -1295,9 +1306,329 @@ máquina.
 - El rebote (bounce) no se procesa: un correo rechazado por el servidor SMTP queda `failed`,
   pero no hay webhook de rebotes ni supresión automática de direcciones inválidas.
 
-**Deshacer.** Sin la migración aplicada, restaurar `broadcasts-client.tsx` desde git y borrar
-`src/server/email-campaigns/`, las tres rutas `/api/email-campaigns/**` y
-`drizzle/0085_email_campaigns.sql` + su entrada del journal. El worker conserva la rama de
-correo (inofensiva sin campañas `channel='email'`). Si la migración ya se hubiera aplicado:
+**Deshacer.** 0085 **sí está aplicada**, así que deshacer el módulo exige BD:
 `DROP INDEX broadcast_recipient_campaign_email_uq`, luego
-`ALTER TABLE broadcast_recipient DROP COLUMN recipient_name, DROP COLUMN email`.
+`ALTER TABLE broadcast_recipient DROP COLUMN recipient_name, DROP COLUMN email`, quitar la fila
+`…026` del ledger, restaurar `broadcasts-client.tsx` desde git y borrar `src/server/email-campaigns/`
+y las tres rutas `/api/email-campaigns/**`. El worker conserva la rama de correo (inofensiva sin
+campañas `channel='email'`).
+
+### 6.24 FASE 3 (02-11-2026, worktree): citas por usuario, fotos de producto y la media pública sin lista (migraciones 0087 y 0088 SIN aplicar)
+
+**Lo pedido.** Bloque A («Citas y calendario visual»: vistas mes/semana/día, horarios
+reales **por usuario** —«no debes considerar que todos los usuarios trabajan con los
+mismos horarios»—, evitar doble reserva) y bloque C («Imágenes de productos»: sección de
+fotos en alta/edición, principal/secundarias, reordenar y borrar, validación por MIME
+real, tamaño y número por producto configurables, nada de base64 en Postgres, visible en
+catálogo y cotización).
+
+**Dónde vive.** Todo en el worktree `/Users/ghostbreakfast/Desktop/crm-lumark-fase3`
+(rama `feature/citas-google-imagenes`, partida de `main` = `b67e21c`, v1.8.0), para no
+mezclarse con las plantillas de correo (0086) que siguen sin commitear en
+`DESARROLLO WEB/CRM LUMARK`. **Nada de esto está commiteado** (no se pidió). El trabajo de
+0086 no se tocó ni se indexó.
+
+**A — Citas.** `0087_citas_usuario_google_por_usuario.sql` (journal `idx: 86`) **no crea
+tablas**: añade `user_id` a `calendar_settings` y a `google_credentials` —el horario y la
+conexión son de una persona, no del negocio— y `title`, `location`, `user_id` a `booking`,
+con índices `(organization_id, scheduled_at, status)` y
+`(organization_id, user_id, scheduled_at)`. `getSettings(org, userId)` resuelve en
+cascada horario propio → horario del negocio → defectos del código, y **solo** el horario
+es personal: la sala y el conector los sigue decidiendo la fila del negocio, porque si la
+fila personal trajera el conector, quien solo quiso cambiar sus horas dejaría de generar
+enlaces Meet para toda la organización.
+`src/server/agenda/availability.ts` construye los huecos con `weeklyHours` del usuario,
+`slotMinutes`, `bufferMinutes` y duración por cita; el rango pedido (`fromISO`→`toISO`,
+acotado por `maxDaysAhead`) se materializa en el servidor. La vista Mes/Semana/Día se
+extrajo a `src/lib/agenda/view-model.ts` (puro) y `src/components/agenda/calendar-grid.tsx`
+sustituye a `src/components/caltodo/calendar-view.tsx`; hay panel de detalle
+(`booking-detail.tsx`), formulario ampliado (`agenda-form.tsx`) y etiquetas compartidas
+(`labels.ts`). El candado anti doble-reserva sigue siendo `pg_advisory_xact_lock` +
+revalidación del hueco, con `slot_taken` y alternativas frescas en la respuesta.
+
+**C — Fotos de producto.** Detalle en `docs/SISTEMA-COMPLETO.md` §37. Resumen: tabla
+`product_image` + tres columnas de snapshot en `quote_item` (`0088_product_images.sql`,
+journal `idx: 87`), validación por firma de bytes en un módulo puro
+(`src/lib/product-images.ts`), servicio con advisory lock por producto, dos rutas de API y
+tira de fotos con arrastre en el modal de edición. **C4 construido**: la portada se congela
+en cada `quote_item` al crear la partida (una consulta por pedido, leída antes de abrir la
+transacción), el PDF imprime la miniatura al lado del nombre, `getQuote` deriva la URL de la
+ruta congelada para que el compositor y el detalle muestren lo mismo que se imprime, y la
+ficha del bot y el «compartir» del catálogo mandan la foto como mensaje aparte después del
+texto. `pdf-lib` solo empapa PNG/JPEG: WEBP y GIF salen sin foto en el PDF, con la partida
+intacta y un presupuesto de 12 MB por documento.
+
+**Fuga cerrada en `/api/media/public` (P1).** El volumen de media es plano por negocio y
+ahí conviven cosas con grados de secreto opuestos. La ruta pública no distinguía:
+`GET /api/media/public/{org}/{assetId}` **sin cookies** devolvía el adjunto que un cliente
+mandó por correo o WhatsApp, porque el `media_asset.id` aparece en URLs de mensaje, en
+logs y en payloads que reenvían algunos proveedores —un id de 20 cifras no es una
+contraseña—. Ahora `isPublicMediaPath()` tiene la lista corta y explícita: `catalog/…` (dos
+segmentos) y `logo-*`. Lo demás responde **404, no 403**, para no confirmar existencia.
+Cubierto en `media-path.test.ts` (32 pruebas, incluido el id real de un adjunto).
+
+**Superficie eliminada.** Se borró `src/app/api/media/upload/route.ts`, que **sí está vivo
+en producción** (existe en `main@b67e21c`, y `main` es el auto-despliegue). Detectado por
+inspección: su único consumidor en el repo era `scripts/e2e-zorro-tech.mjs`, y la ruta
+validaba el MIME **declarado por el navegador** (`file.type`), con 5 MB fijo y sin fila en
+la BD —un HTML anunciado como `image/png` se escribía en `catalog/` y se re-servía desde el
+mismo origen con `content-type: image/png`—. Ningún producto guardaba su URL, así que la
+foto subida no se veía en ninguna pantalla. Reemplazo: `/api/catalog/[id]/images` con
+validación por bytes, fila, portada y orden.
+
+**Verificación.** Gates del worktree: `db:guard` 0 avisos, `lint` limpio,
+`npx tsc --noEmit` limpio, `npm run test` **188 archivos / 1 832 pruebas** y `next build` en
+verde. Pruebas nuevas de este lote: 31 en los cuatro ficheros de agenda
+(`agenda-por-usuario`, `agenda-huecos`, `agenda-solape`, `agenda-vista`) y 139 en los nueve de
+fotos y media (`product-images` 29, `media-path` 32, `catalog-images-route` 16,
+`catalog-images-service` 23, `quote-image-snapshot` 8, `quote-pdf-images` 9,
+`quote-item-photo` 5, `agent-ficha-photo` 11, `catalog-share-photo` 6). Tres defectos reales
+salieron al escribirlas: `{primaryId: ""}` respondía 200 sin hacer nada (arreglado con
+`.min(1)` en el `PATCH`), la firma de tipos de Next exigía el `Request` por delante en
+`GET`/`DELETE` (fallaba `next build`, no el lint) y la puerta de adjuntos usaba
+`capabilitiesFor()`, que **cae en WhatsApp para un canal que la app no conoce**: un valor de
+`conversation.channel` fuera de la unión (varchar sin CHECK) habría intentado mandar la foto
+por el transporte de otro canal. Ahora las tres llamadas de adjunto —ficha del agente,
+«compartir» del catálogo y `sendMediaMessage()`— preguntan por `supportsOutboundMedia()`, que
+responde `false` para un canal desconocido; el caso está cubierto en `channels.test.ts`,
+`agent-ficha-photo` y `catalog-share-photo`. La misma guarda dentro de `sendMediaMessage()`
+queda **sin prueba directa**: para que el rechazo sea de capacidades hay que pasar
+`prepareSend` con proveedor y credenciales de WhatsApp resueltos, y el arnés de
+`media-send.test.ts` no los tiene (su mock de BD tampoco `metaCredentials`). No es un camino
+vivo hoy: ninguna inserción de `conversation` escribe un canal fuera de la unión —`email` solo
+existe como canal de reglas de automatización y de campañas, nunca como hebra de bandeja—, así
+que el arreglo es un candado, no la corrección de un fallo observado. En el PDF del C4 hubo que dar alto mínimo
+a la fila con miniatura (`PHOTO_BOX + 6`): una partida de texto corto medía 30 pt y su foto
+de 46 se montaba sobre la línea de abajo. **No verificado en navegador** las pantallas de
+Citas, de fotos del catálogo, del compositor y el PDF con miniaturas: no hay BD local con
+0087/0088 aplicadas ni sesión; la verificación visual queda pendiente (#183).
+
+**Deuda abierta.**
+- **0087 y 0088 sin aplicar** en `lumark-prod`. Lo dicho aquí el 02-11-2026 («y también
+  0083/0084/0085») era **falso**: medido el 04-11-2026 en `drizzle.__drizzle_migrations`, 0083,
+  0084 y 0085 **sí están aplicadas** (filas con `created_at` …024/…025/…026 y hash = sha256 del
+  archivo, comprobado contra `6f8b8385…`, `978ca39b…` y `ec850362…`). Lo pendiente es
+  **0086 (deliberadamente), 0087, 0088 y 0089**. Ver §6.26: aplicarlas ya no es una cuestión de
+  autorización, es una cuestión de **quién tiene permisos para hacerlo**.
+- El **bloque B (Google Calendar)** tiene su parte bloqueada fuera del código: hace falta que
+  el propietario publique la OAuth app; el token actual está revocado. Lo construido está en
+  §6.25. No se simuló la conexión en ninguna parte.
+- **C4 construido, con dos degradaciones aceptadas**: WEBP y GIF se suben al catálogo pero
+  `pdf-lib` solo empapa PNG y JPEG, así que en el PDF esas partidas salen **sin foto** (no
+  se reconvirtieron: no hay `sharp` en este árbol y añadirlo es otra decisión de
+  dependencias). Y la foto que manda el agente queda persistida con `origin: "operator"` en
+  el hilo, porque `sendMediaMessage` no tiene parámetro `aiGenerated`; es cosmético (el
+  texto de la IA va justo antes) y ensanchar el envío no valía la pena.
+- El **presupuesto de imagen del PDF** (12 MB leídos por documento) es empírico, no
+  medido contra el límite real de memoria de Hostinger: si el hosting admite más, se pueden
+  imprimir más partidas con foto; si admite menos, el corte ya no es elegante.
+- `scripts/e2e-zorro-tech.mjs` estaba roto: apuntaba a `/api/media/upload` (ruta ya
+  eliminada) y afirmaba un campo `imageUrl` que **ningún DTO ha tenido nunca** (verificado
+  en `main`: `catalog_product` no tiene columna de imagen). Reescrito contra
+  `/api/catalog/[id]/images` y `primaryImage`, y añade la cobertura del C4: rechazo de un
+  HTML disfrazado de PNG, servicio de la foto por su URL pública con su `content-type`,
+  miniatura en el compositor al elegir el producto, foto congelada en la partida
+  (`imageStoragePath`/`imageMimeType`/`imageBytes` + `imageUrl` derivada), `/Subtype /Image`
+  en el PDF y la misma foto en el detalle. **Ejecutado: no.** El guion necesita el contenedor
+  de pruebas (Postgres con 0088 aplicada, Chromium vía `CHROMIUM_PATH` y `next dev`); en
+  este worktree no hay BD ni navegador, así que sus comprobaciones quedan sin correr —es el
+  mismo bloqueo visual que #183—.
+- Archivos huérfanos: los que subió la ruta vieja a `MEDIA_DIR/{org}/catalog/` no tienen
+  fila en `product_image`, así que la tira no los ve y `removeProductImageFiles` no los
+  borra. Son inocuos (no se referencian) y solo ocupan disco.
+- Persistencia de `MEDIA_DIR` en Hostinger **No verificado**: en producción solo hay 2
+  filas `media_asset`, ambas del 2026-10-20, y ninguna bajo `catalog/`.
+- `alt_text` se fija al subir y no se puede editar después (sin endpoint).
+
+**Deshacer.** Estando las migraciones sin aplicar: revertir el worktree
+(`git -C …/crm-lumark-fase3 checkout -- .` y borrar los `??`), o en concreto borrar
+`drizzle/0087_*.sql` y `drizzle/0088_*.sql` con sus entradas `idx: 86/87` del journal,
+`src/lib/agenda/`, `src/components/agenda/`, `src/lib/product-images.ts`,
+`src/lib/catalog/`, `src/server/catalog/images.ts`, las dos rutas `src/app/api/catalog/**/images`,
+`src/components/catalog/product-images.tsx`, `src/components/quotes/item-photo.tsx` y los
+catorce ficheros de prueba de este lote (cuatro de agenda, nueve de fotos y media, más
+`channels.test.ts`);
+**restaurar**
+`src/app/api/media/upload/route.ts` y `src/components/caltodo/calendar-view.tsx` desde
+`main`. La guarda de adjuntos no es un fichero nuevo sino tres llamadas modificadas: para
+deshacerla
+se devuelve `supportsOutboundMedia()`/`channelLabel()` de `src/server/channels/capabilities.ts`
+y se vuelve a preguntar `capabilitiesFor(canal).outboundMedia` en
+`photosForFichas()`, `sharePrimaryImage()` y `sendMediaMessage()`. Si 0087/0088 ya se hubieran aplicado, el `down` es
+`DROP TABLE product_image; ALTER TABLE quote_item DROP COLUMN image_storage_path, DROP COLUMN image_mime_type, DROP COLUMN image_bytes;
+ALTER TABLE booking DROP COLUMN title, DROP COLUMN location, DROP COLUMN user_id;
+ALTER TABLE calendar_settings DROP COLUMN user_id; ALTER TABLE google_credentials DROP COLUMN user_id;`
+y quitar los dos índices de `booking`. La lista corta de `isPublicMediaPath()` **no se debe
+revertir**: es la que cierra la fuga del párrafo de arriba.
+
+### 6.25 FASE 3 · bloque B (02-11-2026, worktree): Google Calendar por usuario, el evento de cada cita y su poller (migración 0089 SIN aplicar)
+
+**Lo pedido.** Bloque B del pliego: «Calendario personal de Google» — conectar, autorizar,
+ver estado y **desconectar** una cuenta de Google por persona, tokens cifrados que nunca salen,
+crear/actualizar/eliminar eventos y guardar la relación id del CRM ↔ id externo, sincronizar
+**citas** (no solo tareas), y la sincronización bidireccional 3.3. La investigación (§6.2 de
+`LUMARK_FASE1_Investigacion_Citas_Google_Imagenes_2026-11-02.md`) dejó tres huecos reales y
+ninguno era «falta la integración»: la integración existía, le faltaban **quién** es el dueño
+de la conexión, **qué pasa con las citas cuando Google cae** y **qué significa
+desconectar**.
+
+**Dónde vive.** El mismo worktree que el resto de FASE 3
+(`/Users/ghostbreakfast/Desktop/crm-lumark-fase3`, rama `feature/citas-google-imagenes`,
+partida `b67e21c`). Nada commiteado, nada desplegado.
+
+**Antes → después.**
+
+| Hueco | Antes | Después |
+|---|---|---|
+| Un solo Google por negocio (`google_credentials_org_uq`) | `getGoogleCredentials()` era un `.limit(1)` **sin filtro de dueño**: si un miembro conectaba su calendario, las citas de TODOS los clientes se escribían en el suyo. | 0087 mueve la unique a `(organization_id, user_id)` y este módulo expone **tres** lectores con nombre —`getBusinessGoogleCredentials` (fila del negocio, `user_id IS NULL`: el único que puede crear citas con Meet), `getPersonalGoogleCredentials` (cascada D2: la suya, si no la del negocio) y `peekGoogleCredentials` (fila exacta, sin cascada)—. No hay parámetro opcional que se pueda olvidar omitir. |
+| El `state` de OAuth no sabía quién era | Se consumía por organización: el callback de una persona podía canjear el estado que inició otra y el calendario personal acababa atribuido al equivocado. | 0089 añade `google_oauth_state.user_id` (FK con `ON DELETE CASCADE`); el `start` personal lo fija, el callback lo compara con la sesión y la vuelta a Ajustes trae `&scope=personal` para que el banner diga de qué calendario hablaba el resultado. |
+| «Desconectar» era local | Se borraba la fila y Google **seguía autorizando** el refresh token: la app del CRM conservaba acceso al calendario de quien ya se fue. | `deleteGoogleCredentials()` hace `POST https://oauth2.googleapis.com/revoke` con el token de ESA fila antes de borrarla. Best-effort con criterio: un 4xx ya es el estado buscado, y si Google no responde se borra igual y se loguea el motivo —peor es dejar un token que nosotros no podemos usar pero Google sí—. `AbortSignal.timeout(5000)`: desconectar no puede quedarse colgado de Google. |
+| Las citas no se sincronizaban si Google caía | `link_pending` + el botón manual «Reintentar enlace». Las tareas tenían relleno; las citas, no: una cita pasada nunca vuelve a editarse, así que su evento no se creaba **jamás**. | `src/server/agenda/bookings-sync.ts` + poller. La regla que sostiene el módulo es **«UNA cita, UN evento»**: con `connector = "google"`, `createMeeting` ya creó el evento de calendario, así que la sincronización **adopta** su `external_ref` a `google_event_id` con **cero llamadas**; con zoom / enlace-fijo / ninguno, el CRM crea su propio evento y mete el enlace en la descripción. Por eso las dos columnas siguen separadas: `external_ref` lo releen `refreshMeeting` y `withConnector` para ir contra el conector que entregó la reunión, y fundirlas permitiría mandar un `PATCH` de Calendar contra un id de Zoom. |
+| El `PATCH` de Google se llevaba la conferencia por delante | — | `updateMeeting()` no menciona `conferenceData` en el cuerpo: Google hace **merge**, así que mover la hora de una cita conserva su enlace de Meet. Cubierto con una prueba que lo afirma por omisión (`not.toHaveProperty("conferenceData")`). |
+
+**El relleno y el poller.** `syncPendingBookings(org, limit)` corre dos consultas con la misma
+base (`organization_id`, `kind = 'session'`, `is_test = false`, `google_event_id IS NULL`,
+`status <> 'cancelada'`) y filtros distintos: adopción (`connector='google'` y
+`external_ref IS NOT NULL`, **sin suelo de fechas** —las citas pasadas también merecen su
+evento—) y creación (`scheduled_at >= now`, connector distinto de google). El suelo en la
+segunda es lo que impide que reconectar el calendario inunde Google con el histórico de meses
+atrás. Corte en el primer `isAuthError`: no se martilla la API con un token muerto.
+`src/server/agenda/poller.ts` es el patrón de la casa (`globalThis`, primer barrido diferido
+60 s, `setInterval` de 5 min `.unref()`, bandera anti-reentrancia, `BATCH = 100`) y anota cada
+tick en `sync_state` con `provider = "google_calendar"` —la tabla y su unique `(org, provider)`
+ya existían, así que **0089 no toca `sync_state`**. Barrido por organización conectado: las
+citas solo si existe la fila del negocio; las tareas si cualquier fila tiene `sync_tasks`, y
+`syncPendingTasks` resuelve el calendario de cada dueño por su cuenta.
+
+**Hooks.** `syncBookingEvent()` está en `rescheduleBooking`, `cancelBooking`, `updateBooking` y
+`deliverMeeting` (los dos finales de la entrega), siempre **después** de escribir la verdad del
+CRM y dentro de su propio `try/catch`: Google no puede tumbar una operación que ya está
+guardada. `PATCH` con 404 (`allow404`) re-crea el evento que alguien borró a mano desde
+Google, pero solo al editar la cita: el poller filtra `google_event_id IS NULL` y esa fila tiene
+id, así que **un evento borrado a mano no lo recrea el barrido**.
+
+**B2 — la pantalla en dos estados.** `/settings/google` (`src/app/(app)/settings/google/page.tsx`)
+muestra la tarjeta de credenciales solo al dueño y **siempre** la tarjeta personal
+(`src/components/settings/personal-calendar.tsx`), porque un miembro no administra la app de
+Google del negocio y aun así tiene que poder enlazar el suyo y saber si funcionó. El resultado
+del OAuth se pinta en la página (`google-oauth-banner.tsx` + `src/lib/agenda-oauth.ts`) y no
+dentro del componente de credenciales por eso y porque hay fallos que ocurren antes de saber de
+qué calendario iban. Rutas nuevas: `GET/PATCH/DELETE /api/settings/google/personal` y
+`POST .../personal/oauth/start`. `PATCH` enciende `sync_tasks` **solo para quien es dueño de la
+fila que abre** —por eso pregunta `peekGoogleCredentials` y responde
+`409 personal_not_connected` en vez de activar la sincronización sobre el calendario del
+negocio sin permiso— y luego rellena sus propias tareas (`syncPendingTasks(org, 100, userId)`).
+El estado de Conexiones sigue reportando **solo** el calendario del negocio, que es lo que la
+tarjeta afirma.
+
+**Un hueco funcional que salió de inspección, no de una prueba.** El `PUT` de
+`/api/settings/google` —la vía manual de pegar client id/secret/refresh token— rellenaba
+**tareas** pero nunca **citas**: con un token pegado a mano, la agenda del dueño se quedaba
+fuera de Google hasta que alguien editara cada cita. Ahora llama a `syncPendingBookings` con el
+mismo candado (`catch(() => ({synced:0, failed:0}))`) y `ConnectorCredentials` informa cuántas
+entraron («N cita(s) en tu calendario»).
+
+**B3 — bidireccional, documentada y NO implementada.** El pliego lo permite explícitamente. El
+capítulo está en `docs/agenda-conectores.md` con los cinco requisitos ordenados por coste
+(clave de identidad CRM↔evento, `syncToken` + `events.list` incremental, política de conflicto,
+`free/busy` **excluido por contrato** porque el motor reserva el hueco dentro del CRM, y el cupo
+por inquilino). Hoy la regla observable es: **el CRM manda, Google obedece, y lo que el dueño
+cambie en Google se queda en Google**. No hay `watch`, ni webhook receptor, ni marca de última
+escritura para romper ciclos.
+
+**Verificación.** Gates del worktree con este lote: `db:guard` 0 avisos, `npx eslint
+--max-warnings=0 src tests` limpio, `npx tsc --noEmit` limpio (sin tubería — ver Deuda),
+`npx vitest run` **191 archivos / 1 883 pruebas** y `npm run build` exit 0. Pruebas nuevas:
+`agenda-bookings-sync` 20 (adopción con cero llamadas a Google, creación con su evento, dos
+consultas y sus filtros exactos —los valores comparados llegan como **parámetros**, así que se
+afirma sobre `sql` y sobre `params`—, cancelación, 404, corte por credenciales rotas y
+anotación en la fila del negocio), `google-personal-routes` 13 (`peek` no miente, nada de
+`clientSecret`/`secretLast4` hacia fuera, 404 sin bandera, `userId` inyectado en el cuerpo
+ignorado, 409 `personal_not_connected`, 422 en el interruptor sucio, DELETE por dueño, `start`
+sin credenciales del negocio), `agenda-poller` 9 (apagado sin bandera, qué organizaciones van a
+citas y cuáles a tareas, tick solapado, una organización que revienta no corta el barrido, el
+`sync_state` y su upsert, y el intervalo con `vi.advanceTimersByTimeAsync`) y 1 en
+`connectors` (el `PATCH` sin `conferenceData`). Extendidas: `google-tasks-sync` 20 (cascada D2,
+tarea al calendario de su dueño, token revocado de una persona marca **su** fila) y
+`google-oauth` 15 (estado con `user_id`, `scope=personal`).
+
+**Deuda abierta.**
+- **0089 sin aplicar.** Con esto se corrigió lo que decía la primera versión de esta sección
+  («y con ella 0083-0088»): 0083, 0084 y 0085 **sí** están aplicadas; lo único que falta además
+  de 0089 es 0087, 0088 y 0086 (§6.24 y §6.26). Sin BD local no se puede correr el poller de
+  verdad ni ver Citas en navegador: sigue #183.
+- **Nada de Google es verificable en vivo**: la OAuth app del proyecto sigue **sin publicar**
+  (modo prueba, el refresh token caduca a los 7 días) y el token actual está **revocado**. Este
+  lote corre contra `fetch` simulado. Reconnectar es #168.
+- `revokeInGoogle()` **no tiene prueba directa**: `google-personal-routes` afirma que
+  `deleteGoogleCredentials` se llama con el dueño correcto, pero nadie afirma el `fetch` a
+  `/revoke` ni sus tres salidas (2xx, 4xx = ya revocado, 5xx/corte = se borra igual). Es el
+  camino nuevo menos cubierto del lote y el único que habla con Google **fuera** del helper
+  `googleFetch` (necesita `client_secret` en el cuerpo, algo que el helper de Calendar no hace).
+- **Sin prueba el `DELETE` del negocio** (dueño, `/api/settings/google`): la revocación se
+  ejercita solo en la vía personal.
+- El poller **no re-intenta `link_pending`** a propósito: eso cambiaría el enlace que recibió el
+  cliente. Queda en el botón del dueño. Y su espejo: el relleno nunca recrea un evento borrado a
+  mano en Google (párrafo de «Hooks» arriba) — para eso hace falta la parte 1 de B3.
+- Las citas van **siempre** al calendario del negocio (decisión D2 aplicada): la separación por
+  usuario solo llega a las tareas. Si algún día una cita debiera vivir en el calendario de una
+  persona, `syncContext()` es el punto único donde se decide.
+- Trampa de esta sesión, y vale para todas: `npx tsc --noEmit | tail` imprimió mi propio
+  `echo "OK"` encima de un TS2554 real, porque el estado de una tubería es el del último
+  comando. Los gates se corren **sin tubería** y se lee su exit code.
+
+### 6.26 Ninguna herramienta autorizada puede migrar esta BD (04-11-2026, P1 operativo)
+
+**Lo que pasó.** Autorizado el respaldo dirigido y el «aplicar 0087+0088+0089», el primer
+`ALTER TABLE` devolvió `42501: must be owner of table calendar_settings`. No es un fallo del SQL
+—las tres migraciones son aditivas, idempotentes y verificadas línea a línea—: es propiedad.
+
+**Causa raíz, medida el 04-11-2026 en `lumark-prod`:**
+
+| hecho | cómo se midió |
+|---|---|
+| El restaurado del 22→28-10-2026 corrió **conectado como `lumark_app`**, así que las ~111 tablas de `public` y hasta `drizzle.__drizzle_migrations` tienen `relowner = lumark_app`. | `pg_class` + `pg_get_userbyid(relowner)` sobre las 6 tablas afectadas y sobre el ledger |
+| El MCP de Supabase y el SQL Editor del dashboard corren como `postgres`. | `SELECT current_user` → `postgres` |
+| `relacl` está en `NULL` en esas tablas: owner-only. `postgres` **no puede ni `INSERT` en `booking`**. Solo lee porque es miembro de `pg_read_all_data`. | `pg_class.relacl`, `has_table_privilege('postgres','booking','INSERT')` → `false` |
+| `postgres` es miembro de `lumark_app`, pero **con `set_option = false`**, así que `SET ROLE lumark_app` da `42501: permission denied to set role`. `pg_has_role(…,'MEMBER')` devuelve `true` y **engaña**: MEMBER no implica poder asumir el rol. | `pg_auth_members` fila `roleid = lumark_app`: `admin_option true`, `inherit_option false`, `set_option false` |
+| Crear las tablas nuevas como `postgres` tampoco vale: quedarían ilegibles para `lumark_app` y la app rompería en producción. | `postgres` sí tiene `CREATE` en `public`, pero el owner de lo que crea es `postgres` |
+| Cambiar el owner a `postgres` desde `lumark_app` es imposible: `lumark_app` no es miembro de `postgres` (`pg_has_role('lumark_app','postgres','MEMBER')` = `false`). | medido en la misma consulta |
+
+Se probó por **las dos vías** del MCP (`execute_sql` y `apply_migration`, la diseñada para DDL): el
+mismo `42501`. Se pidió autorización y el clasificador de permisos rechazó además el
+`GRANT lumark_app TO postgres` necesario para `SET ROLE`, aunque el dueño lo eligió — así que esa
+salida tampoco está disponible para el agente, solo para el dueño con sus propias manos.
+
+**Consecuencia.** El pipeline de despliegue quedó partido en dos: `git push` a `main` **despliega
+código** en Hostinger, pero **no puede migrar la BD**. Desde el 28-10-2026 el hosting tampoco corre
+`migrate.mjs` al arrancar. Es decir: cada migración futura necesita una acción manual del dueño o
+una decisión explícita de privilegios.
+
+**Las tres salidas, con su coste:**
+
+1. **El dueño ejecuta el script** (la que se usó): `~/Desktop/respaldos/2026-11-04-075434/aplicar-0087-0088-0089.sql`,
+   conectado como `lumark_app` por el **pooler de sesión** (`aws-0-us-east-1.pooler.supabase.com:5432`,
+   usuario `lumark_app.hehgscuuzhojefscjcvw`, `sslmode=require`, una sola conexión — el tope es 15).
+   El archivo lleva `BEGIN/COMMIT`, es re-ejecutable, registra las tres filas del ledger con su
+   sha256 y termina con cinco consultas de verificación.
+2. **Darle a `postgres` el `SET` sobre `lumark_app`** (`GRANT lumark_app TO postgres`, migrar,
+   `REVOKE`). Es reversible y `postgres` ya tiene `admin_option`, pero el clasificador lo bloquea:
+   requiere que el dueño lo ejecute en su propio cliente, no que lo autorice al agente.
+3. **Arreglar el restaurado para la próxima vez**: si alguna día hay que volver a cargar un volcado,
+   hacerlo **conectado como `postgres`**, o añadir al final del script de restaurado un pase de
+   `ALTER TABLE … OWNER TO postgres`. Con esto la tercera vía desaparece. Es la que hay que aplicar
+   si se reconstruye la instancia (pendiente #168, que incluye el `pg_dump` periódico que Supabase
+   Free no hace).
+
+**Estado a 04-11-2026:** `lumark-prod` con ledger de 83 filas y última entrada `…026` = 0085.
+Sin aplicar: **0086 (deliberadamente), 0087, 0088, 0089**. El push a `main` del worktree FASE 3 va
+**después** de las migraciones, no antes: el código nuevo lee `booking.title`, `booking.user_id`,
+`booking.google_event_id` y las columnas de imagen de `quote_item`, y sin esas columnas Citas, el
+catálogo y el PDF de cotización dan error. El orden acordado es respaldo → esquema → código.
+
+**Regla para no repetir esto:** antes de prometer «aplico las migraciones», comprobar
+`pg_class.relowner` contra `current_user`. Si no coinciden, no hay migración que valga, por muy
+autorizada que esté la orden.
+
+**Deshacer.** Esta sección no cambia nada: documenta un bloqueo. El `down` de las tres migraciones
+está en §6.24 y §6.25.

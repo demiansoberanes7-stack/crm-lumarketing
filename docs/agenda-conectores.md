@@ -68,6 +68,118 @@ re-lee el evento; y si aun así no llegó, la cita se entrega con el evento
 creado y el enlace pendiente — reintentarlo **re-lee ese mismo evento**, nunca
 crea uno duplicado en tu calendario.
 
+### Los dos calendarios: el del negocio y el de cada persona
+
+`google_credentials` tiene `user_id`. La fila con `user_id IS NULL` es **la del
+negocio**: la que se pega a mano o se autoriza en **Ajustes → Google Calendar**,
+y la única que recibe las **citas**. Una fila con `user_id` es el calendario
+**personal** de un miembro, y solo recibe **sus tareas**.
+
+- **Por qué las citas no van al calendario de quien las atiende.** Una cita la
+  reserva un cliente contra la agenda de la empresa. Repartirla por personas
+  haría que dos negocios distintos vieran dos mitades del mismo día.
+- **Cascada al escribir tareas** (`getPersonalGoogleCredentials`): si el miembro
+  conectó el suyo, sus tareas van ahí; si no, al del negocio. Así la función
+  sirve aunque nadie más que el dueño haya autorizado nada.
+- **Sin cascada al mostrar** (`peekGoogleCredentials`): la tarjeta de *Mi
+  calendario* lee la fila exacta de esa persona. Decirle «conectado» porque el
+  del negocio sí lo está sería mentirle sobre sus propias tareas.
+- El `Client ID` y el `Client Secret` **son del negocio** (un proyecto de Google
+  Cloud por instancia). Lo personal es el *consentimiento* —y por tanto el
+  calendario—, no la app: por eso un miembro no tiene nada que pegar y por eso
+  el flujo empieza con la credencial de la empresa y guarda su `user_id` en el
+  estado de un solo uso. Si el negocio no está conectado, la tarjeta personal
+  lo dice en vez de ofrecer un botón que fallaría.
+- El relleno posterior respeta la misma frontera: quien autoriza su calendario
+  personal sube **solo sus tareas** (`syncPendingTasks(org, 100, userId)`); el
+  histórico de un compañero no acaba en su calendario por culpa de un OAuth ajeno.
+
+### Una cita, un evento
+
+El CRM guarda dos cosas que parecen lo mismo y no lo son:
+
+| columna | qué es | quién la escribe |
+| --- | --- | --- |
+| `external_ref` | la referencia del **conector** (reunión de Zoom, evento de Meet…) | `createMeeting` al entregar el enlace |
+| `google_event_id` | el **evento de calendario** | `bookings-sync` |
+
+Con el conector `google` son **el mismo evento**: la sincronización *adopta* el
+`external_ref` en `google_event_id` y **no llama a Google**. Con Zoom, enlace
+fijo o sin conector, el CRM crea su propio evento y le escribe el enlace en la
+descripción. Un tercer camino —crear un evento aparte encima de uno de Meet—
+dejaría **dos citas** en el calendario del dueño por cada reserva, que es el
+único fallo de este módulo que el usuario vería.
+
+Reglas que le acompañan:
+
+- **Cancelada ⇒ sin evento.** Con el conector Google ya lo retiró `deleteMeeting`;
+  aquí se olvida la marca. Si aquel borrado falló, el evento queda en Google y el
+  dueño lo quita a mano: el CRM no sigue afirmando que es suyo.
+- **Laboratorio y bloques fuera.** `is_test` y `kind = "block"` jamás llegan al
+  calendario de nadie.
+- **El `PATCH` no menciona `conferenceData`.** En Google PATCH es *merge*: lo que
+  no se manda se conserva, y eso es lo que protege el enlace de Meet que ya se le
+  envió al cliente.
+
+## El relleno y el poller
+
+La sincronización corre **después** de escribir la cita y dentro de un
+`try/catch`, así que Google no puede tumbar una operación del CRM. Eso deja un
+hueco: lo que se quedó sin evento porque el proveedor estuvo caído, porque el
+token caducó a los 7 días (modo prueba), o porque la fila ya existía cuando se
+conectó el calendario. Lo cierra `runAgendaWorkerOnce()` cada **5 minutos**, en
+el mismo patrón `globalThis` que el poller de correo:
+
+- Solo barre organizaciones con Google `connected`; las citas de las que tienen
+  calendario de negocio, las tareas de las que tienen el interruptor encendido.
+- El relleno mira filas **sin** `google_event_id`, así que **nunca duplica** un
+  evento. Las adopciones alcanzan a citas pasadas (es un escribir local); crear
+  eventos propios se limita a citas **futuras** — reconectar no debe inundar el
+  calendario con el histórico de meses.
+- Se corta con el primer `invalid_grant`: un token muerto no se martilla.
+- Anota el resultado en `sync_state` (`provider = "google_calendar"`) por
+  negocio: es lo que responde «¿por qué esta cita no está en mi calendario?» sin
+  leer logs.
+- **Lo que deliberadamente no reintenta:** el enlace de Meet de una cita en
+  `link_pending`. Eso cambia lo que recibió el cliente, y sigue siendo decisión
+  del dueño con su botón *Reintentar enlace*.
+
+Y su corolario honesto: si borras el evento **a mano en Google**, el CRM lo
+recrea al mover o editar esa cita, pero el poller no la persigue (ya tiene id
+guardado). Nada sincroniza el estado de vuelta — ver el siguiente apartado.
+
+## Sincronización en dos direcciones (documentada, NO implementada)
+
+El CRM **escribe** en Google y no lee nada de él. No es un olvido: el permiso
+`calendar.events` ya permite ver los eventos, así que leer sería técnicamente
+inmediato; lo que no existe es una política de quién manda cuando los dos tienen
+razón.
+
+Lo que haría falta, por orden de coste:
+
+1. **Clave de identidad estable.** El merge es sobre `google_event_id`, que ya
+   existe desde 0089. Un evento creado por el dueño en Google no tiene ninguna:
+   o se le pone un marcador (visibilidad `private` + prefijo en el asunto) o se
+   deja fuera — y hay que decirlo en la pantalla.
+2. **Lectura incremental.** `events.list` con `syncToken` por calendario y su
+   canal de cambios, guardados en `sync_state`. El poller de 5 minutos es el
+   hueco donde encajaría; sin `syncToken`, cada barrido volvería a leer el mes
+   completo y el cupo por proyecto de Google se agota con tres negocios.
+3. **Conflicto.** La regla de la casa es «primero la verdad del CRM, después el
+   proveedor». Al revés, un cliente se quedaría con un enlace que ya no abre: un
+   evento borrado o movido en Google **no puede** cancelar la cita del CRM sin
+   que nadie lo confirme. La única política defendable hoy es *notificar el
+   desajuste* (diagnóstico + marca en la cita) y dejar decidir al dueño.
+4. **Disponibilidad.** El contrato de conectores excluye `free/busy` a propósito
+   (la disponibilidad se calcula local, en una query, para no casar la latencia
+   del proveedor con la pantalla que más se usa). Traer los huecos de Google
+   rompería esa regla, no la completaría.
+5. **Multi-tenant.** Cada lectura sería por negocio y por usuario autorizado, con
+   su cupo; el aislamiento hoy se apoya en que **solo se escribe**.
+
+Mientras no esté nada de esto, el sistema es de **una vía**: el CRM manda, Google
+obedece, y lo que el dueño cambie en Google se queda en Google.
+
 ## Qué pasa cuando el proveedor falla
 
 Nada que te cueste una cita. El orden es deliberado: **primero se escribe la

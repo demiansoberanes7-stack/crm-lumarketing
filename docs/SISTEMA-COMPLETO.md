@@ -313,7 +313,10 @@ La cadena completa de migraciones vive en `drizzle/` (`drizzle/0000_baseline.sql
 - Para añadir cambios de esquema: editar `src/lib/db/schema.ts` → `pnpm db:generate` → revisar el SQL generado en `drizzle/` → commitear el archivo **y** el journal.
 
 **Cómo decide `migrate()` qué aplicar.** `Dockerfile:68` arranca `node migrate.mjs && node
-server.js`; dentro, drizzle lee el journal y lo compara contra el **último** `created_at` del
+server.js` —**nota: ese es el camino de la VM (apagada el 27-10-2026); en Hostinger el arranque
+no corre `migrate.mjs`**, así que este párrafo describe cómo decide el script *cuando alguien lo
+ejecuta a mano*, no un paso automático del despliegue.** Dentro del script, drizzle lee el journal
+y lo compara contra el **último** `created_at` del
 ledger (`… order by created_at desc limit 1`), y ejecuta únicamente las entradas cuyo `when`
 sea mayor. Es una regla de *watermark*, no un "está o no está en la tabla". De ahí dos
 consecuencias que hay que saber antes de depurar nada:
@@ -1431,7 +1434,7 @@ media_asset: {
 
 - Path configurable: `MEDIA_DIR=/data/media`
 - Organización real por negocio:
-  - `{MEDIA_DIR}/{organizationId}/catalog/{nanoid}.{ext}` — imágenes de catálogo (`/api/media/upload`)
+  - `{MEDIA_DIR}/{organizationId}/catalog/{productImageId}.{ext}` — fotos del catálogo (`/api/catalog/[id]/images`, §37)
   - `{MEDIA_DIR}/{organizationId}/logo-{nanoid}.{ext}` — logo (`/api/settings/business/logo`)
   - `{MEDIA_DIR}/{organizationId}/favicon` — icono del negocio (branding)
   - `{MEDIA_DIR}/{organizationId}/{assetId}` — adjuntos descargados de WhatsApp/Meta
@@ -1449,6 +1452,15 @@ media_asset: {
   `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`
   en los SVG. El logo admite SVG y lo sube un miembro del negocio; sin ese
   acotamiento, un SVG con script se ejecutaría con la sesión de quien abra la URL.
+- **Lista corta de lo público (`isPublicMediaPath()`)**: `/api/media/public/*` no
+  tiene sesión, así que no puede servir todo lo que cae dentro del árbol del
+  negocio. Publica solo `catalog/{archivo}` (dos segmentos exactos) y `logo-*` de
+  un segmento. Los adjuntos del buzón viven en la raíz con su `media_asset.id`,
+  que aparece en URLs de mensaje, en logs y en payloads que reenvían algunos
+  proveedores: un id de 20 cifras no es una contraseña, y antes de esta guarda
+  `GET /api/media/public/{org}/{assetId}` devolvía la foto que un cliente mandó.
+  Lo que no está en la lista responde **404, no 403**: una ruta sin sesión no
+  debe confirmar que el archivo existe. Cubierta en `media-path.test.ts`.
 
 ---
 
@@ -1658,8 +1670,12 @@ AGENT_COALESCE_MS=6000
 2. `docker.yml` corre **independiente** de CI: valida el journal (`db:guard`), construye
    con buildx, sube `latest` a Docker Hub y entra por SSH al VPS a ejecutar
    `docker compose pull && docker compose up -d`.
-3. El arranque del contenedor nuevo aplica migraciones (`node migrate.mjs`) y luego
-   levanta Next (`node server.js`).
+3. ~~El arranque del contenedor nuevo aplica migraciones (`node migrate.mjs`) y luego levanta
+   Next~~ — **eso era con la VM y ya no ocurre.** Desde el 28-10-2026 el host es Hostinger Node
+   hosting, que hace `git pull` + build + restart **sin** correr `migrate.mjs`; el `docker.yml`
+   del paso 2 sigue en el repo pero apunta a un VPS que está apagado. El esquema es un paso
+   manual aparte: **respaldo → esquema → código**, y por eso el código que lee columnas nuevas
+   no se empuja antes de aplicar su migración (§6.26 de `docs/deuda-tecnica.md`).
 
 **Consecuencia operativa, y la causa de la caída de 2026-10-16**: `push` a `main` **es**
 el despliegue. No hay paso intermedio ni pin por defecto, y un push directo no lo frena
@@ -2472,13 +2488,78 @@ un tercero no puede costarnos la conversión, ni hacernos prometer un enlace que
 - **OAuth de Google por redirect** (`google-oauth.ts`): antes el dueño tenía que pescar el
   refresh token a mano. Ahora el CRM abre el consentimiento y lo canjea; el `state` de un solo
   uso vive en `google_oauth_state` **10 minutos** y ata la vuelta de Google a la organización
-  que inició el flujo, con el client secret **cifrado**. Sin SDK nuevo: la Constitución no
-  admite dependencias para esto.
+  **y a la persona** (`user_id`, migración 0089) que inició el flujo, con el client secret
+  **cifrado**. Sin SDK nuevo: la Constitución no admite dependencias para esto.
 - **Tareas → Google Calendar** (`tasks-sync.ts`): la otra mitad de la conexión de Google. Es
   **opt-in** (`google_credentials.sync_tasks`, apagado por defecto) y **nunca bloquea**: corre
   después de que la tarea ya está guardada, dentro de un `try/catch` que solo deja un
   diagnóstico. Si Google cae, la tarea queda perfecta y el evento se reintenta en la edición
   siguiente.
+- **Citas → Google Calendar** (`bookings-sync.ts`): lo mismo para las citas, con una regla que
+  no tiene equivalencia en las tareas — **UNA cita, UN evento**. Ver el apartado siguiente.
+
+### Los dos calendarios y el evento de cada cita (bloque B, 0089)
+
+`google_credentials.user_id` separa dos cosas que antes eran una:
+
+- Fila con `user_id IS NULL` → **la del negocio**. Es la única que reciben las **citas**: una
+  cita la reserva un cliente contra la agenda de la empresa, no contra la de quien la atiende.
+- Fila con `user_id` → **el calendario personal** de un miembro, y solo recibe **sus tareas**.
+
+Tres lecturas distintas, y la diferencia es el punto:
+`getBusinessGoogleCredentials` (fila exacta del negocio), `getPersonalGoogleCredentials`
+(**cascada**: la fila de la persona, y si no la del negocio — así la función sirve aunque nadie
+más haya autorizado nada) y `peekGoogleCredentials` (fila exacta, **sin cascada**, que es lo que
+necesita Ajustes para no decirle a alguien «conectado» por merced del calendario de la empresa).
+Los secretos de la app OAuth **son del negocio**: un proyecto de Google Cloud por instancia. Lo
+personal es el consentimiento, así que un miembro no pega nada ni puede romper nada, y si la
+empresa aún no conectó Google, su tarjeta lo dice en vez de ofrecer un botón que fallaría
+(`409 google_not_connected`).
+
+`src/server/agenda/bookings-sync.ts` escribe las citas con **dos caminos según el conector**, y
+esa división es lo que impide el duplicado que el módulo podía causarse a sí mismo:
+
+- `connector === "google"`: el evento que creó `createMeeting` **ES** el evento de calendario.
+  Se **adopta** su `external_ref` en `booking.google_event_id` con **cero llamadas** a Google.
+- Zoom / enlace fijo / sin conector: el CRM crea **su** evento y le pone el enlace en la
+  descripción (`PATCH` merge, sin `conferenceData`: el enlace de Meet no se toca).
+
+`external_ref` y `google_event_id` no se fusionan en una columna porque el primero lo releen
+`refreshMeeting`/`withConnector` al reintentar el enlace, e ir a hacer un `PATCH` de Calendar
+contra un id de Zoom sería peor que duplicado. Fuera quedan las citas del Laboratorio
+(`is_test`) y los bloques (`kind = "block"`); cancelada ⇒ evento retirado y marca olvidada.
+
+**El poller** (`src/server/agenda/poller.ts`, 5 minutos, patrón `email/poller` con
+`globalThis`): repara lo que se quedó sin evento —un corte de Google, un refresh token revocado
+a los 7 días, o filas que ya existían al conectar el calendario. Mira solo `google_event_id IS
+NULL` (nunca duplica), adopta citas pasadas pero crea eventos propios **solo futuros**, se corta
+en el primer `invalid_grant` y anota el barrido en `sync_state` con `provider =
+"google_calendar"`: es la fila que responde «¿por qué esta cita no está en mi calendario?» sin
+leer logs. Deliberadamente **no** reintenta el enlace de Meet de una cita en `link_pending` —
+eso cambia lo que recibió el cliente y sigue siendo botón del dueño.
+
+**Desconectar sí revoca.** `deleteGoogleCredentials(org, userId)` llama a
+`POST https://oauth2.googleapis.com/revoke` con el refresh token de **esa** fila antes de
+borrarla; antes «desconectar» era local y Google seguía autorizando a la app del CRM con el
+calendario de alguien que ya no está. Best-effort con criterio: un 4xx significa que el token ya
+no vale —eso es lo que buscábamos— y si Google no responde se borra la fila igual y queda el
+motivo en el log, porque dejar credenciales que nosotros no podemos usar pero Google sí es peor.
+`AbortSignal.timeout(5000)` para que desconectar nunca dependa de Google.
+
+**La pantalla, en dos estados** (`/settings/google`): el dueño ve la tarjeta de credenciales de
+la app del negocio; **cualquier rol** ve la suya (`personal-calendar.tsx`) y puede enlazar su
+calendario, porque lo personal es el consentimiento, no los secretos. El resultado del OAuth se
+pinta en la página —no dentro del componente de credenciales— para que un miembro entienda si su
+conexión funcionó y para los fallos que ocurren antes de saber de qué calendario hablaban. Rutas:
+`GET/PATCH/DELETE /api/settings/google/personal` y `POST .../personal/oauth/start`. El `PATCH`
+enciende `sync_tasks` **solo sobre la fila que es de quien abre** (por eso pregunta
+`peekGoogleCredentials` y responde `409 personal_not_connected`), y después rellena sus tareas.
+
+**Con las credenciales pegadas a mano también rellena citas.** El `PUT` de `/api/settings/google`
+—la vía sin OAuth— ya rellenaba tareas pero no citas: con un token pegado, la agenda del dueño
+se quedaba fuera de Google hasta que alguien editara cada cita una por una. Ahora llama a
+`syncPendingBookings` con el mismo candado (un fallo de Google no devuelve 500 de una operación
+que ya se guardó) y la tarjeta dice cuántas citas entraron.
 
 ### Alta manual desde la pantalla
 
@@ -2521,9 +2602,16 @@ conectores** (lo mismo que los mensajes de prueba de los canales).
 - **Confirmado mediante pruebas:** el motor puro de slots, el reparto por días, las guardas
   `requireOffer` / `slot_taken`, el `201` y la forma anidada del error (`tests/unit/
   cita-alta-manual.test.ts`, más las guardas de `/api/bot/availability` y `/api/bot/messages`).
+  Del bloque B: la adopción sin duplicado, los dos caminos del conector, el relleno con sus dos
+  filtros, el poller y las rutas personales (`tests/unit/agenda-bookings-sync.test.ts`,
+  `agenda-poller.test.ts`, `google-personal-routes.test.ts`, `google-tasks-sync.test.ts`,
+  `google-oauth.test.ts`, `connectors.test.ts`) — todas con el esquema real y `getDb` simulado,
+  que es lo que hay mientras no haya una base aislada con 0089 aplicada.
 - **Pendiente de acceso:** la creación real de eventos en Google Calendar y Zoom en producción
   — en esta instancia **el token de Google sigue revocado** hasta que el dueño publique la app
-  OAuth y reconecte (ver entregable de v1.7.0).
+  OAuth y reconecte (ver entregable de v1.7.0). La migración **0089 no está aplicada** y la
+  pantalla de Citas no se ha visto en navegador (#183): nada de este bloque es verificable en
+  vivo hasta aplicar 0087-0089 y reconectar.
 
 ---
 
@@ -2640,7 +2728,7 @@ descuenta el stock general y no toca el conteo por sucursal: son fuentes distint
 haría que una venta en línea alterara el inventario físico de una tienda sin traspaso. La UI lo
 declara en una nota visible.
 
-### Modelo (migración `0084_branches.sql`, **sin aplicar en producción**)
+### Modelo (migración `0084_branches.sql`, **aplicada** — medido 04-11-2026 en el ledger)
 
 - `branch` — `id` (`br_…`), `organizationId`, `name`, `address`, `phone`, `notes`, `active`,
   `createdAt`, `updatedAt`. Índice `branch_org_idx`.
@@ -2709,13 +2797,266 @@ organización **no escriben**; forma del upsert (`bri_`, objetivo `[branch_id, p
 
 ### Estado y deshacer
 
-La migración **0084 no está aplicada** en producción ni la 0083 anterior; el módulo es local y no
-se ha desplegado. Para deshacer: borrar `drizzle/0084_branches.sql` y su entrada del journal,
-quitar `branch`/`branchInventory` de `schema.ts` y los prefijos `br`/`bri` de `ids.ts`, borrar
+Las migraciones **0083 y 0084 sí están aplicadas** en producción — medido el 04-11-2026 en
+`drizzle.__drizzle_migrations` (filas `…024` y `…025`, hashes `6f8b8385…` y `978ca39b…`, que son el
+sha256 de los archivos). Se escribió «sin aplicar» el 22-10-2026, cuando era cierto, y se aplicaron
+en el restaurado de `lumark-prod`. El módulo se desplegó después con v1.8.0. Para deshacer hoy hay
+que tocar la BD: `DROP TABLE branch_inventory; DROP TABLE branch;` (el orden importa por la FK),
+quitar las dos filas del ledger y **luego** borrar el código: `drizzle/0084_branches.sql` y su
+entrada del journal, `branch`/`branchInventory` de `schema.ts`, los prefijos `br`/`bri` de `ids.ts`,
 `src/server/branches/`, `src/app/api/branches/`, `src/app/(app)/branches/`,
 `src/components/branches/`, `src/lib/branch-schema.ts`, los DTO de `types.ts`, la entrada de
-`nav.ts` y `tests/unit/branches.test.ts`. Si la migración ya se hubiera aplicado, el `down`
-equivalente es `DROP TABLE branch_inventory; DROP TABLE branch;` (el orden importa por la FK).
+`nav.ts` y `tests/unit/branches.test.ts`. Borrar solo el código deja las tablas vivas: inocuo, pero
+a medias.
+
+---
+
+## 37. Fotos de los productos: catálogo, cotización, PDF y chat
+
+FASE 3, bloque C (C1 esquema, C2 validación y servicio, C3 API y tira del catálogo, C4 la
+foto sigue al producto hasta la cotización, el PDF y el chat). Construido en el worktree
+`feature/citas-google-imagenes`. **Local**: la migración `0088_product_images.sql` no está
+aplicada en `lumark-prod`, y tampoco 0087 ni 0089. **Sí** están 0083, 0084 y 0085 (medido el
+04-11-2026 en el ledger; ver §6.26 de `docs/deuda-tecnica.md`, que explica por qué 0087-0089 no se
+pueden aplicar con las herramientas autorizadas y cómo se aplican).
+
+### Modelo
+
+`product_image` (migración 0088, journal `idx: 87`, id `pimg_`): metadatos de cada
+foto —`storage_path` relativa dentro de `MEDIA_DIR`, `mime_type` **verificado por
+firma de bytes**, `bytes`, `width`/`height`, `alt_text`, `position` e `is_primary`—.
+Los bytes nunca van a la BD: un `bytea` dentro del catálogo hincharía el respaldo, y
+Supabase Free no hace backups automáticos. Dos FK con `ON DELETE CASCADE`
+(organización y producto), índice `(product_id, position)`, índice de organización y
+**un índice único parcial** `WHERE is_primary`, que es el techo de integridad —no de
+política— de «una sola portada por producto». Checks de `bytes` (0 < n ≤ 20 MB) y de
+`position` (0…1000) en la tabla; el límite que el negocio configura se aplica arriba,
+en el servicio.
+
+La misma migración añade `image_storage_path`, `image_mime_type` e `image_bytes` a
+`quote_item`. Son un *snapshot*, no una FK viva: la cotización es un documento que se
+envía al cliente y tiene que seguir viéndose igual dentro de un año aunque el producto
+se borre o cambie de foto. Las escribe el servicio de cotizaciones al crear y al editar
+cada partida (§«La foto sigue al producto» más abajo).
+
+### Qué se acepta, y cómo se sabe que es verdad
+
+`src/lib/product-images.ts` es un módulo **puro** (sin `fs`, sin BD): es la parte que
+decide si un archivo entra en el disco del negocio, y eso se prueba sin base de datos.
+
+- Lista cerrada: JPEG, PNG, WEBP y GIF. El SVG se queda fuera aunque el logo del
+  negocio sí lo admita: un SVG es un documento, la subida la hace quien sea del
+  negocio y servirlo desde la raíz del CRM con las cookies de quien abre la URL es la
+  vía clásica a ejecutar guiones en la sesión de otro.
+- El tipo **no lo dice el `Content-Type` ni el nombre del archivo**: lo deciden los
+  primeros bytes. Un HTML, un PDF o un `GIFAR;bang!` que se anuncie como PNG se
+  rechazan; un PNG de 8 bytes también, porque la firma necesita 12.
+- Las dimensiones se leen de la cabecera real (IHDR de PNG, el segmento SOF de JPEG
+  —saltándose los marcadores RST y parando si un segmento declara longitud imposible—,
+  y los tres sabores de contenedor WEBP: `VP8 `, `VP8L` y `VP8X`). Si la firma es
+  válida pero la cabecera no se puede leer, `width`/`height` quedan en `null` y la
+  subida **no** se rechaza: la foto vale, lo que no se puede prometer es su tamaño.
+- `catalogImagePath(id, mime)` pone extensión a partir del MIME **verificado**, nunca
+  del nombre que trajo el archivo.
+
+Límites configurables por entorno, leídos al arrancar el proceso (cambiarlos en
+Hostinger exige reiniciar la app, no solo guardar el `.env`):
+`PRODUCT_IMAGE_MAX_BYTES_MB` (1-20, default 5) y `PRODUCT_IMAGE_MAX_PER_PRODUCT`
+(1-30, default 8). El segundo es también el tope de `orderedIds` en el `PATCH`.
+
+### Servicio (`src/server/catalog/images.ts`)
+
+El orden es **archivo primero, fila después**, con `unlink` si la inserción falla: al
+revés quedaría una fila apuntando a la nada, y eso en la rejilla se ve como producto
+roto. Un archivo huérfano solo ocupa disco y se va con `removeProductImageFiles`.
+
+Contar y escribir van bajo el mismo `pg_advisory_xact_lock(hashtext(org:product:product_images))`
+de la casa: dos subidas paralelas verían el mismo `existingCount` y colarían una foto
+más allá del tope. La primera foto del producto es la principal —sin eso, un catálogo
+subido en bloque no tendría portada en ningún lado—.
+
+Cambiar la principal son **dos sentencias bajo candado** (apagar todas, encender la
+elegida) y no un `SET is_primary = (id = …)`: con una sola, Postgres puede escribir la
+fila nueva como principal antes de desmarcar la anterior y el índice único parcial
+revienta la operación con un `23505` falso. Reordenar es un solo `UPDATE` con `CASE`,
+porque el arrastre del ratón manda muchas posiciones a la vez.
+
+`primaryImagesByProducts` resuelve las portadas de toda la rejilla en **una consulta**
+(`ORDER BY is_primary DESC` dentro del grupo; si ninguna está marcada gana la más
+antigua, que es la que se veía). Hacerlo por producto serían N consultas en una
+pantalla que ya lista cientos de filas.
+
+### API
+
+Tres rutas, todas con `withAuth` y el `organizationId` saliendo de la sesión, nunca del
+cuerpo:
+
+| Ruta | Métodos | Qué hace |
+|---|---|---|
+| `/api/catalog/[id]/images` | `GET` / `POST` (multipart) / `PATCH` | listar la tira, subir una foto, marcar principal y/o reordenar |
+| `/api/catalog/images/[imageId]` | `DELETE` | borrar una foto (la id manda, no la del producto) |
+
+`POST` exige `multipart/form-data` (un JSON → 422, sin llegar al servicio), y un cuerpo
+cortado o mayor de lo que el runtime admite responde 422 con explicación en vez de un
+500 mudo. En `PATCH`, `primaryId` y `orderedIds` llevan `.min(1)`: sin esa cota,
+`{primaryId: ""}` superaba el filtro de «nada que actualizar» y la ruta respondía 200
+habiendo hecho nada —defecto encontrado al escribir las pruebas, corregido con prueba
+que lo reproduce—.
+
+### Dónde se ve
+
+- **Rejilla del catálogo**: la portada pinta la tarjeta (`catalog-client.tsx`).
+- **Tira dentro del modal de edición** (`components/catalog/product-images.tsx`):
+  subir, previsualizar, marcar principal, arrastrar para reordenar, borrar y ampliar.
+  Sube **al instante**, no al pulsar «Guardar cambios»: el producto ya existe cuando se
+  edita y un archivo pendiente en memoria que se pierde al cerrar el modal es la peor
+  forma de fallar una subida. Por eso el modal de **creación** no muestra la tira y lo
+  dice en pantalla —no hay `product_id` al que colgar la fila— en lugar de dejar un
+  botón que no hace nada.
+- Servidas por `/api/media/public/{org}/catalog/{archivo}` (§22), que solo admite ese
+  prefijo y `logo-*`.
+
+### La foto sigue al producto (C4)
+
+Cuatro superficies, un mismo archivo decidido **siempre en el servidor contra el catálogo**.
+
+**Congelar.** `coversForItems()` lee la portada de todos los `productId` de las partidas en
+**una sola consulta, sin repetir producto y antes de abrir la transacción** —dentro de ella
+pediría una segunda conexión del pool mientras la transacción ya tiene una reservada— y
+`createQuote`/`updateQuote` escriben `image_storage_path`, `image_mime_type` e `image_bytes`
+en cada línea. Al editar hay dos reglas, y se distinguen por quién manda la partida:
+
+- Las que **no** manda el llamador (cambiar solo las Notas, p. ej.) conservan la foto que ya
+  estaba en la fila aunque el catálogo haya cambiado de portada: `updateQuote` arma
+  `frozenImage` desde su propia lectura anterior, en el servidor. Es el PDF que el cliente ya
+  vio. Una partida que nació sin foto tampoco la recupera después.
+- Las que **sí** manda el compositor toman la portada **actual** del catálogo, que es la
+  miniatura que se acaba de mostrar en pantalla: preview y PDF son la misma foto. Viajan sin
+  `frozenImage`, así que lo que envió el navegador no puede imponer una ruta.
+
+Un `productId` inexistente o de otro negocio sigue rechazándose antes de insertar
+(Constitución III), así que no se puede congelar la foto de un catálogo ajeno.
+
+**PDF** (`src/server/quotes/pdf.ts`): miniatura de 46 pt (~16 mm) a la izquierda de la
+partida, escalada dentro de la caja y centrada. Dos decisiones que solo se ven cuando hay
+varias partidas:
+
+- Las fotos se cargan **antes** de dibujar la cabecera. Si ninguna partida tiene foto, la
+  columna no existe y la descripción ocupa el ancho de siempre; si alguna la tiene, la caja
+  se recorta por la izquierda y el borde derecho de la descripción sigue cayendo en el mismo
+  punto, así que las columnas de importes no se mueven.
+- `pdf-lib` **solo empapa PNG y JPEG**. WEBP y GIF se suben al catálogo (son mapas de bits
+  verificados por firma) y en el PDF salen sin foto, con la partida intacta. Sin `sharp` en
+  este árbol no hay reescalado, así que el PDF pesa lo que pesan los archivos:
+  `IMAGE_BUDGET` (12 MB leídos por documento) corta por lo sano y la cota declarada de
+  `image_bytes` evita empapar discos enormes que de todos modos no caben. La misma ruta se
+  reutiliza entre partidas (`cache`), y un archivo ilegible o borrado es `null`, nunca un
+  500: una cotización que no se puede descargar es peor que una miniatura que falta.
+- Con miniatura, la fila crece a `PHOTO_BOX + 6`: antes de eso, una partida alta se montaba
+  sobre la foto de la de abajo.
+
+**Compositor y detalle.** `getQuote` deriva `imageUrl` de la ruta congelada en cada lectura
+(`catalogImageUrl(org, path)`); la URL nunca se guarda, así que mover `MEDIA_DIR` o de hosting
+no toca una sola fila, y lo que ve quien edita es **exactamente** lo que el PDF va a imprimir.
+`components/quotes/item-photo.tsx` es un `<img>` de 44 px con su propio estado de roto: si el
+archivo ya no está, muestra un icono en vez del hueco negro de toda la vida. El campo viaja en
+el cuerpo del `POST`, pero Zod lo descarta por clave desconocida: el navegador no decide
+fotos (`itemSchema` no es `.strict()`, así que elimina lo que no conoce).
+Al elegir un producto del desplegable, la partida muestra su portada **actual** (la que se va
+a congelar al guardar); en una cotización guardada, la congelada.
+
+**Ficha del bot y «compartir» del catálogo.** La foto sale como **mensaje aparte, después de
+su ficha**, no incrustada en el texto: Instagram limita el mensaje a ~1000 bytes y un
+`data:` no cabría nunca; además un adjunto que falla no debe partir ni invalidar el texto que
+ya está en el chat. `photosForFichas()` lee todas las portadas del turno en una consulta y
+`deliverPhoto()` no lanza jamás. Dos puertas antes de tocar disco: la capacidad
+`outboundMedia` por `supportsOutboundMedia(channel)` (cierta solo en WhatsApp y Messenger) y
+`isTest` —el Laboratorio persiste texto y no envía nada—. La pregunta de adjunto **no** usa
+`capabilitiesFor`: su caída a WhatsApp es correcta para lo conservador (un valor de canal que
+la app no conoce no puede cerrar el envío de texto ni exigir ventana), pero para un adjunto
+inventaría una capacidad y mandaría los bytes por el transporte de otro canal. Por eso
+`sendMediaMessage()` pregunta lo mismo, y un canal desconocido se nombra a sí mismo en el
+mensaje de error. Cada omisión deja su
+**motivo en el log** (`[agente] fichas sin foto (…)`, `[catalogo] ficha compartida sin foto:
+…`), porque «en Instagram no me llegó la foto» se
+ve desde fuera igual que un bug. `primaryImageFilesForChat()` distingue la ausencia total de
+fotos (estado normal, silencio) de la fila cuya ruta ya no está en disco (`unreadable`, y eso
+sí se avisa). En el catálogo manual la etiqueta `HUMAN_AGENT` se conserva; en la del agente no
+se hereda la del texto, porque pintaría de humano a la IA.
+
+### Exclusiones deliberadas
+
+- `alt_text` se fija al subir y no se puede editar después: no hay endpoint para eso.
+  Se normaliza (espacios colapsados, corte a 255) y una cadena en blanco guarda `null`.
+- No se ofrece recorte ni reescalado en el navegador; se guarda lo que sube el negocio.
+- GIF entra en la lista aunque la especificación pidiera JPG/PNG/WEBP: es mapa de bits
+  verificado por firma, no se decodifica su animación, y la única consecuencia es la
+  degradación del PDF ya anotada.
+- La foto de la ficha del bot es un **mensaje de archivo**, no una cabecera
+  `image` de WhatsApp: enviarla con la URL pública (`/api/media/public/…`) exigiría que el
+  proveedor salga a buscar el archivo, y en Meta/Zernio eso añade un fallo de red por cada
+  ficha. `sendMediaMessage` manda los bytes directo.
+- El adjunto enviado por el agente queda con `origin: "operator"` en el hilo: el parámetro
+  `aiGenerated` no existe en `sendMediaMessage`. Es cosmético (el mensaje se ve igual y va
+  después del texto de la IA) y se anota como deuda en lugar de ensanchar el envío.
+
+### Pruebas y gates
+
+Nueve archivos, 139 pruebas: `product-images.test.ts` (29, fixtures con los offsets
+reales de cada formato), `media-path.test.ts` (32, incluida la lista corta de lo
+público y que un adjunto del buzón responda 404 y no 403), `catalog-images-route.test.ts`
+(16) y `catalog-images-service.test.ts` (23, disco temporal real y un Drizzle de mentira
+que deja ver el SQL: que el candado se tome antes de contar y escribir, que la principal se
+apaguen/encienda en dos sentencias, que un `insert` fallido retire el archivo y que una ruta
+guardada que salga del árbol del negocio se ignore). Del bloque C4: `quote-image-snapshot`
+(8, la portada se congela al crear y se respeta al editar), `quote-pdf-images` (9, PDF real
+con `pdf-lib`: columna que aparece solo si hay foto, WEBP/GIF y archivo perdido degradados a
+texto, presupuesto agotado), `quote-item-photo` (5, la URL sale de la ruta congelada y del
+org de la lectura), `agent-ficha-photo` (11, orden ficha→foto→ficha→foto, una lectura por
+turno, canal sin adjuntos, canal fuera de la unión y Laboratorio) y `catalog-share-photo` (6,
+la foto manual con
+etiqueta de agente humano, el adjunto fallido sin revertir la ficha y el canal desconocido).
+La nueva `supportsOutboundMedia()` se prueba de frente en `channels.test.ts`: para los ocho
+canales declarados coincide con `capabilitiesFor`, y para uno inventado (`telegram`) la ventana
+cae en WhatsApp mientras el adjunto se niega y la etiqueta devuelve el nombre real.
+**Sin prueba directa**: la misma guarda dentro de `sendMediaMessage()` —requiere llegar con
+transporte y credenciales de WhatsApp resueltos para que el rechazo sea de capacidades y no un
+«no hay número conectado»; el arnés de `media-send.test.ts` no los tiene, y lo que sí cubre
+esa rama es el rechazo en las dos llamadas nuevas.
+Gates: `db:guard` 0 avisos, `lint` limpio, `npx tsc --noEmit` limpio, `npm run test` **188
+archivos / 1832 pruebas** y `next build` en verde.
+
+`scripts/e2e-zorro-tech.mjs` estaba roto desde que se eliminó `/api/media/upload`: apuntaba a
+esa ruta y afirmaba un campo `imageUrl` del catálogo que ningún DTO tuvo nunca. Reescrito
+contra `/api/catalog/[id]/images` y `primaryImage`, añade el recorrido completo del C4 por
+navegador: rechazo de un HTML disfrazado de PNG, la foto servida por su URL pública con su
+`content-type`, la miniatura en el compositor al elegir el producto, la foto congelada en la
+partida, `/Subtype /Image` en el PDF y la misma URL en el detalle. **No ejecutado**: el guion
+pide el contenedor de pruebas (Postgres con 0088, Chromium y `next dev`) y este worktree no
+tiene ni lo uno ni lo otro —el mismo bloqueo visual que las pantallas de Citas (#183)—.
+
+### Estado y deshacer
+
+Nada de esto está en producción. Para deshacer el bloque local: borrar
+`drizzle/0088_product_images.sql` y su entrada del journal (`idx: 87`), quitar
+`productImage` de `schema.ts` y el prefijo `pimg` de `ids.ts`, borrar
+`src/lib/product-images.ts`, `src/server/catalog/images.ts`, las dos rutas de
+`src/app/api/catalog/…/images`, `src/components/catalog/product-images.tsx`, los
+`primaryImage` de `/api/catalog` y `/api/catalog/[id]` y las tres columnas de
+`quote_item`. Del C4, además: `src/components/quotes/item-photo.tsx` y sus dos usos
+(`new-quote-dialog.tsx`, `quote-detail.tsx`) con `imageUrl` en `shared.ts`;
+`coversForItems`/`frozenImage` y el `imageUrl` de `getQuote` en
+`src/server/quotes/service.ts`; `embedCover` y la columna de miniaturas en
+`src/server/quotes/pdf.ts`; `photosForFichas`/`deliverPhoto` y el `{text, productId}` de
+las fichas en `src/server/ai/pipeline.ts`; `sharePrimaryImage` en
+`src/server/catalog/send.ts`; `primaryImageFilesForChat` en el servicio de imágenes. Los
+nueve ficheros de prueba: `product-images`, `media-path`, `catalog-images-route`,
+`catalog-images-service`, `quote-image-snapshot`, `quote-pdf-images`, `quote-item-photo`,
+`agent-ficha-photo`, `catalog-share-photo`. Si la migración ya se hubiera aplicado,
+el `down` es `DROP TABLE product_image; ALTER TABLE quote_item DROP COLUMN
+image_storage_path, DROP COLUMN image_mime_type, DROP COLUMN image_bytes;` —los
+archivos de `MEDIA_DIR/{org}/catalog/` no los toca ninguna migración y quedarían en
+disco—.
 
 ---
 
