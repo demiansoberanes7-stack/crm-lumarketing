@@ -27,6 +27,7 @@ import { FunnelSection } from "./funnel-section";
 import { HealthSection } from "./health-section";
 import { AdsMetricsSection } from "./ads-section";
 import { OriginLegend, OriginGroup } from "./metric-badge";
+import { OpsOverview } from "./ops-overview";
 
 /** Sección colapsable por departamento. */
 function Department({ id, title, icon, defaultOpen = true, children }: {
@@ -133,7 +134,7 @@ const PERIODS = [
   { value: "1y", label: "1 año" },
 ];
 
-export function DashboardClient() {
+export function DashboardClient({ userName }: { userName: string }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [period, setPeriod] = useState("30d");
   const [loading, setLoading] = useState(true);
@@ -175,16 +176,32 @@ export function DashboardClient() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <header className="header-surface sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-3 backdrop-blur sm:px-6">
-        <h1 className="text-2xl font-bold tracking-tight">Hola, bienvenido de nuevo 👋</h1>
-        <div className="flex gap-1">
+      {/* Cabecera discreta: contexto del módulo y el período. El saludo vive
+          dentro del contenido, no aquí. */}
+      <header className="header-surface sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5 backdrop-blur sm:px-6">
+        <div className="min-w-0">
+          <p className="kicker">Inicio</p>
+          <p className="truncate text-[12.5px] text-text-2">
+            {data.period} · {data.range.from.slice(0, 10)} a {data.range.to.slice(0, 10)} (UTC) · MXN
+          </p>
+        </div>
+        <div
+          role="group"
+          aria-label="Período del panel"
+          className="flex items-center gap-0.5 rounded-lg border border-border bg-subtle p-0.5"
+        >
           {PERIODS.map((p) => (
             <button
               key={p.value}
+              type="button"
               onClick={() => setPeriod(p.value)}
-              className={`min-h-11 rounded-md px-3 text-xs font-medium transition-colors ${
-                period === p.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
-              }`}
+              aria-pressed={period === p.value}
+              className={cn(
+                "min-h-9 rounded-md px-2.5 text-[12px] font-medium transition-colors duration-150",
+                period === p.value
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-text-2 hover:text-foreground"
+              )}
             >
               {p.label}
             </button>
@@ -193,9 +210,25 @@ export function DashboardClient() {
       </header>
 
       <div className="flex-1 space-y-4 p-4 sm:p-6">
-        <p className="text-xs text-muted-foreground">
-          {data.period}: {data.range.from.slice(0, 10)} a {data.range.to.slice(0, 10)} (UTC). Importes en MXN.
-        </p>
+        <OpsOverview
+          period={period}
+          userName={userName}
+          kpis={{
+            newProspects: data.contacts.newThisPeriod,
+            quotesSent: data.quotes.sent,
+            pipelineValue: data.quotes.pipelineValue,
+            grossIncome: data.payments.grossIncome,
+            activeConversations: data.inbox.active,
+            overdueTasks: data.tasks.overdue,
+          }}
+        />
+
+        <div className="mt-2 px-1">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Detalle por área</h2>
+          <p className="mt-0.5 text-[12px] text-text-2">
+            Cada bloque declara de dónde sale su dato antes de mostrar una cifra.
+          </p>
+        </div>
         <OriginLegend />
 
         {/* ── DIRECCIÓN / GENERAL ─────────────── */}

@@ -238,7 +238,7 @@ export function PieChartCard({ data, nameKey, valueKey, height = 250, inner = fa
 }
 
 /** Area with a translucent vertical gradient and a glowing gradient stroke. */
-export function AreaChartCard({ data, xKey, yKeys, height = 250 }: ChartProps & { xKey: string; yKeys: string[] }) {
+export function AreaChartCard({ data, xKey, yKeys, labels, height = 250 }: ChartProps & { xKey: string; yKeys: string[]; labels?: Record<string, string> }) {
   const id = useChartId();
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -254,6 +254,7 @@ export function AreaChartCard({ data, xKey, yKeys, height = 250 }: ChartProps & 
             key={key}
             type="monotone"
             dataKey={key}
+            name={labels?.[key] ?? key}
             stroke={`url(#${gradientId(id, index, "line")})`}
             strokeWidth={2.4}
             fill={`url(#${gradientId(id, index, "area")})`}

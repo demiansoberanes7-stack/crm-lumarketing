@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { getAuth } from "@/lib/auth";
 import { resolveMembership } from "@/server/auth/on-signup";
@@ -44,6 +45,18 @@ export async function getSessionOrNull(): Promise<SessionContext | null> {
     return null;
   }
 }
+
+/**
+ * Usuario de la sesión para el cascarón y las pantallas que lo saludan.
+ *
+ * `cache` de React lo memoriza por petición: el layout y una página que lo
+ * necesiten comparten una sola lectura de sesión en vez de una por componente.
+ */
+export const getViewer = cache(async () => {
+  const auth = getAuth();
+  const session = await auth.api.getSession({ headers: await headers() });
+  return session?.user ?? null;
+});
 
 /**
  * Sesión válida que todavía no pertenece a ningún negocio.
