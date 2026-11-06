@@ -16,10 +16,21 @@ import {
   type AgentRules,
 } from "@/lib/agent-config";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
+import { cn } from "@/lib/utils";
+import { AgentActivity } from "./agent-activity";
 
 function sameChannels(a: readonly Channel[], b: readonly Channel[]): boolean {
   return a.length === b.length && a.every((channel) => b.includes(channel));
 }
+
+const AGENT_TABS = [
+  { id: "identidad", label: "Identidad" },
+  { id: "capacidades", label: "Capacidades" },
+  { id: "actividad", label: "Actividad" },
+  { id: "seguridad", label: "Seguridad" },
+] as const;
+
+type AgentTab = (typeof AGENT_TABS)[number]["id"];
 
 type Profile = {
   enabled: boolean;
@@ -62,6 +73,7 @@ export function AgentClient() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
+  const [tab, setTab] = useState<AgentTab>("identidad");
 
   const refetch = useCallback(async () => {
     setLoadFailed(false);
@@ -129,51 +141,217 @@ export function AgentClient() {
   }
 
   return (
-    <div className="min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-6 sm:py-4">
-        <h2 className="text-[17px] font-bold tracking-tight">Agente de IA</h2>
-        <div className="flex items-center gap-3">
-          {saved && <span className="text-xs text-primary">Guardado ✓</span>}
-          <span className="text-sm text-muted-foreground">
-            {profile.enabled ? "Encendido" : "Apagado"}
-          </span>
-          <button
-            role="switch"
-            aria-checked={profile.enabled}
-            aria-label="Agente encendido"
-            disabled={!aiConfigured}
-            onClick={() => void saveProfile({ enabled: !profile.enabled })}
-            className={`relative h-6 w-11 rounded-full transition-colors after:absolute after:-inset-x-2 after:-inset-y-2 after:content-[''] disabled:opacity-40 ${
-              profile.enabled ? "bg-brand" : "bg-border-strong"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-knob shadow-sm transition-transform ${
-                profile.enabled ? "translate-x-5" : "translate-x-0.5"
+    <div className="flex h-full min-w-0 flex-col overflow-y-auto">
+      <header className="sticky top-0 z-10 shrink-0 border-b bg-background/90 px-4 py-3 backdrop-blur sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="kicker">Operación · Agente</p>
+            <h1 className="mt-1 truncate text-[20px] font-semibold tracking-[-0.02em]">
+              {profile.name || "Agente de IA"}
+            </h1>
+            {/* Conexión (¿hay proveedor?) y ejecución (¿está encendido?) son
+                estados distintos: el agente puede tener proveedor y estar
+                apagado, o estar encendido en unos canales y en otros no. */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                  aiConfigured
+                    ? "bg-success-tint text-success-text"
+                    : "bg-warning-tint text-warning-text"
+                )}
+              >
+                Conexión · {aiConfigured ? "con proveedor" : "sin proveedor"}
+              </span>
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                  profile.enabled ? "bg-brand-soft text-brand-text" : "bg-subtle text-text-2"
+                )}
+              >
+                Ejecución · {profile.enabled ? "encendida" : "apagada"}
+              </span>
+              {profile.disabledChannels.length > 0 ? (
+                <span className="rounded-full bg-subtle px-2.5 py-1 text-[11px] font-semibold text-text-2">
+                  {profile.disabledChannels.length} canal
+                  {profile.disabledChannels.length === 1 ? "" : "es"} apagado
+                  {profile.disabledChannels.length === 1 ? "" : "s"}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {saved && <span className="text-xs text-primary">Guardado ✓</span>}
+            <span className="text-[12px] text-text-2">
+              {profile.enabled ? "Encendido" : "Apagado"}
+            </span>
+            <button
+              role="switch"
+              aria-checked={profile.enabled}
+              aria-label="Agente encendido"
+              disabled={!aiConfigured}
+              onClick={() => void saveProfile({ enabled: !profile.enabled })}
+              className={`relative h-6 w-11 rounded-full transition-colors after:absolute after:-inset-x-2 after:-inset-y-2 after:content-[''] disabled:opacity-40 ${
+                profile.enabled ? "bg-brand" : "bg-border-strong"
               }`}
-            />
-          </button>
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-knob shadow-sm transition-transform ${
+                  profile.enabled ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
         </div>
+
+        <nav
+          role="tablist"
+          aria-label="Secciones del agente"
+          className="mt-3 flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {AGENT_TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              aria-controls={`agent-tab-${item.id}`}
+              onClick={() => setTab(item.id)}
+              className={cn(
+                "-mb-px shrink-0 border-b-2 px-3 py-2 text-[13px] font-medium transition-colors duration-150",
+                tab === item.id
+                  ? "border-brand-text text-foreground"
+                  : "border-transparent text-text-2 hover:text-foreground"
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
         {saveError && <p role="alert" className="rounded-md border border-danger-soft bg-danger-tint p-3 text-sm text-danger-text">{saveError}</p>}
-        <AiProviderCard />
-        <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
-          <div className="min-w-0 space-y-4 sm:space-y-6">
-            <ProfileSection profile={profile} onSave={saveProfile} />
-            <ResponseSection
-              profile={profile}
-              channels={availableChannels}
-              onSave={saveProfile}
-            />
-            <AgentRulesSection rules={profile.rules} onSave={saveProfile} />
-          </div>
-          <div className="min-w-0 space-y-4 sm:space-y-6">
-            <BusinessInfoSection profile={profile} agenda={agenda} onSave={saveProfile} />
-            <FichaFieldsSection fields={profile.fichaFields} onSave={saveProfile} />
-            <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} strictKnowledgeBase={profile.rules.strictKnowledgeBase} onChanged={() => void refetch()} />
-          </div>
+
+        <div id="agent-tab-identidad" role="tabpanel" className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
+          {tab === "identidad" ? (
+            <>
+              <div className="min-w-0 space-y-4 sm:space-y-6">
+                <ProfileSection profile={profile} onSave={saveProfile} />
+              </div>
+              <div className="min-w-0 space-y-4 sm:space-y-6">
+                <BusinessInfoSection profile={profile} agenda={agenda} onSave={saveProfile} />
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        <div id="agent-tab-capacidades" role="tabpanel" className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
+          {tab === "capacidades" ? (
+            <>
+              <div className="min-w-0 space-y-4 sm:space-y-6">
+                <ResponseSection
+                  profile={profile}
+                  channels={availableChannels}
+                  onSave={saveProfile}
+                />
+                <AgentRulesSection rules={profile.rules} onSave={saveProfile} />
+                <FichaFieldsSection fields={profile.fichaFields} onSave={saveProfile} />
+              </div>
+              <div className="min-w-0 space-y-4 sm:space-y-6">
+                <KbSection entries={entries} kbSize={kbSize} catalogCount={catalogCount} strictKnowledgeBase={profile.rules.strictKnowledgeBase} onChanged={() => void refetch()} />
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        <div id="agent-tab-actividad" role="tabpanel">
+          {tab === "actividad" ? <AgentActivity /> : null}
+        </div>
+
+        <div id="agent-tab-seguridad" role="tabpanel" className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
+          {tab === "seguridad" ? (
+            <>
+              <div className="min-w-0 space-y-4 sm:space-y-6">
+                <AiProviderCard />
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Ejecución por canal</CardTitle>
+                    <CardDescription>
+                      El agente está {profile.enabled ? "encendido" : "apagado"}. Los canales apagados
+                      se contestan solo a mano; se cambian en Capacidades.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {availableChannels.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Ningún canal conectado todavía.
+                      </p>
+                    ) : (
+                      availableChannels.map((channel) => {
+                        const off = profile.disabledChannels.includes(channel);
+                        return (
+                          <div key={channel} className="flex items-center justify-between gap-2 text-sm">
+                            <span>{CHANNEL_LABEL[channel] ?? channel}</span>
+                            <span
+                              className={cn(
+                                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                off ? "bg-subtle text-text-2" : "bg-success-tint text-success-text"
+                              )}
+                            >
+                              {off ? "Manual" : "IA"}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="min-w-0 space-y-4 sm:space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Límites activos</CardTitle>
+                    <CardDescription>
+                      Lo que el agente puede hacer sin aprobación humana.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {AGENT_RULE_OPTIONS.map((option) => {
+                      const on = profile.rules[option.key];
+                      return (
+                        <div key={option.key} className="flex items-start justify-between gap-3 text-sm">
+                          <span className="min-w-0">{option.title}</span>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                              on ? "bg-success-tint text-success-text" : "bg-subtle text-text-2"
+                            )}
+                          >
+                            {on ? "Sí" : "No"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Escalado a humano</CardTitle>
+                    <CardDescription>
+                      Cuándo se traspasa la conversación a una persona. Se edita en Identidad.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-wrap rounded-lg border border-border bg-subtle p-3 text-[12.5px] text-text-2">
+                      {profile.escalationRules?.trim() ||
+                        "Sin reglas escritas: el agente escala cuando el cliente lo pide o cuando no puede resolver."}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
