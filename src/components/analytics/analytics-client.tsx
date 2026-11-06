@@ -11,6 +11,7 @@ import {
   Users, BarChart3, ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
 
 /* ─── Types ─── */
 interface AdsMetric {
@@ -137,18 +138,17 @@ export function AnalyticsClient() {
 
   return (
     <div className="flex h-full flex-col bg-subtle text-foreground">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Marketing Hub</h1>
-          <p className="text-sm text-muted-foreground">
-            Métricas reales de Google Ads, Meta Ads y Google Analytics 4
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => router.push("/settings/marketing")}>
-          <Plug className="mr-2 h-4 w-4" /> Configurar integraciones
-          <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-        </Button>
-      </header>
+      <PageHeader
+        module="Crecimiento · Analítica"
+        title="Marketing Hub"
+        description="Métricas reales de Google Ads, Meta Ads y Google Analytics 4"
+        actions={
+          <Button variant="outline" onClick={() => router.push("/settings/marketing")}>
+            <Plug className="mr-2 h-4 w-4" /> Configurar integraciones
+            <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+          </Button>
+        }
+      />
 
       <main className="flex-1 overflow-auto p-6">
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

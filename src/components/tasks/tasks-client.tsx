@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MemberPicker, type CrmMember } from "@/components/member-picker";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/page-header";
 import { TASK_STATES } from "@/lib/project-contract";
 import { taskRequest } from "./api";
 import { TaskRow, type Task } from "./task-panel";
@@ -25,7 +26,13 @@ export function TasksClient() {
   const projects = Array.from(new Map(tasks.map((t) => [t.projectId, t.projectName])).entries());
   const visible = tasks.filter((t) => (!estado || t.estado === estado) && (!projectId || t.projectId === projectId) && (!assigneeId || t.assigneeId === assigneeId));
   return <div className="h-full space-y-5 overflow-y-auto p-4 sm:p-6">
-    <header className="flex items-center justify-between"><div><h1 className="text-xl font-bold">Tareas</h1><p className="text-sm text-muted-foreground">Todas las tareas de los proyectos de tu organización</p></div><Button variant="outline" onClick={() => void load()}>Actualizar</Button></header>
+    <PageHeader
+      module="Trabajo · Tareas"
+      title="Tareas"
+      description="Todas las tareas de los proyectos de tu organización"
+      actions={<Button variant="outline" onClick={() => void load()}>Actualizar</Button>}
+      className="rounded-xl border px-4"
+    />
     <div className="grid grid-cols-3 gap-3">{Object.entries(TASK_STATES).map(([state, label]) => <div key={state} className="rounded-lg border p-3"><p className="text-2xl font-bold">{tasks.filter((t) => t.estado === state).length}</p><p className="text-sm">{label}</p></div>)}</div>
     <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-3">
       <label className="text-sm">Filtrar estado<select className="mt-1 w-full rounded border bg-background p-2" value={estado} onChange={(e) => setEstado(e.target.value)}><option value="">Todos</option>{Object.entries(TASK_STATES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

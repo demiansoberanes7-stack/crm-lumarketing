@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadError } from "@/components/load-error";
+import { PageHeader } from "@/components/page-header";
 
 type Account = {
   id: string;
@@ -290,19 +291,17 @@ export function BroadcastsClient() {
 
   return (
     <div className="mx-auto h-full w-full max-w-6xl space-y-6 overflow-y-auto p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="kicker">Campañas por correo</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Envíos masivos</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Envía correos a los contactos del CRM, a quienes ya escribieron al buzón, o a una lista
-            que cargues a mano o desde Excel/CSV. La lista queda congelada al guardar la campaña.
-          </p>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => void refresh()} aria-label="Actualizar campañas">
-          <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
-        </Button>
-      </header>
+      <PageHeader
+        module="Campañas por correo"
+        title="Envíos masivos"
+        description="Envía correos a los contactos del CRM, a quienes ya escribieron al buzón, o a una lista que cargues a mano o desde Excel/CSV. La lista queda congelada al guardar la campaña."
+        actions={
+          <Button variant="secondary" size="sm" onClick={() => void refresh()} aria-label="Actualizar campañas">
+            <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
+          </Button>
+        }
+        className="rounded-xl border"
+      />
 
       {(error || notice) && (
         <div

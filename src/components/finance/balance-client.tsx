@@ -17,6 +17,7 @@ import { NewExpenseDialog } from "./new-expense-dialog";
 import { NewReceivable } from "./new-receivable";
 import { PdfActions } from "@/components/pdf-actions";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/page-header";
 
 interface Balance {
   ingresos: number;
@@ -122,22 +123,23 @@ export function BalanceClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Balance General</h2>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => setShowReceivable(true)}>Nueva cuenta por cobrar</Button>
-          <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
-            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Registrar Pago
-          </Button>
-          <Button size="sm" onClick={() => setShowExpenseDialog(true)}>
-            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Registrar Gasto
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        module="Finanzas · Balance"
+        title="Balance General"
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowReceivable(true)}>Nueva cuenta por cobrar</Button>
+            <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
+              <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Registrar Pago
+            </Button>
+            <Button size="sm" onClick={() => setShowExpenseDialog(true)}>
+              <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Registrar Gasto
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="mb-4 flex flex-wrap items-end gap-3">

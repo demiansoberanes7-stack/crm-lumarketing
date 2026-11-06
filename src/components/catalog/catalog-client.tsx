@@ -14,6 +14,7 @@ import { ProductCosts } from "@/components/catalog/product-costs";
 import { ProductImages } from "@/components/catalog/product-images";
 import { SendProductDialog } from "@/components/catalog/send-product-dialog";
 import { marginOf } from "@/lib/catalog/cost";
+import { PageHeader } from "@/components/page-header";
 
 interface Product {
   id: string;
@@ -181,24 +182,27 @@ export function CatalogClient({ compact = false, onClose }: { compact?: boolean;
 
   return (
     <div className={`flex h-full flex-col ${compact ? "min-h-[70dvh]" : ""}`}>
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Inventario</h2>
-          <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
-            <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Importar
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => { window.location.href = "/api/catalog/export"; }}>
-            <Download className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Exportar
-          </Button>
-          <Button size="sm" onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setFormError(""); setShowNew(true); }}>
-            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Nuevo producto
-          </Button>
-        </div>
-        {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Cerrar</Button>}
-      </header>
+      <PageHeader
+        module="Comercial · Inventario"
+        title="Inventario"
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowImport(true)}>
+              <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Importar
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { window.location.href = "/api/catalog/export"; }}>
+              <Download className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Exportar
+            </Button>
+            <Button size="sm" onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setFormError(""); setShowNew(true); }}>
+              <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Nuevo producto
+            </Button>
+            {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Cerrar</Button>}
+          </>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {listFailed && products.length === 0 ? (

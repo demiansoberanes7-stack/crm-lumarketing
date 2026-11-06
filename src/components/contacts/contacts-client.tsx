@@ -34,6 +34,7 @@ import { PriorityBadge } from "@/components/pipeline/priority-picker";
 import { NewContactDialog } from "./new-contact-dialog";
 import { ImportContactsDialog } from "./import-contacts-dialog";
 import { ScheduleMessageDialog } from "./schedule-message-dialog";
+import { PageHeader } from "@/components/page-header";
 
 const STAGE_TONE: Record<string, string> = {
   Customer: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -118,34 +119,38 @@ export function ContactsClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Contactos</h2>
-          <Button size="sm" onClick={() => setCreando(true)}>
-            <UserPlus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Nuevo contacto
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setImportando(true)}>
-            <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Importar
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const params = new URLSearchParams();
-              if (query.trim()) params.set("q", query.trim());
-              params.set("won", "1");
-              if (showArchived) params.set("archived", "true");
-              window.open(`/api/contacts/export?${params}`, "_blank");
-            }}
-          >
-            <Download className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Exportar
-          </Button>
-        </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <PageHeader
+        module="Comercial · Contactos"
+        title="Contactos"
+        actions={
+          <>
+            <Button size="sm" onClick={() => setCreando(true)}>
+              <UserPlus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Nuevo contacto
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setImportando(true)}>
+              <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Importar
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (query.trim()) params.set("q", query.trim());
+                params.set("won", "1");
+                if (showArchived) params.set("archived", "true");
+                window.open(`/api/contacts/export?${params}`, "_blank");
+              }}
+            >
+              <Download className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Exportar
+            </Button>
+          </>
+        }
+      >
+        <div className="mt-3 flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
+          <label className="flex items-center gap-2 text-xs text-text-2">
             <input
               type="checkbox"
               checked={showArchived}
@@ -166,7 +171,7 @@ export function ContactsClient() {
             />
           </div>
         </div>
-      </header>
+      </PageHeader>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {listFailed && contacts.length === 0 ? (

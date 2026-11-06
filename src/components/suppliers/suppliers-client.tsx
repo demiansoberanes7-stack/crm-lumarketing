@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadError } from "@/components/load-error";
+import { PageHeader } from "@/components/page-header";
 
 const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   SUPPLIER_CATEGORIES.map((c) => [c.value, c.label])
@@ -271,41 +272,42 @@ export function SuppliersClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Proveedores</h2>
-          <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Nuevo proveedor
-          </Button>
-        </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="accent-primary" />
-            Archivados
-          </label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="rounded-md border bg-background px-2 py-1.5 text-xs"
-          >
-            <option value="">Todas las categorias</option>
-            {SUPPLIER_CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
-          <div className="relative w-full sm:w-auto">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              placeholder="Buscar proveedor..."
-              defaultValue=""
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-8 sm:w-72"
-            />
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        module="Operación · Proveedores"
+        title="Proveedores"
+        actions={
+          <>
+            <Button size="sm" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Nuevo proveedor
+            </Button>
+            <label className="flex items-center gap-2 text-xs text-text-2">
+              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="accent-primary" />
+              Archivados
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="rounded-md border bg-background px-2 py-1.5 text-xs"
+            >
+              <option value="">Todas las categorias</option>
+              {SUPPLIER_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            <div className="relative w-full sm:w-auto">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                ref={inputRef}
+                placeholder="Buscar proveedor..."
+                defaultValue=""
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full pl-8 sm:w-72"
+              />
+            </div>
+          </>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {listFailed && suppliers.length === 0 ? (

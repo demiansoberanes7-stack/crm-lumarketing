@@ -5,6 +5,7 @@ import { TodoSettings } from "@/components/caltodo/todo-settings";
 import { List, Settings } from "lucide-react";
 import type { CalTodoItem, CalTodoPreferences } from "@/lib/caltodo";
 import { todoRequest } from "@/components/caltodo/request";
+import { PageHeader } from "@/components/page-header";
 
 type Task = CalTodoItem;
 type SettingsData = CalTodoPreferences | null;
@@ -32,7 +33,12 @@ export function TodoPageClient({ initialTasks, initialSettings }: { initialTasks
 
   return (
     <div className="h-full min-w-0 space-y-5 overflow-y-auto p-4 sm:p-6">
-      <header><h1 className="text-2xl font-bold tracking-tight">Pendientes</h1></header>
+      <PageHeader
+        module="Trabajo · Pendientes"
+        title="Pendientes"
+        description="Tareas y recordatorios de tu organización."
+        className="rounded-xl border px-4"
+      />
       <div role="tablist" aria-label="Vistas de pendientes" className="flex gap-1 overflow-x-auto border-b">
         {TABS.map((t) => (
           <button role="tab" aria-selected={tab === t.key} aria-controls="todo-panel" key={t.key} onClick={() => setTab(t.key)} className={`flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border-b-2 ${tab === t.key ? "border-brand text-brand" : "border-transparent text-text-2 hover:text-foreground"}`}>

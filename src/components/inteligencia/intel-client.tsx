@@ -28,6 +28,7 @@ import {
 import { TrendingPanel } from "@/components/inteligencia/trending-panel";
 import { ContentPanel } from "@/components/inteligencia/content-panel";
 import { pollIntelJob } from "@/lib/intel-jobs-client";
+import { PageHeader } from "@/components/page-header";
 import {
   buildContentSignals,
   type FallbackCatalogTerm,
@@ -557,17 +558,16 @@ export function IntelClient() {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-          <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-text-2">
-          Busca un interés y el análisis se arma con datos reales de esa consulta: dificultad
-          local (DENUE), interés y regiones de Google Trends, temas y consultas relacionadas,
-          autocompletado y preguntas. Nada viene precargado ni se rellena con datos inventados:
-          si una fuente no responde, el campo queda en «—» con su motivo.
-        </p>
-      </header>
+      <PageHeader
+        module="Crecimiento · Inteligencia"
+        title={
+          <span className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-brand-text" /> Inteligencia
+          </span>
+        }
+        description="Busca un interés y el análisis se arma con datos reales de esa consulta: dificultad local (DENUE), interés y regiones de Google Trends, temas y consultas relacionadas, autocompletado y preguntas. Nada viene precargado ni se rellena con datos inventados: si una fuente no responde, el campo queda en «—» con su motivo."
+        className="rounded-xl border"
+      />
 
       {error && (
         <p role="alert" className="rounded-md border border-danger-soft bg-danger-tint p-3 text-sm text-danger-text">

@@ -10,6 +10,7 @@ import { LoadError } from "@/components/load-error";
 import { ProjectTypePicker } from "./project-type-picker";
 import { ProjectWizard } from "./project-wizard";
 import { ProjectDetail } from "./project-detail";
+import { PageHeader } from "@/components/page-header";
 import {
   PROJECT_STATUS_BADGE,
   PROJECT_STATUS_LABELS,
@@ -100,19 +101,22 @@ export function ProjectsClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <h2 className="text-[17px] font-bold tracking-tight">Proyectos</h2>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setShowTemplates(true)}>
-            <Settings2 className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Procesos
-          </Button>
-          <Button size="sm" onClick={() => setShowNewProject(true)}>
-            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Nuevo Proyecto
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        module="Trabajo · Proyectos"
+        title="Proyectos"
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowTemplates(true)}>
+              <Settings2 className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Procesos
+            </Button>
+            <Button size="sm" onClick={() => setShowNewProject(true)}>
+              <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Nuevo Proyecto
+            </Button>
+          </>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 border-b px-4 sm:px-6">

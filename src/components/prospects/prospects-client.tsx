@@ -19,6 +19,7 @@ import { ContactAvatar } from "@/components/avatar";
 import { LoadError } from "@/components/load-error";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Prospectos: todo el que escribió primero, por chat o por correo, ordenado por
@@ -167,39 +168,44 @@ export function ProspectsClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Prospectos</h2>
-          <Badge variant="secondary">{failed ? "—" : summary.total}</Badge>
-          <span className="text-xs text-muted-foreground">
-            {failed
-              ? "Lista no disponible"
-              : `${summary.conTelefono} con teléfono · ${summary.sinTelefono} sin teléfono`}
+      <PageHeader
+        module="Comercial · Prospectos"
+        title={
+          <span className="flex items-center gap-2">
+            Prospectos
+            <Badge variant="secondary">{failed ? "—" : summary.total}</Badge>
           </span>
-        </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={showArchived}
-              onChange={(e) => setShowArchived(e.target.checked)}
-              className="accent-primary"
-            />
-            Ver archivados y descartados
-          </label>
-          <div className="relative w-full sm:w-auto">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              placeholder="Buscar por nombre, teléfono o correo…"
-              aria-label="Buscar prospecto"
-              defaultValue=""
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-8 sm:w-72"
-            />
-          </div>
-        </div>
-      </header>
+        }
+        description={
+          failed
+            ? "Lista no disponible"
+            : `${summary.conTelefono} con teléfono · ${summary.sinTelefono} sin teléfono`
+        }
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-xs text-text-2">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="accent-primary"
+              />
+              Ver archivados y descartados
+            </label>
+            <div className="relative w-full sm:w-auto">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                ref={inputRef}
+                placeholder="Buscar por nombre, teléfono o correo…"
+                aria-label="Buscar prospecto"
+                defaultValue=""
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full pl-8 sm:w-72"
+              />
+            </div>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2 border-b bg-subtle/40 px-4 py-2.5 text-xs sm:px-6">
         <label className="flex items-center gap-1.5 text-muted-foreground">

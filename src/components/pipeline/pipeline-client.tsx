@@ -29,6 +29,7 @@ import { LossReasonDialog } from "./loss-reason-dialog";
 import { AmountDialog } from "./amount-dialog";
 import { PriorityBadge } from "./priority-picker";
 import { LeadDrawer } from "./lead-drawer";
+import { PageHeader } from "@/components/page-header";
 
 export type BoardLead = {
   id: string;
@@ -205,13 +206,15 @@ export function PipelineClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Pipeline</h2>
+      <PageHeader
+        module="Comercial · Pipeline"
+        title="Pipeline"
+        actions={
           <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
             <Settings2 className="h-4 w-4" /> Gestionar etapas
           </Button>
-        </div>
+        }
+      >
         {/* Barra de filtros: canal + fechas */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
@@ -258,7 +261,7 @@ export function PipelineClient() {
             )}
           </div>
         </div>
-      </header>
+      </PageHeader>
 
       {/* El tablero se arrastra en horizontal; en el teléfono cada columna
           se detiene en su sitio (snap) para no quedar a medio camino. */}

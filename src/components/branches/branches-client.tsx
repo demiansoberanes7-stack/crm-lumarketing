@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadError } from "@/components/load-error";
+import { PageHeader } from "@/components/page-header";
 
 type CatalogProduct = {
   id: string;
@@ -506,24 +507,23 @@ export function BranchesClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6 sm:py-4">
-        <div>
-          <h2 className="text-[17px] font-bold tracking-tight">Sucursales</h2>
-          <p className="text-xs text-muted-foreground">
-            Inventario físico por sucursal, separado del stock general del catálogo.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            setEditing(null);
-            setDialogOpen(true);
-          }}
-        >
-          <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-          Nueva sucursal
-        </Button>
-      </header>
+      <PageHeader
+        module="Comercial · Sucursales"
+        title="Sucursales"
+        description="Inventario físico por sucursal, separado del stock general del catálogo."
+        actions={
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditing(null);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+            Nueva sucursal
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">

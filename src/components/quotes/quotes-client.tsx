@@ -8,6 +8,7 @@ import { NewQuoteDialog } from "./new-quote-dialog";
 import { QuoteDetail } from "./quote-detail";
 import { CatalogClient } from "@/components/catalog/catalog-client";
 import { LoadError } from "@/components/load-error";
+import { PageHeader } from "@/components/page-header";
 import { QuoteItem, STATUS_LABELS, STATUS_VARIANT, formatMXNCents, formatDate } from "./shared";
 
 interface Quote {
@@ -84,19 +85,22 @@ export function QuotesClient() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-[17px] font-bold tracking-tight">Cotizador</h2>
-          <Button size="sm" onClick={() => setShowNewQuote(true)}>
-            <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-            Nueva Cotización
-          </Button>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setShowCatalog(true)}>
-          <Package className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-          Inventario
-        </Button>
-      </header>
+      <PageHeader
+        module="Comercial · Cotizador"
+        title="Cotizador"
+        actions={
+          <>
+            <Button size="sm" onClick={() => setShowNewQuote(true)}>
+              <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Nueva Cotización
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowCatalog(true)}>
+              <Package className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
+              Inventario
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex gap-1 border-b px-4 sm:px-6">
         <button

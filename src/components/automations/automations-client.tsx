@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/page-header";
 
 type AutomationChannel = "whatsapp" | "messenger" | "instagram" | "tiktok" | "email";
 type AutomationTrigger = "stage_change" | "inactivity" | "new_lead" | "no_reply";
@@ -303,18 +304,17 @@ export function AutomationsClient() {
 
   return (
     <div className="flex h-full flex-col bg-subtle text-foreground">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Automatizaciones</h1>
-          <p className="text-sm text-muted-foreground">
-            Flujos de trabajo automáticos para seguimiento y retargeting de leads
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 rounded-lg border bg-muted/40 px-3 py-1.5">
-          <span className={`h-2 w-2 rounded-full ${metrics?.schedulerReady ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
-          <span className="text-xs font-medium text-muted-foreground">Programador {metrics?.schedulerReady ? "activo" : "iniciando"}</span>
-        </div>
-      </header>
+      <PageHeader
+        module="Operación · Automatizaciones"
+        title="Automatizaciones"
+        description="Flujos de trabajo automáticos para seguimiento y retargeting de leads"
+        actions={
+          <div className="flex items-center gap-1.5 rounded-lg border bg-subtle px-3 py-1.5">
+            <span className={`h-2 w-2 rounded-full ${metrics?.schedulerReady ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+            <span className="text-xs font-medium text-text-2">Programador {metrics?.schedulerReady ? "activo" : "iniciando"}</span>
+          </div>
+        }
+      />
 
       <main className="flex-1 overflow-auto p-6 space-y-8">
         <div className="grid gap-4 sm:grid-cols-3">
