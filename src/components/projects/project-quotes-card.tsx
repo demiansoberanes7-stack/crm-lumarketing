@@ -156,8 +156,8 @@ export function ProjectQuotesCard({ projectId }: { projectId: string }) {
         )}
 
         {picking && (
-          <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
-            <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-2 rounded-md border border-dashed p-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="w-full min-w-0 sm:flex-1">
               <label className="text-xs text-muted-foreground" htmlFor="quote-picker">
                 Cotización disponible (sin proyecto)
               </label>

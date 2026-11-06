@@ -107,37 +107,51 @@ export function BrandLogo({
   size = "md",
   className,
   logoUrl,
+  showMark = true,
+  markClassName,
+  nameClassName,
 }: {
   branding: Pick<Branding, "name">;
   size?: keyof typeof WORDMARK_SIZE;
   className?: string;
   logoUrl?: string | null;
+  /** Oculta la marca gráfica y deja solo el nombre (cabecera móvil). */
+  showMark?: boolean;
+  /** Clases de la marca gráfica; permite ocultarla solo en pantallas pequeñas. */
+  markClassName?: string;
+  /** Ajuste tipográfico del nombre, p. ej. por breakpoint. */
+  nameClassName?: string;
 }) {
   const marcaMadre = isZorroTechName(branding.name);
   return (
     <span className={cn("flex min-w-0 items-center", marcaMadre ? "gap-2" : "gap-2.5", className)}>
-      {logoUrl ? (
-        <PhotoLogo src={logoUrl} alt={branding.name} className={cn("w-auto", PHOTO_SIZE[size])} />
-      ) : marcaMadre ? (
-        <Image
-          src="/brand/zorro-tech.png"
-          alt=""
-          width={64}
-          height={64}
-          className={cn("shrink-0 rounded-[24%] object-cover", MARK_SIZE[size])}
-        />
-      ) : (
-        <BrandTile branding={branding} className={TILE_SIZE[size]} />
-      )}
+      {showMark ? (
+        <span className={cn("flex shrink-0 items-center", markClassName)}>
+          {logoUrl ? (
+            <PhotoLogo src={logoUrl} alt={branding.name} className={cn("w-auto", PHOTO_SIZE[size])} />
+          ) : marcaMadre ? (
+            <Image
+              src="/brand/zorro-tech.png"
+              alt=""
+              width={64}
+              height={64}
+              className={cn("shrink-0 rounded-[24%] object-cover", MARK_SIZE[size])}
+            />
+          ) : (
+            <BrandTile branding={branding} className={TILE_SIZE[size]} />
+          )}
+        </span>
+      ) : null}
       <span
         className={cn(
           // Siempre contraste con el fondo del tema: blanco sobre negro,
           // negro sobre blanco (el color heredado del botón era gris).
-          "text-foreground",
+          "min-w-0 truncate text-foreground",
           marcaMadre
             ? "font-[800] leading-none tracking-[-0.045em]"
-            : "truncate font-[750] leading-none tracking-tight",
-          marcaMadre ? WORDMARK_SIZE[size] : size === "lg" ? "text-[26px]" : "text-[17px]"
+            : "font-[750] leading-none tracking-tight",
+          marcaMadre ? WORDMARK_SIZE[size] : size === "lg" ? "text-[26px]" : "text-[17px]",
+          nameClassName
         )}
       >
         {branding.name}

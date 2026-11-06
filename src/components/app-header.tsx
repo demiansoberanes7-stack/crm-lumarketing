@@ -17,14 +17,12 @@ import { cn } from "@/lib/utils";
  */
 export function AppHeader({
   branding,
-  logoUrl,
   theme,
   unread,
   onOpenDrawer,
   onOpenSearch,
 }: {
   branding: Branding;
-  logoUrl?: string | null;
   theme: ThemePreference;
   unread: number | null;
   /** Abre el cajón en móvil. */
@@ -36,15 +34,21 @@ export function AppHeader({
 
   return (
     <header className="header-surface sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1 border-b px-2 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:px-3">
-      {/* Móvil/tableta: la marca grande abre el cajón (en lugar de la
-          hamburguesa, que comía espacio y encima empujaba el logo). */}
+      {/* Móvil/tableta: el nombre del negocio abre el cajón (en lugar de la
+          hamburguesa, que comía espacio y encima empujaba el logo). Sin marca
+          gráfica: el logo subido no se dibuja aquí, solo el nombre. */}
       <button
         type="button"
         onClick={onOpenDrawer}
-        aria-label="Abrir el menú"
-        className="flex min-h-10 min-w-0 items-center gap-0.5 rounded-lg pr-1.5 text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
+        aria-label={`Abrir el menú · ${branding.name}`}
+        className="flex min-h-10 min-w-0 items-center gap-1 rounded-lg pr-1.5 text-text-2 hover:bg-accent hover:text-foreground lg:hidden"
       >
-        <BrandLogo branding={branding} logoUrl={logoUrl} size="lg" />
+        <BrandLogo
+          branding={branding}
+          size="md"
+          showMark={false}
+          nameClassName="text-[22px] sm:text-[26px]"
+        />
         <ChevronDown className="h-4 w-4 shrink-0 text-text-3" strokeWidth={2} />
       </button>
 

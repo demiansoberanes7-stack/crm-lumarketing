@@ -168,8 +168,8 @@ export function AiProviderCard() {
         )}
 
         {summary && (
-          <form onSubmit={(e) => void handleSave(e)} className="flex flex-wrap items-end gap-2">
-            <div className="min-w-0 flex-1">
+          <form onSubmit={(e) => void handleSave(e)} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
               <Label htmlFor="ai-token">API key {summary.configured ? "(dejar en blanco para mantener)" : ""}</Label>
               <Input
                 id="ai-token"

@@ -336,8 +336,8 @@ export function IntelSettingsClient() {
               {connection?.serpapiLastSyncAt && ` · última sync ${new Date(connection.serpapiLastSyncAt).toLocaleString("es-MX")}`}
               {connection?.serpapiQueriesUsed !== undefined && ` · ${connection.serpapiQueriesUsed}/250 consultas`}
             </p>
-            <form onSubmit={(e) => void handleSaveSerpapi(e)} className="mt-3 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
+            <form onSubmit={(e) => void handleSaveSerpapi(e)} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
                 <Label htmlFor="serpapi-key">API key {connection?.serpapiConfigured ? "(dejar en blanco para mantener)" : ""}</Label>
                 <Input
                   id="serpapi-key"
@@ -373,8 +373,8 @@ export function IntelSettingsClient() {
               {connection?.apifyLastTestAt && ` · último test ${new Date(connection.apifyLastTestAt).toLocaleString("es-MX")}`}
               {connection?.apifyLastSyncAt && ` · última sync ${new Date(connection.apifyLastSyncAt).toLocaleString("es-MX")}`}
             </p>
-            <form onSubmit={(e) => void handleSaveApify(e)} className="mt-3 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
+            <form onSubmit={(e) => void handleSaveApify(e)} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
                 <Label htmlFor="apify-token">API token {connection?.apifyConfigured ? "(dejar en blanco para mantener)" : ""}</Label>
                 <Input
                   id="apify-token"
@@ -385,7 +385,7 @@ export function IntelSettingsClient() {
                   placeholder="Token de Apify"
                 />
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
                 <Label htmlFor="apify-actor">Actor ID de Google Trends</Label>
                 <Input
                   id="apify-actor"
@@ -418,8 +418,8 @@ export function IntelSettingsClient() {
               Directorio de establecimientos · gratis por correo en inegi.org.mx
               {connection?.denueLastTestAt && ` · último test ${new Date(connection.denueLastTestAt).toLocaleString("es-MX")}`}
             </p>
-            <form onSubmit={(e) => void handleSaveDenue(e)} className="mt-3 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
+            <form onSubmit={(e) => void handleSaveDenue(e)} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
                 <Label htmlFor="denue-token">Token DENUE {connection?.denueConfigured ? "(dejar en blanco para mantener)" : "(opcional)"}</Label>
                 <Input
                   id="denue-token"
@@ -435,7 +435,7 @@ export function IntelSettingsClient() {
               </Button>
             </form>
             <div className="mt-2 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
+              <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
                 <Label htmlFor="denue-keyword">Keyword para prueba</Label>
                 <Input
                   id="denue-keyword"
@@ -466,8 +466,8 @@ export function IntelSettingsClient() {
               {connection?.youtubeKeyLast4 && ` · ····${connection.youtubeKeyLast4}`}
               {connection?.youtubeLastTestAt && ` · último test ${new Date(connection.youtubeLastTestAt).toLocaleString("es-MX")}`}
             </p>
-            <form onSubmit={(e) => void handleSaveYoutube(e)} className="mt-3 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
+            <form onSubmit={(e) => void handleSaveYoutube(e)} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="w-full min-w-0 sm:min-w-[14rem] sm:flex-1">
                 <Label htmlFor="yt-key">API key {connection?.youtubeConfigured ? "(dejar en blanco para mantener)" : "(opcional)"}</Label>
                 <Input
                   id="yt-key"

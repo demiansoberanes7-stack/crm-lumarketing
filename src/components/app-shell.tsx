@@ -118,7 +118,6 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader
           branding={branding}
-          logoUrl={logoUrl}
           theme={theme}
           unread={unread}
           onOpenDrawer={() => setNavOpen(true)}

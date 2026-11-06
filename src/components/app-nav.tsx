@@ -13,7 +13,6 @@ import {
   type NavItem,
 } from "@/config/nav";
 import { BrandLogo } from "@/components/brand-mark";
-import { PhotoLogo } from "@/components/photo-logo";
 import { APP_VERSION, BUILD_COMMIT, versionLabel } from "@/lib/version";
 
 /**
@@ -221,17 +220,18 @@ export function AppNav({
             collapsed && "lg:w-11 lg:justify-center"
           )}
         >
-          {logoUrl ? (
-            <PhotoLogo src={logoUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg" />
-          ) : (
-            <BrandLogo
-              branding={branding}
-              className={cn(
-                "shrink-0 [&_svg]:h-8 [&_svg]:w-8",
-                collapsed && "lg:[&_span:last-child]:hidden"
-              )}
-            />
-          )}
+          {/* En el cajón móvil solo el nombre del negocio; la marca gráfica
+              (logo subido o mosaico) se queda en el rail de escritorio, donde
+              el plegado necesita un icono. */}
+          <BrandLogo
+            branding={branding}
+            logoUrl={logoUrl}
+            markClassName="hidden max-w-full min-w-0 lg:flex [&_img]:max-w-full"
+            className={cn(
+              "min-w-0 shrink",
+              collapsed && "lg:[&_span:last-child]:hidden"
+            )}
+          />
         </Link>
         <button
           type="button"

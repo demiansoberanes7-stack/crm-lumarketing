@@ -142,9 +142,9 @@ export function BalanceClient() {
       />
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <label>Desde<Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label>Hasta<Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="w-full sm:w-auto">Desde<Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <label className="w-full sm:w-auto">Hasta<Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
           <Button disabled={!from || !to || from > to} onClick={() => setPeriod(new URLSearchParams({ from, to }).toString())}>Aplicar periodo</Button>
           <PdfActions url={`/api/finances/balance?format=pdf&${period}`} filename="Balance-ZORRO-TECH.pdf" />
         </div>
