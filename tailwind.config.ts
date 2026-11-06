@@ -26,6 +26,7 @@ const config: Config = {
         input: "var(--border-strong)",
         ring: "var(--accent)",
         background: "var(--bg)",
+        app: "var(--bg-app)",
         foreground: "var(--text)",
         subtle: "var(--bg-subtle)",
         primary: {
@@ -105,13 +106,15 @@ const config: Config = {
         sm: "var(--radius-sm)",
         md: "var(--radius)",
         lg: "var(--radius-lg)",
-        // Escala Vercel: tarjetas y paneles se quedan en el radio del token
-        // (12px) en vez de los 12/16px literales de Tailwind, para que todo el
-        // chrome comparta un radio uniforme sin editar cada call site.
-        xl: "var(--radius-lg)",
-        "2xl": "var(--radius-lg)",
+        // Separación deliberada entre controles y superficies: `lg` es el
+        // renglón de menú, el botón y el campo; `xl`/`2xl` son tarjetas. Antes
+        // los tres apuntaban al mismo token y no se podía subir el radio de
+        // las tarjetas sin redondear también los botones.
+        xl: "var(--radius-card)",
+        "2xl": "var(--radius-card-lg)",
       },
       boxShadow: {
+        xs: "var(--shadow-xs)",
         sm: "var(--shadow-sm)",
         md: "var(--shadow-md)",
         pop: "var(--shadow-pop)",

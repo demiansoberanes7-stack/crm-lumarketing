@@ -18,17 +18,21 @@
   :root {
     color-scheme: light;
 
-    /* Neutros: escala zinc clara, chrome Vercel */
+    /* Neutros: lienzo ligeramente diferenciado, superficies blancas encima.
+       Es la relación de la referencia (fondo #FAFAFA, tarjeta #FFFFFF): sin
+       `--bg-app` el lienzo y las tarjetas eran el mismo blanco y los paneles
+       solo se distinguían por el borde. */
+    --bg-app: #fafafa;
     --bg: #ffffff;
     --bg-subtle: #fafafa;
-    --bg-panel: #f4f4f5;
-    --bg-hover: #f4f4f5;
-    --text: #0a0a0a;
-    --text-2: #52525b;
-    --text-3: #a1a1aa;
+    --bg-panel: #f5f5f5;
+    --bg-hover: #f4f4f4;
+    --text: #171717;
+    --text-2: #737373;
+    --text-3: #a3a3a3;
     --text-4: #d4d4d8;
-    --border: #e4e4e7;
-    --border-strong: #d4d4d8;
+    --border: #eeeeee;
+    --border-strong: #e5e5e5;
 
     /* Chat: entrante en gris neutro, saliente en el acento de marca */
     --chat-bg: #fafafa;
@@ -100,14 +104,23 @@
     /* Cabecera translúcida (Tailwind 3 no aplica opacidad a var()). */
     --header-bg: rgba(255, 255, 255, 0.85);
 
-    /* Radios suaves y redondeados (tarjetas estilo dashboard lima) */
-    --radius-sm: 8px;
-    --radius: 10px;
-    --radius-lg: 16px;
-    --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.04);
-    --shadow-md: 0 4px 12px rgba(10, 10, 10, 0.06);
-    --shadow-pop: 0 16px 40px rgba(10, 10, 10, 0.1),
-      0 4px 12px rgba(10, 10, 10, 0.05);
+    /* Radios: la escala separa CONTROLES de SUPERFICIES. Antes `rounded-lg`
+       (botones, campos, renglón del menú) y `rounded-xl` (tarjetas) apuntaban
+       al mismo token, así que subir el radio de la tarjeta redondeaba también
+       los botones. Ahora: chips 10, controles 12-14, tarjetas 20, paneles
+       grandes 24. */
+    --radius-sm: 10px;
+    --radius: 12px;
+    --radius-lg: 14px;
+    --radius-card: 20px;
+    --radius-card-lg: 24px;
+    /* `--shadow-xs` es el escalón que faltaba: Card y Button ya lo usaban y en
+       Tailwind 3 esa clase no existe, así que las tarjetas salían sin sombra. */
+    --shadow-xs: 0 1px 2px rgba(23, 23, 23, 0.04);
+    --shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.04), 0 1px 3px rgba(23, 23, 23, 0.03);
+    --shadow-md: 0 6px 20px rgba(23, 23, 23, 0.06);
+    --shadow-pop: 0 24px 48px rgba(23, 23, 23, 0.1),
+      0 8px 16px rgba(23, 23, 23, 0.05);
 
     /* Densidad de filas de conversación */
     --row-py: 11px;
@@ -117,6 +130,7 @@
     color-scheme: dark;
 
     /* Neutros: escala zinc oscura, chrome Vercel */
+    --bg-app: #000000;
     --bg: #0a0a0a;
     --bg-subtle: #000000;
     --bg-panel: #141414;
@@ -191,10 +205,11 @@
     --header-bg: rgba(10, 10, 10, 0.85);
 
     /* Sombras: sobre oscuro necesitan más negro para leerse */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.6),
-      0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 24px 48px rgba(0, 0, 0, 0.6),
+      0 8px 16px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -203,7 +218,9 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    /* El lienzo es el gris claro; las tarjetas (`--bg`) son el blanco encima. */
+    background: var(--bg-app);
+    @apply text-foreground antialiased;
     letter-spacing: -0.01em;
     text-rendering: optimizeLegibility;
   }
