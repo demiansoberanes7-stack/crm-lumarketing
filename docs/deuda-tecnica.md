@@ -188,7 +188,8 @@ la respuesta de media.
   `INTEL` y así fallaron los flags de MCP. Al añadir cualquier env, tocar `docker-compose.yml`
   en la misma rama.
 - **D-07 — Cuatro tablas fuera del modelo.** La BD de producción tiene 106 tablas y `schema.ts`
-  define 102 `pgTable`; la diferencia es puramente aditiva y son `diagnostic_event`,
+  define 102 `pgTable` (medida docker-era; al 05-11-2026 son **121 en `public`**, **113 de la app**,
+  y `schema.ts` desplegado declara **109**); la diferencia es puramente aditiva y son `diagnostic_event`,
   `whatsapp_settings`, `integration_secret` y `whatsapp_address` (las cuatro las crea
   `drizzle/0006_diagnostics_messaging.sql`, que sí está en el journal). Riesgo real: `drizzle-kit
   generate` no las conoce, así que modelar una después emite un `CREATE TABLE` que choca.
@@ -362,8 +363,9 @@ quedan fijados con prueba en verde; tres —F5, F9 y F13— se comprobaron adem�
 de correcciones: `typecheck`, `lint`, `db:guard` y `next build` en verde; `pnpm test`
 **149 archivos / 1404 pruebas** (antes: 145/1352).
 
-**Este lote está en el working tree y NO está commiteado ni desplegado**: la autorización
-del dueño («Sí, desplegar todo el lote») cubrió v1.7.0, no estas correcciones.
+**Estado al escribirse: working tree sin commitear** —la autorización del dueño («Sí, desplegar todo
+el lote») cubrió v1.7.0, no estas correcciones—. Hoy **sí están desplegadas**: `tests/unit/agent-formal-quote.test.ts`
+existe en `b67e21c` (v1.8.0), verificado el 05-11-2026.
 
 | # | Hallazgo | Severidad | Estado |
 |---|----------|-----------|--------|
@@ -484,8 +486,9 @@ Pruebas nuevas: `prospects-query.test.ts` (formas de fecha del driver),
 `agent-formal-quote.test.ts` (orden, deduplicado, ficha única, faltantes) y
 `agent-actions.test.ts` (`item_ids` vacío / >5 rechazados).
 
-**Este lote está en el working tree y NO está commiteado ni desplegado**: la autorización
-anterior cubrió v1.7.0; el push a `main` despliega y necesita autorización nueva.
+**Estado al escribirse: working tree sin commitear** (la autorización anterior cubrió v1.7.0; el push
+a `main` despliega y necesitaba autorización nueva). Hoy **está desplegado**: los tres ficheros de
+prueba citados existen en `b67e21c` (v1.8.0), verificado el 05-11-2026.
 
 ### 6.10 Inteligencia: las fuentes se relacionan con la búsqueda, no se ocultan (21-10-2026)
 
@@ -553,7 +556,9 @@ etiquetas del `GtRanking` renderizado y `tests/unit/intel-content-scope.test.ts`
 (acotado, recorte de la consulta, «1 de 2» y muestra vacía honesta). Se borró la prueba de
 `showMonitoredExplorer`, la función que ocultaba las fuentes.
 
-**Tampoco este lote está commiteado ni desplegado.** Deshacer: devolver `intel-client.tsx` a
+**Estado al escribirse: sin commitear; hoy desplegado** —`tests/unit/intel-content-scope.test.ts` y
+`mentionsPhrase` (`src/server/intel/content.ts`, `terms.ts`) existen en `b67e21c` (v1.8.0), verificado
+el 05-11-2026—. Deshacer: devolver `intel-client.tsx` a
 la sección con `explore` como puerta, quitar `related/relatedTo/query/focus` de los paneles y
 dejar `catalogMatches`/`rankTerms`/`mentionsPhrase` sin uso — el API sigue respondiendo con
 ese campo de más sin que nada se rompa.
@@ -633,7 +638,9 @@ pidió. Se probó en `quote-partial-update.test.ts`. Descartado con motivo: el `
 
 Gates de este frente: `db:guard` (0 avisos, sin migraciones nuevas), `typecheck`, `lint`,
 `pnpm test` **152 archivos / 1453 pruebas** (antes 150/1436) y `next build`, todos en verde.
-Nada de esto está commiteado ni desplegado. Deshacer por bloque: quitar `intParam` de las cuatro
+Nada de esto estaba commiteado cuando se escribió esta sección; **hoy está desplegado** —`intParam`,
+`discountPair` y los avisos `*Failed` están en `b67e21c` (v1.8.0), verificado con `git grep` el
+05-11-2026—. Deshacer por bloque: quitar `intParam` de las cuatro
 rutas y borrar `lib/api.ts` y su prueba; devolver `src/lib/dates.ts` a los llamadores y volver a
 `toISOString().slice(0,10)` / `setMonth(-1)`; quitar `...discountPair(input)` de los dos puntos de
 escritura; y en las 13 superficies de B2 eliminar la bandera `*Failed` y su aviso (el componente
@@ -704,7 +711,8 @@ Verificado contra datos reales (SQL de solo lectura en el contenedor, tenant `or
 pantalla pasaría de 0 a **11 filas** —1 de Messenger (Axel, 6 entrantes) y 10 remitentes de correo
 con su último asunto—, y Honeycat conserva sus prospectos de chat (0 de correo).
 
-Nada de esto está commiteado ni desplegado. Deshacer: borrar `listEmailProspects` y
+Cuando se escribió esta sección nada estaba commiteado; **hoy está desplegado** —`listEmailProspects`
+están en `b67e21c` (v1.8.0), verificado con `git grep` el 05-11-2026—. Deshacer: borrar `listEmailProspects` y
 `serializeEmailProspect` y devolver `listProspects` a ser la consulta de chat; quitar `.email` y
 volver a no-nullable `contactId`/`conversationId` en `ProspectDto` (el cliente vuelve a su `key` y
 `href` de siempre); y en Citas, quitar la sección «Nueva cita» y el `import { ContactPicker }`,
@@ -1200,7 +1208,7 @@ verde. Sin migración, sin push y sin tocar producción.
 `tests/unit/app-shell-scroll-lock.test.ts`. La app sigue funcionando; el vacío reaparece si una
 caja ajena vuelve a alargar el documento.
 
-### 6.22 Módulo Sucursales: inventario por sucursal (22-10-2026, migración 0084 SIN aplicar)
+### 6.22 Módulo Sucursales: inventario por sucursal (22-10-2026, migración 0084: escrita sin aplicar y **aplicada en el restaurado del 28-10-2026**)
 
 **Lo pedido.** «Crea otro módulo llamado sucursal… manejar un control relacionado de inventario
 … cantidades de las piezas en diferentes sucursales … agregar los datos de la sucursal y
@@ -1313,7 +1321,7 @@ máquina.
 y las tres rutas `/api/email-campaigns/**`. El worker conserva la rama de correo (inofensiva sin
 campañas `channel='email'`).
 
-### 6.24 FASE 3 (02-11-2026, worktree): citas por usuario, fotos de producto y la media pública sin lista (migraciones 0087 y 0088 SIN aplicar)
+### 6.24 FASE 3 (02-11-2026, worktree): citas por usuario, fotos de producto y la media pública sin lista (migraciones 0087 y 0088: escritas sin aplicar y **aplicadas el 05-11-2026**)
 
 **Lo pedido.** Bloque A («Citas y calendario visual»: vistas mes/semana/día, horarios
 reales **por usuario** —«no debes considerar que todos los usuarios trabajan con los
@@ -1322,11 +1330,13 @@ fotos en alta/edición, principal/secundarias, reordenar y borrar, validación p
 real, tamaño y número por producto configurables, nada de base64 en Postgres, visible en
 catálogo y cotización).
 
-**Dónde vive.** Todo en el worktree `/Users/ghostbreakfast/Desktop/crm-lumark-fase3`
+**Dónde vive.** Todo se construyó en el worktree `/Users/ghostbreakfast/Desktop/crm-lumark-fase3`
 (rama `feature/citas-google-imagenes`, partida de `main` = `b67e21c`, v1.8.0), para no
 mezclarse con las plantillas de correo (0086) que siguen sin commitear en
-`DESARROLLO WEB/CRM LUMARK`. **Nada de esto está commiteado** (no se pidió). El trabajo de
-0086 no se tocó ni se indexó.
+`DESARROLLO WEB/CRM LUMARK`. **El estado cambió el 05-11-2026**: los bloques A-D son 15 commits
+(`7bc9479` … `863cbd0`), `main` quedó en `863cbd0` por fast-forward y Hostinger lo desplegó; las
+migraciones 0087-0090 están aplicadas. Lo que sigue sin commitear es solo el trabajo de 0086 del
+repo principal, que no se tocó ni se indexó.
 
 **A — Citas.** `0087_citas_usuario_google_por_usuario.sql` (journal `idx: 86`) **no crea
 tablas**: añade `user_id` a `calendar_settings` y a `google_credentials` —el horario y la
@@ -1400,17 +1410,19 @@ existe como canal de reglas de automatización y de campañas, nunca como hebra 
 que el arreglo es un candado, no la corrección de un fallo observado. En el PDF del C4 hubo que dar alto mínimo
 a la fila con miniatura (`PHOTO_BOX + 6`): una partida de texto corto medía 30 pt y su foto
 de 46 se montaba sobre la línea de abajo. **No verificado en navegador** las pantallas de
-Citas, de fotos del catálogo, del compositor y el PDF con miniaturas: no hay BD local con
-0087/0088 aplicadas ni sesión; la verificación visual queda pendiente (#183). Lo mismo aplica a
+Citas, de fotos del catálogo, del compositor y el PDF con miniaturas: la razón era la falta de
+esquema, y eso se resolvió el 05-11-2026 (0087-0090 aplicadas y `863cbd0` desplegado), así que
+desde ahora solo falta una sesión de login para recorrerlas (#183). Lo mismo aplica a
 la pantalla de **Costos de producción** (0090, §6.27).
 
 **Deuda abierta.**
-- **0087 y 0088 sin aplicar** en `lumark-prod`. Lo dicho aquí el 02-11-2026 («y también
+- **0087 y 0088 ya están aplicadas** en `lumark-prod` (05-11-2026, con las 0089 y 0090 — ver el
+  estado al final de §6.26). Lo dicho aquí el 02-11-2026 («y también
   0083/0084/0085») era **falso**: medido el 04-11-2026 en `drizzle.__drizzle_migrations`, 0083,
-  0084 y 0085 **sí están aplicadas** (filas con `created_at` …024/…025/…026 y hash = sha256 del
-  archivo, comprobado contra `6f8b8385…`, `978ca39b…` y `ec850362…`). Lo pendiente es
-  **0086 (deliberadamente), 0087, 0088, 0089 y 0090**. Ver §6.26: aplicarlas ya no es una cuestión de
-  autorización, es una cuestión de **quién tiene permisos para hacerlo**.
+  0084 y 0085 **sí estaban aplicadas** (filas con `created_at` …024/…025/…026 y hash = sha256 del
+  archivo, comprobado contra `6f8b8385…`, `978ca39b…` y `ec850362…`). Lo único que sigue sin
+  aplicar es **0086**, y es deliberado. Ver §6.26: aplicarlas no era una cuestión de autorización,
+  era una cuestión de **quién tiene permisos para hacerlo**.
 - El **bloque B (Google Calendar)** tiene su parte bloqueada fuera del código: hace falta que
   el propietario publique la OAuth app; el token actual está revocado. Lo construido está en
   §6.25. No se simuló la conexión en ninguna parte.
@@ -1430,10 +1442,11 @@ la pantalla de **Costos de producción** (0090, §6.27).
   HTML disfrazado de PNG, servicio de la foto por su URL pública con su `content-type`,
   miniatura en el compositor al elegir el producto, foto congelada en la partida
   (`imageStoragePath`/`imageMimeType`/`imageBytes` + `imageUrl` derivada), `/Subtype /Image`
-  en el PDF y la misma foto en el detalle. **Ejecutado: no.** El guion necesita el contenedor
-  de pruebas (Postgres con 0088 aplicada, Chromium vía `CHROMIUM_PATH` y `next dev`); en
-  este worktree no hay BD ni navegador, así que sus comprobaciones quedan sin correr —es el
-  mismo bloqueo visual que #183—.
+  en el PDF y la misma foto en el detalle. **Ejecutado: no.** El guion toma la instancia por
+  `APP_BASE_URL` y necesita Chromium (`CHROMIUM_PATH`) y una sesión de login; la BD con 0088 dejó
+  de ser el bloqueo porque está aplicada en `lumark-prod` desde el 05-11-2026, pero correrlo contra
+  producción crearía filas y archivos reales, así que sigue pidiendo una instancia aislada. Es el
+  mismo bloqueo visual que #183.
 - Archivos huérfanos: los que subió la ruta vieja a `MEDIA_DIR/{org}/catalog/` no tienen
   fila en `product_image`, así que la tira no los ve y `removeProductImageFiles` no los
   borra. Son inocuos (no se referencian) y solo ocupan disco.
@@ -1441,8 +1454,9 @@ la pantalla de **Costos de producción** (0090, §6.27).
   filas `media_asset`, ambas del 2026-10-20, y ninguna bajo `catalog/`.
 - `alt_text` se fija al subir y no se puede editar después (sin endpoint).
 
-**Deshacer.** Estando las migraciones sin aplicar: revertir el worktree
-(`git -C …/crm-lumark-fase3 checkout -- .` y borrar los `??`), o en concreto borrar
+**Deshacer.** Las migraciones **ya están aplicadas** (05-11-2026), así que deshacer el bloque exige
+también el `down` en la BD —`product_image`, las tres columnas de `quote_item` y los cambios de
+`0087`/`0089`— y no solo volver el worktree. En el repo: borrar
 `drizzle/0087_*.sql` y `drizzle/0088_*.sql` con sus entradas `idx: 86/87` del journal,
 `src/lib/agenda/`, `src/components/agenda/`, `src/lib/product-images.ts`,
 `src/lib/catalog/`, `src/server/catalog/images.ts`, las dos rutas `src/app/api/catalog/**/images`,
@@ -1462,7 +1476,7 @@ ALTER TABLE calendar_settings DROP COLUMN user_id; ALTER TABLE google_credential
 y quitar los dos índices de `booking`. La lista corta de `isPublicMediaPath()` **no se debe
 revertir**: es la que cierra la fuga del párrafo de arriba.
 
-### 6.25 FASE 3 · bloque B (02-11-2026, worktree): Google Calendar por usuario, el evento de cada cita y su poller (migración 0089 SIN aplicar)
+### 6.25 FASE 3 · bloque B (02-11-2026, worktree): Google Calendar por usuario, el evento de cada cita y su poller (migración 0089: escrita sin aplicar y **aplicada el 05-11-2026**)
 
 **Lo pedido.** Bloque B del pliego: «Calendario personal de Google» — conectar, autorizar,
 ver estado y **desconectar** una cuenta de Google por persona, tokens cifrados que nunca salen,
@@ -1554,10 +1568,11 @@ tarea al calendario de su dueño, token revocado de una persona marca **su** fil
 `google-oauth` 15 (estado con `user_id`, `scope=personal`).
 
 **Deuda abierta.**
-- **0089 sin aplicar.** Con esto se corrigió lo que decía la primera versión de esta sección
-  («y con ella 0083-0088»): 0083, 0084 y 0085 **sí** están aplicadas; lo único que falta además
-  de 0089 es 0087, 0088 y 0086 (§6.24 y §6.26). Sin BD local no se puede correr el poller de
-  verdad ni ver Citas en navegador: sigue #183.
+- **0089 aplicada el 05-11-2026** con las otras tres (§6.26). Con esto se corrigió lo que decía la
+  primera versión de esta sección («y con ella 0083-0088»): 0083, 0084 y 0085 **sí** estaban
+  aplicadas, y lo único que sigue sin aplicar es 0086, deliberadamente. El poller ya puede correr
+  de verdad en producción —las columnas existen—; lo que falta es verlo: ni Citas ni la conexión
+  de Google se han manejado en un navegador con sesión (#183), y el token sigue revocado.
 - **Nada de Google es verificable en vivo**: la OAuth app del proyecto sigue **sin publicar**
   (modo prueba, el refresh token caduca a los 7 días) y el token actual está **revocado**. Este
   lote corre contra `fetch` simulado. Reconnectar es #168.
@@ -1578,7 +1593,7 @@ tarea al calendario de su dueño, token revocado de una persona marca **su** fil
   `echo "OK"` encima de un TS2554 real, porque el estado de una tubería es el del último
   comando. Los gates se corren **sin tubería** y se lee su exit code.
 
-### 6.26 Ninguna herramienta autorizada puede migrar esta BD (04-11-2026, P1 operativo)
+### 6.26 Ninguna herramienta autorizada puede migrar esta BD (04-11-2026, P1 operativo — **resuelto el 05-11-2026 con el runner del dueño**)
 
 **Lo que pasó.** Autorizado el respaldo dirigido y el «aplicar 0087+0088+0089», el primer
 `ALTER TABLE` devolvió `42501: must be owner of table calendar_settings`. No es un fallo del SQL
@@ -1617,8 +1632,13 @@ una decisión explícita de privilegios.
    migraciones de Citas/imágenes, `product_cost_line` con sus **10** columnas nombradas, las dos
    tablas nuevas con dueño `lumark_app`, sus índices, y los conteos `booking`/`quote_item`/
    `catalog_product` **1 / 2 / 12** sin bajar. `--verificar` es solo lectura y conviene correrlo
-   primero. **No se ha ejecutado todavía**: el intento del 05-11-2026 lo frenó el clasificador de
-   permisos, que exige autorización escrita por el dueño en su propio mensaje. Si se prefiere
+   primero. **Ya ejecutado el 05-11-2026**: el intento anterior lo frenó el clasificador de
+   permisos, que exige autorización escrita por el dueño en su propio mensaje; llegó la línea
+   («Autorizo leer la credencial, corre el runner») y corrió primero `--verificar` (ledger 83, las
+   cuatro pendientes, cero escrituras) y después la corrida completa, que salió **exit 0** con
+   ledger **87**, las **10** columnas, `product_image` y `product_cost_line` con dueño
+   `lumark_app`, los tres conteos sin bajar (1 / 2 / 12) y las dos tablas nuevas vacías.
+   Y si se prefiere
    pegar el SQL a mano, el mismo lote está en `aplicar-fase3.sql` (renombrado el 05-11-2026 cuando
    entró 0090), conectado por el **pooler de sesión** (`aws-0-us-east-1.pooler.supabase.com:5432`,
    usuario `lumark_app.hehgscuuzhojefscjcvw`, `sslmode=require`, una sola conexión — el tope es 15).
@@ -1631,12 +1651,16 @@ una decisión explícita de privilegios.
    si se reconstruye la instancia (pendiente #168, que incluye el `pg_dump` periódico que Supabase
    Free no hace).
 
-**Estado a 05-11-2026:** `lumark-prod` con ledger de 83 filas y última entrada `…026` = 0085.
-Sin aplicar: **0086 (deliberadamente), 0087, 0088, 0089 y 0090**. El push a `main` del worktree
-FASE 3 va **después** de las migraciones, no antes: el código nuevo lee `booking.title`,
-`booking.user_id`, `booking.google_event_id`, las columnas de imagen de `quote_item` y la tabla
-`product_cost_line`, y sin eso Citas, el catálogo, el PDF de cotización y la ficha de Inventario
-dan error. El orden acordado es respaldo → esquema → código.
+**Estado a 05-11-2026 (tarde).** `lumark-prod` con ledger de **87** filas y última entrada
+`…030` = 0090: **0087, 0088, 0089 y 0090 quedaron APLICADAS** al ejecutar
+`aplicar-fase3.mjs` con autorización escrita del dueño (salida 1 arriba). `public` pasó de 119 a
+**121** tablas, de las cuales **113** son de `lumark_app` (antes 111). Lo único sin aplicar es
+**0086**, y sigue siendo deliberado. Con el esquema ya en su sitio se empujó `863cbd0` a `main`
+(fast-forward desde `b67e21c`) y Hostinger desplegó la FASE 3 entera: a las 16:31 (PDT) la ruta
+nueva `GET /api/catalog/x/costs` respondía **401** —con `b67e21c` devolvía 404—, `/api/health` 200,
+`/login` 200, `/bookings` y `/catalog` siguen en su 307 de siempre hacia `/login`, y en la hora
+de `postgres_logs` que se consultó tras el despliegue no hay ningún `sql_state_code` de error. Queda la
+verificación visual (#183), que ahora solo necesita una sesión de login, no una BD.
 
 **Regla para no repetir esto:** antes de prometer «aplico las migraciones», comprobar
 `pg_class.relowner` contra `current_user`. Si no coinciden, no hay migración que valga, por muy
@@ -1647,7 +1671,7 @@ está en §6.24 y §6.25, y el de 0090 en §6.27.
 
 ---
 
-### 6.27 FASE 3 · bloque D (05-11-2026, worktree): costos de producción por producto (migración 0090 SIN aplicar)
+### 6.27 FASE 3 · bloque D (05-11-2026, worktree): costos de producción por producto (migración 0090: escrita y **aplicada el mismo día**)
 
 **Qué se pidió.** «Calcular costos de productos, que nos permita poder contar cuánto % de algo
 tiene ese producto y valor monetario para al final saber cuánto cuesta producir dicho producto.»
@@ -1700,10 +1724,10 @@ se respondería con `0091` si el negocio lo pide.
 89`, `when: 1792000000030`, `check-migrations` 0 avisos, `tsc --noEmit` y `eslint .` limpios,
 `vitest run` **195 archivos / 1945 pruebas** en verde (62 de ellas nuevas, en cuatro ficheros
 `catalog-costs-*`) y `npm run build` con `/api/catalog/[id]/costs` en la lista de rutas.
-**0090 no está aplicada en `lumark-prod`** —el mismo muro de dueño de §6.26—, así que la tabla no
-existe allí y la pantalla fallaría en producción; por eso el lote entra en el runner
-(`aplicar-fase3.mjs`, que ahora cubre 0087-0090) y el push sigue retenido (#201).
-**Sin verificación en navegador**, por el mismo bloqueo de #183.
+**0090 quedó aplicada en `lumark-prod`** el 05-11-2026 junto con 0087-0089 (mismo runner, misma
+transacción; ver §6.26), `product_cost_line` existe con sus 10 columnas y dueño `lumark_app`, y
+`main` ya lleva el código que la lee. **Sin verificación en navegador** (#183), que desde este
+despliegue solo necesita una sesión de login.
 
 **Deshacer.** En la BD: `DROP TABLE "product_cost_line";` — no arrastra nada más; las dos FK son
 `ON DELETE CASCADE` *hacia* `organization` y `catalog_product`, así que soltar la tabla no toca ni

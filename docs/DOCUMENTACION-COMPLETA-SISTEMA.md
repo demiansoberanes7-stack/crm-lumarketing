@@ -521,35 +521,31 @@ llega a escuchar y el contenedor entra en crash loop con 502 publico. `next buil
                             +-------------------+
 ```
 
-## Tablas por Dominio (107 en el codigo desplegado, 108 en cada arbol sin commitear)
+## Tablas por Dominio (109 en el codigo desplegado, 108 en el arbol del repo principal sin commitear)
 
-**Deriva de esquema conocida**, medida el 04-11-2026 consultando `pg_class`/`pg_namespace` en
-`lumark-prod` (antes de este parrafo decia "106 tablas en produccion, 0083 y 0084 sin aplicar";
-eso era cierto al escribirse y dejo de serlo en el restaurado del 28-10-2026): la BD tiene
-**119** tablas en `public`, de las cuales **111** son de la app (dueno `lumark_app`) y **8** son
+**Deriva de esquema conocida**, medida el 05-11-2026 despues de aplicar 0087-0090 consultando
+`pg_class`/`pg_namespace` en `lumark-prod` (el parrafo anterior a esta edicion decia "119 tablas,
+111 de la app, 0087-0090 sin aplicar"; eso fue cierto hasta la manana del 05-11): la BD tiene
+**121** tablas en `public`, de las cuales **113** son de la app (dueno `lumark_app`) y **8** son
 residuos del restaurado (dueno `postgres`, todas `_bak_20261028_*`: `email_account`,
 `google_credentials`, `instagram_credentials`, `integration`, `intel_credentials`,
 `messenger_credentials`, `tiktok_credentials`, `whatsapp_zernio`). Las 8 no las lee ningun
 codigo; hay que decidir si se borran o se conservan como prueba.
 
-De esas 111: **107** estan en el `src/lib/db/schema.ts` **desplegado** (`b67e21c`, medido con
-`git show HEAD:...`) y **4** no (`diagnostic_event`, `whatsapp_settings`, `integration_secret`,
-`whatsapp_address`). O sea que el codigo que corre hoy modela exactamente 107 de las 111: no hay
-ninguna tabla declarada que falte en la BD. Los dos arboles de trabajo sin desplegar se pasan por
-vias distintas: el del repo principal modela **108** (anade `email_template`, migracion 0086, con
-su archivo y su entrada `idx: 86` en el journal, **todo sin rastrear en git**), y el worktree
-`feature/citas-google-imagenes` modela **109** (medido con `grep -c "^export const … = pgTable("`
-sobre su `schema.ts`): agrega `product_image` (0088) y `product_cost_line` (0090). Ninguna de esas
-tres tablas existe en produccion, y son dos cosas distintas: 0086 no se aplica por decision
-explicita, 0087-0090 estan bloqueadas por permisos de dueno. Aplicadas todas, la BD tendria **114**
-tablas de la app: 0087 y 0089 solo agregan columnas.
+De esas 113: **109** estan en el `src/lib/db/schema.ts` **desplegado** (`863cbd0`, medido con
+`grep -c pgTable(` sobre `git show origin/main:src/lib/db/schema.ts`) y **4** no (`diagnostic_event`,
+`whatsapp_settings`, `integration_secret`,
+`whatsapp_address`). O sea que el codigo que corre hoy modela exactamente 109 de las 113: no hay
+ninguna tabla declarada que falte en la BD. El arbol del repo principal modela **108** (anade
+`email_template`, migracion 0086, con su archivo y su entrada `idx: 86` en el journal, **todo sin
+rastrear en git**) y sigue siendo el unico caso de codigo que espera una tabla que la BD no tiene.
 
 **Aplicadas y verificadas en la BD**: 0083 (`prospect_dismissal`), 0084 (`branch`,
 `branch_inventory`), 0085 (que no agrega tablas: agrega `broadcast_recipient.email` /
-`.recipient_name` y su indice unico). **Sin aplicar**: 0086 (deliberado), 0087, 0088, 0089, 0090.
-Las cuatro ultimas no esperan una decision de negocio sino una accion del dueno: ninguna
-herramienta autorizada puede escribir DDL en esta BD porque todas las tablas son de
-`lumark_app` y la sesion corre como `postgres`. Ver §6.26 de `docs/deuda-tecnica.md`.
+`.recipient_name` y su indice unico) y las cuatro de FASE 3 —**0087, 0088, 0089 y 0090**, aplicadas
+el 05-11-2026 con `aplicar-fase3.mjs` corriendo como `lumark_app` (ledger 83 → 87, `product_image`
+y `product_cost_line` creadas con dueno `lumark_app`; 0087 y 0089 solo agregan columnas)—. **Sin
+aplicar**: solo 0086, por decision explicita. Ver §6.26 de `docs/deuda-tecnica.md`.
 
 El riesgo de las 4 huerfanas no es que falten: `drizzle/0006_diagnostics_messaging.sql` **si**
 esta en el journal, asi que una replica nueva las recibe igual. Es que `drizzle-kit generate`
@@ -709,20 +705,23 @@ obligatorio esta en `drizzle/meta/_journal.json`.
   **no** corre `scripts/migrate.mjs`: desplegar codigo no toca el esquema. Aplicar una
   migracion es un paso manual, deliberado y suelto, y por eso el orden de cualquier
   despliegue es respaldo → esquema → codigo.
-- **Hoy ninguna herramienta autorizada puede aplicarlas** en `lumark-prod`: las 111 tablas
+- **Ninguna herramienta autorizada podia aplicarlas** (estado del 04 al 05-11-2026): las tablas
   de la app son de `lumark_app` y la sesion administrativa corre como `postgres`, que no
-  puede `SET ROLE` (`set_option = false`) ni hacer DDL ajeno. Lo que sigue siendo cierto es
+  puede `SET ROLE` (`set_option = false`) ni hacer DDL ajeno. Se resolvio el 05-11-2026 con un
+  script del dueno que conecta **como** `lumark_app` por el pooler de sesion; ninguna sesion del
+  agente toca la credencial sin autorizacion escrita suya. Lo que sigue siendo cierto es
   el **como se comprueba**, no el quien: el estado real es `SELECT id, hash, created_at FROM
-  drizzle.__drizzle_migrations ORDER BY id` (medido 04-11-2026: **83 filas**, ids 1-59 y 61-84,
-  sin la 60; hash = sha256 de los bytes del archivo; unica restriccion = PK de `id`, o sea que
+  drizzle.__drizzle_migrations ORDER BY id` (medido 05-11-2026 tras el lote: **87 filas**; hash =
+  sha256 de los bytes del archivo; unica restriccion = PK de `id`, o sea que
   insertar hay que hacerlo con `WHERE NOT EXISTS`). El porqué y las tres salidas estan en
   §6.26 de `docs/deuda-tecnica.md`.
-- Estado a 05-11-2026: aplicadas hasta **0085**; **0086** sin aplicar por decision explicita;
-  **0087, 0088, 0089 y 0090** sin aplicar y bloqueadas por permisos. Las columnas y tablas que
-  agregan no existen en produccion, y el codigo que las lee no debe desplegarse antes. El ledger
-  tiene hoy **83** filas; con las cuatro pendientes aplicadas tendria **87** (0086 no entra en
-  esta cuenta: su `idx` 86 vive en el journal del otro arbol de trabajo, no se aplica y por lo
-  tanto no se registra).
+- Estado a 05-11-2026 (tarde): aplicadas hasta **0090** salvo **0086**, que sigue sin aplicar por
+  decision explicita. **0087, 0088, 0089 y 0090 se aplicaron el 05-11-2026** con
+  `aplicar-fase3.mjs` (autorizacion escrita del dueño, §6.26 de `docs/deuda-tecnica.md`), y ese
+  mismo dia `main` paso de `b67e21c` a `863cbd0`, asi que el codigo que las lee ya esta desplegado.
+  El ledger tiene hoy **87** filas y ultima entrada `created_at 1792000000030`; `public` tiene
+  **121** tablas, **113** de `lumark_app`. (0086 no entra en esta cuenta: su `idx` 86 vive en el
+  journal del otro arbol de trabajo, no se aplica y por lo tanto no se registra.)
 
 ---
 
@@ -1174,11 +1173,10 @@ Fotos reales por producto, en disco y no en la BD. Detalle completo en
   `capabilitiesFor()`: la caida a WhatsApp de esta ultima es correcta para la ventana y el
   texto, pero inventaria un adjunto en un canal que la app no conoce (la columna
   `conversation.channel` es varchar sin restriccion).
-- **Estado (medido 05-11-2026)**: 0088 **sin aplicar**, asi que `product_image` no existe en
-  `lumark-prod` y las tres columnas `quote_item.image_*` tampoco. Nada de esto funciona en
-  produccion hasta aplicarla; el bloqueo no es de autorizacion sino de permisos de dueno
-  (§6.26 de `docs/deuda-tecnica.md`, con el ejecutable `aplicar-fase3.mjs` que cubre
-  0087-0090).
+- **Estado (05-11-2026 al cierre)**: 0088 **aplicada** el mismo dia con `aplicar-fase3.mjs`
+  (§6.26 de `docs/deuda-tecnica.md`), asi que `product_image` existe en `lumark-prod` con dueno
+  `lumark_app` y las tres columnas `quote_item.image_*` tambien estan. `863cbd0` en `main` ya
+  despliego el codigo que las lee. Queda pendiente la pasada en navegador con sesion (#183).
 
 ## Costos de produccion (receta por producto; migracion 0090)
 
@@ -1240,11 +1238,12 @@ calculan. Detalle completo en `docs/SISTEMA-COMPLETO.md` §38.
   en disco, la receta son filas. Ninguna de las dos espera a «Guardar cambios»
   del producto: guardan solas, porque una linea o un archivo pendiente en
   memoria que se pierde al cerrar el modal es la peor forma de fallar.
-- **Estado (medido 05-11-2026)**: 0090 **sin aplicar**, asi que `product_cost_line`
-  no existe en `lumark-prod`. La pantalla sale con «No se pudo leer la receta de
-  este producto» y Reintentar —no con una receta vacia, que seria otra cosa—, y
-  la rejilla no pinta margen. El codigo que la lee no debe desplegarse antes que
-  la tabla (§6.26 de `docs/deuda-tecnica.md`).
+- **Estado (medido 05-11-2026 al cierre del dia)**: 0090 **aplicada** en `lumark-prod` con las
+  otras tres del lote; `product_cost_line` existe (10 columnas, dueno `lumark_app`, indices
+  `product_cost_line_product_idx` y `_org_idx`) y el codigo que la lee ya esta desplegado en
+  `main`. La rejilla pinta margen y la receta se lee: medido en vivo, `GET
+  /api/catalog/x/costs` responde 401 sin sesion, antes era 404. Verificacion en navegador
+  con usuario (#183) sigue pendiente.
 
 ## Proyectos
 
@@ -1420,13 +1419,15 @@ Configuracion semanal (weeklyHours)
 - **Pantalla en dos estados** (`/settings/google`): el dueño ve la credencial de la app del
   negocio; cualquier miembro enlaza el suyo (`personal-calendar.tsx`, rutas
   `/api/settings/google/personal`).
-- **Estado (medido 04-11-2026)**: 0087 y 0089 **sin aplicar**. No existen aun
+- **Estado (05-11-2026 al cierre)**: 0087 y 0089 **aplicadas**. Ya existen
   `calendar_settings.user_id`, `google_credentials.user_id`, `booking.title`, `booking.location`,
-  `booking.user_id` ni `booking.google_event_id`, y `google_oauth_state` no tiene `user_id`; las
-  credenciales del negocio siguen bajo el indice unico viejo por organizacion. Nada de lo de esta
-  seccion funciona en produccion, y **tampoco puede desplegarse el codigo antes de aplicarlas**:
-  las consultas nuevas piden columnas inexistentes y Google daria 500 en cada alta de cita. El
-  porque y como se resuelven estan en §6.26 de `docs/deuda-tecnica.md`.
+  `booking.user_id` y `booking.google_event_id`, y `google_oauth_state` tiene `user_id`; las
+  credenciales del negocio quedaron bajo el indice unico nuevo
+  (`calendar_settings_org_user_uq`, `google_credentials_org_user_uq`, `UNIQUE NULLS NOT DISTINCT`,
+  que reemplaza al viejo `*_org_uq` como decide la propia 0087). El codigo que los lee esta
+  desplegado desde `863cbd0`. Lo que NO esta probado en vivo: el flujo completo de Google, porque
+  la OAuth app sigue sin publicar y el token revocado —nada de esta seccion ha hablado con Google
+  real—. El porque del bloqueo y su resolucion estan en §6.26 de `docs/deuda-tecnica.md`.
 
 ## Nombre en la interfaz
 

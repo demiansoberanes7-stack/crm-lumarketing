@@ -2609,9 +2609,10 @@ conectores** (lo mismo que los mensajes de prueba de los canales).
   que es lo que hay mientras no haya una base aislada con 0089 aplicada.
 - **Pendiente de acceso:** la creación real de eventos en Google Calendar y Zoom en producción
   — en esta instancia **el token de Google sigue revocado** hasta que el dueño publique la app
-  OAuth y reconecte (ver entregable de v1.7.0). La migración **0089 no está aplicada** y la
-  pantalla de Citas no se ha visto en navegador (#183): nada de este bloque es verificable en
-  vivo hasta aplicar 0087-0089 y reconectar.
+  OAuth y reconecte (ver entregable de v1.7.0). **0087, 0088, 0089 y 0090 ya están aplicadas**
+  (05-11-2026, `aplicar-fase3.mjs`) y `863cbd0` está desplegado, así que el esquema que este
+  bloque necesita existe; lo que sigue sin verse en vivo es la pantalla de Citas en un navegador
+  con sesión (#183) y cualquier llamada a Google real, que depende de reconectar.
 
 ---
 
@@ -3031,13 +3032,20 @@ esa ruta y afirmaba un campo `imageUrl` del catálogo que ningún DTO tuvo nunca
 contra `/api/catalog/[id]/images` y `primaryImage`, añade el recorrido completo del C4 por
 navegador: rechazo de un HTML disfrazado de PNG, la foto servida por su URL pública con su
 `content-type`, la miniatura en el compositor al elegir el producto, la foto congelada en la
-partida, `/Subtype /Image` en el PDF y la misma URL en el detalle. **No ejecutado**: el guion
-pide el contenedor de pruebas (Postgres con 0088, Chromium y `next dev`) y este worktree no
-tiene ni lo uno ni lo otro —el mismo bloqueo visual que las pantallas de Citas (#183)—.
+partida, `/Subtype /Image` en el PDF y la misma URL en el detalle. **No ejecutado.** El guion toma
+la instancia por `APP_BASE_URL` y necesita Chromium (`CHROMIUM_PATH`) y una sesión de login; la BD
+ya dejó de ser el bloqueo —0088 está aplicada en `lumark-prod` desde el 05-11-2026—, pero correrlo
+contra producción crearía cotizaciones, partidas y archivos reales, así que sigue pidiendo una
+instancia aislada (o un tenant de descarte). Es el mismo bloqueo visual que las pantallas de Citas
+(#183), que ahora también es solo de sesión.
 
 ### Estado y deshacer
 
-Nada de esto está en producción. Para deshacer el bloque local: borrar
+**Estado (05-11-2026 al cierre): desplegado.** 0088 quedó aplicada en `lumark-prod` con
+`aplicar-fase3.mjs` y `main` pasó a `863cbd0`, así que `product_image` y las tres columnas de
+`quote_item` existen y el código que las lee corre en producción. Lo que NO se ha probado sigue
+siendo lo mismo: el recorrido en navegador y el guion e2e, que desde este despliegue ya no piden
+esquema sino Chromium y una sesión (#183). Para deshacer el bloque local: borrar
 `drizzle/0088_product_images.sql` y su entrada del journal (`idx: 87`), quitar
 `productImage` de `schema.ts` y el prefijo `pimg` de `ids.ts`, borrar
 `src/lib/product-images.ts`, `src/server/catalog/images.ts`, las dos rutas de
@@ -3052,8 +3060,8 @@ las fichas en `src/server/ai/pipeline.ts`; `sharePrimaryImage` en
 `src/server/catalog/send.ts`; `primaryImageFilesForChat` en el servicio de imágenes. Los
 nueve ficheros de prueba: `product-images`, `media-path`, `catalog-images-route`,
 `catalog-images-service`, `quote-image-snapshot`, `quote-pdf-images`, `quote-item-photo`,
-`agent-ficha-photo`, `catalog-share-photo`. Si la migración ya se hubiera aplicado,
-el `down` es `DROP TABLE product_image; ALTER TABLE quote_item DROP COLUMN
+`agent-ficha-photo`, `catalog-share-photo`. 0088 **sí está aplicada**, así que deshacerla en la BD
+exige el `down`: `DROP TABLE product_image; ALTER TABLE quote_item DROP COLUMN
 image_storage_path, DROP COLUMN image_mime_type, DROP COLUMN image_bytes;` —los
 archivos de `MEDIA_DIR/{org}/catalog/` no los toca ninguna migración y quedarían en
 disco—.
@@ -3064,9 +3072,9 @@ disco—.
 
 Petición del negocio: *«contar cuánto % de algo tiene ese producto y su valor monetario, para
 saber cuánto cuesta producirlo»*. Se construyó en el worktree `feature/citas-google-imagenes`
-como bloque D (D1 esquema, D2 servicio y matemática, D3 API, D4 pantalla, D5 pruebas). **Local**:
-la migración `0090_product_costs.sql` no está aplicada en `lumark-prod`, igual que 0087, 0088 y
-0089 (§6.26 de `docs/deuda-tecnica.md`).
+como bloque D (D1 esquema, D2 servicio y matemática, D3 API, D4 pantalla, D5 pruebas). **Estado
+(05-11-2026 al cierre)**: `0090_product_costs.sql` **está aplicada** en `lumark-prod` junto con
+0087, 0088 y 0089 (§6.26 de `docs/deuda-tecnica.md`), y el código que la lee corre desplegado.
 
 ### La pregunta que había que resolver antes de programar
 
@@ -3218,20 +3226,24 @@ Gates (medidos en el worktree): `node scripts/check-migrations.mjs` 0 avisos, `n
 limpio, `npx tsc --noEmit` limpio, `npx vitest run` **195 archivos / 1945 pruebas** en verde y
 `npm run build` en verde con `/api/catalog/[id]/costs` en la lista de rutas.
 
-**Sin verificación en navegador**: hace falta el contenedor de pruebas (Postgres con 0090
-aplicada y sesión), el mismo bloqueo de #183 y del recorrido C4 de `scripts/e2e-zorro-tech.mjs`.
+**Sin verificación en navegador**: falta recorrerlo con una sesión —el mismo bloqueo de #183 y del
+recorrido C4 de `scripts/e2e-zorro-tech.mjs`—. La parte de esquema ya no falta: 0090 está aplicada
+en `lumark-prod`.
 
 ### Estado y deshacer
 
-Nada de esto está en producción. Deshacer el bloque local: borrar `drizzle/0090_product_costs.sql`
-y su entrada del journal (`idx: 89`), quitar `productCostLine` de `schema.ts` y el prefijo `pcst`
+**Estado (05-11-2026 al cierre): desplegado.** 0090 quedó aplicada con `aplicar-fase3.mjs` y `main`
+pasó a `863cbd0`: `product_cost_line` existe con sus 10 columnas y dueño `lumark_app`, y la ruta
+`GET /api/catalog/[id]/costs` ya responde en producción. Deshacer el bloque local: borrar
+`drizzle/0090_product_costs.sql` y su entrada del journal (`idx: 89`), quitar `productCostLine` de
+`schema.ts` y el prefijo `pcst`
 de `ids.ts`, borrar `src/lib/catalog/cost.ts`, `src/server/catalog/costs.ts`,
 `src/app/api/catalog/[id]/costs/route.ts`, `src/components/catalog/product-costs.tsx` y lo que
 añade `catalog-client.tsx` (`costSummary`, la línea de la tarjeta, el bloque del modal y
 `priceCentsOf`) más el `costSummary` de `src/app/api/catalog/route.ts`. Los cuatro ficheros de
 prueba: `catalog-costs-math`, `catalog-costs-service`, `catalog-costs-route`, `catalog-costs-ui`.
-Si la migración ya se hubiera aplicado, el `down` es `DROP TABLE product_cost_line;` —no deja
-archivos ni toca `catalog_product`—.
+0090 **sí está aplicada**, así que el `down` en la BD es obligatorio para deshacerla:
+`DROP TABLE product_cost_line;` —no deja archivos ni toca `catalog_product`—.
 
 ---
 

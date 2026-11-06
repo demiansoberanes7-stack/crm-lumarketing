@@ -53,8 +53,8 @@ Puntos duros confirmados:
 | `experiment*` | `schema.ts:2006-2110` | A/B: hipótesis, variantes, observaciones con ingresos/costos/contribución |
 | `sync_state` | `schema.ts:1982-2003` | estado por proveedor (sin uso hoy) |
 | `marketplace_order` | `schema.ts:2140-2171` | `amountCents`, `commissionCents` |
-| `product_image` | `schema.ts:1449` **(post-snapshot, 0088 sin aplicar)** | metadatos de la foto; los bytes van a disco (`MEDIA_DIR/{org}/catalog/`). Unique parcial `WHERE is_primary` = una portada por producto |
-| `product_cost_line` | `schema.ts:1512` **(post-snapshot, 0090 sin aplicar)** | la receta: `name` + `quantity` `numeric(14,4)` + `unit` + `unit_price_cents`. **Sin total ni porcentaje** — derivados en `src/lib/catalog/cost.ts` |
+| `product_image` | `schema.ts:1449` **(post-snapshot; 0088 aplicada el 05-11-2026)** | metadatos de la foto; los bytes van a disco (`MEDIA_DIR/{org}/catalog/`). Unique parcial `WHERE is_primary` = una portada por producto |
+| `product_cost_line` | `schema.ts:1512` **(post-snapshot; 0090 aplicada el 05-11-2026)** | la receta: `name` + `quantity` `numeric(14,4)` + `unit` + `unit_price_cents`. **Sin total ni porcentaje** — derivados en `src/lib/catalog/cost.ts` |
 
 > Las dos últimas filas son de FASE 3 y están medidas en el worktree actual; los rangos de las
 > demás corresponden al snapshot `5ce91e2` y desfasan respecto al árbol de hoy (`schema.ts` pasó de
