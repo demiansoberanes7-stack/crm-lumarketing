@@ -196,7 +196,7 @@ async function getBusyIntervals(
           // Sandbox: una cita de prueba no consume la agenda real.
           eq(schema.booking.isTest, false),
           lt(schema.booking.scheduledAt, input.toUtc),
-          sql`${schema.booking.scheduledAt} + make_interval(mins => ${schema.booking.durationMinutes}) > ${input.fromUtc}`
+          sql`${schema.booking.scheduledAt} + make_interval(mins => ${schema.booking.durationMinutes}) > ${input.fromUtc.toISOString()}::timestamptz`
         )
       )
     );
@@ -253,7 +253,7 @@ export async function findSlotClash(
           inArray(schema.booking.status, ["agendada", "realizada"]),
           eq(schema.booking.isTest, false),
           lt(schema.booking.scheduledAt, input.endUtc),
-          sql`${schema.booking.scheduledAt} + make_interval(mins => ${schema.booking.durationMinutes}) > ${input.startUtc}`,
+          sql`${schema.booking.scheduledAt} + make_interval(mins => ${schema.booking.durationMinutes}) > ${input.startUtc.toISOString()}::timestamptz`,
           ...(input.excludeBookingId
             ? [ne(schema.booking.id, input.excludeBookingId)]
             : [])

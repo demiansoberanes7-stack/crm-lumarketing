@@ -40,7 +40,7 @@ export async function listBookings(
     // Por solape: una reunión que empieza antes de la ventana pero termina
     // dentro también hay que dibujarla.
     filters.push(
-      sql`${schema.booking.scheduledAt} + make_interval(mins => ${schema.booking.durationMinutes}) > ${opts.fromUtc}`
+      sql`${schema.booking.scheduledAt} + make_interval(mins => ${schema.booking.durationMinutes}) > ${opts.fromUtc.toISOString()}::timestamptz`
     );
   }
   if (opts?.toUtc) filters.push(lt(schema.booking.scheduledAt, opts.toUtc));

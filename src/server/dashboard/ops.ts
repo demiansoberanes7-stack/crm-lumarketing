@@ -99,6 +99,9 @@ export async function queryOps(
   const db = getDb();
   const from = opsPeriodStart(period, now);
   const since24h = new Date(now.getTime() - 86_400_000);
+  // Drizzle anula los serializadores de fecha de postgres.js: un Date crudo
+  // interpolado en `sql` (sin columna que lo codifique) revienta en Bind.
+  const since24hIso = since24h.toISOString();
   const m = schema.message;
   const c = schema.conversation;
 
@@ -117,8 +120,8 @@ export async function queryOps(
         .select({
           // «Activa» sin estado en la tabla solo puede significar «con mensajes
           // en las últimas 24 h»; no se cuenta la cartera histórica.
-          active: sql<number>`count(*) filter (where ${c.lastMessageAt} >= ${since24h})::int`,
-          handoffs: sql<number>`count(*) filter (where ${c.handoffAt} >= ${since24h})::int`,
+          active: sql<number>`count(*) filter (where ${c.lastMessageAt} >= ${since24hIso}::timestamptz)::int`,
+          handoffs: sql<number>`count(*) filter (where ${c.handoffAt} >= ${since24hIso}::timestamptz)::int`,
         })
         .from(c)
         .where(and(eq(c.organizationId, orgId), eq(c.isTest, false))),
