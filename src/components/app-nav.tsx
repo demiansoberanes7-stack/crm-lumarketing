@@ -1,29 +1,43 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import { cn, initials } from "@/lib/utils";
 import { signOut } from "@/lib/auth/client";
-import { NAV_FOOTER, isNavActive, navItemsFor } from "@/config/nav";
+import {
+  isNavActive,
+  navSectionsFor,
+  type NavItem,
+} from "@/config/nav";
 import { BrandLogo } from "@/components/brand-mark";
 import { PhotoLogo } from "@/components/photo-logo";
 import { APP_VERSION, BUILD_COMMIT, versionLabel } from "@/lib/version";
 
 /**
- * Un renglón del menú. En escritorio (lg+) siempre es solo icono mediano
- * con tooltip CSS al hover; en móvil (drawer) muestra icono + etiqueta.
+ * Preferencia del lateral en escritorio. Vive en localStorage y no en cookie a
+ * propósito: es una preferencia de dispositivo (un portátil estrecho quiere el
+ * rail, un monitor ancho quiere etiquetas) y no debe viajar en el HTML del
+ * servidor ni forzar un render distinto entre servidor y cliente.
  */
-function navItemClass(active: boolean, showLabel: boolean) {
+const COLLAPSE_KEY = "lumark.nav.collapsed";
+
+/**
+ * Un renglón del menú.
+ *
+ * `collapsed` solo aplica a escritorio: en el cajón móvil la etiqueta siempre
+ * se ve, porque ahí no hay tooltip que la sustituya.
+ */
+function navItemClass(active: boolean, collapsed: boolean) {
   return cn(
-    "group relative flex items-center rounded-lg text-[13.5px] font-semibold transition-colors",
-    showLabel
-      ? "min-h-10 gap-[10px] px-2.5 py-2"
-      : "min-h-11 w-11 justify-center p-0",
+    "group relative flex items-center rounded-lg text-[13.5px] font-semibold transition-colors duration-200",
+    collapsed
+      ? "min-h-10 gap-[10px] px-2.5 py-2 lg:min-h-11 lg:w-11 lg:justify-center lg:px-0"
+      : "min-h-10 gap-[10px] px-2.5 py-2",
     active
-      ? "bg-accent text-foreground"
+      ? "bg-brand-tint text-foreground"
       : "text-text-2 hover:bg-accent hover:text-foreground"
   );
 }
@@ -105,8 +119,33 @@ export function AppNav({
    * `<aside>`, no en el renglón, porque el `nav` ahora tiene scroll.
    */
   const [tip, setTip] = useState<{ label: string; top: number } | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Se lee después de montar: en SSR no hay localStorage y arrancar colapsado
+  // en el HTML parpadearía al hidratar.
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === "1");
+    } catch {
+      // Modo privado con almacenamiento bloqueado: se queda expandido.
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        // Sin persistencia; el cambio sigue valiendo para esta sesión.
+      }
+      return next;
+    });
+    setTip(null);
+  }
 
   function showTip(target: HTMLElement, label: string) {
+    if (!collapsed) return;
     const aside = asideRef.current;
     if (!aside) return;
     setTip({
@@ -136,16 +175,16 @@ export function AppNav({
   }
 
   const sha = commit || BUILD_COMMIT;
-  // El menú de ESTA instancia: «Calendario» solo existe donde la agenda está
-  // encendida; sin la bandera, /bookings responde 404.
-  const renderedNav = useMemo(() => [...navItemsFor({ agenda }), ...NAV_FOOTER], [agenda]);
+  // El menú de ESTA instancia, agrupado: «Citas» solo existe donde la agenda
+  // está encendida; sin la bandera, /bookings responde 404.
+  const sections = useMemo(() => navSectionsFor({ agenda }), [agenda]);
 
   return (
     <aside
       ref={asideRef}
       // Móvil: cajón que se desliza desde la izquierda (siempre montado, así
-      // la transición corre en ambos sentidos). Escritorio: rail fijo de solo
-      // iconos medianos con tooltip al hover.
+      // la transición corre en ambos sentidos). Escritorio: columna con
+      // etiquetas (248px) o rail de iconos (76px) según la preferencia.
       //
       // `lg:relative` y no `lg:static`: el globo del tooltip se posiciona
       // contra este borde para poder salir del rail sin que el scroll del
@@ -160,72 +199,94 @@ export function AppNav({
       // debajo de los diálogos de página (50) y del ⌘K (70), que sí deben tapar.
       className={cn(
         "fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-y-auto border-r bg-subtle pb-[max(0.875rem,env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] transition-[transform,visibility,width] duration-200",
-        "lg:visible lg:relative lg:z-40 lg:w-[72px] lg:translate-x-0 lg:overflow-visible lg:px-3 lg:transition-[width]",
+        "lg:visible lg:relative lg:z-40 lg:w-[248px] lg:translate-x-0 lg:overflow-visible lg:px-3 lg:transition-[width]",
+        collapsed && "lg:w-[76px]",
         open ? "visible w-[17rem] translate-x-0 px-3 shadow-pop" : "invisible w-[17rem] -translate-x-full px-3"
       )}
     >
-      {/* Marca: en escritorio solo el logo centrado; en móvil drawer, completo. */}
-      <div className="mb-4 flex items-start gap-1.5 pt-0.5 lg:justify-center lg:px-0">
+      {/* Marca + plegado. En el cajón móvil: logo y nombre, sin plegado. */}
+      <div className="mb-4 flex items-center gap-2 pt-0.5">
         <button
           onClick={onClose}
           aria-label="Cerrar el menú"
-          className="-ml-1 mt-0.5 rounded-md p-1.5 text-text-3 hover:bg-accent hover:text-foreground lg:hidden"
+          className="-ml-1 rounded-md p-1.5 text-text-3 hover:bg-accent hover:text-foreground lg:hidden"
         >
           <X className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
-        {/* Drawer móvil: nombre + logo. Escritorio: solo logo. */}
-        <div className="min-w-0 lg:hidden">
-          <BrandLogo branding={branding} logoUrl={logoUrl} />
-        </div>
-        <Link href="/dashboard" aria-label={branding.name} className="hidden items-center lg:flex">
+        <Link
+          href="/dashboard"
+          aria-label={branding.name}
+          className={cn(
+            "flex min-w-0 items-center gap-2.5",
+            collapsed && "lg:w-11 lg:justify-center"
+          )}
+        >
           {logoUrl ? (
-            <PhotoLogo src={logoUrl} alt="" className="h-9 w-9 rounded-lg" />
+            <PhotoLogo src={logoUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg" />
           ) : (
             <BrandLogo
               branding={branding}
-              className="[&_span:last-child]:hidden [&_svg]:h-8 [&_svg]:w-8"
+              className={cn(
+                "shrink-0 [&_svg]:h-8 [&_svg]:w-8",
+                collapsed && "lg:[&_span:last-child]:hidden"
+              )}
             />
           )}
         </Link>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Mostrar etiquetas del menú" : "Ocultar el menú lateral"}
+          aria-pressed={collapsed}
+          title={collapsed ? "Mostrar etiquetas" : "Ocultar menú"}
+          className="ml-auto hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-accent hover:text-foreground lg:flex"
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="h-[17px] w-[17px]" strokeWidth={1.8} />
+          ) : (
+            <PanelLeftClose className="h-[17px] w-[17px]" strokeWidth={1.8} />
+          )}
+        </button>
       </div>
 
-      {/* Nav: en escritorio solo iconos con tooltip; en móvil drawer, con label.
-          Es la única región con scroll del rail: así el logo, el avatar y la
-          versión nunca quedan debajo del borde, por corta que sea la ventana.
-          Sin barra visible: el rail mide 72px. */}
+      {/* Nav: en escritorio es la única región con scroll del lateral (ventanas
+          cortas): así el logo, el avatar y la versión nunca quedan debajo del
+          borde. Sin barra visible. */}
       <nav
         onScroll={() => setTip(null)}
-        className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto [scrollbar-width:none] lg:items-center [&::-webkit-scrollbar]:hidden"
+        aria-label="Secciones"
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto [scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden"
       >
-        {renderedNav.map((item) => {
-          const active = isNavActive(pathname, item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={navItemClass(active, true)}
-              aria-label={item.label}
-              onMouseEnter={(e) => showTip(e.currentTarget, item.label)}
-              onMouseLeave={() => setTip(null)}
-            >
-              <item.icon
-                className={cn("h-5 w-5 shrink-0", active ? "text-brand" : "text-text-3")}
-                strokeWidth={1.8}
+        {sections.map((section) => (
+          <div key={section.id} className="flex flex-col gap-0.5">
+            {section.label ? (
+              <p
+                className={cn(
+                  "px-2.5 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-text-3",
+                  collapsed && "lg:hidden"
+                )}
+              >
+                {section.label}
+              </p>
+            ) : null}
+            {section.items.map((item) => (
+              <NavRow
+                key={item.href}
+                item={item}
+                pathname={pathname}
+                collapsed={collapsed}
+                unread={unread}
+                onEnter={showTip}
+                onLeave={() => setTip(null)}
               />
-              <span className="flex-1 truncate lg:hidden">{item.label}</span>
-              {item.badge && unread ? (
-                <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-brand-fg lg:right-1 lg:top-1">
-                  {unread > 9 ? "9+" : unread}
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
+            ))}
+          </div>
+        ))}
       </nav>
 
-      {/* Usuario: avatar elegible + cuenta; en drawer, nombre completo. */}
+      {/* Usuario: avatar elegible + cuenta. */}
       <div
-        className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:justify-center lg:px-0"
+        className="group relative mt-1 flex items-center gap-2.5 rounded-lg py-2 hover:bg-accent lg:px-0"
         onMouseEnter={(e) => showTip(e.currentTarget, `${userName} · cuenta y avatar`)}
         onMouseLeave={() => setTip(null)}
       >
@@ -235,7 +296,10 @@ export function AppNav({
           aria-haspopup="menu"
           aria-expanded={pickerOpen}
           title={`${userName} · cuenta y avatar`}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-lg font-bold text-brand-text"
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-lg font-bold text-brand-text",
+            collapsed && "lg:mx-auto"
+          )}
           onClick={() => setPickerOpen((v) => !v)}
         >
           {selectedAvatar ? (
@@ -244,7 +308,7 @@ export function AppNav({
             <span className="text-xs">{initials(userName)}</span>
           )}
         </button>
-        <span className="min-w-0 flex-1 lg:hidden">
+        <span className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
           <span className="block truncate text-[13px] font-semibold">{userName}</span>
           <span className="block truncate text-[11px] text-text-3">
             {role === "owner" ? "Propietario" : "Equipo"} · En línea
@@ -315,7 +379,10 @@ export function AppNav({
 
       {/* Versión del build: discreta, clic para ver el commit. */}
       <button
-        className="mt-2 hidden text-center font-mono text-[10px] tracking-[0.06em] text-text-2 lg:block"
+        className={cn(
+          "mt-2 hidden text-center font-mono text-[10px] tracking-[0.06em] text-text-2 lg:block",
+          collapsed && "lg:mt-1"
+        )}
         title={
           sha
             ? `${branding.name} ${APP_VERSION}, construido del commit ${sha}`
@@ -327,11 +394,9 @@ export function AppNav({
       </button>
 
       {/*
-        Globo del renglón bajo el cursor. Es hijo del `<aside>` y no del enlace
-        porque el `nav` ahora es contenedor de scroll, y un contenedor de scroll
-        recorta lo que asoma por su derecha: el tooltip dejaría de verse justo
-        en las ventanas donde el menú necesita desplazarse. Solo escritorio: el
-        drawer ya trae las etiquetas.
+        Globo del renglón bajo el cursor, solo con el menú plegado. Es hijo del
+        `<aside>` y no del enlace porque el `nav` es contenedor de scroll y
+        recortaría lo que asoma por su derecha.
       */}
       {tip && (
         <span
@@ -343,5 +408,55 @@ export function AppNav({
         </span>
       )}
     </aside>
+  );
+}
+
+/** Renglón del menú: icono, etiqueta plegable y contador de no leídos. */
+function NavRow({
+  item,
+  pathname,
+  collapsed,
+  unread,
+  onEnter,
+  onLeave,
+}: {
+  item: NavItem;
+  pathname: string;
+  collapsed: boolean;
+  unread: number | null;
+  onEnter: (target: HTMLElement, label: string) => void;
+  onLeave: () => void;
+}) {
+  const active = isNavActive(pathname, item.href);
+  return (
+    <Link
+      href={item.href}
+      className={navItemClass(active, collapsed)}
+      aria-label={item.label}
+      aria-current={active ? "page" : undefined}
+      onMouseEnter={(e) => onEnter(e.currentTarget, item.label)}
+      onMouseLeave={onLeave}
+    >
+      <item.icon
+        className={cn(
+          "h-[18px] w-[18px] shrink-0",
+          active ? "text-brand-text" : "text-text-3 group-hover:text-text-2"
+        )}
+        strokeWidth={1.8}
+      />
+      <span className={cn("flex-1 truncate", collapsed && "lg:hidden")}>{item.label}</span>
+      {item.badge && unread ? (
+        <span
+          className={cn(
+            "flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-brand-fg",
+            collapsed
+              ? "lg:absolute lg:right-0.5 lg:top-0.5 lg:h-3.5 lg:min-w-3.5 lg:px-0.5 lg:text-[9px]"
+              : "ml-auto"
+          )}
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      ) : null}
+    </Link>
   );
 }

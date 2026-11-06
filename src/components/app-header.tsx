@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, Search } from "lucide-react";
+import { Bell, ChevronDown, Search, Sparkles } from "lucide-react";
 import type { Branding } from "@/lib/branding";
 import type { ThemePreference } from "@/lib/theme";
 import { breadcrumbsFor } from "@/config/nav";
@@ -87,6 +87,15 @@ export function AppHeader({
         >
           <Search className="h-[18px] w-[18px]" strokeWidth={1.8} />
         </button>
+        {/* Acceso al asistente: siempre a un clic, sin abrir un panel nuevo. */}
+        <Link
+          href="/copiloto"
+          aria-label="Copiloto"
+          title="Copiloto"
+          className="flex min-h-9 min-w-9 items-center justify-center rounded-lg text-text-2 hover:bg-accent hover:text-foreground"
+        >
+          <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.8} />
+        </Link>
         <Link
           href="/inbox"
           aria-label={unread ? `Bandeja: ${unread} sin leer` : "Bandeja"}

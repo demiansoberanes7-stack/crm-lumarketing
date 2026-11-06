@@ -189,6 +189,8 @@ describe("superficie del módulo", () => {
 
   it("Sucursales está en el menú, junto a Inventario", () => {
     const nav = leer("src", "config", "nav.ts");
-    expect(nav).toContain('{ href: "/branches", label: "Sucursales", icon: Store }');
+    expect(nav).toContain(
+      '{ href: "/branches", label: "Sucursales", icon: Store, section: "comercial" }'
+    );
   });
 });
