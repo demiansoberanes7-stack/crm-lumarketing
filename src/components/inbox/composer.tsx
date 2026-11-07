@@ -439,10 +439,6 @@ export function Composer({
           autoCapitalize="sentences"
           autoCorrect="on"
           spellCheck
-          onFocus={(event) => {
-            const textarea = event.currentTarget;
-            window.setTimeout(() => textarea.scrollIntoView({ block: "nearest" }), 120);
-          }}
           onChange={(e) => {
             setText(e.target.value);
             autogrow();
