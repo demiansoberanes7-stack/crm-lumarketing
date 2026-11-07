@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   agendaEnabled: vi.fn(),
   listGoogleCalendars: vi.fn(),
   syncPendingBookings: vi.fn(),
+  syncGoogleCalendarEvents: vi.fn(),
   syncPendingTasks: vi.fn(),
 }));
 
@@ -40,6 +41,9 @@ vi.mock("@/server/agenda/connectors/google-credentials", () => ({
 }));
 vi.mock("@/server/agenda/bookings-sync", () => ({
   syncPendingBookings: mocks.syncPendingBookings,
+}));
+vi.mock("@/server/agenda/google-events-import", () => ({
+  syncGoogleCalendarEvents: mocks.syncGoogleCalendarEvents,
 }));
 vi.mock("@/server/agenda/tasks-sync", () => ({
   syncPendingTasks: mocks.syncPendingTasks,
@@ -88,6 +92,13 @@ beforeEach(() => {
   mocks.agendaEnabled.mockReturnValue(true);
   mocks.listGoogleCalendars.mockResolvedValue([BUSINESS] as never);
   mocks.syncPendingBookings.mockResolvedValue({ synced: 1, failed: 0 });
+  mocks.syncGoogleCalendarEvents.mockResolvedValue({
+    imported: 2,
+    updated: 0,
+    cancelled: 0,
+    conflicts: 0,
+    failed: 0,
+  });
   mocks.syncPendingTasks.mockResolvedValue({ synced: 2, failed: 0 });
 });
 
@@ -104,6 +115,7 @@ describe("un barrido", () => {
     expect(await runAgendaWorkerOnce()).toEqual({
       orgs: 0,
       bookings: 0,
+      googleEvents: 0,
       tasks: 0,
       failed: 0,
     });
@@ -128,6 +140,10 @@ describe("un barrido", () => {
       "org_negocio",
       "org_2",
     ]);
+    expect(mocks.syncGoogleCalendarEvents.mock.calls.map((c) => c[0])).toEqual([
+      "org_negocio",
+      "org_2",
+    ]);
     expect(mocks.syncPendingTasks.mock.calls.map((c) => c[0])).toEqual([
       "org_2",
       "org_3",
@@ -142,7 +158,7 @@ describe("un barrido", () => {
 
     const result = await runAgendaWorkerOnce();
 
-    expect(result).toEqual({ orgs: 1, bookings: 0, tasks: 2, failed: 0 });
+    expect(result).toEqual({ orgs: 1, bookings: 0, googleEvents: 0, tasks: 2, failed: 0 });
     expect(mocks.syncPendingBookings).not.toHaveBeenCalled();
   });
 
@@ -158,7 +174,7 @@ describe("un barrido", () => {
 
     const first = runAgendaWorkerOnce();
     const second = await runAgendaWorkerOnce();
-    expect(second).toEqual({ orgs: 0, bookings: 0, tasks: 0, failed: 0 });
+    expect(second).toEqual({ orgs: 0, bookings: 0, googleEvents: 0, tasks: 0, failed: 0 });
 
     release();
     await first;
@@ -188,6 +204,7 @@ describe("un barrido", () => {
     expect(await runAgendaWorkerOnce()).toEqual({
       orgs: 1,
       bookings: 3,
+      googleEvents: 2,
       tasks: 0,
       failed: 2,
     });
@@ -203,7 +220,7 @@ describe("un barrido", () => {
       organizationId: "org_negocio",
       provider: "google_calendar",
       lastStatus: "ok",
-      detail: { bookings: 1, tasks: 0 },
+      detail: { bookings: 1, googleEvents: 2, googleConflicts: 0, tasks: 0 },
     });
     expect(state.inserts[0]!.lastSyncAt).toBeInstanceOf(Date);
     // Uno por negocio y proveedor: la clave única es (organization_id, provider).
@@ -219,6 +236,7 @@ describe("un barrido", () => {
     await expect(runAgendaWorkerOnce()).resolves.toEqual({
       orgs: 1,
       bookings: 1,
+      googleEvents: 2,
       tasks: 0,
       failed: 0,
     });

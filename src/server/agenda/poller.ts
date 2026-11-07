@@ -3,6 +3,7 @@ import { newId } from "@/lib/db/ids";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { listGoogleCalendars } from "@/server/agenda/connectors/google-credentials";
 import { syncPendingBookings } from "@/server/agenda/bookings-sync";
+import { syncGoogleCalendarEvents } from "@/server/agenda/google-events-import";
 import { syncPendingTasks } from "@/server/agenda/tasks-sync";
 
 /**
@@ -42,6 +43,7 @@ const workerState = globalThis as typeof globalThis & {
 export type AgendaTickResult = {
   orgs: number;
   bookings: number;
+  googleEvents: number;
   tasks: number;
   failed: number;
 };
@@ -67,7 +69,13 @@ export async function startAgendaWorker(): Promise<void> {
  * inofensivo en las instancias que no usan Citas.
  */
 export async function runAgendaWorkerOnce(): Promise<AgendaTickResult> {
-  const empty: AgendaTickResult = { orgs: 0, bookings: 0, tasks: 0, failed: 0 };
+  const empty: AgendaTickResult = {
+    orgs: 0,
+    bookings: 0,
+    googleEvents: 0,
+    tasks: 0,
+    failed: 0,
+  };
   if (!agendaEnabled() || workerState.__agendaTick) return empty;
   workerState.__agendaTick = true;
   try {
@@ -86,15 +94,18 @@ export async function runAgendaWorkerOnce(): Promise<AgendaTickResult> {
     const result: AgendaTickResult = {
       orgs: orgs.size,
       bookings: 0,
+      googleEvents: 0,
       tasks: 0,
       failed: 0,
     };
     for (const organizationId of orgs) {
       let bookings = { synced: 0, failed: 0 };
+      let googleEvents = { imported: 0, updated: 0, cancelled: 0, conflicts: 0, failed: 0 };
       let tasks = { synced: 0, failed: 0 };
       try {
         if (bookingOrgs.has(organizationId)) {
           bookings = await syncPendingBookings(organizationId, BATCH);
+          googleEvents = await syncGoogleCalendarEvents(organizationId);
         }
         if (taskOrgs.has(organizationId)) {
           tasks = await syncPendingTasks(organizationId, BATCH);
@@ -103,20 +114,28 @@ export async function runAgendaWorkerOnce(): Promise<AgendaTickResult> {
         // Un fallo aquí no puede matar el intervalo: el siguiente tick vuelve.
         await record(organizationId, "error", String(err), {
           bookings: bookings.synced,
+          googleEvents: googleEvents.imported + googleEvents.updated + googleEvents.cancelled,
           tasks: tasks.synced,
         });
         continue;
       }
       result.bookings += bookings.synced;
+      result.googleEvents +=
+        googleEvents.imported + googleEvents.updated + googleEvents.cancelled;
       result.tasks += tasks.synced;
-      result.failed += bookings.failed + tasks.failed;
+      result.failed += bookings.failed + googleEvents.failed + tasks.failed;
       await record(
         organizationId,
-        bookings.failed + tasks.failed > 0 ? "error" : "ok",
-        bookings.failed + tasks.failed > 0
-          ? `${bookings.failed} cita(s) y ${tasks.failed} tarea(s) no llegaron al calendario`
+        bookings.failed + googleEvents.failed + tasks.failed > 0 ? "error" : "ok",
+        bookings.failed + googleEvents.failed + tasks.failed > 0
+          ? `${bookings.failed} cita(s) no llegaron a Google, ${googleEvents.failed} sincronización(es) Google→CRM fallaron y ${tasks.failed} tarea(s) no llegaron al calendario`
           : null,
-        { bookings: bookings.synced, tasks: tasks.synced }
+        {
+          bookings: bookings.synced,
+          googleEvents: googleEvents.imported + googleEvents.updated + googleEvents.cancelled,
+          googleConflicts: googleEvents.conflicts,
+          tasks: tasks.synced,
+        }
       );
     }
     return result;

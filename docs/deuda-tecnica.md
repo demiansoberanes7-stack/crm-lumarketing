@@ -1543,13 +1543,19 @@ fuera de Google hasta que alguien editara cada cita. Ahora llama a `syncPendingB
 mismo candado (`catch(() => ({synced:0, failed:0}))`) y `ConnectorCredentials` informa cuántas
 entraron («N cita(s) en tu calendario»).
 
-**B3 — bidireccional, documentada y NO implementada.** El pliego lo permite explícitamente. El
+**B3 — bidireccional (estado al 05-11-2026: no implementada).** El pliego lo permite explícitamente. El
 capítulo está en `docs/agenda-conectores.md` con los cinco requisitos ordenados por coste
 (clave de identidad CRM↔evento, `syncToken` + `events.list` incremental, política de conflicto,
 `free/busy` **excluido por contrato** porque el motor reserva el hueco dentro del CRM, y el cupo
-por inquilino). Hoy la regla observable es: **el CRM manda, Google obedece, y lo que el dueño
-cambie en Google se queda en Google**. No hay `watch`, ni webhook receptor, ni marca de última
-escritura para romper ciclos.
+por inquilino). Al cierre de esta inspección no había `watch` ni receptor de webhook; solo existía
+la escritura CRM → Google, sin cursor de lectura incremental.
+
+**Cerrada el 07-11-2026.** `src/server/agenda/google-events-import.ts` pagina la carga inicial y usa
+`syncToken` incremental por calendario de negocio, guardado en `sync_state`; `google_event_id`
+deduplica altas y enlaza actualizaciones/cancelaciones. Los eventos de Google aparecen como citas
+con origen «Google Calendar» y publican SSE; editar o cancelar desde el CRM conserva el mismo evento.
+Las citas que chocan exactamente con otra activa no se duplican y quedan anotadas en Diagnóstico.
+La guía de sincronización fue actualizada en `docs/agenda-conectores.md`.
 
 **Verificación.** Gates del worktree con este lote: `db:guard` 0 avisos, `npx eslint
 --max-warnings=0 src tests` limpio, `npx tsc --noEmit` limpio (sin tubería — ver Deuda),
@@ -1736,4 +1742,3 @@ journal, `productCostLine` de `schema.ts`, el prefijo `pcst` de `ids.ts`,
 `src/lib/catalog/cost.ts`, `src/server/catalog/costs.ts`, la ruta, `product-costs.tsx` y lo que
 añade `catalog-client.tsx` (`costSummary`, la línea de la tarjeta, el bloque del modal y
 `priceCentsOf`). La lista completa está en §38.
-

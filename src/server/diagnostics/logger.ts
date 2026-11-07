@@ -19,6 +19,8 @@ const messages = {
   ai_failed: "El proveedor de IA no pudo completar el turno. Revisa token, modelo y disponibilidad.",
   tasks_sync_failed: "No se pudo sincronizar la tarea con Google Calendar. La tarea quedó guardada; el evento se reintentará en la siguiente edición.",
   bookings_sync_failed: "No se pudo sincronizar la cita con Google Calendar. La cita quedó guardada; el evento se reintentará en la siguiente edición o al reconectar.",
+  google_calendar_import_failed: "No se pudieron importar los cambios de Google Calendar. Se reintentará en el siguiente barrido.",
+  google_calendar_booking_conflict: "Un evento de Google Calendar coincide con otra cita del CRM; no se duplicó el horario.",
   email_sync_failed: "No se pudo sincronizar la cuenta de correo. Revisa IMAP y el estado del servidor.",
 } as const;
 export type DiagnosticCode = keyof typeof messages;

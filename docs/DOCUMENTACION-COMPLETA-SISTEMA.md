@@ -1414,8 +1414,11 @@ Configuracion semanal (weeklyHours)
   las citas sin evento se rellenan en dos consultas — adopcion sin suelo de fechas, creacion
   solo futura — y se corta al primer rechazo de credenciales. Deliberadamente **no** re-intenta
   `link_pending` (cambiaria el enlace prometido al cliente; es decision del dueño con su boton).
-- **Bidireccional: documentada, NO implementada** (`docs/agenda-conectores.md`). Hoy el CRM
-  manda y lo que el dueño cambie en Google se queda en Google.
+- **Bidireccional** (`bookings-sync.ts` y `google-events-import.ts`): alta, edición y cancelación
+  desde el CRM se reflejan en Google; el poller incremental importa y mantiene por `google_event_id`
+  los eventos con hora creados o cambiados en Google. Usa `syncToken` y `pageToken` por calendario
+  en `sync_state`, y notifica la vista por SSE. No importa eventos de día completo, transparentes o
+  de tipos especiales; un choque exacto con otra cita se anota en Diagnóstico y no duplica el hueco.
 - **Pantalla en dos estados** (`/settings/google`): el dueño ve la credencial de la app del
   negocio; cualquier miembro enlaza el suyo (`personal-calendar.tsx`, rutas
   `/api/settings/google/personal`).

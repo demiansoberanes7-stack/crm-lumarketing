@@ -24,7 +24,7 @@ export type BookingDto = {
   id: string;
   kind: "session" | "block";
   status: BookingStatus;
-  source: "manual" | "ai";
+  source: "manual" | "ai" | "google";
   scheduledAtUtc: string;
   /** Fin de la cita en UTC: la vista necesita el intervalo, no solo el inicio. */
   endsAtUtc: string;

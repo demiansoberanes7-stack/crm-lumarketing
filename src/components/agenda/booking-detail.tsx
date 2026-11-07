@@ -119,7 +119,11 @@ export function BookingDetail({
           <Badge variant="secondary">Bloqueo</Badge>
         ) : (
           <Badge variant="secondary">
-            {booking.source === "ai" ? "Agendó la IA" : "Manual"}
+            {booking.source === "ai"
+              ? "Agendó la IA"
+              : booking.source === "google"
+                ? "Google Calendar"
+                : "Manual"}
           </Badge>
         )}
         {booking.isTest && <Badge variant="secondary">Prueba</Badge>}

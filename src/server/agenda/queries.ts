@@ -81,7 +81,7 @@ export async function listBookings(
       id: r.booking.id,
       kind: r.booking.kind as "session" | "block",
       status: r.booking.status as "agendada" | "realizada" | "no_show" | "cancelada",
-      source: r.booking.source as "manual" | "ai",
+      source: r.booking.source as BookingDto["source"],
       scheduledAtUtc,
       endsAtUtc: new Date(
         r.booking.scheduledAt.getTime() + r.booking.durationMinutes * 60_000

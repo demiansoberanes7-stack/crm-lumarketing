@@ -144,41 +144,47 @@ el mismo patrón `globalThis` que el poller de correo:
   `link_pending`. Eso cambia lo que recibió el cliente, y sigue siendo decisión
   del dueño con su botón *Reintentar enlace*.
 
-Y su corolario honesto: si borras el evento **a mano en Google**, el CRM lo
-recrea al mover o editar esa cita, pero el poller no la persigue (ya tiene id
-guardado). Nada sincroniza el estado de vuelta — ver el siguiente apartado.
+Si borras el evento **a mano en Google**, Calendar entrega una cancelación y el
+poller la refleja como cita cancelada en el CRM. La marca local conserva el id
+externo para no volver a importar ni recrear ese evento.
 
-## Sincronización en dos direcciones (documentada, NO implementada)
+## Sincronización en dos direcciones
 
-El CRM **escribe** en Google y no lee nada de él. No es un olvido: el permiso
-`calendar.events` ya permite ver los eventos, así que leer sería técnicamente
-inmediato; lo que no existe es una política de quién manda cuando los dos tienen
-razón.
+La pantalla **Citas** ya permite alta manual. `POST /api/bookings` guarda la
+cita en el CRM y `syncBookingEvent()` crea o adopta el evento de Google. En el
+sentido de vuelta, el poller lee los cambios de Google y los incorpora al mismo
+calendario del CRM.
 
-Lo que haría falta, por orden de coste:
+### Google Calendar → CRM
 
-1. **Clave de identidad estable.** El merge es sobre `google_event_id`, que ya
-   existe desde 0089. Un evento creado por el dueño en Google no tiene ninguna:
-   o se le pone un marcador (visibilidad `private` + prefijo en el asunto) o se
-   deja fuera — y hay que decirlo en la pantalla.
-2. **Lectura incremental.** `events.list` con `syncToken` por calendario y su
-   canal de cambios, guardados en `sync_state`. El poller de 5 minutos es el
-   hueco donde encajaría; sin `syncToken`, cada barrido volvería a leer el mes
-   completo y el cupo por proyecto de Google se agota con tres negocios.
-3. **Conflicto.** La regla de la casa es «primero la verdad del CRM, después el
-   proveedor». Al revés, un cliente se quedaría con un enlace que ya no abre: un
-   evento borrado o movido en Google **no puede** cancelar la cita del CRM sin
-   que nadie lo confirme. La única política defendable hoy es *notificar el
-   desajuste* (diagnóstico + marca en la cita) y dejar decidir al dueño.
-4. **Disponibilidad.** El contrato de conectores excluye `free/busy` a propósito
-   (la disponibilidad se calcula local, en una query, para no casar la latencia
-   del proveedor con la pantalla que más se usa). Traer los huecos de Google
-   rompería esa regla, no la completaría.
-5. **Multi-tenant.** Cada lectura sería por negocio y por usuario autorizado, con
-   su cupo; el aislamiento hoy se apoya en que **solo se escribe**.
+`syncGoogleCalendarEvents()` corre desde el mismo poller de cinco minutos, una
+vez por calendario de negocio conectado. La carga inicial pagina los eventos del
+calendario; después usa el `syncToken` de Google, guardado en `sync_state` con
+`provider = "google_calendar_import"`. Cada página conserva su `pageToken`, y
+un token vencido provoca una carga completa segura, sin duplicados.
 
-Mientras no esté nada de esto, el sistema es de **una vía**: el CRM manda, Google
-obedece, y lo que el dueño cambie en Google se queda en Google.
+`google_event_id` es la llave de idempotencia. Los eventos con hora de inicio y
+fin se reflejan en Citas como registros con origen «Google Calendar»; mover o
+editar el evento actualiza esa fila, y cancelarlo cancela la cita del CRM. Los
+eventos de día completo, transparentes y de tipos distintos al evento normal no
+se convierten en citas. La vista se refresca por SSE al importar cambios.
+
+### CRM → Google Calendar y conflictos
+
+La sincronización de escritura existente sigue activa. Al editar o reprogramar
+una cita importada, el CRM actualiza el mismo evento por `google_event_id`; no
+crea uno adicional. Los eventos creados en el CRM se adoptan por id y se
+actualizan en la misma fila cuando Google devuelve sus cambios.
+
+Una cita cancelada explícitamente en el CRM no se reactiva por un evento de
+Google que aún aparezca activo. Si un evento se mueve a la hora exacta de otra
+cita activa, el CRM no duplica ni desplaza la cita existente: conserva el
+registro actual y anota el conflicto en Diagnóstico para revisión. El resto de
+los cambios se reflejan en ambos sentidos.
+
+La importación no asigna contacto automáticamente: el modelo de contactos no
+guarda correo para empatar con asistentes de Google. El evento queda sin contacto
+y aparece con su asunto, lugar, notas y enlace.
 
 ## Qué pasa cuando el proveedor falla
 
