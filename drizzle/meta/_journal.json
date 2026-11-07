@@ -601,12 +601,6 @@
       "idx": 86,
       "version": "7",
       "when": 1792000000027,
-      "breakpoints": true
-    },
-    {
-      "idx": 86,
-      "version": "7",
-      "when": 1792000000027,
       "tag": "0087_citas_usuario_google_por_usuario",
       "breakpoints": true
     },
