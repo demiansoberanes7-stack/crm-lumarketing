@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  Code2,
+  Eye,
   FileSpreadsheet,
   Mail,
   Paperclip,
@@ -11,9 +13,12 @@ import {
   Play,
   RefreshCw,
   Send,
+  Trash2,
+  Upload,
   Users,
   X,
 } from "lucide-react";
+import { EMAIL_TEMPLATE_HTML_MAX } from "@/lib/email-format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -73,6 +78,16 @@ type UploadResult = {
 
 type AudienceKind = "contacts" | "mailbox" | "manual" | "file";
 
+type EmailTemplate = {
+  id: string;
+  name: string;
+  subject: string;
+  htmlLength: number;
+  createdAt: string;
+};
+
+type EmailTemplateDetail = EmailTemplate & { html: string };
+
 const statusLabels: Record<string, string> = {
   draft: "Borrador",
   sending: "Enviando",
@@ -84,6 +99,13 @@ function errorMessage(data: unknown): string | null {
   if (!data || typeof data !== "object") return null;
   const error = (data as { error?: { message?: string } }).error;
   return typeof error?.message === "string" ? error.message : null;
+}
+
+/** Valores de muestra para que la vista previa muestre el marcado final. */
+function withSampleRecipient(html: string): string {
+  return html
+    .replace(/\{\{\s*nombre\s*\}\}/gi, "María López")
+    .replace(/\{\{\s*correo\s*\}\}/gi, "maria@empresa.com");
 }
 
 export function BroadcastsClient() {
@@ -108,6 +130,21 @@ export function BroadcastsClient() {
   const [notice, setNotice] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [templatesFailed, setTemplatesFailed] = useState(false);
+  const [templateId, setTemplateId] = useState("");
+  const [templateHtml, setTemplateHtml] = useState("");
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [showCampaignPreview, setShowCampaignPreview] = useState(false);
+  const [openTemplateId, setOpenTemplateId] = useState<string | null>(null);
+  const [openTemplateHtml, setOpenTemplateHtml] = useState("");
+  const [tplName, setTplName] = useState("");
+  const [tplSubject, setTplSubject] = useState("");
+  const [tplHtml, setTplHtml] = useState("");
+  const [tplBusy, setTplBusy] = useState(false);
+  const [showDraftPreview, setShowDraftPreview] = useState(false);
+  const tplFileInput = useRef<HTMLInputElement | null>(null);
+
   const selectedAccount = accounts.find((account) => account.id === senderAccountId) ?? null;
   const enabledAccounts = accounts.filter((account) => account.enabled);
   const sending = campaigns.some((campaign) => campaign.status === "sending");
@@ -123,10 +160,22 @@ export function BroadcastsClient() {
     setAudienceFailed(false);
   }, []);
 
+  const loadTemplates = useCallback(async () => {
+    const response = await fetch("/api/email-campaigns/templates", { cache: "no-store" }).catch(() => null);
+    if (!response?.ok) {
+      setTemplatesFailed(true);
+      return;
+    }
+    const data = (await response.json()) as { templates?: EmailTemplate[] };
+    setTemplates(Array.isArray(data.templates) ? data.templates : []);
+    setTemplatesFailed(false);
+  }, []);
+
   const refresh = useCallback(async () => {
     const [campaignResponse] = await Promise.all([
       fetch("/api/email-campaigns", { cache: "no-store" }).catch(() => null),
       loadAudience(),
+      loadTemplates(),
     ]);
     if (campaignResponse?.ok) {
       const data = (await campaignResponse.json()) as { campaigns: Campaign[]; accounts: Account[] };
@@ -142,7 +191,7 @@ export function BroadcastsClient() {
       setCampaignsFailed(true);
       setAccountsFailed(true);
     }
-  }, [loadAudience]);
+  }, [loadAudience, loadTemplates]);
 
   const refreshCampaigns = useCallback(async () => {
     const response = await fetch("/api/email-campaigns", { cache: "no-store" }).catch(() => null);
@@ -184,7 +233,7 @@ export function BroadcastsClient() {
     senderAccountId &&
     selectedAccount?.enabled &&
     subject.trim() &&
-    bodyText.trim() &&
+    (bodyText.trim() || templateHtml) &&
     audienceReady &&
     !overLimit
   );
@@ -227,9 +276,137 @@ export function BroadcastsClient() {
     }
   }
 
+  async function chooseTemplate(id: string) {
+    if (!id) {
+      setTemplateId("");
+      setTemplateHtml("");
+      setShowCampaignPreview(false);
+      return;
+    }
+    setTemplateBusy(true); setError(null);
+    try {
+      const response = await fetch(`/api/email-campaigns/templates/${id}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(errorMessage(data) ?? "No se pudo abrir la plantilla");
+      const template = (data as { template: EmailTemplateDetail }).template;
+      setTemplateId(template.id);
+      setTemplateHtml(template.html);
+      setSubject(template.subject);
+    } catch (cause) {
+      setTemplateId("");
+      setTemplateHtml("");
+      setShowCampaignPreview(false);
+      setError(cause instanceof Error ? cause.message : "No se pudo abrir la plantilla");
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
+  async function loadTemplateFile(file: File) {
+    setError(null);
+    if (file.size > 1_000_000) {
+      setError("El archivo HTML es demasiado grande (más de 1 MB).");
+      return;
+    }
+    try {
+      const text = await file.text();
+      if (!text.trim()) {
+        setError("El archivo HTML está vacío.");
+        return;
+      }
+      if (text.length > EMAIL_TEMPLATE_HTML_MAX) {
+        setError(`El HTML supera el límite de ${EMAIL_TEMPLATE_HTML_MAX.toLocaleString("es-MX")} caracteres.`);
+        return;
+      }
+      setTplHtml(text);
+      setTplName((current) => (current.trim() ? current : file.name.replace(/\.html?$/i, "")));
+      setShowDraftPreview(true);
+    } catch {
+      setError("No se pudo leer el archivo HTML.");
+    } finally {
+      if (tplFileInput.current) tplFileInput.current.value = "";
+    }
+  }
+
+  async function saveTemplate() {
+    if (!tplName.trim() || !tplSubject.trim() || !tplHtml.trim()) {
+      setError("Completa nombre, asunto y HTML de la plantilla.");
+      return;
+    }
+    if (tplHtml.length > EMAIL_TEMPLATE_HTML_MAX) {
+      setError(`El HTML supera el límite de ${EMAIL_TEMPLATE_HTML_MAX.toLocaleString("es-MX")} caracteres.`);
+      return;
+    }
+    setTplBusy(true); setError(null); setNotice(null);
+    try {
+      const response = await fetch("/api/email-campaigns/templates", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: tplName, subject: tplSubject, html: tplHtml }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(errorMessage(data) ?? "No se pudo guardar la plantilla");
+      const template = (data as { template: EmailTemplate }).template;
+      setNotice(`Plantilla «${template.name}» guardada. Ya puedes elegirla en una campaña.`);
+      setTplName(""); setTplSubject(""); setTplHtml(""); setShowDraftPreview(false);
+      await loadTemplates();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo guardar la plantilla");
+    } finally {
+      setTplBusy(false);
+    }
+  }
+
+  async function removeTemplate(template: EmailTemplate) {
+    if (!window.confirm(
+      `¿Eliminar la plantilla «${template.name}»? Las campañas ya guardadas conservan su copia.`
+    )) return;
+    setTplBusy(true); setError(null); setNotice(null);
+    try {
+      const response = await fetch(`/api/email-campaigns/templates/${template.id}`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(errorMessage(data) ?? "No se pudo eliminar la plantilla");
+      if (templateId === template.id) {
+        setTemplateId("");
+        setTemplateHtml("");
+        setShowCampaignPreview(false);
+      }
+      if (openTemplateId === template.id) {
+        setOpenTemplateId(null);
+        setOpenTemplateHtml("");
+      }
+      setNotice(`Plantilla «${template.name}» eliminada.`);
+      await loadTemplates();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo eliminar la plantilla");
+    } finally {
+      setTplBusy(false);
+    }
+  }
+
+  async function toggleTemplatePreview(template: EmailTemplate) {
+    if (openTemplateId === template.id) {
+      setOpenTemplateId(null);
+      setOpenTemplateHtml("");
+      return;
+    }
+    setOpenTemplateId(template.id);
+    setOpenTemplateHtml("");
+    setError(null);
+    try {
+      const response = await fetch(`/api/email-campaigns/templates/${template.id}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(errorMessage(data) ?? "No se pudo abrir la plantilla");
+      setOpenTemplateHtml((data as { template: EmailTemplateDetail }).template.html);
+    } catch (cause) {
+      setOpenTemplateId(null);
+      setError(cause instanceof Error ? cause.message : "No se pudo abrir la plantilla");
+    }
+  }
+
   async function createCampaign() {
     if (!canCreate) {
-      setError("Completa nombre, remitente, asunto, mensaje y una audiencia con correos.");
+      setError("Completa nombre, remitente, asunto, una plantilla o mensaje, y una audiencia con correos.");
       return;
     }
     setBusy(true); setError(null); setNotice(null);
@@ -238,7 +415,9 @@ export function BroadcastsClient() {
         name,
         senderAccountId,
         subject,
-        bodyText,
+        // Con plantilla, el texto es opcional: el servidor lo deriva del HTML.
+        bodyText: bodyText.trim() || undefined,
+        bodyHtml: templateHtml || undefined,
         audience: kind === "contacts" || kind === "mailbox"
           ? { kind }
           : kind === "manual"
@@ -257,6 +436,7 @@ export function BroadcastsClient() {
         `Campaña guardada con ${campaign.recipientCount} correos. Revísala y pulsa «Enviar» cuando quieras lanzarla.`
       );
       setName(""); setSubject(""); setBodyText("");
+      setTemplateId(""); setTemplateHtml(""); setShowCampaignPreview(false);
       setManualText(""); setManualPreview(null); setUpload(null);
       await refresh();
     } catch (cause) {
@@ -374,20 +554,75 @@ export function BroadcastsClient() {
               <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={160} placeholder="Promoción octubre" />
             </label>
             <label className="block space-y-1.5 text-sm font-medium">
+              Plantilla HTML (opcional)
+              <select
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground"
+                value={templateId}
+                onChange={(event) => void chooseTemplate(event.target.value)}
+                disabled={templateBusy}
+                aria-label="Plantilla HTML"
+              >
+                <option value="">Sin plantilla — solo texto</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} · {template.subject}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {templateBusy && (
+              <p className="-mt-2 text-[11px] text-muted-foreground">Cargando plantilla…</p>
+            )}
+            {templatesFailed && (
+              <p className="-mt-2 text-[11px] text-amber-700">
+                No se pudieron leer las plantillas guardadas.{" "}
+                <button type="button" className="underline" onClick={() => void loadTemplates()}>Reintentar</button>
+              </p>
+            )}
+            {templateHtml && (
+              <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <Code2 className="h-3.5 w-3.5" />
+                  {templateHtml.length.toLocaleString("es-MX")} caracteres de HTML cargados
+                </span>
+                <button type="button" className="underline" onClick={() => setShowCampaignPreview((open) => !open)}>
+                  {showCampaignPreview ? "Ocultar vista previa" : "Vista previa"}
+                </button>
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => {
+                    setTemplateId("");
+                    setTemplateHtml("");
+                    setShowCampaignPreview(false);
+                  }}
+                >
+                  Quitar plantilla
+                </button>
+              </div>
+            )}
+            {templateHtml && showCampaignPreview && (
+              <TemplatePreview html={templateHtml} title="Vista previa de la campaña" />
+            )}
+            <label className="block space-y-1.5 text-sm font-medium">
               Asunto
               <Input value={subject} onChange={(event) => setSubject(event.target.value)} maxLength={300} placeholder="Tu cotización está lista" />
             </label>
             <label className="block space-y-1.5 text-sm font-medium">
-              Mensaje
+              {templateHtml ? "Mensaje (versión de texto de respaldo)" : "Mensaje"}
               <Textarea
                 value={bodyText}
                 onChange={(event) => setBodyText(event.target.value)}
                 maxLength={50_000}
                 rows={7}
-                placeholder="Hola {{nombre}}, tenemos una novedad para ti…"
+                placeholder={templateHtml
+                  ? "Opcional: si lo dejas vacío se genera automáticamente desde el HTML"
+                  : "Hola {{nombre}}, tenemos una novedad para ti…"}
               />
               <span className="block text-[11px] font-normal leading-snug text-muted-foreground">
-                Puedes usar {"{{nombre}}"} y {"{{correo}}"}; se reemplazan por los datos de cada destinatario.
+                {templateHtml
+                  ? "El correo lleva el HTML y esta versión de texto como alternativa. Puedes usar {{nombre}} y {{correo}} en ambos."
+                  : "Puedes usar {{nombre}} y {{correo}}; se reemplazan por los datos de cada destinatario."}
               </span>
             </label>
           </div>
@@ -500,6 +735,166 @@ export function BroadcastsClient() {
         </div>
       </section>
 
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-tint text-brand-text">
+            <Code2 className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="font-semibold">Plantillas de correo</h2>
+            <p className="max-w-2xl text-xs text-muted-foreground">
+              Carga un archivo .html o pega el código una vez y reutilízalo en cualquier campaña.
+              Cada campaña guarda su propia copia: borrar la plantilla no cambia envíos ya creados.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-5 lg:grid-cols-2">
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Guardadas ({templates.length})</h3>
+            {templatesFailed ? (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800">
+                No se pudo leer la lista de plantillas.{" "}
+                <button type="button" className="underline" onClick={() => void loadTemplates()}>Reintentar</button>
+              </p>
+            ) : templates.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+                Todavía no hay plantillas guardadas. Sube o pega un HTML a la derecha.
+              </p>
+            ) : templates.map((template) => (
+              <article key={template.id} className="rounded-lg border bg-background px-3 py-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{template.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{template.subject}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {Math.max(1, Math.ceil(template.htmlLength / 1024))} KB ·{" "}
+                      {new Date(template.createdAt).toLocaleDateString("es-MX")}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void chooseTemplate(template.id)}
+                      disabled={tplBusy}
+                    >
+                      Usar en campaña
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void toggleTemplatePreview(template)}
+                      aria-label={`Vista previa de ${template.name}`}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void removeTemplate(template)}
+                      disabled={tplBusy}
+                      aria-label={`Eliminar ${template.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                {openTemplateId === template.id && (
+                  <div className="mt-2">
+                    {openTemplateHtml
+                      ? <TemplatePreview html={openTemplateHtml} title={`Vista previa de ${template.name}`} />
+                      : <p className="text-xs text-muted-foreground">Cargando vista previa…</p>}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+
+          <form
+            className="space-y-3 rounded-lg border bg-subtle p-4"
+            onSubmit={(event) => { event.preventDefault(); void saveTemplate(); }}
+          >
+            <h3 className="text-sm font-semibold">Nueva plantilla</h3>
+            <label className="block space-y-1.5 text-sm font-medium">
+              Nombre
+              <Input
+                value={tplName}
+                onChange={(event) => setTplName(event.target.value)}
+                maxLength={160}
+                placeholder="Promoción de octubre"
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm font-medium">
+              Asunto
+              <Input
+                value={tplSubject}
+                onChange={(event) => setTplSubject(event.target.value)}
+                maxLength={300}
+                placeholder="Hola {{nombre}}, tenemos una novedad"
+              />
+            </label>
+            <div className="space-y-1.5 text-sm font-medium">
+              <label htmlFor="template-file">Archivo HTML</label>
+              <input
+                id="template-file"
+                ref={tplFileInput}
+                type="file"
+                accept=".html,.htm,text/html"
+                className="block w-full cursor-pointer rounded-md border bg-background px-3 py-2 text-xs file:mr-3 file:rounded file:border-0 file:bg-brand-tint file:px-2 file:py-1 file:text-brand-text"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void loadTemplateFile(file);
+                }}
+              />
+            </div>
+            <label className="block space-y-1.5 text-sm font-medium">
+              HTML
+              <Textarea
+                value={tplHtml}
+                onChange={(event) => { setTplHtml(event.target.value); setShowDraftPreview(false); }}
+                maxLength={EMAIL_TEMPLATE_HTML_MAX}
+                rows={8}
+                placeholder={"<table>…</table>\n\nHola {{nombre}},…"}
+                className="font-mono text-xs"
+              />
+              <span className="block text-[11px] font-normal leading-snug text-muted-foreground">
+                Acepta {"{{nombre}}"} y {"{{correo}}"} escapados dentro del HTML. Máximo{" "}
+                {EMAIL_TEMPLATE_HTML_MAX.toLocaleString("es-MX")} caracteres.
+              </span>
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (!tplHtml.trim()) {
+                    setError("Pega o sube el HTML para verlo.");
+                    return;
+                  }
+                  setShowDraftPreview((open) => !open);
+                }}
+              >
+                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                {showDraftPreview ? "Ocultar vista previa" : "Vista previa"}
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={tplBusy || !tplName.trim() || !tplSubject.trim() || !tplHtml.trim()}
+              >
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
+                {tplBusy ? "Guardando…" : "Guardar plantilla"}
+              </Button>
+            </div>
+            {showDraftPreview && tplHtml.trim() && (
+              <TemplatePreview html={tplHtml} title={tplName.trim() || "Vista previa de la plantilla"} />
+            )}
+          </form>
+        </div>
+      </section>
+
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Campañas guardadas</h2>
@@ -606,6 +1001,27 @@ function ListSummary({ count, limit, sample }: { count: number; limit: number; s
           {sample.map((recipient) => recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email).join(", ")}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * El HTML lo escribe el negocio, pero se pinta aislado de todos modos: sin
+ * scripts, sin same-origin y sin acceso a la sesión del CRM.
+ */
+function TemplatePreview({ html, title }: { html: string; title: string }) {
+  return (
+    <div className="overflow-hidden rounded-lg border bg-white">
+      <div className="flex items-center justify-between gap-2 border-b bg-subtle px-3 py-1.5 text-[11px] text-muted-foreground">
+        <span className="truncate">{title}</span>
+        <span className="shrink-0">Vista previa aislada · sin scripts</span>
+      </div>
+      <iframe
+        title={title}
+        sandbox=""
+        srcDoc={withSampleRecipient(html)}
+        className="h-72 w-full"
+      />
     </div>
   );
 }

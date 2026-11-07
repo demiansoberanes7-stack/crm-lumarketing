@@ -23,6 +23,9 @@ export function sanitizeHeaderValue(value: string, max = 998): string {
   return value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, max);
 }
 
+/** Tope de HTML por plantilla y por campaña (caracteres, no bytes). */
+export const EMAIL_TEMPLATE_HTML_MAX = 200_000;
+
 const QUOTE_HEADER =
   /^\s*(el|le|on)\s.+?\s(escribió|escribio|a écrit|wrote)\s*:\s*$/i;
 const FORWARDED_HEADER =

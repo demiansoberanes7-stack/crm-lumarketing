@@ -31,6 +31,9 @@ describe("plantillas de WhatsApp", () => {
       "Hola cliente",
     ]);
     expect(personalizeTemplateParams(["Valor fijo"], "Ana")).toEqual(["Valor fijo"]);
+    expect(personalizeTemplateParams(["Hola {{nombre}}"], "Ana $& $'")).toEqual([
+      "Hola Ana $& $'",
+    ]);
   });
 
   it("arma los componentes del cuerpo en orden", () => {

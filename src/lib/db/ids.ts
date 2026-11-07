@@ -115,6 +115,8 @@ const prefixes = {
   // Sucursales e inventario por sucursal (0084)
   branch: "br",
   branchInventory: "bri",
+  // Plantillas de correo reutilizables (0086)
+  emailTemplate: "etpl",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

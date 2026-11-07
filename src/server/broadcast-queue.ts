@@ -5,7 +5,7 @@ import { noConversationReason } from "@/server/broadcasts/audience";
 import { refreshBroadcastCampaign } from "@/server/broadcasts/metrics";
 import { CUENTA_MUDA, sendEmail } from "@/server/email/service";
 import { normalizeEmail } from "@/server/email-campaigns/recipients";
-import { personalizeEmail } from "@/server/email-campaigns/personalize";
+import { personalizeEmail, personalizeHtml } from "@/server/email-campaigns/personalize";
 import { SendError, sendTemplate, sendText } from "@/server/inbox/send";
 import { templateRequiresOptIn } from "@/server/whatsapp/templates";
 
@@ -74,6 +74,7 @@ export async function runBroadcastWorkerOnce(): Promise<void> {
         subject: schema.broadcastCampaign.subject,
         senderAccountId: schema.broadcastCampaign.senderAccountId,
         messageText: schema.broadcastCampaign.messageText,
+        bodyHtml: schema.broadcastCampaign.bodyHtml,
         templateName: schema.broadcastCampaign.templateName,
         templateLanguage: schema.broadcastCampaign.templateLanguage,
         templateParams: schema.broadcastCampaign.templateParams,
@@ -141,6 +142,7 @@ type DeliveryRow = {
   subject: string | null;
   senderAccountId: string | null;
   messageText: string;
+  bodyHtml: string | null;
   templateName: string | null;
   templateLanguage: string | null;
   templateParams: unknown;
@@ -314,10 +316,14 @@ async function deliverEmail(input: DeliveryRow): Promise<void> {
   }
 
   try {
+    const recipient = { email, name: input.recipientName };
+    const html = input.bodyHtml ? personalizeHtml(input.bodyHtml, recipient) : null;
     const messageId = await sendEmail(input.organizationId, input.senderAccountId, {
       to: email,
-      subject: personalizeEmail(input.subject ?? "(sin asunto)", { email, name: input.recipientName }),
-      text: personalizeEmail(input.messageText, { email, name: input.recipientName }),
+      subject: personalizeEmail(input.subject ?? "(sin asunto)", recipient),
+      text: personalizeEmail(input.messageText, recipient),
+      // El texto siempre viaja como parte alternativa aunque haya HTML.
+      ...(html ? { html } : {}),
       contactId: input.contactId,
       campaignId: input.campaignId,
     });

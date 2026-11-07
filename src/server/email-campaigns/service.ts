@@ -6,6 +6,7 @@ import { CUENTA_MUDA } from "@/server/email/service";
 import { EmailAudienceError, resolveEmailAudience } from "@/server/email-campaigns/audience";
 import type { CreateEmailCampaignInput } from "@/server/email-campaigns/schema";
 import { EMAIL_AUDIENCE_LIMIT } from "@/server/email-campaigns/recipients";
+import { htmlToText } from "@/server/email-campaigns/personalize";
 
 export class EmailCampaignError extends Error {
   constructor(
@@ -13,7 +14,8 @@ export class EmailCampaignError extends Error {
       | "sender_not_found"
       | "sender_disabled"
       | "audience_empty"
-      | "audience_limit",
+      | "audience_limit"
+      | "body_empty",
     message: string,
     readonly status: number = 422
   ) {
@@ -168,6 +170,15 @@ export async function createEmailCampaign(input: {
     );
   }
 
+  // La campaña guarda el HTML en el momento de crearse: borrar o cambiar la
+  // plantilla después no altera este envío. El texto siempre existe como parte
+  // alternativa; si no lo escribieron, se deriva del HTML.
+  const bodyHtml = input.data.bodyHtml?.trim() || null;
+  const bodyText = input.data.bodyText?.trim() || (bodyHtml ? htmlToText(bodyHtml) : "");
+  if (!bodyText) {
+    throw new EmailCampaignError("body_empty", "La campaña necesita un mensaje o una plantilla HTML.");
+  }
+
   const id = newId("broadcastCampaign");
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -178,10 +189,12 @@ export async function createEmailCampaign(input: {
       channel: "email",
       senderAccountId: sender.id,
       subject: input.data.subject,
-      messageText: input.data.bodyText,
+      messageText: bodyText,
+      bodyHtml,
       filters: {
         audienceKind: input.data.audience.kind,
         audienceCount: recipients.length,
+        format: bodyHtml ? "html" : "text",
       },
       status: "draft",
       recipientCount: recipients.length,

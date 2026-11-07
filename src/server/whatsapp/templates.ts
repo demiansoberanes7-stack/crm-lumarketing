@@ -118,8 +118,9 @@ export function personalizeTemplateParams(
   contactName: string | null | undefined
 ): string[] {
   const name = contactName?.trim() || "cliente";
+  // Reemplazo por función: "$&" o "$'" dentro del nombre no son patrones.
   return params.map((param) =>
-    param.replace(/\{\{\s*nombre\s*\}\}/gi, name)
+    param.replace(/\{\{\s*nombre\s*\}\}/gi, () => name)
   );
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
-import { sanitizeHeaderValue } from "@/lib/email-format";
+import { EMAIL_TEMPLATE_HTML_MAX, sanitizeHeaderValue } from "@/lib/email-format";
 import { listEmailRecipients } from "@/server/email-campaigns/audience";
 import {
   EMAIL_AUDIENCE_LIMIT,
@@ -14,8 +14,11 @@ import {
   parseRecipientRows,
   parseRecipientText,
 } from "@/server/email-campaigns/recipients";
-import { personalizeEmail } from "@/server/email-campaigns/personalize";
-import { createEmailCampaignSchema } from "@/server/email-campaigns/schema";
+import { htmlToText, personalizeEmail, personalizeHtml } from "@/server/email-campaigns/personalize";
+import {
+  createEmailCampaignSchema,
+  createEmailTemplateSchema,
+} from "@/server/email-campaigns/schema";
 
 describe("normalización de correos", () => {
   it("recorta, pasa a minúsculas y entiende «Nombre <correo>» y mailto", () => {
@@ -189,6 +192,44 @@ describe("personalización del correo", () => {
     expect(personalizeEmail("Hola {{nombre}}", { email: "ana@empresa.com", name: "\r\n" }))
       .toBe("Hola ana");
   });
+
+  it("un nombre con $& o $' se inserta literal, no como patrón de reemplazo", () => {
+    expect(personalizeEmail("Hola {{nombre}}.", {
+      email: "ana@empresa.com",
+      name: "Ana $& $' $$",
+    })).toBe("Hola Ana $& $' $$.");
+    expect(personalizeHtml("Hola {{nombre}}.", {
+      email: "ana@empresa.com",
+      name: "Ana $& $$",
+    })).toBe("Hola Ana $&amp; $$.");
+  });
+});
+
+describe("plantillas HTML", () => {
+  it("escapa los datos del destinatario antes de entrar al HTML", () => {
+    expect(personalizeHtml("<p>Hola {{nombre}}</p>", {
+      email: "ana@empresa.com",
+      name: "<b>Ana & Cía</b>",
+    })).toBe("<p>Hola &lt;b&gt;Ana &amp; Cía&lt;/b&gt;</p>");
+    expect(personalizeHtml('<a href="mailto:{{correo}}">Escribe</a>', {
+      email: "ana@empresa.com",
+      name: null,
+    })).toBe('<a href="mailto:ana@empresa.com">Escribe</a>');
+    expect(personalizeHtml("{{nombre}}", {
+      email: "ana@empresa.com",
+      name: 'Ana "la jefa" <x>',
+    })).toBe("Ana &quot;la jefa&quot; &lt;x&gt;");
+  });
+
+  it("deriva una parte de texto legible y descarta scripts y estilos", () => {
+    const text = htmlToText(
+      "<html><head><style>p{color:red}</style><title>X</title></head>" +
+      "<body><h1>Hola {{nombre}}</h1><p>Precio &amp; entrega</p><script>alert(1)</script></body></html>"
+    );
+    expect(text).toBe("Hola {{nombre}}\nPrecio & entrega");
+    expect(htmlToText("<img src=\"x\">"))
+      .toBe("Abre este correo en un cliente compatible con HTML para ver su contenido.");
+  });
 });
 
 describe("saneo de cabeceras", () => {
@@ -238,6 +279,28 @@ describe("payload de campaña de correo", () => {
     }).success).toBe(false);
   });
 
+  it("acepta una campaña solo con HTML y rechaza quedarse sin mensaje", () => {
+    expect(createEmailCampaignSchema.safeParse({
+      ...base,
+      bodyText: undefined,
+      bodyHtml: "<p>Hola {{nombre}}</p>",
+      audience: { kind: "contacts" },
+    }).success).toBe(true);
+    expect(createEmailCampaignSchema.safeParse({
+      ...base,
+      bodyText: "   ",
+      audience: { kind: "contacts" },
+    }).success).toBe(false);
+  });
+
+  it("no acepta HTML por encima del tope", () => {
+    expect(createEmailCampaignSchema.safeParse({
+      ...base,
+      bodyHtml: "x".repeat(EMAIL_TEMPLATE_HTML_MAX + 1),
+      audience: { kind: "contacts" },
+    }).success).toBe(false);
+  });
+
   it("una lista manual no puede apuntar a la ficha de un contacto", () => {
     expect(createEmailCampaignSchema.safeParse({
       ...base,
@@ -253,6 +316,21 @@ describe("payload de campaña de correo", () => {
         recipients: [{ email: "ana@empresa.com", contactId: null }],
       },
     }).success).toBe(true);
+  });
+});
+
+describe("payload de plantilla de correo", () => {
+  const template = { name: "Octubre", subject: "Hola {{nombre}}", html: "<p>Hola</p>" };
+
+  it("acepta una plantilla válida y rechaza asunto con salto, HTML vacío o claves ajenas", () => {
+    expect(createEmailTemplateSchema.safeParse(template).success).toBe(true);
+    expect(createEmailTemplateSchema.safeParse({
+      ...template,
+      subject: "Hola\r\nBcc: espia@evil.com",
+    }).success).toBe(false);
+    expect(createEmailTemplateSchema.safeParse({ ...template, html: "   " }).success).toBe(false);
+    expect(createEmailTemplateSchema.safeParse({ ...template, channel: "email" }).success).toBe(false);
+    expect(createEmailTemplateSchema.safeParse({ ...template, name: "" }).success).toBe(false);
   });
 });
 

@@ -31,6 +31,16 @@ describe("pantalla de Envíos masivos por correo", () => {
     expect(cliente).toContain("Límite diario de esta cuenta");
   });
 
+  it("permite cargar y elegir plantillas HTML sin inyectar su código en la página", () => {
+    expect(cliente).toContain("/api/email-campaigns/templates");
+    expect(cliente).toContain('accept=".html,.htm,text/html"');
+    expect(cliente).toContain('aria-label="Plantilla HTML"');
+    expect(cliente).toContain("bodyHtml");
+    expect(cliente).toContain('sandbox=""');
+    expect(cliente).toContain("srcDoc=");
+    expect(cliente).not.toContain("dangerouslySetInnerHTML");
+  });
+
   it("el menú sigue llamándose Envíos masivos y usa el icono de correo", () => {
     expect(nav).toMatch(/href: "\/broadcasts", label: "Envíos masivos", icon: Mail/);
   });

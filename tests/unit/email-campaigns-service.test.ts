@@ -159,6 +159,44 @@ describe("alta de campaña de correo", () => {
   });
 });
 
+describe("campaña con plantilla HTML", () => {
+  it("guarda el HTML y deriva la parte de texto cuando no se escribió", async () => {
+    senderRows = [{ id: "acc_1", emailAddress: "ventas@lumarketing.digital", enabled: true }];
+    mocks.resolveEmailAudience.mockResolvedValue(recipients(1));
+
+    await createEmailCampaign({
+      organizationId: "org_1",
+      actorUserId: "user_1",
+      data: {
+        ...data,
+        bodyText: undefined,
+        bodyHtml: "<h1>Hola {{nombre}}</h1><p>Tu correo es {{correo}}</p>",
+      },
+    });
+
+    const campaignInsert = inserts[0]?.values as Record<string, unknown>;
+    expect(campaignInsert).toMatchObject({
+      messageText: "Hola {{nombre}}\nTu correo es {{correo}}",
+      bodyHtml: "<h1>Hola {{nombre}}</h1><p>Tu correo es {{correo}}</p>",
+      filters: { audienceKind: "list", audienceCount: 1, format: "html" },
+    });
+  });
+
+  it("una campaña sin texto ni HTML no se guarda", async () => {
+    senderRows = [{ id: "acc_1", emailAddress: "ventas@lumarketing.digital", enabled: true }];
+    mocks.resolveEmailAudience.mockResolvedValue(recipients(1));
+
+    await expect(
+      createEmailCampaign({
+        organizationId: "org_1",
+        actorUserId: "user_1",
+        data: { ...data, bodyText: "   " },
+      })
+    ).rejects.toMatchObject({ code: "body_empty" });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("lista de campañas de correo", () => {
   it("serializa fechas y cae a createdAt si no hubo programación", async () => {
     campaignRows = [

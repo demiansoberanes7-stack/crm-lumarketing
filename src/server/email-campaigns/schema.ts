@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EMAIL_TEMPLATE_HTML_MAX } from "@/lib/email-format";
 import { EMAIL_AUDIENCE_LIMIT } from "@/server/email-campaigns/recipients";
 
 const emailRecipientSchema = z.object({
@@ -28,24 +29,46 @@ export const emailAudienceSchema = z
     }
   });
 
+// Un CR/LF en el asunto añade cabeceras (`Bcc:`) al correo entregado.
+const emailSubjectSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .refine((value) => !/[\r\n\u0000]/.test(value), {
+    message: "El asunto no puede contener saltos de línea",
+  });
+
 export const createEmailCampaignSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
     senderAccountId: z.string().trim().min(1).max(255),
-    // Un CR/LF en el asunto añade cabeceras (`Bcc:`) al correo entregado.
-    subject: z
-      .string()
-      .trim()
-      .min(1)
-      .max(300)
-      .refine((value) => !/[\r\n\u0000]/.test(value), {
-        message: "El asunto no puede contener saltos de línea",
-      }),
-    bodyText: z.string().trim().min(1).max(50_000),
+    subject: emailSubjectSchema,
+    /** Versión de texto; si falta, se deriva del HTML de la plantilla. */
+    bodyText: z.string().trim().max(50_000).optional(),
+    bodyHtml: z.string().trim().max(EMAIL_TEMPLATE_HTML_MAX).optional(),
     audience: emailAudienceSchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.bodyText && !value.bodyHtml) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["bodyText"],
+        message: "Escribe el mensaje o elige una plantilla HTML",
+      });
+    }
+  });
+
+export const createEmailTemplateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    subject: emailSubjectSchema,
+    html: z.string().trim().min(1).max(EMAIL_TEMPLATE_HTML_MAX),
   })
   .strict();
 
 export const previewEmailAudienceSchema = emailAudienceSchema;
 
 export type CreateEmailCampaignInput = z.infer<typeof createEmailCampaignSchema>;
+export type CreateEmailTemplateInput = z.infer<typeof createEmailTemplateSchema>;

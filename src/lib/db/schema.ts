@@ -1988,6 +1988,29 @@ export const emailMessage = pgTable(
   ]
 );
 
+/**
+ * Plantilla HTML reutilizable. La campaña copia el HTML en `body_html` al
+ * crearse: editar o borrar la plantilla no altera envíos ya guardados.
+ */
+export const emailTemplate = pgTable(
+  "email_template",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    subject: varchar("subject", { length: 300 }).notNull(),
+    html: text("html").notNull(),
+    createdBy: varchar("created_by", { length: 255 }).references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("email_template_org_created_idx").on(t.organizationId, t.createdAt)]
+);
+
 /* ============================================================
  * CalTodo — tareas personales con vista de calendario
  * ============================================================ */
@@ -2739,6 +2762,8 @@ export const broadcastCampaign = pgTable(
     senderAccountId: varchar("sender_account_id", { length: 255 }),
     subject: varchar("subject", { length: 1024 }),
     messageText: text("message_text").notNull(),
+    /** Copia del HTML al crear la campaña; NULL en campañas de solo texto. */
+    bodyHtml: text("body_html"),
     templateName: varchar("template_name", { length: 255 }),
     templateLanguage: varchar("template_language", { length: 20 }),
     templateParams: jsonb("template_params"),

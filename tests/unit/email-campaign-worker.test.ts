@@ -74,6 +74,7 @@ function emailRow(overrides: Record<string, unknown> = {}) {
     subject: "Hola {{nombre}}",
     senderAccountId: "acc_1",
     messageText: "Buen día {{nombre}}, tu correo es {{correo}}",
+    bodyHtml: null,
     templateName: null,
     templateLanguage: null,
     templateParams: null,
@@ -118,6 +119,39 @@ describe("worker de campañas de correo", () => {
       expect.objectContaining({ status: "sent", messageId: "msg_9" })
     );
     expect(mocks.refreshBroadcastCampaign).toHaveBeenCalledWith("org_1", "cmp_1");
+  });
+
+  it("envía el HTML de la plantilla como parte principal y el texto como alternativa", async () => {
+    dueRows = [emailRow({
+      bodyHtml: "<p>Hola {{nombre}}, escribe a {{correo}}</p>",
+      messageText: "Hola {{nombre}}",
+    })];
+
+    await runBroadcastWorkerOnce();
+
+    expect(mocks.sendEmail).toHaveBeenCalledWith("org_1", "acc_1", {
+      to: "ana@example.com",
+      subject: "Hola Ana",
+      text: "Hola Ana",
+      html: "<p>Hola Ana, escribe a ana@example.com</p>",
+      contactId: "ct_1",
+      campaignId: "cmp_1",
+    });
+  });
+
+  it("escapa un nombre con HTML en la plantilla", async () => {
+    dueRows = [emailRow({
+      recipientName: "<b>Ana</b> & Cía",
+      bodyHtml: "<p>{{nombre}}</p>",
+    })];
+
+    await runBroadcastWorkerOnce();
+
+    expect(mocks.sendEmail).toHaveBeenCalledWith(
+      "org_1",
+      "acc_1",
+      expect.objectContaining({ html: "<p>&lt;b&gt;Ana&lt;/b&gt; &amp; Cía</p>" })
+    );
   });
 
   it("al topar el límite diario reencola al día siguiente en vez de fallar", async () => {
