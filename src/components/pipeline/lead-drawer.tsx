@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { MessageSquareText, X } from "lucide-react";
+import { Archive, MessageSquareText, X } from "lucide-react";
 import type { FichaDto, FichaValue, PriorityValue, StageDto } from "@/lib/types";
 import { formatMoneyCents, parseMoneyToCents } from "@/lib/money";
 import { cn, formatPhone } from "@/lib/utils";
@@ -29,6 +29,7 @@ export function LeadDrawer({
   onMoveStage,
   onAmount,
   onPriority,
+  onArchive,
 }: {
   lead: BoardLead;
   stages: StageDto[];
@@ -39,10 +40,12 @@ export function LeadDrawer({
   onMoveStage: (stageId: string) => void;
   onAmount: (cents: number | null) => void;
   onPriority: (value: PriorityValue | null) => void;
+  onArchive: () => Promise<void>;
 }) {
   const [ficha, setFicha] = useState<FichaDto>({});
   const [monto, setMonto] = useState("");
   const [editandoMonto, setEditandoMonto] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const contactId = lead.contact.id;
   const moneda = lead.currency ?? currency;
@@ -85,6 +88,15 @@ export function LeadDrawer({
       body: JSON.stringify({ ficha: patch }),
     }).catch(() => null);
     void cargarFicha();
+  }
+
+  async function archivarLead() {
+    setArchiving(true);
+    try {
+      await onArchive();
+    } finally {
+      setArchiving(false);
+    }
   }
 
   const montoParseado = monto.trim() ? parseMoneyToCents(monto) : null;
@@ -255,6 +267,21 @@ export function LeadDrawer({
 
           {/* Qué se sabe */}
           <FichaPanel ficha={ficha} onSave={guardarFicha} />
+
+          <section className="border-t p-4">
+            <Button
+              variant="outline"
+              className="w-full border-destructive/40 text-destructive hover:border-destructive"
+              disabled={archiving}
+              onClick={() => void archivarLead()}
+            >
+              <Archive className="h-4 w-4" />
+              {archiving ? "Quitando…" : "Quitar del Pipeline"}
+            </Button>
+            <p className="mt-2 text-xs text-text-3">
+              La oportunidad se conserva en el historial. La ficha del cliente no se elimina.
+            </p>
+          </section>
         </div>
       </aside>
     </>

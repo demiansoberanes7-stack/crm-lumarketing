@@ -1,4 +1,4 @@
-﻿import { and, asc, eq } from "drizzle-orm";
+﻿import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -44,6 +44,8 @@ export type MoveInput = {
   lossNote?: string | null;
   /** Por defecto, ahora. */
   occurredAt?: Date;
+  /** Solo la reubicación sistémica al borrar una etapa mueve leads archivados. */
+  allowArchived?: boolean;
   /**
    * Otros campos del lead que se escriben en el MISMO update. Existe para que
    * el PATCH del Pipeline no tenga que hacer dos viajes cuando el dueño mueve
@@ -60,6 +62,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
   // llamada de red dentro de la transacción la mantendría abierta mientras
   // Meta piensa, y una conversión jamás vale una transacción larga.
   let toStageKind: StageKind | null = null;
+  let movingArchivedLead = false;
 
   const result = await db.transaction(async (tx) => {
     const leadRows = await tx
@@ -79,7 +82,10 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       .limit(1);
 
     const current = leadRows[0];
-    if (!current) return { ok: false as const, reason: "lead_not_found" as const };
+    if (!current || (current.lead.archivedAt && !input.allowArchived)) {
+      return { ok: false as const, reason: "lead_not_found" as const };
+    }
+    movingArchivedLead = Boolean(current.lead.archivedAt);
 
     const targetRows = await tx
       .select()
@@ -154,6 +160,24 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       });
     }
 
+    // La marca de cliente es histórica y sticky. Archivar o mover después la
+    // oportunidad no quita al contacto de la cartera.
+    if (target.kind === "won" && leadRow.contactId && !movingArchivedLead) {
+      await tx
+        .update(schema.contact)
+        .set({ customerSince: occurredAt, updatedAt: new Date() })
+        .where(
+          scoped(
+            schema.contact.organizationId,
+            input.organizationId,
+            and(
+              eq(schema.contact.id, leadRow.contactId),
+              isNull(schema.contact.customerSince)
+            )
+          )
+        );
+    }
+
     return {
       ok: true as const,
       lead: leadRow,
@@ -169,7 +193,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
   // que el negocio marcó como "lead calificado" o a una etapa ganada se le
   // reporta a Meta. Best-effort y ya fuera de la transacción: un fallo aquí
   // jamás puede costar el movimiento del lead, que ya está en firme.
-  if (result.ok && result.changed && toStageKind !== null) {
+  if (result.ok && result.changed && toStageKind !== null && !movingArchivedLead) {
     await reportStageChange({
       organizationId: input.organizationId,
       leadId: result.lead.id,
@@ -181,7 +205,7 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
 
   // Webhooks de salida: el sistema externo del dueño se entera del movimiento
   // por aquí. Best-effort y ya fuera de la transacción, igual que arriba.
-  if (result.ok && result.changed) {
+  if (result.ok && result.changed && !movingArchivedLead) {
     publishWebhook(input.organizationId, "lead.stage_changed", {
       leadId: result.lead.id,
       contactId: result.lead.contactId,
@@ -316,6 +340,7 @@ export async function relocateLeadsFromStage(input: {
       toStageId: input.toStageId,
       actorUserId: input.actorUserId ?? null,
       source: "sistema",
+      allowArchived: true,
       // Si el destino resulta ser la etapa perdida, el motivo no se puede
       // inventar pero tampoco puede faltar: se registra lo que de verdad pasó.
       lossReason: "otro",

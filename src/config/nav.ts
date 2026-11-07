@@ -87,7 +87,7 @@ export const NAV: NavItem[] = [
    * trabajo —atender y automatizar la conversación—, no en Ajustes.
    */
   { href: "/agent", label: "Agente IA", icon: Bot, section: "operacion" },
-  { href: "/contacts", label: "Contactos", icon: Users, section: "operacion" },
+  { href: "/contacts", label: "Clientes", icon: Users, section: "operacion" },
   { href: "/prospects", label: "Prospectos", icon: UserPlus, section: "operacion" },
   { href: "/quotes", label: "Cotizador", icon: FileText, section: "comercial" },
   { href: "/catalog", label: "Inventario", icon: Package, section: "comercial" },

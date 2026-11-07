@@ -790,7 +790,7 @@ modelo insista. Un fallo del motor degrada el turno a `reply`, nunca lo tumba.
 
 ---
 
-## 11. Módulo de Contactos
+## 11. Módulo de Clientes
 
 ### Esquema (`src/lib/db/schema.ts`)
 
@@ -807,9 +807,16 @@ contact: {
   notes: string | null    // Notas
   ficha: json | null      // Ficha técnica (JSON)
   source: string | null   // Fuente del contacto
+  customerSince: Date | null // Ingresó a la cartera de clientes; sticky
   archivedAt: Date | null // Fecha de archivado
 }
 ```
+
+La cartera de **Clientes** se basa en `contact.customer_since`, no en la existencia de una
+oportunidad activa. Entrar a una etapa `kind = 'won'` fija la fecha por primera vez; el alta manual
+desde Clientes también la fija. `DELETE /api/pipeline/leads/[id]` archiva la oportunidad con
+`lead.archived_at`, conserva su historial y no elimina la ficha del cliente. La migración 0091
+backfillea clientes que ya estaban ganados antes de introducir la marca.
 
 ### Funciones del Servidor (`src/server/contacts.ts`)
 

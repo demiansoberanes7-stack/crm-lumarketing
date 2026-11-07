@@ -182,22 +182,24 @@ export function AgentClient() {
           </div>
           <div className="flex items-center gap-3">
             {saved && <span className="text-xs text-primary">Guardado ✓</span>}
-            <span className="text-[12px] text-text-2">
+            <span className="shrink-0 text-[12px] text-text-2">
               {profile.enabled ? "Encendido" : "Apagado"}
             </span>
             <button
+              type="button"
               role="switch"
               aria-checked={profile.enabled}
-              aria-label="Agente encendido"
+              aria-label={profile.enabled ? "Apagar agente" : "Encender agente"}
               disabled={!aiConfigured}
               onClick={() => void saveProfile({ enabled: !profile.enabled })}
-              className={`relative h-6 w-11 rounded-full transition-colors after:absolute after:-inset-x-2 after:-inset-y-2 after:content-[''] disabled:opacity-40 ${
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors after:absolute after:-inset-x-2 after:-inset-y-2 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${
                 profile.enabled ? "bg-brand" : "bg-border-strong"
               }`}
             >
               <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-knob shadow-sm transition-transform ${
-                  profile.enabled ? "translate-x-5" : "translate-x-0.5"
+                aria-hidden="true"
+                className={`pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-knob shadow-sm transition-transform ${
+                  profile.enabled ? "translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>

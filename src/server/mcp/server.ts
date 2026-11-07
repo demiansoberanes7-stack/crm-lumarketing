@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { and, asc, desc, eq, ilike } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull } from "drizzle-orm";
 import { ZodError, z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -290,7 +290,13 @@ export function createMcpServer(): McpServer {
         db.select({ lead: schema.lead, contact: schema.contact })
           .from(schema.lead)
           .innerJoin(schema.contact, eq(schema.lead.contactId, schema.contact.id))
-          .where(scoped(schema.lead.organizationId, principal.organizationId))
+          .where(
+            scoped(
+              schema.lead.organizationId,
+              principal.organizationId,
+              isNull(schema.lead.archivedAt)
+            )
+          )
           .orderBy(asc(schema.lead.position)),
       ]);
       const result = {

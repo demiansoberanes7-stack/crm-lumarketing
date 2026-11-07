@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const TABLES = [
-  { key: "contacts", label: "Contactos", count: 0 },
+  { key: "contacts", label: "Clientes", count: 0 },
   { key: "messages", label: "Mensajes", count: 0 },
   { key: "conversations", label: "Conversaciones", count: 0 },
   { key: "leads", label: "Leads", count: 0 },

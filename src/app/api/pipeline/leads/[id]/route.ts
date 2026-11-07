@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
-import { updateLead } from "@/server/leads/service";
+import { archiveLeadFromPipeline, updateLead } from "@/server/leads/service";
 
 export const dynamic = "force-dynamic";
 
@@ -67,4 +67,15 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {
     return apiError(status, result.code, result.message);
   }
   return Response.json({ lead: result.lead });
+});
+
+/** Quitar del kanban conserva el cliente y el historial del lead. */
+export const DELETE = withAuth(async (session, _req: Request, ctx: Params) => {
+  const { id } = await ctx.params;
+  const result = await archiveLeadFromPipeline({
+    organizationId: session.organizationId,
+    leadId: id,
+  });
+  if (!result.ok) return apiError(404, "not_found", "Oportunidad no encontrada");
+  return Response.json({ archived: true });
 });

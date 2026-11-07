@@ -18,7 +18,8 @@ const SOURCES: { value: SourceValue; label: string }[] = [
 ];
 
 /**
- * Alta manual de un prospecto que no llegó por WhatsApp.
+ * Alta manual de un cliente. También abre una oportunidad en el Pipeline para
+ * que el negocio pueda registrar futuras ventas.
  * El teléfono es obligatorio porque ES la identidad en WhatsApp: sin él, el
  * contacto no podría recibir ni mandar nada, y sería una ficha muerta.
  */
@@ -83,6 +84,7 @@ export function NewContactDialog({
         mediumDetail: mediumDetail || undefined,
         notes: notes.trim() || undefined,
         stageId: stageId || undefined,
+        isCustomer: true,
       }),
     }).catch(() => null);
     setSaving(false);
@@ -101,7 +103,7 @@ export function NewContactDialog({
       return;
     }
     if (!res.ok) {
-      setError(data?.error?.message ?? "No se pudo guardar el contacto");
+      setError(data?.error?.message ?? "No se pudo guardar el cliente");
       return;
     }
     onCreated();
@@ -122,14 +124,14 @@ export function NewContactDialog({
     >
       <div
         role="dialog"
-        aria-label="Nuevo contacto"
+        aria-label="Nuevo cliente"
         className="my-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 font-semibold">Nuevo contacto</h3>
+        <h3 className="mb-1 font-semibold">Nuevo cliente</h3>
         <p className="mb-4 text-xs text-text-3">
-          Para prospectos que no llegaron por WhatsApp: referidos, gente que te
-          escribió por otra red, conocidos.
+          Registra su ficha y abre una oportunidad en el Pipeline para futuras
+          ventas. También puedes añadir referidos, clientes de otras redes o conocidos.
         </p>
 
         <div className="space-y-3">
@@ -257,7 +259,7 @@ export function NewContactDialog({
           ) : (
             <p className="mt-3 text-xs text-warning-text">
               Tu embudo no tiene etapas abiertas. Crea una en el Pipeline antes de
-              capturar contactos.
+              registrar clientes.
             </p>
           ))}
 
@@ -269,7 +271,7 @@ export function NewContactDialog({
             disabled={!listo || saving || stages.length === 0}
             onClick={() => void guardar()}
           >
-            {saving ? "Guardando…" : "Crear contacto"}
+            {saving ? "Guardando…" : "Crear cliente"}
           </Button>
         </div>
       </div>

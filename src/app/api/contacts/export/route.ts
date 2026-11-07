@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -10,8 +10,7 @@ export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const stage = url.searchParams.get("stage")?.trim();
-  // Mismo filtro que la lista: la pantalla de Contactos envía won=1 y el CSV
-  // debe salir con lo que se ve, no con el directorio entero.
+  // Mismo filtro persistente que la lista de Clientes.
   const soloClientes = url.searchParams.get("won") === "1";
   const includeArchived = url.searchParams.get("archived") === "true";
 
@@ -27,16 +26,25 @@ export const GET = withAuth(async (session, req: Request) => {
     })
     .from(schema.lead)
     .innerJoin(schema.pipelineStage, eq(schema.pipelineStage.id, schema.lead.stageId))
-    .where(scoped(schema.lead.organizationId, session.organizationId));
+    .where(
+      scoped(
+        schema.lead.organizationId,
+        session.organizationId,
+        isNull(schema.lead.archivedAt)
+      )
+    );
   const stageByContact = new Map(leadStages.map((r) => [r.contactId, r.stageName]));
-  const clienteContactIds = new Set(
-    leadStages.filter((r) => r.stageKind === "won").map((r) => r.contactId)
-  );
 
   const rows = await db
     .select()
     .from(schema.contact)
-    .where(scoped(schema.contact.organizationId, session.organizationId))
+    .where(
+      scoped(
+        schema.contact.organizationId,
+        session.organizationId,
+        soloClientes ? isNotNull(schema.contact.customerSince) : undefined
+      )
+    )
     .orderBy(desc(schema.contact.updatedAt))
     .limit(10000); // tope alto pero no ilimitado para evitar OOM
 
@@ -44,7 +52,6 @@ export const GET = withAuth(async (session, req: Request) => {
     .filter((c) => {
       if (!includeArchived && c.archivedAt) return false;
       if (stage && stageByContact.get(c.id) !== stage) return false;
-      if (soloClientes && !clienteContactIds.has(c.id)) return false;
       if (q) {
         const ql = q.toLowerCase();
         const nameMatch = c.name.toLowerCase().includes(ql);
@@ -84,7 +91,7 @@ export const GET = withAuth(async (session, req: Request) => {
   return new Response(csvBlob(csv), {
     headers: {
       "Content-Type": "text/csv;charset=utf-8",
-      "Content-Disposition": `attachment; filename="contactos-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "Content-Disposition": `attachment; filename="clientes-${new Date().toISOString().slice(0, 10)}.csv"`,
       "Cache-Control": "no-store",
     },
   });

@@ -138,14 +138,16 @@ export function buildDashboard(input: DashboardInput, period: string, now = new 
     weeklyCashFlow: weeks.map((week) => { const income = sum(payments.filter((p) => weekKey(p.fecha) === week), (p) => p.monto), expense = sum(expenses.filter((e) => weekKey(e.fecha) === week), (e) => e.monto); return { week, income, expense, net: income - expense }; }),
   };
   const conversations = input.conversations.filter((c) => !c.isTest && c.lastMessageAt && within(c.lastMessageAt));
-  const contacts = input.contacts.filter((c) => !c.archivedAt && c.createdAt <= to);
+  const contacts = input.contacts.filter(
+    (c) => !c.archivedAt && c.customerSince != null && c.customerSince <= to
+  );
   const contactIds = new Set(contacts.map((c) => c.id));
   const activeContactIds = new Set(activeProjects.filter((p) => p.contactId && contactIds.has(p.contactId)).map((p) => p.contactId));
   return {
     period: label, range: { from: from.toISOString(), to: to.toISOString(), timezone: "UTC" }, currency: "MXN",
     projects, tasks, quotes, receivables, payments: paymentsData, expenses: expensesData, profitability,
     inbox: { active: conversations.length, byChannel: counts(conversations, (c) => c.channel) },
-    contacts: { total: contacts.length, active: activeContactIds.size, newThisPeriod: contacts.filter((c) => within(c.createdAt)).length, activityRate: percent(activeContactIds.size, contacts.length), bySource: counts(contacts, (c) => c.source ?? "directo") },
+     contacts: { total: contacts.length, active: activeContactIds.size, newThisPeriod: contacts.filter((c) => c.customerSince && within(c.customerSince)).length, activityRate: percent(activeContactIds.size, contacts.length), bySource: counts(contacts, (c) => c.source ?? "directo") },
     gantt: { projects: [] as { id: string; name: string; progress: number; startDate: string; endDate: string | null; status: string; risk: string | null }[], tasks: [] as { id: string; title: string; status: string; priority: string | null; startDate: string; endDate: string | null }[] },
     ads: {
       attributedLeads: 0, attributedConversations: 0, convertedFromAds: 0,

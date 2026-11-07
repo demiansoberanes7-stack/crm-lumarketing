@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getContactById: vi.fn(),
   createLeadForContact: vi.fn(),
   updateLead: vi.fn(),
+  archiveLeadFromPipeline: vi.fn(),
   limit: vi.fn(),
 }));
 
@@ -27,9 +28,13 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/db/tenant", () => ({ scoped: mocks.scoped }));
 vi.mock("@/server/contacts", () => ({ getContactById: mocks.getContactById }));
 vi.mock("@/server/inbox/lead-activity", () => ({ createLeadForContact: mocks.createLeadForContact }));
-vi.mock("@/server/leads/service", () => ({ updateLead: mocks.updateLead }));
+vi.mock("@/server/leads/service", () => ({
+  updateLead: mocks.updateLead,
+  archiveLeadFromPipeline: mocks.archiveLeadFromPipeline,
+}));
 
 import { POST } from "@/app/api/pipeline/leads/route";
+import { DELETE } from "@/app/api/pipeline/leads/[id]/route";
 
 function request(body: unknown) {
   return POST(
@@ -58,6 +63,34 @@ beforeEach(() => {
   mocks.getDb.mockReturnValue({ select: vi.fn().mockReturnValue(query) });
   mocks.createLeadForContact.mockResolvedValue({ id: "lead_1", stageId: "stage_1" });
   mocks.updateLead.mockResolvedValue({ ok: true, lead: { id: "lead_1", stageId: "stage_1", amountCents: 125000 } });
+  mocks.archiveLeadFromPipeline.mockResolvedValue({ ok: true });
+});
+
+describe("DELETE /api/pipeline/leads/[id]", () => {
+  it("archiva la oportunidad en la organización de la sesión y conserva al cliente", async () => {
+    const response = await DELETE(
+      new Request("http://local/api/pipeline/leads/lead_1", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "lead_1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ archived: true });
+    expect(mocks.archiveLeadFromPipeline).toHaveBeenCalledWith({
+      organizationId: "org_1",
+      leadId: "lead_1",
+    });
+  });
+
+  it("no revela ni archiva oportunidades de otro tenant", async () => {
+    mocks.archiveLeadFromPipeline.mockResolvedValue({ ok: false });
+
+    const response = await DELETE(
+      new Request("http://local/api/pipeline/leads/lead_ajeno", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "lead_ajeno" }) }
+    );
+
+    expect(response.status).toBe(404);
+  });
 });
 
 describe("POST /api/pipeline/leads", () => {

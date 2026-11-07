@@ -1,4 +1,4 @@
-import { desc, eq, inArray, or, sql } from "drizzle-orm";
+import { desc, eq, inArray, isNull, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
@@ -21,9 +21,8 @@ export const GET = withAuth(async (session, req: Request) => {
   const url = new URL(req.url);
   const q = url.searchParams.get("q")?.trim();
   const stage = url.searchParams.get("stage")?.trim();
-  // `won=1`: solo contactos cuyo lead llegó a una etapa ganadora ("Cliente").
-  // La pantalla de Contactos lo envía siempre; los selectores de contacto
-  // (agenda, proyectos) no, porque allí sí se quiere elegir a un prospecto.
+  // `won=1` conserva su contrato histórico, pero ahora lee la marca sticky del
+  // contacto: archivar o quitar una oportunidad del Pipeline no elimina al cliente.
   const soloClientes = url.searchParams.get("won") === "1";
   const includeArchived = url.searchParams.get("archived") === "true";
 
@@ -45,7 +44,13 @@ export const GET = withAuth(async (session, req: Request) => {
       schema.pipelineStage,
       eq(schema.pipelineStage.id, schema.lead.stageId)
     )
-    .where(scoped(schema.lead.organizationId, session.organizationId));
+    .where(
+      scoped(
+        schema.lead.organizationId,
+        session.organizationId,
+        isNull(schema.lead.archivedAt)
+      )
+    );
   const stageByContact = new Map(
     leadStages.map((r) => [r.contactId, r.stageName])
   );
@@ -74,14 +79,11 @@ export const GET = withAuth(async (session, req: Request) => {
       : undefined;
 
   // El filtro de etapa se aplica ANTES del límite: si no, un contacto de la
-  // etapa buscada podría quedar fuera por el corte de 200. Un filtro explícito
-  // por etapa manda sobre `won=1` (si pides una etapa concreta, la quieres
-  // aunque no sea ganadora).
+  // etapa buscada podría quedar fuera por el corte de 200. Las oportunidades
+  // archivadas no son etapa actual.
   const stageContactIds = stage
     ? leadStages.filter((r) => r.stageName === stage).map((r) => r.contactId)
-    : soloClientes
-      ? leadStages.filter((r) => r.stageKind === "won").map((r) => r.contactId)
-      : null;
+    : null;
   if (stageContactIds?.length === 0) return Response.json({ contacts: [] });
 
   const rows = await db
@@ -92,7 +94,8 @@ export const GET = withAuth(async (session, req: Request) => {
         schema.contact.organizationId,
         session.organizationId,
         search,
-        stageContactIds ? inArray(schema.contact.id, stageContactIds) : undefined
+        stageContactIds ? inArray(schema.contact.id, stageContactIds) : undefined,
+        soloClientes ? isNotNull(schema.contact.customerSince) : undefined
       )
     )
     .orderBy(desc(schema.contact.updatedAt))
@@ -128,6 +131,8 @@ const createSchema = z.object({
   source: z
     .enum(["anuncio", "organico", "referido", "conocido", "compra", "otro"])
     .optional(),
+  /** Alta desde la cartera Clientes: se conserva aunque su lead se archive. */
+  isCustomer: z.boolean().optional(),
   /** Cómo se contactó; el detalle (la red) lo resuelve `normalizeMedium`. */
   medium: z.unknown().optional(),
   mediumDetail: z.unknown().optional(),

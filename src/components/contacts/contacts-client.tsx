@@ -51,9 +51,8 @@ export function ContactsClient() {
   const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [listFailed, setListFailed] = useState(false);
   /**
-   * Contactos es la cartera de clientes: solo se listan los tratos ganados.
-   * El embudo (prospectos en cualquier etapa) vive en el Pipeline, que es la
-   * pantalla donde se mueven, y ya no hay filtro de etapa aquí.
+   * Clientes es una cartera persistente: un contacto que ya llegó a Cliente
+   * sigue aquí aunque su oportunidad se quite del Pipeline.
    */
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -104,7 +103,7 @@ export function ContactsClient() {
   }
 
   async function deleteContact(id: string, name: string) {
-    if (!confirm(`¿Eliminar contacto "${name}"? Esta accion no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar cliente "${name}"? Esta accion no se puede deshacer.`)) return;
     await fetch(`/api/contacts/${id}`, { method: "DELETE" }).catch(() => null);
     void refetch();
   }
@@ -120,13 +119,13 @@ export function ContactsClient() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        module="Comercial · Contactos"
-        title="Contactos"
+        module="Comercial · Clientes"
+        title="Clientes"
         actions={
           <>
             <Button size="sm" onClick={() => setCreando(true)}>
               <UserPlus className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
-              Nuevo contacto
+              Nuevo cliente
             </Button>
             <Button size="sm" variant="outline" onClick={() => setImportando(true)}>
               <Upload className="mr-1.5 h-4 w-4" strokeWidth={1.8} />
@@ -164,7 +163,7 @@ export function ContactsClient() {
             <Input
               ref={inputRef}
               placeholder="Buscar por nombre o teléfono…"
-              aria-label="Buscar contacto"
+              aria-label="Buscar cliente"
               defaultValue=""
               onChange={(e) => setQuery(e.target.value)}
               className="w-full pl-8 sm:w-72"
@@ -193,8 +192,8 @@ export function ContactsClient() {
               <>
                 <p className="text-sm font-medium">Aún no hay clientes</p>
                 <p className="max-w-sm text-xs text-muted-foreground">
-                  Los contactos aparecen aquí cuando su trato llega a la etapa
-                  «Cliente» del Pipeline.
+                  Los clientes aparecen aquí cuando su trato llega a la etapa
+                  «Cliente» del Pipeline, o cuando los registras directamente.
                 </p>
               </>
             )}
@@ -252,7 +251,7 @@ export function ContactsClient() {
                           onClick={() => { setMenuOpen(null); void deleteContact(c.id, c.name); }}
                           className="w-full px-3 py-1.5 text-left text-sm text-destructive hover:bg-accent"
                         >
-                          Eliminar
+                          Eliminar cliente
                         </button>
                       </div>
                     )}
@@ -465,7 +464,7 @@ function ContactDetailDialog({
             <ContactAvatar name={contact.name} seed={contact.id} size="lg" />
             <div className="min-w-0">
               <h2 className="truncate text-lg font-semibold">{contact.name}</h2>
-              <p className="text-sm text-muted-foreground">Ficha del contacto</p>
+              <p className="text-sm text-muted-foreground">Ficha del cliente</p>
             </div>
           </div>
           <button type="button" aria-label="Cerrar ficha" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
@@ -557,7 +556,7 @@ function ContactDetailDialog({
           <Link href={`/inbox?contact=${contact.id}`}>
             <Button variant="outline"><MessageSquareText className="mr-2 h-4 w-4" />Abrir conversación</Button>
           </Link>
-          <Button onClick={() => onEdit(contact)}>Editar contacto</Button>
+          <Button onClick={() => onEdit(contact)}>Editar cliente</Button>
         </footer>
       </section>
     </div>
@@ -615,7 +614,7 @@ function EditDialog({
         className="my-auto max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-lg border bg-card p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-4 font-semibold">Editar contacto</h3>
+        <h3 className="mb-4 font-semibold">Editar cliente</h3>
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="edit-name">

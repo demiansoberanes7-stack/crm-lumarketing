@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { descNullsLast } from "@/lib/db/order";
@@ -216,7 +216,8 @@ export async function createSessionBooking(input: {
         scoped(
           schema.lead.organizationId,
           input.organizationId,
-          eq(schema.lead.contactId, contactId)
+          eq(schema.lead.contactId, contactId),
+          isNull(schema.lead.archivedAt)
         )
       )
       .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
@@ -997,7 +998,8 @@ async function advanceLeadStage(
       scoped(
         schema.lead.organizationId,
         organizationId,
-        eq(schema.lead.contactId, contactId)
+        eq(schema.lead.contactId, contactId),
+        isNull(schema.lead.archivedAt)
       )
     )
     .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))

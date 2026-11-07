@@ -18,7 +18,7 @@ const PANTALLAS: Array<[string, string]> = [
   ["src/app/(app)/todo/todo-page-client.tsx", "Trabajo · Pendientes"],
   ["src/components/branches/branches-client.tsx", "Comercial · Sucursales"],
   ["src/components/prospects/prospects-client.tsx", "Comercial · Prospectos"],
-  ["src/components/contacts/contacts-client.tsx", "Comercial · Contactos"],
+  ["src/components/contacts/contacts-client.tsx", "Comercial · Clientes"],
   ["src/components/pipeline/pipeline-client.tsx", "Comercial · Pipeline"],
   ["src/components/projects/projects-client.tsx", "Trabajo · Proyectos"],
   ["src/components/catalog/catalog-client.tsx", "Comercial · Inventario"],

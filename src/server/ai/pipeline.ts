@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Channel } from "@/lib/channels";
 import { newId } from "@/lib/db/ids";
@@ -986,7 +986,8 @@ async function moveLeadToStage(
       scoped(
         schema.lead.organizationId,
         organizationId,
-        eq(schema.lead.contactId, contactId)
+        eq(schema.lead.contactId, contactId),
+        isNull(schema.lead.archivedAt)
       )
     )
     .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))

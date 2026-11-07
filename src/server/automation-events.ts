@@ -83,7 +83,8 @@ async function leadOf(
       scoped(
         schema.lead.organizationId,
         organizationId,
-        eq(schema.lead.contactId, contactId)
+        eq(schema.lead.contactId, contactId),
+        isNull(schema.lead.archivedAt)
       )
     )
     .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))
@@ -282,6 +283,7 @@ export async function scanInactivity(): Promise<void> {
         .where(
           and(
             scoped(schema.lead.organizationId, integration.organizationId),
+            isNull(schema.lead.archivedAt),
             eq(schema.conversation.isTest, false),
             isNull(schema.contact.archivedAt),
             // Un lead perdido no se persigue; ganado y abiertos sí.

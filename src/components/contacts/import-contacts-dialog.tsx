@@ -75,7 +75,7 @@ export function ImportContactsDialog({
         className="w-full max-w-lg rounded-lg border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 font-semibold">Importar contactos desde CSV</h3>
+        <h3 className="mb-1 font-semibold">Importar clientes desde CSV</h3>
         <p className="mb-4 text-xs text-muted-foreground">
           Columnas requeridas: <strong>nombre</strong>, <strong>telefono</strong>. Opcionales: notas, fuente, etapa.
           Teléfono con código de país (ej. 5214621234567).

@@ -1,4 +1,4 @@
-import { count, eq, inArray } from "drizzle-orm";
+import { count, eq, inArray, isNull } from "drizzle-orm";
 import { withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -21,7 +21,13 @@ export const GET = withAuth(async (session) => {
     db
       .select({ value: count() })
       .from(schema.lead)
-      .where(scoped(schema.lead.organizationId, organizationId)),
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          organizationId,
+          isNull(schema.lead.archivedAt)
+        )
+      ),
     db
       .select({ value: count() })
       .from(schema.quote)
@@ -51,7 +57,8 @@ export const GET = withAuth(async (session) => {
         scoped(
           schema.lead.organizationId,
           organizationId,
-          inArray(schema.lead.stageId, wonStageIds)
+          inArray(schema.lead.stageId, wonStageIds),
+          isNull(schema.lead.archivedAt)
         )
       );
     won = wonRow[0]?.value ?? 0;

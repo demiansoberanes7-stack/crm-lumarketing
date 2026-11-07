@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { descNullsLast } from "@/lib/db/order";
@@ -83,7 +83,10 @@ export async function getContactStage(
       scoped(
         schema.lead.organizationId,
         organizationId,
-        eq(schema.lead.contactId, contactId)
+        and(
+          eq(schema.lead.contactId, contactId),
+          isNull(schema.lead.archivedAt)
+        )
       )
     )
     // Multi-oportunidad: el contacto puede tener varias. Las rutas 1:1 (UI,
@@ -118,6 +121,8 @@ export type CreateContactInput = {
   medium?: unknown;
   mediumDetail?: unknown;
   stageId?: string;
+  /** Se crea desde la cartera Clientes, no desde una captura de prospecto. */
+  isCustomer?: boolean;
 };
 
 export type CreateContactResult =
@@ -155,6 +160,7 @@ export async function createContact(
       source: input.source ?? null,
       medium: medium.medium,
       mediumDetail: medium.mediumDetail,
+      customerSince: input.isCustomer ? new Date() : null,
     })
     // El canal entra en el target porque entra en el índice único desde 014
     // (`contact_org_channel_identity_uq`). Postgres exige que el ON CONFLICT

@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { descNullsLast } from "@/lib/db/order";
+import { scoped } from "@/lib/db/tenant";
 import { recordLeadCreated } from "@/server/leads/stage-history";
 import { recordLeadFirstTouch } from "@/server/attribution/touch";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
@@ -62,7 +63,13 @@ export async function onLeadActivity(
   const existing = await db
     .select({ id: schema.lead.id })
     .from(schema.lead)
-    .where(eq(schema.lead.contactId, contactId))
+    .where(
+      scoped(
+        schema.lead.organizationId,
+        organizationId,
+        and(eq(schema.lead.contactId, contactId), isNull(schema.lead.archivedAt))
+      )
+    )
     .orderBy(...leadPreferenceOrder())
     .limit(1);
 
@@ -134,7 +141,9 @@ export async function createLeadForContact(input: {
         .where(
           and(
             eq(schema.lead.contactId, input.contactId),
-            eq(schema.pipelineStage.kind, "open")
+            eq(schema.pipelineStage.kind, "open"),
+            eq(schema.lead.organizationId, input.organizationId),
+            isNull(schema.lead.archivedAt)
           )
         )
         .orderBy(...leadPreferenceOrder())
@@ -159,7 +168,13 @@ export async function createLeadForContact(input: {
     const [previo] = await tx
       .select({ id: schema.lead.id })
       .from(schema.lead)
-      .where(eq(schema.lead.contactId, input.contactId))
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          input.organizationId,
+          and(eq(schema.lead.contactId, input.contactId), isNull(schema.lead.archivedAt))
+        )
+      )
       .limit(1);
 
     const inserted = await tx

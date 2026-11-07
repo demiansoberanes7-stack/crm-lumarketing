@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { enabledCopilotDataSources, COPILOT_DATA_SOURCES, type CopilotDataSource } from "@/lib/copilot-config";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -68,7 +68,7 @@ export async function buildCopilotContext(
       `Cuentas por cobrar: $${(d.receivables.totalPending / 100).toLocaleString("es-MX")} MXN (${d.receivables.overdueCount} vencidas)`,
       `Cotizaciones: ${d.quotes.total} en el periodo, ${d.quotes.sent} enviadas, ${d.quotes.approved} aceptadas`,
       `Proyectos: ${d.projects.active} activos, ${d.projects.completed} terminados; tareas: ${d.tasks.pending} pendientes, ${d.tasks.overdue} vencidas`,
-      `Contactos: ${d.contacts.total}; nuevos en periodo: ${d.contacts.newThisPeriod}; conversaciones activas: ${d.inbox.active}`,
+      `Clientes: ${d.contacts.total}; nuevos en periodo: ${d.contacts.newThisPeriod}; conversaciones activas: ${d.inbox.active}`,
     ].join("\n");
   });
 
@@ -78,7 +78,8 @@ export async function buildCopilotContext(
       .from(schema.pipelineStage)
       .leftJoin(schema.lead, and(
         eq(schema.lead.stageId, schema.pipelineStage.id),
-        eq(schema.lead.organizationId, organizationId)
+        eq(schema.lead.organizationId, organizationId),
+        isNull(schema.lead.archivedAt)
       ))
       .where(scoped(schema.pipelineStage.organizationId, organizationId))
       .groupBy(schema.pipelineStage.id, schema.pipelineStage.name, schema.pipelineStage.position)

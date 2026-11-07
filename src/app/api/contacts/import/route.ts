@@ -104,6 +104,7 @@ export const POST = withAuth(async (session, req: Request) => {
           waIdentity: phone,
           notes: mapped.notes ?? null,
           source: VALID_SOURCES.has(mapped.source ?? "") ? mapped.source : null,
+          customerSince: new Date(),
         })
         .onConflictDoNothing({
           target: [schema.contact.organizationId, schema.contact.channel, schema.contact.waIdentity],

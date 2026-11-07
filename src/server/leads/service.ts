@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { LossReason } from "@/lib/types";
 import { getDb, schema } from "@/lib/db";
 import { scoped } from "@/lib/db/tenant";
@@ -109,7 +109,14 @@ export async function updateLead(input: UpdateLeadInput): Promise<UpdateLeadResu
   const [before] = await db
     .select()
     .from(schema.lead)
-    .where(scoped(schema.lead.organizationId, organizationId, eq(schema.lead.id, leadId)))
+    .where(
+      scoped(
+        schema.lead.organizationId,
+        organizationId,
+        eq(schema.lead.id, leadId),
+        isNull(schema.lead.archivedAt)
+      )
+    )
     .limit(1);
   if (!before) {
     return { ok: false, code: "not_found", message: "Lead no encontrado" };
@@ -125,11 +132,25 @@ export async function updateLead(input: UpdateLeadInput): Promise<UpdateLeadResu
     await db
       .update(schema.lead)
       .set({ ...extra, updatedAt: new Date() })
-      .where(scoped(schema.lead.organizationId, organizationId, eq(schema.lead.id, leadId)));
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          organizationId,
+          eq(schema.lead.id, leadId),
+          isNull(schema.lead.archivedAt)
+        )
+      );
     const [lead] = await db
       .select()
       .from(schema.lead)
-      .where(scoped(schema.lead.organizationId, organizationId, eq(schema.lead.id, leadId)))
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          organizationId,
+          eq(schema.lead.id, leadId),
+          isNull(schema.lead.archivedAt)
+        )
+      )
       .limit(1);
     if (!lead) {
       return { ok: false, code: "not_found", message: "Lead no encontrado" };
@@ -189,4 +210,38 @@ export async function updateLead(input: UpdateLeadInput): Promise<UpdateLeadResu
   }
 
   return { ok: true, lead: res.lead, changed: res.changed };
+}
+
+/**
+ * Quita una oportunidad del Pipeline sin borrar su historial ni su contacto.
+ * La cartera de Clientes está anclada al contacto (`customer_since`), no a que
+ * el lead siga visible en el kanban.
+ */
+export async function archiveLeadFromPipeline(input: {
+  organizationId: string;
+  leadId: string;
+}): Promise<{ ok: true } | { ok: false }> {
+  const db = getDb();
+  const [lead] = await db
+    .select({ id: schema.lead.id, archivedAt: schema.lead.archivedAt })
+    .from(schema.lead)
+    .where(
+      scoped(schema.lead.organizationId, input.organizationId, eq(schema.lead.id, input.leadId))
+    )
+    .limit(1);
+  if (!lead) return { ok: false };
+  if (lead.archivedAt) return { ok: true };
+
+  await db
+    .update(schema.lead)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(
+      scoped(
+        schema.lead.organizationId,
+        input.organizationId,
+        eq(schema.lead.id, input.leadId),
+        isNull(schema.lead.archivedAt)
+      )
+    );
+  return { ok: true };
 }

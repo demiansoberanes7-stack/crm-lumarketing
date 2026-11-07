@@ -252,6 +252,8 @@ export const contact = pgTable(
     medium: varchar("medium", { length: 30 }),
     /** La red social elegida, solo cuando `medium = 'red_social'`. */
     mediumDetail: varchar("medium_detail", { length: 60 }),
+    /** Se fija al ganar una oportunidad y sobrevive a su archivo o eliminación. */
+    customerSince: timestamp("customer_since"),
     /** Canal de adquisición normalizado (catálogo `acquisition_channel`). */
     acquisitionChannelId: varchar("acquisition_channel_id", { length: 255 }).references(
       () => acquisitionChannel.id,
@@ -277,6 +279,9 @@ export const contact = pgTable(
     ),
     index("contact_org_wa_user_id_idx").on(t.organizationId, t.waUserId),
     index("contact_org_name_idx").on(t.organizationId, t.name),
+    index("contact_org_customer_since_idx")
+      .on(t.organizationId, t.customerSince)
+      .where(sql`${t.customerSince} IS NOT NULL`),
   ]
 );
 
@@ -324,6 +329,8 @@ export const lead = pgTable(
     qualificationData: jsonb("qualification_data"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    /** Quitar la oportunidad del Pipeline conserva el lead y el contacto. */
+    archivedAt: timestamp("archived_at"),
   },
   (t) => [
     // Un contacto puede tener varias oportunidades (multi-oportunidad): el
@@ -331,6 +338,9 @@ export const lead = pgTable(
     // que impedía abrir la segunda. Ver `lead.isPrimary`.
     index("lead_contact_idx").on(t.contactId),
     index("lead_org_stage_idx").on(t.organizationId, t.stageId, t.position),
+    index("lead_org_active_stage_pos_idx")
+      .on(t.organizationId, t.stageId, t.position)
+      .where(sql`${t.archivedAt} IS NULL`),
   ]
 );
 

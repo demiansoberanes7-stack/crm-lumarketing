@@ -139,20 +139,14 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         select id, source, created_at from contact where ${scope(schema.contact)}
           and archived_at is null and created_at <= ${to}
       ),
-      -- La tarjeta "Contactos" cuenta la cartera del módulo Contactos, no a
-      -- cada remitente que la bandeja dio de alta: mismo filtro que la pantalla
-      -- (leads en una etapa ganadora). ct se conserva para el embudo, que sí
+      -- La tarjeta "Clientes" cuenta la cartera persistente, no a cada
+      -- remitente que la bandeja dio de alta. ct se conserva para el embudo, que sí
       -- cuenta prospectos.
       clients as (
-        select contact.id, contact.source, contact.created_at from contact
+        select contact.id, contact.source, contact.customer_since, contact.created_at from contact
         where ${scope(schema.contact)} and contact.archived_at is null
-          and contact.created_at <= ${to}
-          and exists (
-            select 1 from lead
-            join pipeline_stage on pipeline_stage.id = lead.stage_id
-            where lead.contact_id = contact.id and ${scope(schema.lead)}
-              and pipeline_stage.kind = 'won'
-          )
+          and contact.customer_since is not null
+          and contact.customer_since <= ${to}
       ),
       months as (select to_char(m, 'YYYY-MM') as month from generate_series(date_trunc('month', ${from}), ${to}, interval '1 month') m),
       weeks as (select to_char(w, 'YYYY-MM-DD') as week from generate_series(date_trunc('week', ${from}), ${to}, interval '1 week') w),
@@ -235,7 +229,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
         'inbox', jsonb_build_object('active', (select count(*) from conv), 'byChannel', ${list(sql`select channel as name, count(*) as count from conv group by 1 order by count desc, name`)}),
         'contacts', (select jsonb_build_object(
           'total', count(*), 'active', count(*) filter (where id in (select contact_id from active_p)),
-          'newThisPeriod', count(*) filter (where created_at >= ${from}),
+           'newThisPeriod', count(*) filter (where customer_since >= ${from}),
           'activityRate', 100.0 * count(*) filter (where id in (select contact_id from active_p)) / nullif(count(*), 0),
           'bySource', ${list(sql`select coalesce(source, 'directo') as name, count(*) as count from clients group by 1 order by count desc, name`)}
         ) from clients),
@@ -289,7 +283,7 @@ export async function queryDashboard(orgId: string, period: string, now = new Da
           'channel', jsonb_build_array(
             jsonb_build_object('stage', 'Mensajes entrantes', 'value', (select count(*) from msg_in)),
             jsonb_build_object('stage', 'Conversaciones activas', 'value', (select count(*) from conv)),
-            jsonb_build_object('stage', 'Contactos con proyecto', 'value', (select count(*) from active_p where contact_id is not null)),
+            jsonb_build_object('stage', 'Clientes con proyecto', 'value', (select count(*) from active_p where contact_id is not null)),
             jsonb_build_object('stage', 'Cierre exitoso', 'value', (select count(*) from won))
           ),
           'byChannel', ${list(sql`select channel as name, count(*) as count from msg_in group by 1 order by count desc, name`)}

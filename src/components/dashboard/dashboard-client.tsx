@@ -271,7 +271,7 @@ export function DashboardClient({ userName }: { userName: string }) {
           <OriginGroup origin="mixed" label="Atribución ads → CRM">
             <AdsMetricsSection ads={data.ads} />
           </OriginGroup>
-          <OriginGroup origin="system" label="Contactos del CRM">
+          <OriginGroup origin="system" label="Clientes del CRM">
             <ContactsSection data={data.contacts} />
           </OriginGroup>
         </Department>

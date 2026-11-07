@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/lib/db";
 import { descNullsLast } from "@/lib/db/order";
@@ -71,7 +71,8 @@ export async function POST(req: Request) {
       .where(
         and(
           eq(schema.lead.organizationId, organizationId),
-          eq(schema.lead.contactId, conv.contactId)
+          eq(schema.lead.contactId, conv.contactId),
+          isNull(schema.lead.archivedAt)
         )
       )
       .orderBy(desc(schema.lead.isPrimary), descNullsLast(schema.lead.lastActivityAt))

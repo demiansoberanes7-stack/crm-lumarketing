@@ -6,7 +6,7 @@
 export const COPILOT_DATA_SOURCES = [
   { key: "metrics", label: "Métricas y dashboard", description: "KPIs agregados de ventas, conversaciones, marketing y finanzas." },
   { key: "pipeline", label: "Pipeline y prospectos", description: "Etapas, volumen y actividad de oportunidades." },
-  { key: "contacts", label: "Contactos y fichas", description: "Datos de contacto y campos de calificación configurados." },
+  { key: "contacts", label: "Clientes y fichas", description: "Datos de clientes y campos de calificación configurados." },
   { key: "conversations", label: "Conversaciones", description: "Últimas conversaciones y mensajes relevantes." },
   { key: "notes", label: "Notas e historial comercial", description: "Notas registradas por el equipo o el agente." },
   { key: "quotes", label: "Cotizaciones", description: "Estados, importes y datos comerciales de cotizaciones recientes." },

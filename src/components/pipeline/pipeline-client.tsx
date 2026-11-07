@@ -171,6 +171,28 @@ export function PipelineClient() {
     void refetch();
   }
 
+  async function quitarLeadDelPipeline(leadId: string, clientName: string) {
+    if (
+      !window.confirm(
+        `¿Quitar la oportunidad de ${clientName} del Pipeline? Su ficha de cliente y el historial se conservarán.`
+      )
+    ) {
+      return;
+    }
+    const response = await fetch(`/api/pipeline/leads/${leadId}`, { method: "DELETE" }).catch(
+      () => null
+    );
+    if (!response?.ok) {
+      const data = (await response?.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      window.alert(data?.error?.message ?? "No se pudo quitar la oportunidad del Pipeline.");
+      return;
+    }
+    setAbiertoId(null);
+    void refetch();
+  }
+
   async function onDragEnd(event: DragEndEvent) {
     setActiveLead(null);
     const leadId = String(event.active.id);
@@ -331,6 +353,7 @@ export function PipelineClient() {
           onMoveStage={(stageId) => moverDesdeCajon(abierto.id, stageId)}
           onAmount={(cents) => void guardarMonto(abierto.id, cents)}
           onPriority={(p) => void guardarPrioridad(abierto.id, p)}
+          onArchive={() => quitarLeadDelPipeline(abierto.id, abierto.contact.name)}
         />
       )}
 

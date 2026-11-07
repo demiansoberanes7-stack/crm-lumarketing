@@ -225,7 +225,8 @@ async function listChatProspects(
       scoped(
         schema.lead.organizationId,
         filter.organizationId,
-        inArray(schema.lead.contactId, rows.map((r) => r.contactId))
+        inArray(schema.lead.contactId, rows.map((r) => r.contactId)),
+        isNull(schema.lead.archivedAt)
       )
     )
     .orderBy(

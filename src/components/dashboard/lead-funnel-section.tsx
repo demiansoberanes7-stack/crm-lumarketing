@@ -12,12 +12,12 @@ interface Props {
 }
 
 /**
- * Embudo de conversión comercial: Contactos → Leads → Cotizaciones →
+ * Embudo de conversión comercial: Clientes → Leads → Cotizaciones →
  * Aprobadas → Proyectos completados. Usa el FunnelChart existente (CSS bars).
  */
 export function LeadFunnelSection({ contacts, leads, quotes, approved, projects }: Props) {
   const stages = [
-    { stage: "Contactos", value: contacts },
+    { stage: "Clientes", value: contacts },
     { stage: "Leads", value: leads },
     { stage: "Cotizaciones", value: quotes },
     { stage: "Aprobadas", value: approved },

@@ -121,7 +121,14 @@ export async function resolveBroadcastAudience(
     const leads = await db
       .select({ contactId: schema.lead.contactId })
       .from(schema.lead)
-      .where(scoped(schema.lead.organizationId, organizationId, eq(schema.lead.stageId, filters.stageId)));
+      .where(
+        scoped(
+          schema.lead.organizationId,
+          organizationId,
+          eq(schema.lead.stageId, filters.stageId),
+          isNull(schema.lead.archivedAt)
+        )
+      );
     stageContactIds = [...new Set(leads.map((lead) => lead.contactId))];
     if (stageContactIds.length === 0) return [];
   }
