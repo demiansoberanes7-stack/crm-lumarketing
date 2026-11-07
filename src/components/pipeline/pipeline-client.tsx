@@ -13,7 +13,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { MessageSquareText, Settings2, Trophy, XCircle, Calendar, Filter } from "lucide-react";
+import { MessageSquareText, Settings2, Trophy, XCircle, Calendar, Filter, Plus } from "lucide-react";
 import type { LossReason, PriorityValue, StageDto } from "@/lib/types";
 import { formatMoneyCents, sumable } from "@/lib/money";
 import { CHANNEL_LABEL, type Channel } from "@/lib/channels";
@@ -29,6 +29,7 @@ import { LossReasonDialog } from "./loss-reason-dialog";
 import { AmountDialog } from "./amount-dialog";
 import { PriorityBadge } from "./priority-picker";
 import { LeadDrawer } from "./lead-drawer";
+import { NewLeadDialog } from "./new-lead-dialog";
 import { PageHeader } from "@/components/page-header";
 
 export type BoardLead = {
@@ -60,6 +61,7 @@ export function PipelineClient() {
   const [leads, setLeads] = useState<BoardLead[]>([]);
   const [activeLead, setActiveLead] = useState<BoardLead | null>(null);
   const [managing, setManaging] = useState(false);
+  const [nuevoAbierto, setNuevoAbierto] = useState(false);
   /** Arrastre hacia una etapa perdida, esperando el motivo. */
   const [pendingLoss, setPendingLoss] = useState<{
     leadId: string;
@@ -210,9 +212,14 @@ export function PipelineClient() {
         module="Comercial · Pipeline"
         title="Pipeline"
         actions={
-          <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
-            <Settings2 className="h-4 w-4" /> Gestionar etapas
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setNuevoAbierto(true)}>
+              <Plus className="h-4 w-4" /> Nuevo prospecto
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setManaging(true)}>
+              <Settings2 className="h-4 w-4" /> Gestionar etapas
+            </Button>
+          </div>
         }
       >
         {/* Barra de filtros: canal + fechas */}
@@ -354,6 +361,18 @@ export function PipelineClient() {
             const { leadId, stageId } = pendingLoss;
             setPendingLoss(null);
             void moverLead(leadId, stageId, { reason, note });
+          }}
+        />
+      )}
+
+      {nuevoAbierto && (
+        <NewLeadDialog
+          stages={stages}
+          currency={currency}
+          onClose={() => setNuevoAbierto(false)}
+          onCreated={() => {
+            setNuevoAbierto(false);
+            void refetch();
           }}
         />
       )}
