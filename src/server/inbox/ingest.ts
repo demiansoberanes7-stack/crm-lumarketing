@@ -5,6 +5,7 @@ import { normalizeMx } from "@/lib/meta/client";
 import { publish } from "@/server/events/bus";
 import { publishWebhook } from "@/server/webhooks/dispatcher";
 import { getCredentialsByPhoneNumberId } from "@/server/whatsapp/credentials";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 import { ensureAssetAvailable } from "@/server/whatsapp/media";
 import type { Channel } from "@/lib/channels";
 import type {
@@ -236,7 +237,11 @@ export async function getOrCreateConversation(
  * Procesa el `value` de un cambio `messages` del webhook: mensajes entrantes
  * (idempotentes por wa_message_id) y actualizaciones de estado.
  */
-export async function processMessagesValue(value: WebhookValue): Promise<void> {
+export async function processMessagesValue(
+  value: WebhookValue,
+  options: { retryOnItemError?: boolean } = {}
+): Promise<void> {
+  const itemErrors: unknown[] = [];
   const phoneNumberId = value.metadata?.phone_number_id;
   if (!phoneNumberId) return;
 
@@ -257,19 +262,27 @@ export async function processMessagesValue(value: WebhookValue): Promise<void> {
     try {
       await applyStatusUpdate(organizationId, status);
     } catch (err) {
-      // Un estado malformado no descarta los demás ni los mensajes del batch
-      // (Meta ya recibió el 200: no reintenta).
-      console.error(`[webhook] error procesando estado ${status.id ?? "?"}:`, err);
+      // Continúa con los demás elementos; el worker durable reintenta el sobre
+      // después de procesar el resto del lote.
+      console.error(
+        `[webhook] error procesando estado ${status.id ?? "?"}:`,
+        safeDiagnosticText(err instanceof Error ? err.message : String(err))
+      );
+      itemErrors.push(err);
     }
   }
   const { whatsappProvider } = await import("@/server/whatsapp/provider");
-  if (await whatsappProvider(organizationId) !== "meta") return;
+  if (await whatsappProvider(organizationId) !== "meta") {
+    if (options.retryOnItemError && itemErrors.length > 0) {
+      throw new Error(`${itemErrors.length} elemento(s) del webhook WhatsApp no se procesaron`);
+    }
+    return;
+  }
 
   for (const msg of value.messages ?? []) {
     if (!SUPPORTED_TYPES.has(msg.type)) continue; // reacciones, etc.: ignorar
     // Un error por mensaje (carrera de upsert, fallo de BD, media roto) no
-    // debe abortar el RESTO del batch: la ruta ya respondió 200 y Meta no
-    // reintenta, así que el descarte sería permanente.
+    // debe abortar el RESTO del batch; en modo durable se reintentará el sobre.
     try {
       const resolved = resolveIdentity(msg, value.contacts);
       if (!resolved) {
@@ -291,8 +304,15 @@ export async function processMessagesValue(value: WebhookValue): Promise<void> {
         referral: msg.referral ?? null,
       });
     } catch (err) {
-      console.error(`[webhook] error procesando mensaje ${msg.id}:`, err);
+      console.error(
+        `[webhook] error procesando mensaje ${msg.id}:`,
+        safeDiagnosticText(err instanceof Error ? err.message : String(err))
+      );
+      itemErrors.push(err);
     }
+  }
+  if (options.retryOnItemError && itemErrors.length > 0) {
+    throw new Error(`${itemErrors.length} elemento(s) del webhook WhatsApp no se procesaron`);
   }
 }
 
@@ -302,7 +322,10 @@ export async function processMessagesValue(value: WebhookValue): Promise<void> {
  * como salientes `origin='manual'` y pausan la IA (decisión del dueño
  * 2026-08-04). JAMÁS tocan la ventana de 24 h ni disparan al agente.
  */
-export async function processEchoesValue(value: WebhookValue): Promise<void> {
+export async function processEchoesValue(
+  value: WebhookValue,
+  options: { retryOnItemError?: boolean } = {}
+): Promise<void> {
   const phoneNumberId = value.metadata?.phone_number_id;
   if (!phoneNumberId) return;
 
@@ -316,6 +339,7 @@ export async function processEchoesValue(value: WebhookValue): Promise<void> {
 
   // Meta documenta `message_echoes`; parser tolerante a `messages` (R1).
   const echoes = value.message_echoes ?? value.messages ?? [];
+  const itemErrors: unknown[] = [];
   for (const echo of echoes) {
     if (!SUPPORTED_TYPES.has(echo.type)) continue;
     if (!echo.to) {
@@ -325,9 +349,16 @@ export async function processEchoesValue(value: WebhookValue): Promise<void> {
     try {
       await ingestManualEcho(credentials.organizationId, echo);
     } catch (err) {
-      // Un echo malformado jamás tumba el webhook (edge case del spec).
-      console.error(`[webhook] error procesando echo ${echo.id}:`, err);
+      // Un echo malformado no debe abortar el resto del lote.
+      console.error(
+        `[webhook] error procesando echo ${echo.id}:`,
+        safeDiagnosticText(err instanceof Error ? err.message : String(err))
+      );
+      itemErrors.push(err);
     }
+  }
+  if (options.retryOnItemError && itemErrors.length > 0) {
+    throw new Error(`${itemErrors.length} echo(s) del webhook WhatsApp no se procesaron`);
   }
 }
 

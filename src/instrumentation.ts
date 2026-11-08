@@ -7,6 +7,10 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { cleanupOrphanRuns } = await import("./instrumentation-node");
     await cleanupOrphanRuns();
+    // Eventos autenticados ya confirmados al proveedor: recupera pendientes tras
+    // reinicios y los reclama desde PostgreSQL sin una cola externa.
+    const { startInboundWebhookWorker } = await import("./server/webhooks/inbound-queue");
+    await startInboundWebhookWorker();
     const { startAutomationWorker } = await import("./server/automation-queue");
     await startAutomationWorker();
     const { startBroadcastWorker } = await import("./server/broadcast-queue");

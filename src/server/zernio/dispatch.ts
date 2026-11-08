@@ -40,11 +40,16 @@ import { parseZernioEvent, type ZernioEvent } from "@/server/zernio";
  */
 export async function resolveZernioSecret(
   rawBody: string
-): Promise<{ secret: string | null; accountRef: string | null; channel: Channel | null }> {
+): Promise<{
+  secret: string | null;
+  accountRef: string | null;
+  channel: Channel | null;
+  organizationId: string | null;
+}> {
   const evt = parseZernioEvent(rawBody);
   const accountRef = evt?.account?.id ?? null;
   const channel = zernioTargetChannel(evt);
-  if (!accountRef) return { secret: null, accountRef: null, channel };
+  if (!accountRef) return { secret: null, accountRef: null, channel, organizationId: null };
 
     const creds =
       channel === "messenger"
@@ -55,14 +60,22 @@ export async function resolveZernioSecret(
             ? await getTikTokCredentialsByAccountRef(accountRef)
             : null;
 
-  return { secret: creds?.webhookSecret ?? null, accountRef, channel };
+  return {
+    secret: creds?.webhookSecret ?? null,
+    accountRef,
+    channel,
+    organizationId: creds?.organizationId ?? null,
+  };
 }
 
 /**
  * Procesa el evento por el canal al que pertenece. Un canal apagado descarta
  * con aviso: la instancia no lo tiene, y su superficie no existe (ADR-001).
  */
-export async function processZernioPayload(payload: unknown): Promise<void> {
+export async function processZernioPayload(
+  payload: unknown,
+  options: { retryOnItemError?: boolean } = {}
+): Promise<void> {
   const channel = zernioTargetChannel(payload);
   if (!channel) return; // otra plataforma conectada a la misma llave: no es nuestra
 
@@ -73,7 +86,7 @@ export async function processZernioPayload(payload: unknown): Promise<void> {
     return;
   }
 
-    if (channel === "messenger") await processZernioMessengerEvent(payload);
+    if (channel === "messenger") await processZernioMessengerEvent(payload, options);
     else if (channel === "tiktok") await processZernioTikTokEvent(payload);
     else await processZernioEvent(payload);
 }

@@ -18,12 +18,32 @@ import type { Channel } from "@/lib/channels";
 import { safeEqual } from "@/server/inbox/webhook";
 import { wahaWebhookToken } from "./webhook-token";
 import { whatsappProvider } from "@/server/whatsapp/provider";
+import { scoped } from "@/lib/db/tenant";
 
 export type WahaWebhookEvent = {
   event: string;
   session: string;
   payload: Record<string, unknown>;
 };
+
+/** Resolve the tenant before ACKing the provider event. */
+export async function getWahaOrganizationByWebhookToken(
+  token: string
+): Promise<string | null> {
+  const { getDb, schema } = await import("@/lib/db");
+  const creds = await getDb()
+    .select({ organizationId: schema.wahaCredentials.organizationId })
+    .from(schema.wahaCredentials);
+  const owners = creds
+    .filter((credential) => safeEqual(token, wahaWebhookToken(credential.organizationId)))
+    .map((credential) => credential.organizationId);
+  const organizations = [...new Set(owners)];
+  if (organizations.length > 1) {
+    console.error("[waha] webhook token colisionó entre tenants; evento sin enrutar");
+    return null;
+  }
+  return organizations[0] ?? null;
+}
 
 /** Verificar firma HMAC del webhook (opcional) */
 /**
@@ -196,44 +216,38 @@ export async function handleWahaWebhook(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-
-  const body = parsedBody as { event?: string; session?: string; payload?: Record<string, unknown> } | null;
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "invalid body" }, { status: 400 });
-  }
-
-  const event = body.event;
-  const session = body.session;
-  const payload = body.payload;
-
-  if (!event || !payload) {
-    return NextResponse.json({ ok: true });
-  }
-  const { getDb, schema } = await import("@/lib/db");
-  // El token de la URL es un HMAC del id del negocio, así que identifica al
-  // llamante por sí solo. Se resuelve el dueño ANTES de mirar la sesión: el
-  // nombre de sesión no es único entre negocios (WAHA lo elige quien configura
-  // la instancia) y filtrar por él dejaba todos los eventos en el aire en cuanto
-  // había dos tenants con la sesión «default».
-  const creds = await getDb()
-    .select({
-      organizationId: schema.wahaCredentials.organizationId,
-      sessionName: schema.wahaCredentials.sessionName,
-    })
-    .from(schema.wahaCredentials);
-  const mine = creds.filter((cred) => safeEqual(token, wahaWebhookToken(cred.organizationId)));
-  if (mine.length === 0) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const organizationId = mine[0]!.organizationId;
-  if (!mine.some((cred) => cred.sessionName === (session ?? ""))) {
-    console.warn(`[waha] La sesión «${session}» no está en las credenciales del negocio; el evento se enruta por token`);
-  }
-  if (await whatsappProvider(organizationId) !== "waha" && event !== "message.ack") return NextResponse.json({ ok: true });
+  const organizationId = await getWahaOrganizationByWebhookToken(token);
+  if (!organizationId) return NextResponse.json({ error: "not_found" }, { status: 404 });
   try {
-    if (event === "message.any" || event === "message") await processMessageAny(organizationId, payload);
-    else if (event === "message.ack") await processMessageAck(organizationId, payload);
-    else if (event === "session.status") processSessionStatus(organizationId, payload);
+    await processWahaWebhookEvent(organizationId, parsedBody);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "processing_failed" }, { status: 500 });
   }
+}
+
+/** Process a body already authenticated and durably stored for its tenant. */
+export async function processWahaWebhookEvent(
+  organizationId: string,
+  parsedBody: unknown
+): Promise<void> {
+  const body = parsedBody as { event?: string; session?: string; payload?: Record<string, unknown> } | null;
+  if (!body || typeof body !== "object") throw new Error("invalid body");
+  const event = body.event;
+  const payload = body.payload;
+  if (!event || !payload) return;
+
+  const { getDb, schema } = await import("@/lib/db");
+  const credentials = await getDb()
+    .select({ sessionName: schema.wahaCredentials.sessionName })
+    .from(schema.wahaCredentials)
+    .where(scoped(schema.wahaCredentials.organizationId, organizationId));
+  if (!credentials.length) return;
+  if (!credentials.some((credential) => credential.sessionName === (body.session ?? ""))) {
+    console.warn(`[waha] la sesión recibida no coincide con las credenciales del tenant ${organizationId}; se enruta por token`);
+  }
+  if (await whatsappProvider(organizationId) !== "waha" && event !== "message.ack") return;
+  if (event === "message.any" || event === "message") await processMessageAny(organizationId, payload);
+  else if (event === "message.ack") await processMessageAck(organizationId, payload);
+  else if (event === "session.status") processSessionStatus(organizationId, payload);
 }

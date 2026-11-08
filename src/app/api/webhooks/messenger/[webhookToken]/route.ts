@@ -1,15 +1,15 @@
-import { after } from "next/server";
 import { getEnv } from "@/lib/env";
 import { isValidSignature, isValidWebhookToken } from "@/server/inbox/webhook";
-import { processMetaPagePayload } from "@/server/messenger/ingest";
 import {
   channelDisabledResponse,
   isChannelEnabled,
 } from "@/server/channels/enabled";
 import { isValidZernioSignature, looksLikeMetaPayload, zernioSignatureFrom } from "@/server/zernio";
-import { processZernioPayload, resolveZernioSecret } from "@/server/zernio/dispatch";
+import { resolveZernioSecret } from "@/server/zernio/dispatch";
 import { readLimitedBody, requestClientKey } from "@/lib/http/body";
 import { checkDistributedRateLimit, WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
+import { persistMetaMessengerPayload, persistZernioPayload } from "@/server/webhooks/inbound-ingress";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 /**
  * 017 — Webhook público del canal de Messenger.
@@ -88,24 +88,25 @@ export async function POST(req: Request, { params }: Params) {
   } else {
     // Zernio: la firma se valida contra el secreto de ESTA cuenta, que hay que
     // resolver leyendo el cuerpo primero.
-    const { secret } = await resolveZernioSecret(rawBody);
-    if (!isValidZernioSignature(rawBody, zernioSignatureFrom(req.headers), secret)) {
+    const resolved = await resolveZernioSecret(rawBody);
+    if (!isValidZernioSignature(rawBody, zernioSignatureFrom(req.headers), resolved.secret)) {
       return new Response(null, { status: 401 });
     }
+    try {
+      await persistZernioPayload(rawBody, resolved);
+    } catch (err) {
+      console.error("[messenger] no se pudo persistir el evento:", safeDiagnosticText(String(err)));
+      return Response.json({ error: "persistence_failed" }, { status: 503 });
+    }
+    return Response.json({ received: true });
   }
 
-  // Zernio corta a los 5 segundos y reintenta; Meta también. Se acusa recibo
-  // YA y se procesa fuera de la ruta.
-  after(async () => {
-    try {
-      // Un evento de Zernio se reparte por plataforma: la misma URL sirve para
-      // Instagram y para Messenger, porque Zernio entrega todo por un webhook.
-      if (isMeta) await processMetaPagePayload(payload);
-      else await processZernioPayload(payload);
-    } catch (err) {
-      console.error("[messenger] error procesando payload:", err);
-    }
-  });
+  try {
+    await persistMetaMessengerPayload(rawBody);
+  } catch (err) {
+    console.error("[messenger] no se pudo persistir el evento:", safeDiagnosticText(String(err)));
+    return Response.json({ error: "persistence_failed" }, { status: 503 });
+  }
 
   return Response.json({ received: true });
 }

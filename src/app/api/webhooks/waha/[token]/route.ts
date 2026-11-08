@@ -1,8 +1,8 @@
-import { after } from "next/server";
 import type { NextRequest } from "next/server";
-import { handleWahaWebhook } from "@/server/waha/webhook";
 import { readLimitedBody, requestClientKey } from "@/lib/http/body";
 import { checkDistributedRateLimit, WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
+import { persistWahaPayload } from "@/server/webhooks/inbound-ingress";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 /**
  * Webhook público de WAHA (WhatsApp HTTP API).
@@ -18,9 +18,7 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ token: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
-  // El body se lee ANTES de after(): una vez enviada la respuesta el stream
-  // del request ya no está disponible y request.json() fallaría en silencio
-  // dentro del callback (perdería todos los eventos de WAHA).
+  // Lee el stream una vez y conserva el JSON exacto para persistirlo antes del ACK.
   const { token } = await params;
   const rate = await checkDistributedRateLimit(
     `webhook:waha:${token}:${requestClientKey(req)}`,
@@ -29,23 +27,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!rate.allowed) return new Response(null, { status: 429 });
   const rawBody = await readLimitedBody(req, 2_000_000);
   if (rawBody === null) return new Response(null, { status: 413 });
-  const body = (() => {
-    try {
-      return JSON.parse(rawBody || "null");
-    } catch {
-      return null;
-    }
-  })();
+  try {
+    JSON.parse(rawBody || "null");
+  } catch {
+    return Response.json({ ok: true });
+  }
 
-  // Respondemos 200 siempre para que WAHA no reintente.
-  // El procesamiento va en after().
-  after(async () => {
-    try {
-      await handleWahaWebhook(body, { params: Promise.resolve({ token }) });
-    } catch (err) {
-      console.error("[waha-webhook] error:", err);
-    }
-  });
+  // El 200 significa que el evento ya quedó durable en PostgreSQL; la ruta no
+  // depende de que `after()` sobreviva al proceso.
+  try {
+    await persistWahaPayload(token, rawBody || "null");
+  } catch (err) {
+    console.error("[waha-webhook] no se pudo persistir el evento:", safeDiagnosticText(String(err)));
+    return Response.json({ error: "persistence_failed" }, { status: 503 });
+  }
 
   return Response.json({ ok: true });
 }

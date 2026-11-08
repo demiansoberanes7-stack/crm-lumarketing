@@ -1,19 +1,18 @@
-import { after } from "next/server";
 import { getEnv } from "@/lib/env";
 import {
   isValidSignature,
   isValidWebhookToken,
-  type WebhookPayload,
 } from "@/server/inbox/webhook";
-import { processEchoesValue, processMessagesValue } from "@/server/inbox/ingest";
 import { readLimitedBody, requestClientKey } from "@/lib/http/body";
 import { checkDistributedRateLimit, WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
+import { persistMetaWhatsAppPayload } from "@/server/webhooks/inbound-ingress";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 /**
  * Webhook público de WhatsApp (contrato webhook.md).
  * Capa 1: el segmento [webhookToken] debe coincidir (si no → 404 sin efectos).
  * Capa 2: firma x-hub-signature-256 solo si META_APP_SECRET está configurado.
- * El POST siempre responde 200 tras validar; el procesamiento va en after().
+ * El POST acusa recibo después de guardar cada subevento en la cola PostgreSQL.
  */
 export const dynamic = "force-dynamic";
 
@@ -57,44 +56,19 @@ export async function POST(req: Request, { params }: Params) {
     return new Response(null, { status: 401 });
   }
 
-  let payload: WebhookPayload;
   try {
-    payload = JSON.parse(rawBody) as WebhookPayload;
+    JSON.parse(rawBody);
   } catch {
     // body ilegible: 200 igualmente (Meta reintenta y termina desactivando)
     return Response.json({ received: true });
   }
 
-  after(async () => {
-    try {
-      await processPayload(payload);
-    } catch (err) {
-      console.error("[webhook] error procesando payload:", err);
-    }
-  });
+  try {
+    await persistMetaWhatsAppPayload(rawBody);
+  } catch (err) {
+    console.error("[webhook] no se pudo persistir el evento:", safeDiagnosticText(String(err)));
+    return Response.json({ error: "persistence_failed" }, { status: 503 });
+  }
 
   return Response.json({ received: true });
-}
-
-async function processPayload(payload: WebhookPayload): Promise<void> {
-  // Meta envía `entry` como arreglo; payloads de plataforma de terceros
-  // (ej. api.changelog.published de Zernio) lo traen como objeto. Normalizamos
-  // a arreglo para no lanzar "entry is not iterable".
-  const entries = Array.isArray(payload.entry)
-    ? payload.entry
-    : payload.entry
-      ? [payload.entry]
-      : [];
-  for (const entry of entries) {
-    for (const change of entry.changes ?? []) {
-      if (!change.value) continue;
-      if (change.field === "messages") {
-        await processMessagesValue(change.value);
-      } else if (change.field === "smb_message_echoes") {
-        // 008: mensajes enviados a mano desde la app del teléfono (coexistence)
-        await processEchoesValue(change.value);
-      }
-      // otros fields: ignorar sin error
-    }
-  }
 }

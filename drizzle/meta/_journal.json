@@ -638,6 +638,13 @@
       "when": 1792000000032,
       "tag": "0091_customer_roster",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1792000000033,
+      "tag": "0092_inbound_webhook_events",
+      "breakpoints": true
     }
   ]
 }

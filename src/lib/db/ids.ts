@@ -117,6 +117,8 @@ const prefixes = {
   branchInventory: "bri",
   // Plantillas de correo reutilizables (0086)
   emailTemplate: "etpl",
+  // Bandeja durable de webhooks entrantes (0092)
+  inboundWebhookEvent: "whev",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

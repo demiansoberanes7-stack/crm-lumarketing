@@ -8,6 +8,7 @@ import type {
 import {
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -463,6 +464,48 @@ export const message = pgTable(
       t.organizationId,
       t.conversationId,
       t.createdAt
+    ),
+  ]
+);
+
+/**
+ * Durable inbox for authenticated provider webhooks. `organizationId` is
+ * resolved before insert; the raw payload is never stored without a tenant.
+ * A lease keeps the public state machine small (`pending|processed|failed`)
+ * while allowing another process to recover work after a crash.
+ */
+export const inboundWebhookEvent = pgTable(
+  "inbound_webhook_event",
+  {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    organizationId: varchar("organization_id", { length: 255 })
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 40 }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 64 }).notNull(),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    /** JSON envelope scoped to this tenant; cleared after successful processing. */
+    rawBody: text("raw_body"),
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    runAt: timestamp("run_at").notNull().defaultNow(),
+    lockedUntil: timestamp("locked_until"),
+    lockToken: varchar("lock_token", { length: 255 }),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    receivedAt: timestamp("received_at").notNull().defaultNow(),
+    processedAt: timestamp("processed_at"),
+  },
+  (t) => [
+    uniqueIndex("inbound_webhook_event_org_provider_key_uq").on(
+      t.organizationId,
+      t.provider,
+      t.idempotencyKey
+    ),
+    index("inbound_webhook_event_due_idx").on(t.status, t.runAt, t.lockedUntil),
+    index("inbound_webhook_event_org_received_idx").on(t.organizationId, t.receivedAt),
+    check(
+      "inbound_webhook_event_status_check",
+      sql`${t.status} IN ('pending', 'processed', 'failed')`
     ),
   ]
 );

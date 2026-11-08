@@ -10,6 +10,7 @@ import {
 } from "@/server/messenger/credentials";
 import { fetchMessengerProfileName } from "@/server/messenger/send";
 import { zernioSentAtSeconds, type ZernioEvent } from "@/server/zernio";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 /**
  * 017 — Adaptadores de entrada del canal de Messenger.
@@ -205,12 +206,16 @@ async function contactExists(
   return rows.length > 0;
 }
 
-export async function processMetaPagePayload(payload: unknown): Promise<void> {
-  await ingestAll(normalizeMetaPagePayload(payload), "meta");
+export async function processMetaPagePayload(
+  payload: unknown,
+  options: { retryOnItemError?: boolean } = {}
+): Promise<void> {
+  await ingestAll(normalizeMetaPagePayload(payload), "meta", options);
 }
 
 export async function processZernioMessengerEvent(
-  payload: unknown
+  payload: unknown,
+  options: { retryOnItemError?: boolean } = {}
 ): Promise<void> {
   const evt = payload as ZernioEvent | null;
   // comment.received NO es un mensaje: el normalizador de mensajes lo descarta
@@ -219,7 +224,7 @@ export async function processZernioMessengerEvent(
     await ingestZernioMessengerComment(payload, evt);
     return;
   }
-  await ingestAll(normalizeZernioEvent(payload), "zernio");
+  await ingestAll(normalizeZernioEvent(payload), "zernio", options);
 }
 
 /**
@@ -260,8 +265,10 @@ async function ingestZernioMessengerComment(
 
 async function ingestAll(
   events: MessengerInbound[],
-  source: "zernio" | "meta"
+  source: "zernio" | "meta",
+  options: { retryOnItemError?: boolean } = {}
 ): Promise<void> {
+  const failures: unknown[] = [];
   for (const evt of events) {
     try {
       const creds =
@@ -316,7 +323,14 @@ async function ingestAll(
         threadRef: evt.threadRef,
       });
     } catch (err) {
-      console.error("[messenger] error procesando evento individual:", err);
+      console.error(
+        "[messenger] error procesando evento individual:",
+        safeDiagnosticText(err instanceof Error ? err.message : String(err))
+      );
+      failures.push(err);
     }
+  }
+  if (options.retryOnItemError && failures.length > 0) {
+    throw new Error(`${failures.length} evento(s) de Messenger no se procesaron`);
   }
 }

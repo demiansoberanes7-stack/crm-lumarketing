@@ -10,13 +10,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   rows: [{ count: 1 }] as Array<{ count: number }>,
   throwOnExecute: false,
-  processed: [] as unknown[],
-}));
-
-vi.mock("next/server", () => ({
-  after: (fn: () => Promise<void> | void) => {
-    void fn();
-  },
+  persisted: [] as unknown[],
+  failPersistence: false,
 }));
 
 vi.mock("@/lib/db", async (importOriginal) => {
@@ -32,12 +27,11 @@ vi.mock("@/lib/db", async (importOriginal) => {
   };
 });
 
-vi.mock("@/server/inbox/ingest", () => ({
-  processMessagesValue: async (value: unknown) => {
-    h.processed.push(value);
-  },
-  processEchoesValue: async (value: unknown) => {
-    h.processed.push(value);
+vi.mock("@/server/webhooks/inbound-ingress", () => ({
+  persistMetaWhatsAppPayload: async (rawBody: string) => {
+    if (h.failPersistence) throw new Error("no se pudo guardar");
+    h.persisted.push(JSON.parse(rawBody));
+    return { queued: 1, ignored: 0 };
   },
 }));
 
@@ -54,7 +48,8 @@ beforeAll(() => {
 beforeEach(() => {
   h.rows = [{ count: 1 }];
   h.throwOnExecute = false;
-  h.processed.length = 0;
+  h.persisted.length = 0;
+  h.failPersistence = false;
 });
 
 async function callPost(body: string) {
@@ -72,7 +67,7 @@ describe("rate limit distribuido en el webhook de WhatsApp", () => {
     h.rows = [{ count: 121 }];
     const res = await callPost(JSON.stringify({ entry: [] }));
     expect(res.status).toBe(429);
-    expect(h.processed).toHaveLength(0);
+    expect(h.persisted).toHaveLength(0);
   });
 
   it("si la tabla de rate limit cae, el webhook sigue vivo (fail-open)", async () => {
@@ -88,13 +83,20 @@ describe("límite de body en el webhook de WhatsApp", () => {
     expect(res.status).toBe(413);
   });
 
-  it("un body dentro del límite entra y se procesa", async () => {
+  it("un body dentro del límite se persiste antes de responder", async () => {
     const res = await callPost(
       JSON.stringify({ entry: [{ changes: [{ field: "messages", value: { id: "m1" } }] }] })
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { received?: boolean };
     expect(body.received).toBe(true);
-    expect(h.processed).toHaveLength(1);
+    expect(h.persisted).toHaveLength(1);
+  });
+
+  it("si la persistencia falla, no acusa recibo y el proveedor puede reintentar", async () => {
+    h.failPersistence = true;
+    const res = await callPost(JSON.stringify({ entry: [] }));
+    expect(res.status).toBe(503);
+    expect(h.persisted).toHaveLength(0);
   });
 });

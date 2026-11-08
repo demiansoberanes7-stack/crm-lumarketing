@@ -1,15 +1,15 @@
-import { after } from "next/server";
 import { getEnv } from "@/lib/env";
 import { isValidSignature, isValidWebhookToken } from "@/server/inbox/webhook";
-import { processMetaInstagramPayload } from "@/server/instagram/ingest";
 import {
   channelDisabledResponse,
   isChannelEnabled,
 } from "@/server/channels/enabled";
 import { isValidZernioSignature, zernioSignatureFrom } from "@/server/zernio";
-import { processZernioPayload, resolveZernioSecret } from "@/server/zernio/dispatch";
+import { resolveZernioSecret } from "@/server/zernio/dispatch";
 import { readLimitedBody, requestClientKey } from "@/lib/http/body";
 import { checkDistributedRateLimit, WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
+import { persistMetaInstagramPayload, persistZernioPayload } from "@/server/webhooks/inbound-ingress";
+import { safeDiagnosticText } from "@/server/diagnostics/redact";
 
 /**
  * 014 — Webhook público del canal de Instagram.
@@ -85,28 +85,25 @@ export async function POST(req: Request, { params }: Params) {
   } else {
     // Zernio: la firma se valida contra el secreto de ESTA cuenta, que hay que
     // resolver leyendo el cuerpo primero.
-    const { secret } = await resolveZernioSecret(rawBody);
-    if (!isValidZernioSignature(rawBody, zernioSignatureFrom(req.headers), secret)) {
+    const resolved = await resolveZernioSecret(rawBody);
+    if (!isValidZernioSignature(rawBody, zernioSignatureFrom(req.headers), resolved.secret)) {
       return new Response(null, { status: 401 });
     }
+    try {
+      await persistZernioPayload(rawBody, resolved);
+    } catch (err) {
+      console.error("[ig] no se pudo persistir el evento:", safeDiagnosticText(String(err)));
+      return Response.json({ error: "persistence_failed" }, { status: 503 });
+    }
+    return Response.json({ received: true });
   }
 
-  // Zernio corta a los 5 segundos y reintenta: se acusa recibo YA y se procesa
-  // fuera de la ruta.
-  after(async () => {
-    try {
-      // Un evento de Zernio se reparte por plataforma: esa API entrega TODAS
-      // las cuentas de la llave por un solo webhook, asi que esta URL tambien
-      // puede traer mensajes de la pagina de Facebook.
-      if (isMeta) {
-        await processMetaInstagramPayload(payload);
-      } else {
-        await processZernioPayload(payload);
-      }
-    } catch (err) {
-      console.error("[ig] error procesando payload:", err);
-    }
-  });
+  try {
+    await persistMetaInstagramPayload(rawBody);
+  } catch (err) {
+    console.error("[ig] no se pudo persistir el evento:", safeDiagnosticText(String(err)));
+    return Response.json({ error: "persistence_failed" }, { status: 503 });
+  }
 
   return Response.json({ received: true });
 }
