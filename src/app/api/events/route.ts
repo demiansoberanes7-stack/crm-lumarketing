@@ -43,6 +43,9 @@ export async function GET(req: Request) {
   activeConnections.set(organizationId, current + 1);
 
   let cleanup: (() => void) | null = null;
+  // abort + catch de send pueden disparar el cleanup dos veces: sin la
+  // bandera el contador por organización se descontaba dos veces.
+  let cleaned = false;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -67,6 +70,8 @@ export async function GET(req: Request) {
       const heartbeat = setInterval(() => send(`: ping\n\n`), HEARTBEAT_MS);
 
       cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
         clearInterval(heartbeat);
         unsubscribe();
         const c = activeConnections.get(organizationId) ?? 1;

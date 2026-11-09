@@ -19,8 +19,11 @@ export class UnauthorizedError extends Error {
 /**
  * Sesión + organización activa para route handlers y server components.
  * Lanza UnauthorizedError si no hay sesión u organización.
+ *
+ * `cache` la deduplica por petición: varias llamadas del mismo request
+ * comparten una sola lectura de sesión + membresía.
  */
-export async function requireSession(): Promise<SessionContext> {
+export const requireSession = cache(async (): Promise<SessionContext> => {
   const auth = getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) throw new UnauthorizedError();
@@ -35,16 +38,16 @@ export async function requireSession(): Promise<SessionContext> {
     organizationId: membership.organizationId,
     role: membership.role,
   };
-}
+});
 
 /** Igual que requireSession pero devuelve null en vez de lanzar. */
-export async function getSessionOrNull(): Promise<SessionContext | null> {
+export const getSessionOrNull = cache(async (): Promise<SessionContext | null> => {
   try {
     return await requireSession();
   } catch {
     return null;
   }
-}
+});
 
 /**
  * Usuario de la sesión para el cascarón y las pantallas que lo saludan.
@@ -66,10 +69,12 @@ export const getViewer = cache(async () => {
  * distinción el usuario autenticado rebotaba `/login → /inbox → /login` para
  * siempre, porque `requireSession()` trata "sin org" igual que "sin sesión".
  */
-export async function getOrphanSession(): Promise<{ userId: string; userName: string } | null> {
-  const auth = getAuth();
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
-  if (await resolveMembership(session.user.id)) return null;
-  return { userId: session.user.id, userName: session.user.name };
-}
+export const getOrphanSession = cache(
+  async (): Promise<{ userId: string; userName: string } | null> => {
+    const auth = getAuth();
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session) return null;
+    if (await resolveMembership(session.user.id)) return null;
+    return { userId: session.user.id, userName: session.user.name };
+  }
+);

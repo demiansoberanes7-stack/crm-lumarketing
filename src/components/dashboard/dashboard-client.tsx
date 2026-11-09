@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Building2,
   ChevronDown,
@@ -13,21 +14,25 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KpiCard, formatCurrency, formatPercent } from "./kpi-card";
-import { ProjectsSection } from "./sections/projects-section";
-import { TasksSection } from "./sections/tasks-section";
-import { QuotesSection } from "./sections/quotes-section";
-import { ReceivablesSection } from "./sections/receivables-section";
-import { ProfitabilitySection } from "./sections/profitability-section";
-import { InboxSection } from "./sections/inbox-section";
-import { ContactsSection } from "./sections/contacts-section";
-import { MarketingSection } from "./marketing-section";
-import { CommercialSection } from "./commercial-section";
-import { GanttSection } from "./gantt-section";
-import { FunnelSection } from "./funnel-section";
 import { HealthSection } from "./health-section";
 import { AdsMetricsSection } from "./ads-section";
 import { OriginLegend, OriginGroup } from "./metric-badge";
-import { OpsOverview } from "./ops-overview";
+
+// Todo lo que dibuja con recharts se pide aparte (ssr: false): el dashboard es
+// "use client" y sus hijos solo cargan datos en el navegador, así que el
+// bundle inicial no arrastra la librería de gráficas.
+const OpsOverview = dynamic(() => import("./ops-overview").then((m) => m.OpsOverview), { ssr: false });
+const ProjectsSection = dynamic(() => import("./sections/projects-section").then((m) => m.ProjectsSection), { ssr: false });
+const TasksSection = dynamic(() => import("./sections/tasks-section").then((m) => m.TasksSection), { ssr: false });
+const QuotesSection = dynamic(() => import("./sections/quotes-section").then((m) => m.QuotesSection), { ssr: false });
+const ReceivablesSection = dynamic(() => import("./sections/receivables-section").then((m) => m.ReceivablesSection), { ssr: false });
+const ProfitabilitySection = dynamic(() => import("./sections/profitability-section").then((m) => m.ProfitabilitySection), { ssr: false });
+const InboxSection = dynamic(() => import("./sections/inbox-section").then((m) => m.InboxSection), { ssr: false });
+const ContactsSection = dynamic(() => import("./sections/contacts-section").then((m) => m.ContactsSection), { ssr: false });
+const MarketingSection = dynamic(() => import("./marketing-section").then((m) => m.MarketingSection), { ssr: false });
+const CommercialSection = dynamic(() => import("./commercial-section").then((m) => m.CommercialSection), { ssr: false });
+const GanttSection = dynamic(() => import("./gantt-section").then((m) => m.GanttSection), { ssr: false });
+const FunnelSection = dynamic(() => import("./funnel-section").then((m) => m.FunnelSection), { ssr: false });
 
 /** Sección colapsable por departamento. */
 function Department({ id, title, icon, defaultOpen = true, children }: {

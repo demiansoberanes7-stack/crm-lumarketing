@@ -8,25 +8,27 @@ import { useEvents } from "@/components/use-events";
  * campana de la cabecera: cada instancia consulta una vez y se suscribe a los
  * eventos SSE para mantenerse al día.
  *
+ * Pide solo la cifra (`/api/conversations/unread`): antes traía la lista
+ * entera de conversaciones solo para sumar `unreadCount` en el cliente.
+ *
  * Devuelve `null` cuando el total no se pudo leer. Un `0` es una afirmación
- * («nadie está esperando»), y con un 500 de /api/conversations se leía justo
- * eso: la Bandeja llena y el contador apagado. `null` se pinta como si no
- * hubiera badge, que es lo que significa no saberlo.
+ * («nadie está esperando»), y con un 500 se leía justo eso: la Bandeja llena
+ * y el contador apagado. `null` se pinta como si no hubiera badge, que es lo
+ * que significa no saberlo.
  */
 export function useUnreadCount(): number | null {
   const [unread, setUnread] = useState<number | null>(null);
 
   const refetch = useCallback(async () => {
-    const res = await fetch("/api/conversations").catch(() => null);
+    const res = await fetch("/api/conversations/unread").catch(() => null);
     const data = res?.ok
-      ? ((await res.json().catch(() => null)) as { conversations?: { unreadCount: number }[] } | null)
+      ? ((await res.json().catch(() => null)) as { unread?: number } | null)
       : null;
-    const list = data?.conversations;
-    if (!Array.isArray(list)) {
+    if (typeof data?.unread !== "number") {
       setUnread(null);
       return;
     }
-    setUnread(list.reduce((a, c) => a + (c.unreadCount || 0), 0));
+    setUnread(data.unread);
   }, []);
 
   useEffect(() => {
